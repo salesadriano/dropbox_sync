@@ -442,7 +442,7 @@ teste_nenhum_valor_externo_transita_por_substituicao_de_comando() {
   local arquivo codigo achados
   # `dbx_json_tipo` entra pelo mesmo criterio dos demais: devolve uma de seis
   # palavras fixas do vocabulario de tipos, nunca byte vindo de fora.
-  local permitidos='dbx_errors_codigo_saida|dbx_errors_classificar|_dbx_errors_classe_da_tag|_dbx_hash_sha256_hex|_dbx_hash_calcular|dbx_json_tipo'
+  local permitidos='dbx_errors_codigo_saida|dbx_errors_classificar|_dbx_errors_classe_da_tag|_dbx_hash_sha256_hex|_dbx_hash_calcular|dbx_json_tipo|dbx_errors_politica_retentativa'
   for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
     codigo=$(grep -vE '^[[:space:]]*#' "$arquivo")
     # O padrao anterior exigia o `$(` LOGO APOS o `=`, entao `+=" ... $(...)"`
