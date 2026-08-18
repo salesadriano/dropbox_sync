@@ -236,7 +236,35 @@ teste_todo_utilitario_ausente_reprova_e_e_nomeado() {
 # nao e codigo) e rotulos de `case`. Depois toma a palavra em POSICAO DE
 # COMANDO: inicio de linha ou apos separador de comando, seguida de espaco ou
 # fim de linha. Invocacao por caminho absoluto e reduzida ao nome do utilitario.
+# _palavras_que_abrem_comando — derivadas da GRAMATICA, e nao do idioma que o
+# autor usa.
+#
+# O universo sao as palavras reservadas do PROPRIO shell. Mantem-se a mao apenas
+# a lista das que NAO sao seguidas de comando — terminadores, e as que tomam
+# nome ou padrao em vez de comando. A inversao e a mesma ja aplicada duas vezes
+# neste arquivo, agora no reconhecedor de POSICAO DE COMANDO.
+#
+# Era aqui que a tese ainda falhava: a amostra anterior nascera das formas que o
+# codigo do projeto usa — `then`, `do`, `else` —, e a gramatica contem formas
+# que ele nao usava. `if`, `while`, `until` e `time` escapavam; `elif` e `!`
+# eram detectados por acidente, por ja constarem da lista de separadores.
+_palavras_que_abrem_comando() {
+  local nao_introduzem=' fi done esac case for select in function } [[ ]] '
+  local palavra
+  while IFS= read -r palavra; do
+    [[ $palavra =~ ^[a-z]+$ ]] || continue
+    [[ $nao_introduzem == *" $palavra "* ]] && continue
+    printf '%s\n' "$palavra"
+  done < <(compgen -k)
+}
+
 _comandos_externos_de() {
+  local abrem='' palavra
+  # Alternacao montada sem utilitario externo: a auditoria nao pode depender de
+  # um comando que ela propria teria de exigir.
+  while IFS= read -r palavra; do
+    abrem+="${abrem:+|}$palavra"
+  done < <(_palavras_que_abrem_comando)
   # Descarta, nesta ordem: comentarios; literais entre aspas, porque conteudo de
   # mensagem nao e codigo; BLOCOS DE LITERAL DE VETOR, cujas linhas de
   # continuacao sao indistinguiveis de linhas de comando; e rotulos de `case`.
@@ -256,7 +284,7 @@ _comandos_externos_de() {
     ' |
     grep -vE '^[[:space:]]*[^|&;()]+([[:space:]]*\|[[:space:]]*[^|&;()]+)*[[:space:]]*\)' |
     sed -E -e 's/&&/\n/g' -e 's/\|\|/\n/g' -e 's/[;&|(){}!]/\n/g' \
-      -e 's/\<(then|do|else|elif|in)\>/\n/g' |
+      -e "s/\\<($abrem)\\>/\n/g" |
     awk '{ print $1 }' |
     grep -vE '[$:=]' |
     sed 's|.*/||' |
@@ -375,5 +403,75 @@ teste_auditoria_de_comandos_ignora_o_que_nao_e_comando() {
   done
 }
 
+
+# ---------------------------------------------------------------------------
+# TL-27 — posicao de comando derivada da GRAMATICA, nao do idioma observado
+# ---------------------------------------------------------------------------
+
+teste_palavras_que_abrem_comando_vem_da_gramatica_do_shell() {
+  # O universo precisa vir do proprio shell. Se alguem substituir a derivacao
+  # por uma lista, uma palavra reservada nova ou nao antecipada volta a escapar.
+  local derivadas palavra
+  derivadas=$(_palavras_que_abrem_comando)
+  for palavra in 'if' 'while' 'until' 'time' 'then' 'do' 'else' 'elif'; do
+    assert_contem "$palavra" "$derivadas" \
+      "'$palavra' abre comando e precisa sair da gramatica, nao de lista"
+  done
+  # E as que NAO abrem comando precisam ficar de fora, senao a normalizacao
+  # quebra construcoes legitimas.
+  for palavra in 'fi' 'done' 'esac' 'case' 'for' 'select' 'function'; do
+    if grep -qx "$palavra" <<<"$derivadas"; then
+      _harness_falhar "'$palavra' nao introduz comando e nao pode virar ponto de corte"
+    fi
+  done
+}
+
+teste_extracao_enxerga_comando_apos_cada_palavra_que_abre() {
+  # As quatro formas que escapavam — `if`, `while`, `until`, `time` — mais as
+  # que ja funcionavam. A amostra anterior nascera das formas que o proprio
+  # codigo usa, e a gramatica contem formas que ele nao usava: era essa a causa
+  # comum dos quatro niveis em que a inversao faltou.
+  local amostra extraidos esperado
+  amostra=$(mktemp "$DBX_TESTES_TMP/gram.XXXXXX")
+  {
+    printf '%s\n' 'if cut -d: -f1 /dev/null; then :; fi'
+    printf '%s\n' 'while paste /dev/null; do break; done'
+    printf '%s\n' 'until du -sh /tmp; do break; done'
+    printf '%s\n' 'time expr 1 + 1'
+    printf '%s\n' 'if true; then sort /dev/null; fi'
+    printf '%s\n' 'for _x in 1; do touch /dev/null; done'
+  } >"$amostra"
+  extraidos=$(_comandos_externos_de "$amostra")
+  rm -f "$amostra"
+  for esperado in cut paste du expr sort touch; do
+    assert_contem "$esperado" "$extraidos" \
+      "comando apos palavra que abre lista precisa ser visto: $esperado"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# TL-30 — a biblioteca nao pode depender de utilitario externo para CARREGAR
+# ---------------------------------------------------------------------------
+
+teste_biblioteca_carrega_sem_utilitario_externo_algum() {
+  # Antes, os componentes resolviam o proprio diretorio com `dirname` na carga,
+  # antes de qualquer verificacao: sem ele carregavam com status 0 e QUEBRADOS —
+  # dependencias nunca carregadas e constantes de codigo de erro vazias.
+  local vazio saida
+  vazio="$DBX_TESTES_TMP/vazio.$$"
+  mkdir -p "$vazio"
+  # `timeout` fica FORA do PATH esvaziado, senao a sonda mede a si mesma — a
+  # armadilha ja registrada duas vezes neste arquivo.
+  saida=$(timeout 30 env PATH="$vazio" "$BASH" -c '
+    . "$1/lib/errors.sh" || exit 1
+    . "$1/lib/json.sh"   || exit 2
+    . "$1/lib/config.sh" || exit 3
+    . "$1/lib/preflight.sh" || exit 4
+    printf "%s|%s|%s" "$DBX_CONFIG_ERRO_CONFIGURACAO" "$DBX_JSON_ERRO_REMOTO" "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  rmdir "$vazio" 2>/dev/null
+  assert_igual '3|10|3' "$saida" \
+    'sem utilitario externo no PATH a carga precisa funcionar e as constantes precisam valer'
+}
 
 harness_executar "$@"

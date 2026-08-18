@@ -450,12 +450,16 @@ teste_redacao_de_entrada_muito_grande_termina_rapido() {
   # A versao anterior era quadratica: 50 mil palavras levavam mais de 15 s.
   local entrada inicio fim decorrido
   printf -v entrada 'palavra%.0s ' $(seq 1 50000)
-  inicio=$SECONDS
+  # Medicao em MILISSEGUNDOS, e nao em segundos inteiros. Com granularidade de
+  # um segundo e limite de tres, uma execucao de 2,9 s podia ler 3 ou 4 conforme
+  # a fronteira do segundo caisse — o resultado dependia do relogio, e nao do
+  # comportamento. Era candidata a falha intermitente.
+  inicio=$(_agora_ms)
   dbx_errors_redigir "$entrada" >/dev/null
-  fim=$SECONDS
+  fim=$(_agora_ms)
   decorrido=$((fim - inicio))
-  if [[ $decorrido -gt 3 ]]; then
-    _harness_falhar "redacao levou ${decorrido}s para 50 mil palavras; esperado no maximo 3s"
+  if [[ $decorrido -gt 3000 ]]; then
+    _harness_falhar "redacao levou ${decorrido}ms para 50 mil palavras; esperado no maximo 3000ms"
   fi
 }
 
