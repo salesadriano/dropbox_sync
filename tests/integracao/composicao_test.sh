@@ -217,7 +217,23 @@ teste_toda_consulta_de_json_recusa_sem_documento_analisado() {
 # ---------------------------------------------------------------------------
 
 teste_nenhum_sitio_de_chamada_deriva_contexto_de_dado_externo() {
-  local arquivo achados diretorio
+  local arquivo achados diretorio padrao_bom padrao_ruim aceito
+  # Auditoria declarada como GARANTIA precisa provar que discrimina, e nao so
+  # que passa (RSK-27). Antes de varrer os arquivos reais, o padrao e submetido
+  # a amostras conhecidas: se aceitar a ruim ou recusar a boa, a garantia e
+  # indicio.
+  # O padrao e declarado UMA VEZ e usado tanto na autovalidacao quanto na
+  # varredura. Duas copias poderiam divergir, e mutar so a da varredura passaria
+  # despercebido — a autovalidacao continuaria exercitando a copia forte.
+  local aceito='dbx_json_contexto[[:space:]]+([a-z_]+|"\$DBX_JSON_CONTEXTO_ANTERIOR")([[:space:]]|$)'
+  padrao_bom='  dbx_json_contexto config || falhar'
+  padrao_ruim='  dbx_json_contexto "$tag_do_erro"'
+  if grep -qE "$aceito" <<<"$padrao_ruim"; then
+    _harness_falhar 'a auditoria aceita nome derivado de variavel: nao discrimina'
+  fi
+  if ! grep -qE "$aceito" <<<"$padrao_bom"; then
+    _harness_falhar 'a auditoria recusa forma literal legitima: reprovaria por engano'
+  fi
   for diretorio in "$DBX_HARNESS_RAIZ/lib" "$DBX_HARNESS_RAIZ/commands"; do
     [[ -d $diretorio ]] || continue
     for arquivo in "$diretorio"/*.sh; do
@@ -226,7 +242,7 @@ teste_nenhum_sitio_de_chamada_deriva_contexto_de_dado_externo() {
       # publicada pelo proprio componente.
       achados=$(grep -vE '^[[:space:]]*#' "$arquivo" |
         grep -nE 'dbx_json_contexto[[:space:]]+' |
-        grep -vE 'dbx_json_contexto[[:space:]]+([a-z_]+|"\$DBX_JSON_CONTEXTO_ANTERIOR")[[:space:]]*$' || true)
+        grep -vE "$aceito" || true)
       if [[ -n $achados ]]; then
         _harness_falhar \
           "nome de contexto possivelmente derivado de dado externo em $(basename "$arquivo"): $achados" \
@@ -257,6 +273,115 @@ teste_tags_reais_da_dropbox_seriam_recusadas_como_contexto() {
   if [[ $aceitas -eq 0 ]]; then
     _harness_falhar 'esperado que tags reais passassem pelo alfabeto, evidenciando o risco'
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Etapa 3 — composicao de preflight e config com o restante
+# ---------------------------------------------------------------------------
+
+teste_preflight_e_config_entram_em_qualquer_ordem_de_carregamento() {
+  local ordem saida
+  local -a ordens=(
+    'errors path hash json output preflight config'
+    'config preflight output json hash path errors'
+    'json config errors preflight output path hash'
+    'preflight config errors json path hash output'
+  )
+  for ordem in "${ordens[@]}"; do
+    saida=$(timeout 30 bash -c '
+      for componente in $2; do . "$1/$componente.sh" || exit 1; done
+      dbx_preflight_verificar >/dev/null 2>&1 || exit 2
+      printf "ok"
+    ' _ "$DBX_LIB" "$ordem" 2>&1)
+    assert_igual 'ok' "$saida" "ordem de carregamento falhou: [$ordem]"
+  done
+}
+
+teste_codigos_de_saida_de_preflight_e_config_concordam_com_a_taxonomia() {
+  . "$DBX_LIB/errors.sh"
+  . "$DBX_LIB/json.sh"
+  . "$DBX_LIB/preflight.sh"
+  . "$DBX_LIB/config.sh"
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_PREFLIGHT_ERRO_USO"
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_CONFIG_ERRO_USO"
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_CONFIG_ERRO_CONFIGURACAO"
+}
+
+teste_config_nao_destroi_documento_de_outro_contexto() {
+  # Cadeia real: uma listagem paginada em curso enquanto a credencial e lida.
+  local area
+  . "$DBX_LIB/errors.sh"
+  . "$DBX_LIB/json.sh"
+  . "$DBX_LIB/config.sh"
+  area=$(mktemp -d "$DBX_TESTES_TMP/comp.XXXXXX")
+  XDG_CONFIG_HOME="$area/config" dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  dbx_json_contexto padrao
+  dbx_json_analisar '{"entries":[{"name":"a"}],"cursor":"C1"}'
+  XDG_CONFIG_HOME="$area/config" dbx_config_carregar
+  dbx_json_valor cursor >/dev/null
+  assert_igual 'C1' "$DBX_JSON_RESULTADO"
+  assert_igual 'padrao' "$DBX_JSON_CONTEXTO" 'o contexto precisa ser restaurado'
+}
+
+teste_ambas_as_verificacoes_de_permissao_da_credencial_concordam() {
+  # Pergunta do QF-01 aplicada a este incremento: a guarda de permissao existe
+  # em DOIS caminhos gemeos — preflight e leitura. Ambas precisam recusar os
+  # mesmos modos, senao uma delas e porta de entrada.
+  local area arquivo modo status_preflight status_config
+  . "$DBX_LIB/errors.sh"
+  . "$DBX_LIB/json.sh"
+  . "$DBX_LIB/preflight.sh"
+  . "$DBX_LIB/config.sh"
+  area=$(mktemp -d "$DBX_TESTES_TMP/perm.XXXXXX")
+  mkdir -p "$area/config/dbx"
+  arquivo="$area/config/dbx/credencial.json"
+  printf '{"versao":1,"app_key":"AK","app_secret":"AS","refresh_token":"RT","raiz_remota":"/r"}' >"$arquivo"
+  for modo in 600 644 640 604 660 606 666 700; do
+    chmod "$modo" "$arquivo"
+    XDG_CONFIG_HOME="$area/config" dbx_preflight_verificar >/dev/null 2>&1
+    status_preflight=$?
+    XDG_CONFIG_HOME="$area/config" dbx_config_carregar >/dev/null 2>&1
+    status_config=$?
+    if [[ $modo == '600' ]]; then
+      assert_igual 0 "$status_preflight" "modo $modo devia passar no preflight"
+      assert_igual 0 "$status_config" "modo $modo devia passar na leitura"
+    else
+      assert_diferente 0 "$status_preflight" "modo $modo passou no preflight"
+      assert_diferente 0 "$status_config" "modo $modo passou na leitura"
+    fi
+  done
+}
+
+teste_credencial_gravada_e_integralmente_redigida_pela_taxonomia() {
+  # Composicao entre o FORMATO escolhido e a redacao: se o formato mudasse e a
+  # taxonomia nao acompanhasse, um diagnostico que citasse o arquivo vazaria.
+  local area conteudo
+  . "$DBX_LIB/errors.sh"
+  . "$DBX_LIB/json.sh"
+  . "$DBX_LIB/config.sh"
+  area=$(mktemp -d "$DBX_TESTES_TMP/red.XXXXXX")
+  XDG_CONFIG_HOME="$area/config" dbx_config_gravar \
+    'AK9pQrSegredo' 'AS9pQrSegredo' 'RT9pQrSegredo' '/raiz'
+  conteudo=$(cat "$area/config/dbx/credencial.json")
+  dbx_errors_redigir "$conteudo" >/dev/null
+  assert_nao_contem '9pQrSegredo' "$DBX_ERRORS_REDIGIDO" \
+    'todo campo secreto do formato precisa estar coberto pela taxonomia'
+  assert_contem 'raiz_remota' "$DBX_ERRORS_REDIGIDO" \
+    'o que nao e segredo precisa sobreviver, sob pena de inutilizar o diagnostico'
+}
+
+teste_nenhum_componente_novo_introduz_estado_persistente() {
+  # PRJ-DEC-07 e RSK-23: a unica escrita persistente e a credencial.
+  local arquivo codigo achados
+  for arquivo in "$DBX_LIB/preflight.sh" "$DBX_LIB/config.sh"; do
+    codigo=$(grep -vE '^[[:space:]]*#' "$arquivo")
+    achados=$(grep -nE '>[[:space:]]*"?\$(HOME|XDG_CACHE|XDG_DATA)' <<<"$codigo" || true)
+    [[ -n $achados ]] && _harness_falhar "escrita fora da credencial em $(basename "$arquivo"): $achados"
+    achados=$(grep -nEi '(cache|indice|cursor_local|lockfile|arquivo_de_trava)' <<<"$codigo" || true)
+    [[ -n $achados ]] && _harness_falhar "indicio de estado local em $(basename "$arquivo"): $achados"
+  done
+  return 0
 }
 
 harness_executar "$@"
