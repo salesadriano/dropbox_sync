@@ -157,7 +157,10 @@ dbx_config_gravar() {
   local diretorio temporario corpo
 
   dbx_config_caminho || return $?
-  diretorio=$(dirname -- "$DBX_CONFIG_RESULTADO")
+  # Expansao do proprio shell, e nao captura: `$(dirname ...)` removeria uma
+  # quebra de linha final do caminho, que e a mesma classe de C2-01 — la a raiz
+  # `algo\n` passou a designar o diretorio irmao `algo`.
+  diretorio=${DBX_CONFIG_RESULTADO%/*}
 
   # `umask` restritivo cobre a janela entre criar e ajustar a permissao.
   local mascara_anterior
@@ -246,7 +249,7 @@ dbx_config_carregar() {
   # substituir o arquivo por outro, e nenhum dos dois caminhos olhava para ele
   # (P3-04).
   local modo_diretorio
-  modo_diretorio=$(stat -c '%a' -- "$(dirname -- "$arquivo")" 2>/dev/null) ||
+  modo_diretorio=$(stat -c '%a' -- "${arquivo%/*}" 2>/dev/null) ||
     { _dbx_config_falhar inspecao; return $?; }
   [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
     { _dbx_config_falhar permissao_diretorio; return $?; }
