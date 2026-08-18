@@ -10,7 +10,7 @@
 | Destinatario do handoff | QA Expert |
 | Data do registro | 2026-08-18 |
 | Documentos relacionados | [System Design](../arquitetura/system-design.md) · [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Registro anterior — Adaptadores (JSON e Output)](2026-08-18_entrega-lib-json-e-lib-output.md) |
-| Status | **Entrega completa e pronta para QA.** Ciclo 1: TDD aplicado. Ciclo de cobertura por mutacao: cinco defeitos revelados pelos testes, dois testes fracos corrigidos. Suite de integracao expandida com seis casos de composicao da Etapa 3. Bateria integral: 9 arquivos, 291 casos aprovados, 0 reprovados, 0 pulados. Shellcheck exit 0. |
+| Status | **Ciclo 1 de QA concluido: aprovado com ressalva.** Seis problemas identificados e corrigidos (P3-01 a P3-05, DP-11). Bateria integral pos-correcao: 9 arquivos, 298 casos aprovados, 0 reprovados, 0 pulados. Shellcheck exit 0. Condicao para fechamento: aceite do Tech Lead sobre codigos 5 a 15. |
 
 ---
 
@@ -211,8 +211,8 @@ Resultado real, obtido por execucao da suite neste ambiente.
 
 | Execucao | Comando | Resultado |
 |---|---|---|
-| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 9 arquivos, **291 casos aprovados**, 0 reprovados, 0 pulados |
-| Suite padrao, sem rede | `bash tests/run.sh` | **289 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
+| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 9 arquivos, **298 casos aprovados**, 0 reprovados, 0 pulados |
+| Suite padrao, sem rede | `bash tests/run.sh` | **296 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
 
 ### Distribuicao por arquivo
 
@@ -223,12 +223,12 @@ Soma de todos os testes:
 - `json_test.sh`: 55
 - `output_test.sh`: 27
 - `hash_test.sh`: 35
-- `config_test.sh`: 20 (novo)
-- `composicao_test.sh`: 18 (expandido, 6 casos novos)
-- `preflight_test.sh`: 14 (novo)
+- `config_test.sh`: 25
+- `composicao_test.sh`: 18
+- `preflight_test.sh`: 16
 - `hash_vetor_oficial_test.sh`: 2
 
-Total: 291 casos aprovados, 0 reprovados.
+Total: 298 casos aprovados, 0 reprovados.
 
 ### Analise estatica
 
@@ -322,6 +322,103 @@ Neste ponto da Etapa 3, a suite ja cobre:
 - Vetor oficial: (2 casos)
 
 Total: 291 casos. Nenhum foi deixado de lado para a Etapa 4.
+
+---
+
+## Ciclo 1 de QA — Aprovado com ressalva, e as correcoes
+
+### Abertura — Validacoes do QA
+
+O QA Expert executou a suite de testes contra o codigo entregue e registrou as seguintes validacoes:
+
+- **Ida e volta pelo par escapar/analisar:** submetida a 13 valores adversariais, incluindo o separador interno U+001F do proprio analisador, o byte U+0001, quebra de linha final e UTF-8 de quatro bytes. Nenhuma perda de conteudo. A decisao de reaproveitar o unico interpretador (`lib/json`) para codificacao de credencial fica validada empiricamente — este era justamente o caso (U+001F) onde ela poderia ter falhado e nao falhou.
+
+- **Descarte da arvore:** confirmado que nenhuma variavel do analisador retém o segredo apos a carga, nem o ambiente, nem a mensagem de erro com arquivo corrompido. A propriedade de isolacao de segredo descrita em RNF-27 e respeitada.
+
+- **RSK-23 preservado:** 20 gravacoes produzem um arquivo unico; 10 gravacoes concorrentes produzem um arquivo unico com conteudo integro e zero orfaos.
+
+- **Dois caminhos gemeos de verificacao de permissao:** a guardar implementada em `lib/preflight` (verificacao inicial de ambiente) e em `lib/config` (verificacao ao ler credencial existente) decidem identicamente em 11 modos de permissao.
+
+- **Retificacao do QA que credita a entrega:** o QA suspeitou por leitura de codigo que a guarda QF-01 seguia aberta. A execucao refutou a hipotese. A guarda foi UNIFICADA numa unica funcao chamada pelos dois canais (`_dbx_verificar_permissao_arquivo`), e o QA registrou que isso e melhor do que a correcao que ele proprio recomendara em ciclo anterior, porque impede a divergencia de reaparecer em vez de corrigi-la duas vezes.
+
+### P3-01: Orfao com o segredo apos interrupcao
+
+**Manifesto:** um sinal de termino incondicional durante a gravacao deixava o temporario contendo o segredo, com permissao restrita, no diretorio de configuracao. Oito interrupcoes produziram um orfao. Isso contradizia a invariante declarada no cabecalho do proprio componente e derrotava a rotacao de credencial: o token antigo permanecia em disco indefinidamente, num arquivo oculto que nenhum caminho de codigo removia.
+
+**Padrao identificado:** este e o padrao de QF-01 pela terceira vez na entrega — a disciplina de limpeza estava no componente que grava buffer transitorio (`lib/output`) e nao no que grava o segredo (`lib/config`).
+
+**Correcao em duas partes:**
+
+1. O nome do temporario passou a carregar o identificador do processo que o criou, de modo que cada processo cria seu proprio temporario.
+2. Uma varredura remove os temporarios de processos MORTOS antes de cada gravacao. (Nao remove temporarios de processos vivos, porque apagar o temporario alheio destruiria a propriedade de gravacao concorrente que o proprio QA verificou em RSK-23.)
+3. A escrita ocorre em subshell com limpeza propria, que cobre os sinais interceptaveis (SIGINT, SIGTERM, etc.) sem alterar os do processo chamador.
+
+**Testes que validam a correcao:**
+
+- `interrupcao_nao_deixa_orfao_com_segredo`: sinal nao deixa segredo em disco.
+- `varredura_nao_remove_temporario_de_processo_vivo`: a varredura so limpa de processos mortos.
+
+**Validacao por mutacao:** as duas mutacoes correspondentes (nao fazer limpeza de processo morto, e nao usar identificador de processo) reprovam um caso cada, detectadas pela suite.
+
+### P3-02: Preflight aprovava ambiente onde a primeira operacao ja falha
+
+**Manifesto:** o preflight passava sem verificar disponibilidade de utilitarios efetivamente invocados: mktemp, mv, rm, chmod, mkdir, stat, head, wc, readlink e dirname. RNF-02 exige nomeacao do utilitario ausente, e isso so acontecia para cURL e a familia do resumo. A consequencia: um preflight que aprova ambiente quebrado cria confianca falsa e empurra o diagnostico para um ponto onde ele fica mais obscuro.
+
+**Formulacao do coordenador:** "um preflight que aprova ambiente quebrado e pior do que nao ter preflight, porque cria confianca falsa".
+
+**Correcao em duas partes:**
+
+1. A lista de utilitarios passada a conter todos os utilitarios efetivamente invocados pela biblioteca (`lib/preflight.sh`).
+2. Uma AUDITORIA foi escrita que extrai de `lib/` os utilitarios invocados por inspecao de codigo e reprova (em tempo de teste) se algum nao constar da lista do preflight. A pergunta dos gemeos ("como garantir que a lista esta completa?") foi transformada em verificacao automatica, nao em inspecao manual.
+
+**Teste que valida a correcao:**
+
+- `verifica_todos_os_utilitarios_invocados`: enumera os dez utilitarios, um a um.
+- (Auditoria automatica em suite de testes): garante que nenhum utilitario invocado ficou de fora.
+
+**Validacao por mutacao:** mutacao que devolve a lista a apenas cURL reprova dois casos, detectados pela suite.
+
+### P3-03 e P3-04: Permissao
+
+**Manifesto — parte 1 (arquivo):** a comparacao de permissao do arquivo exigia exatamente 0600 e recusava 0400, que e mais restritiva. Era aplicavel o mesmo principio ja usado no diretorio — nao desfazer escolha mais restritiva do operador — que nao estava aplicado ao arquivo.
+
+**Manifesto — parte 2 (diretorio):** a permissao do diretorio de configuracao nao era verificada por caminho nenhum, de modo que 0777 passava sem alerta.
+
+**Correcao:** ambos (arquivo e diretorio) passam a aceitar qualquer modo que nao tenha bits para grupo ou outros (bits 020 e 002 nulos), exigindo leitura para o dono (bit 0400), e ambos verificam a permissao do diretorio. A implementacao e identica em `lib/preflight.sh` e `lib/config.sh`, validada pela suite de composicao.
+
+**Achado de padrao — detectado por teste, nao por revisao:** a regra nova foi aplicada primeiro a `lib/config.sh` e NAO a `lib/preflight.sh`. Quem apanhou a divergencia foi o caso de integracao dos gemeos (`equivalencia_de_guarda_de_permissao`), escrito no incremento anterior justamente para isso. Esta e a quarta ocorrencia do padrao em que um teste descobre divergencia entre dois caminhos gemeos antes que revisao manual o faca.
+
+### P3-05: A regra estava violada no arquivo que a enuncia
+
+**Manifesto:** o codificador em `lib/json.sh` (funcao `dbx_json_escapar_cadeia`, usada por `lib/config`) usava indexacao caractere a caractere, exatamente o padrao que o cabecalho de `lib/json` documenta como armadilha quadratica medida (RNF-11). Sem consequencia pratica pelo tamanho de uma credencial, mas a regra nao pode ser violada onde e enunciada.
+
+**Correcao:** reescrito com substituicao de padrao — um numero fixo de passagens de custo proporcional ao tamanho, sem indexacao. A barra invertida e escapada primeiro, porque escapa-la depois duplicaria as barras introduzidas pelos demais escapes.
+
+**Teste que valida a correcao:**
+
+- `escapar_respeitava_a_propria_regra_de_json`: executa a codificacao e valida a complexidade.
+
+**Validacao por mutacao:** mutacao que remove o escape da barra invertida reprova dois casos — e vale registrar que quem os apanha sao os testes de config (ida e volta de credencial), nao os testes de json puro. Isso confirma que a decisao de usar o mesmo interpretador cria dependencia entre componentes, mas a dependencia e unidirecional: json nao conhece config.
+
+### DP-11: Propriedade pretendida, e nao acidental
+
+**Manifesto:** quem controla o ambiente pode apontar a variavel de configuracao `DBX_CONFIG_DIR` para um diretorio proprio e tentar plantar uma credencial falsa para sequestro de acesso. As verificacoes de dono e de permissao recusam a credencial plantada, de modo que o ataque degrada para negacao de servico — o aplicativo fica inutilizavel naquele diretorio, nao aceitando credencial falsa.
+
+**Concordancia do QA:** o QA concordou com a interpretacao de que o objeto da proibicao e o segredo (nao a localizacao), e acrescentou uma propriedade que era acidental e passou a ser pretendida. Uma propriedade acidental, se nao documentada, pode ser removida em refatoracoes futuras. Uma propriedade pretendida permanece como garantia.
+
+**Documentacao:** registrado no cabecalho de `lib/config.sh` (linhas 17-21), com a razao: "Se constasse apenas como efeito colateral, um afrouxamento futuro da verificacao de dono removeria a protecao sem que a ligacao fosse percebida."
+
+### Evidencias atualizadas pos-correcoes
+
+- **Suite completa com vetor oficial habilitado:** 9 arquivos, **298 casos aprovados**, 0 reprovados, 0 pulados.
+- **Suite padrao, sem rede:** **296 aprovados**, 0 reprovados, 2 pulados.
+- **Distribuicao por arquivo:** errors 76, path 44, json 55, output 27, hash 35, config 25, composicao 18, preflight 16, vetor oficial 2.
+- **Shellcheck 0.10.0:** exit 0 com e sem a opcao de seguir origens. 22 supressoes, todas justificadas.
+- **Validacao por mutacao das correcoes:** 6 mutacoes de forma nao obvia, todas detectadas.
+
+### Pendencia que permanece
+
+Aceite do Tech Lead sobre os codigos de saida 5 a 15 (remanescente da Etapa 1, bloqueando commit).
 
 ---
 
