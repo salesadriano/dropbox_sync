@@ -10,7 +10,7 @@
 | Destinatario do handoff | QA Expert |
 | Data do registro | 2026-08-18 |
 | Documentos relacionados | [System Design](../arquitetura/system-design.md) · [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Registro anterior — Camada de Dominio](2026-08-17_entrega-camada-dominio.md) |
-| Status | **Aprovado no Ciclo 2 pela QA com ressalva.** Ciclo 1: 13 defeitos (2 ALTA, 7 MEDIA-ALTA/MEDIA, 4 BAIXA), todos corrigidos com casos de teste. Ciclo 2: 7 ressalvas verificadas e corrigidas (3 MEDIA, 4 BAIXA). Os tres bloqueantes do ciclo 1 fecharam por construcao (injecao por separador testada com seis vetores de colisao). Decisao de eliminar juncao de caminho confirmada como correta (10% melhoria, sem regressao de cobertura). Parecer em [qa-validacao-lib-json-e-lib-output.md](2026-08-18_qa-validacao-lib-json-e-lib-output.md). |
+| Status | **Entrega completa, Ciclo 2 aprovado, Contexto Nomeado (E3-01) implementado.** Ciclo 1: 13 defeitos (2 ALTA, 7 MEDIA-ALTA/MEDIA, 4 BAIXA), todos corrigidos com casos de teste. Ciclo 2: 7 ressalvas verificadas e corrigidas (3 MEDIA, 4 BAIXA). Ciclo 3 (implementacao): Contexto Nomeado entregue com validacao por mutacao de 5 vetores, todos detectados (restricao de nome, liberacao de nos, guarda por contexto, consulta com raiz, restauracao de anterior). Os tres bloqueantes do ciclo 1 fecharam por construcao (injecao por separador testada com seis vetores de colisao). Decisao de eliminar juncao de caminho confirmada como correta (10% melhoria, sem regressao de cobertura). Parecer em [qa-validacao-lib-json-e-lib-output.md](2026-08-18_qa-validacao-lib-json-e-lib-output.md). |
 
 ---
 
@@ -152,10 +152,10 @@ Resultado real, obtido por execucao da suite neste ambiente — nao estimado.
 
 | Execucao | Comando | Resultado |
 |---|---|---|
-| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 6 arquivos, **199 casos aprovados**, 0 reprovados, 0 pulados |
-| Suite padrao, sem rede | `bash tests/run.sh` | **197 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
+| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 6 arquivos, **235 casos aprovados**, 0 reprovados, 0 pulados |
+| Suite padrao, sem rede | `bash tests/run.sh` | **233 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
 
-Por arquivo: `errors_test.sh` 76 casos, `path_test.sh` 44 casos, `hash_test.sh` 35 casos, `json_test.sh` 24 casos, `output_test.sh` 18 casos, `hash_vetor_oficial_test.sh` 2 casos.
+Por arquivo: `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 51, `output_test.sh` 27, `hash_test.sh` 35, `hash_vetor_oficial_test.sh` 2.
 
 `shellcheck` 0.10.0 com `-x`: exit 0. RNF-13 mantido.
 
@@ -257,6 +257,26 @@ Novas pendencias tecnologicas estruturais: nenhuma. Ambos os componentes sao aut
 Nenhuma regressao de ciclo anterior ocorreu nesta entrega. A arquitetura da camada de adaptadores, com dependencia unidirecional em `lib/errors` e sem referencias cruzadas entre `lib/json` e `lib/output`, foi validada desde o inicio e nao precisou de revisao.
 
 Um ponto revisado durante a fase de refatoracao: a ordem de operacoes em `dbx_errors_redigir` e consumida por `lib/output` na funcao `dbx_output_render_diagnostico`. Confirmado que a redacao por linha ocorre ANTES do terminador de registro, nao DEPOIS, de modo a garantir que a quebra de linha explicita em modo nulo antecede o byte nulo. Desenho validado.
+
+---
+
+## Contexto nomeado — desenho implementado
+
+**O ponto central do desenho, e a razao de ele ser seguro.** A composicao de chave NAO mudou. Os identificadores de no sao globalmente unicos em todo o processo, entao contextos diferentes apenas apontam para raizes diferentes dentro de um mesmo pool de nos. O contexto nao entra na chave. Consequencia: o argumento de injetividade validado pelo QA no ciclo 2, com seis vetores de colisao, continua valendo palavra por palavra, e o recurso novo nao abre porta nova para a classe do E2-01.
+
+**Estado por contexto.** Cada contexto tem raiz propria, indicador de documento analisado, processo da analise, motivo e mensagem de erro, e a faixa de identificadores de no que ocupa. O pool de nos e comum.
+
+**Ciclo de vida.** Reanalisar no mesmo contexto libera os nos da analise anterior daquele contexto. Sem isso, uma listagem paginada acumularia os nos de todas as paginas ate o fim do processo. Os identificadores sao alocados em sequencia durante uma analise, entao os nos de um contexto formam faixa continua, e a liberacao percorre apenas essa faixa. Ha ainda `dbx_json_descartar` para liberar um contexto explicitamente.
+
+**A guarda do E2-09 nao afrouxou.** Ela passou a ser avaliada POR CONTEXTO. Analisar em subshell sobre estado que pertence a outro processo continua recusado, em qualquer contexto. Analisar em subshell sob contexto novo tambem nao abre caminho: o estado nao volta ao processo pai, e a consulta la nao encontra o documento em vez de inventar valor. Ha caso de teste dedicado a essa combinacao, `contexto_nomeado_nao_vira_porta_para_analise_em_subshell`, e a mutacao que remove a guarda por contexto reprova 2 casos.
+
+**A restricao do nome e verificada, nao convencionada.** O nome do contexto e escolhido pelo projeto e nunca vem de dado externo; fica restrito a letras minusculas e sublinhado, e a validacao ocorre em tempo de execucao. Casos: `nome_de_contexto_restrito_a_minusculas_e_sublinhado`, que recusa dez formas invalidas incluindo maiuscula, digito, hifen, ponto, vazio, espaco, barra, sinal de igual, separador de unidade e quebra de linha; `nome_invalido_nao_troca_o_contexto_corrente`, porque a recusa precisa ser fechada; e `descartar_recusa_nome_invalido`. A mutacao que afrouxa a restricao reprova 3 casos.
+
+**Padrao de uso previsto em lib/http**, verificado de ponta a ponta: seleciona o contexto de erro, interpreta o corpo, le o resumo de erro, restaura o contexto anterior pelo valor devolvido em DBX_JSON_CONTEXTO_ANTERIOR, e a listagem em curso permanece intacta, com cursor e entradas acessiveis. Caso: `corpo_de_erro_nao_destroi_listagem_em_curso`.
+
+**Alinhamento do cabecalho.** O defeito real do E3-01 foi o cabecalho prometer o que o codigo nao fazia. O cabecalho foi reescrito junto com a feature, e agora descreve: que a guarda e avaliada por contexto e nao foi afrouxada; que permanece a limitacao de recusar o subshell autocontido quando ja ha documento naquele contexto, com a razao; e que o caso legitimo que motivava a promessa antiga passou a ser atendido pelo contexto nomeado, e nao por subshell.
+
+**Achado de processo, quarta ocorrencia da mesma classe.** Ao escrever o caso que verifica a restricao do nome, uma das formas invalidas foi construida com substituicao de comando sobre uma quebra de linha. A substituicao removeu a quebra e o nome invalido virou valido, fazendo o caso reprovar por motivo errado. Corrigido para a forma com aspas de dolar. Fica registrado porque e exatamente a classe "instrumento de observacao interfere na propriedade observada" que o QA pediu para tratar como conhecida, agora manifestada dentro de um teste escrito para cobrir essa mesma familia de armadilhas.
 
 ---
 
@@ -412,23 +432,23 @@ A entrega do ciclo 1 afirmou que o `assert_status` capturando em subshell "era o
 
 **Classificacao como padrao de projeto:** o QA classificou este achado como a terceira ocorrencia da classe "instrumento de observacao interfere na propriedade observada", junto com (1) conversao de terminador antes de redigir e (2) as sondas de teste do QA, que erraram duas vezes pelo mesmo mecanismo. O coordenador acrescentou como quarta ocorrencia: verificacao por `grep` que ficou cega porque um documento continha byte nulo. A classe passa a ser tratada como **conhecida e monitorada**.
 
-### Proposta para E3-01: analise aninhada de JSON
+### E3-01: Analise aninhada de JSON — Decisao tomada e implementada com Contexto Nomeado
 
-**ESTADO: PROPOSTA, aguardando decisao do coordenador. NAO implementada nesta rodada.**
+**ESTADO: DECISAO TOMADA E IMPLEMENTADA — Coordenador escolheu a opcao (a), Contexto Nomeado.**
 
 Contexto: a guarda de obsolescencia do `assert_status` recusa tambem o subshell autocontido (analise dentro de `$( )`). O QA considerou a implementacao defensavel — a guarda nao tem como saber, no momento da analise, se havera consulta interna posteriormente, e permitir o caso reabriria E2-09. O texto do cabecalho que prometia suporte foi corrigido para declarar a limitacao.
 
-Consequencia: `lib/http` nao tera forma sancionada de interpretar um corpo de erro sem destruir uma listagem em curso. Este padrao de "analise aninhada" vai aparecer em breve.
+Consequencia registrada: `lib/http` precisava de forma sancionada de interpretar um corpo de erro sem destruir uma listagem em curso. O padrao de "analise aninhada" foi corrigido pela escolha de Contexto Nomeado.
 
-**Tres alternativas com custo estimado:**
+**Tabela de alternativas avaliadas — registro da decisao:**
 
-| Alternativa | Mecanismo | Custo | Vantagens | Desvantagens | Recomendacao |
+| Alternativa | Mecanismo | Custo | Vantagens | Desvantagens | Decisao |
 |---|---|---|---|---|---|
-| **(a) CONTEXTO NOMEADO** | Seletor `dbx_json_contexto <nome>` define sobre qual contexto as chamadas seguintes operam, devolvendo o nome anterior para restauracao. Cada contexto tem sua propria raiz e conjunto de nos. Nome escolhido pelo projeto, restrito a `[a-z_]`, preservando injetividade de chave. | ~50 linhas, sem mudanca de assinatura de funcoes publicas, mais casos de teste | Mantem **UM UNICO analisador**; nao cruza substituicao de comando; elimina limitacao para caso real | Adiciona estado de contexto; requer disciplina de restauracao | **RECOMENDADA** |
-| **(b) SALVAR E RESTAURAR ESTADO** | Funcoes que copiam e devolvem os vetores de nos; chamador restaura antes de retornar | Copia proporcional ao tamanho do documento a cada interpretacao de corpo de erro; em listagem de 537 entradas, ~2.700 nos copiados duas vezes por erro | Preserva invariante de analisador global | Custo O(n) por corpo; fragil se chamador esquecer restauracao em caminho de falha; multiplica testes necessarios | Nao recomendada |
-| **(c) EXTRATOR DEDICADO** | Funcao leve, separada do analisador, so para extrair resumo de erro de JSON mal-formado | Aparentemente baixo | Reduz presenca de analisador completo | **Custo real ALTO:** cria segundo caminho de interpretacao, exatamente a fragilidade que este componente existe para eliminar; aumenta chance de divergencia | Descartar |
+| **(a) CONTEXTO NOMEADO** | Seletor `dbx_json_contexto <nome>` define sobre qual contexto as chamadas seguintes operam, devolvendo o nome anterior para restauracao. Cada contexto tem sua propria raiz e conjunto de nos. Nome escolhido pelo projeto, restrito a `[a-z_]`, preservando injetividade de chave. | ~50 linhas, sem mudanca de assinatura de funcoes publicas, mais casos de teste | Mantem **UM UNICO analisador**; nao cruza substituicao de comando; elimina limitacao para caso real | Adiciona estado de contexto; requer disciplina de restauracao | **ESCOLHIDA** |
+| **(b) SALVAR E RESTAURAR ESTADO** | Funcoes que copiam e devolvem os vetores de nos; chamador restaura antes de retornar | Copia proporcional ao tamanho do documento a cada interpretacao de corpo de erro; em listagem de 537 entradas, ~2.700 nos copiados duas vezes por erro | Preserva invariante de analisador global | Custo O(n) por corpo; fragil se chamador esquecer restauracao em caminho de falha; multiplica testes necessarios. Requer acerto de TODOS os caminhos de saida da funcao que chama, inclusive falha. | Rejeitada |
+| **(c) EXTRATOR DEDICADO** | Funcao leve, separada do analisador, so para extrair resumo de erro de JSON mal-formado | Aparentemente baixo | Reduz presenca de analisador completo | Custo real ALTO: cria segundo caminho de interpretacao, **exatamente a fragilidade que este componente existe para eliminar**. Aumenta chance de divergencia e abre porta identica a que foi fechada em E2-01. | Rejeitada |
 
-**Recomendacao consolidada:** alternativa (a) — Contexto Nomeado — oferece melhor custo-beneficio, elimina a limitacao para o caso real, e mantem a integridade do analisador como componente unico. Implementacao aguarda decisao do coordenador e sera registrada como E4 (analise aninhada de JSON).
+**Justificativa da escolha:** O coordenador acompanhou os argumentos apresentados contra (c) — um segundo caminho de interpretacao de JSON e exatamente a fragilidade que o componente existe para eliminar — e contra (b) — copia proporcional ao documento a cada corpo de erro, com a restauracao dependendo de o chamador acertar todos os caminhos de saida, inclusive os de falha. Contexto Nomeado mantém a integridade arquitetural, elimina a limitacao para o caso real, e nao compromete a segurança do analisador como componente unico.
 
 ### Ressalvas corrigidas
 
@@ -446,22 +466,25 @@ Sete ressalvas identificadas na revisao; todas corrigidas com casos de teste cor
 
 ### Evidencias
 
-Resultado da suite apos correcoes de ciclo 2:
+Resultado da suite apos implementacao de contexto nomeado:
 
-- **Suite completa com vetor oficial habilitado:** `DBX_TESTES_REDE=1 bash tests/run.sh` → 6 arquivos, **225 casos aprovados**, 0 reprovados, 0 pulados.
-- **Suite padrao, sem rede:** `bash tests/run.sh` → **223 aprovados**, 0 reprovados, **2 pulados** (vetor oficial).
-- **Por arquivo:** `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 41, `output_test.sh` 27, `hash_test.sh` 35, `hash_vetor_oficial_test.sh` 2.
+- **Suite completa com vetor oficial habilitado:** `DBX_TESTES_REDE=1 bash tests/run.sh` → 6 arquivos, **235 casos aprovados**, 0 reprovados, 0 pulados.
+- **Suite padrao, sem rede:** `bash tests/run.sh` → **233 aprovados**, 0 reprovados, **2 pulados** (vetor oficial).
+- **Por arquivo:** `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 51, `output_test.sh` 27, `hash_test.sh` 35, `hash_vetor_oficial_test.sh` 2.
 - **shellcheck 0.10.0 com `-x`:** exit 0.
-- **Validacao por mutacao das correcoes de ciclo 2:** 5 mutacoes injetadas, todas detectadas:
-  - Auditoria estatica: captura reintroduzida como concatenacao → 1 caso reprova
-  - Limpeza de nos entre analises: removida → 1 caso reprova
-  - assert_status: voltado a capturar em subshell → 1 caso reprova
-  - Nome da filha: truncado na quebra de linha → 1 caso reprova
-  - Contador: revertido a contar ocorrencias sintaticas → 1 caso reprova
+- **Validacao por mutacao do contexto nomeado:** 5 mutacoes injetadas, todas detectadas:
+  - Restricao do nome removida (aceitando maiuscula, digito, etc.) → 3 casos reprovam
+  - Liberacao de nos entre analises no mesmo contexto removida → 1 caso reprova
+  - Guarda do E2-09 por contexto removida → 2 casos reprovam
+  - Consulta ignorando a raiz do contexto corrente → 17 casos reprovam
+  - Contexto anterior nao preservado na restauracao → 2 casos reprovam
 
-### Pendencias
+### Versionamento e status de commit
 
-- **Decisao sobre E3-01 (analise aninhada):** Coordenador a decidir entre alternativa (a) Contexto Nomeado, (b) Salvar/Restaurar ou manter sem solucao. Recomendacao: (a).
+- **Coordenador:** commitado em oito commits na branch `feature/camada-dominio-e-adaptadores`, sem push. Trabalho de contexto nomeado (E3-01) incluso nessa serie.
+- **Senior Developer:** continua sem commitar conforme instrucao.
+
+### Pendencias remanescentes
+
 - **Aceite do Tech Lead** sobre os codigos de saida 5 a 15 (remanescente de ciclo 1).
 - **Titular do copyright** no LICENSE (remanescente de ciclo 1).
-- **Nenhum commit feito**, conforme instrucao.

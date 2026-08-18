@@ -99,6 +99,8 @@ Escala de impacto e probabilidade: Baixa | Media | Alta.
 | ~~RSK-20~~ | ✅ **Encerrado na v0.3.** Escopo funcional indefinido | Alto | — | DP-02 resolvida. Escopo do MVP aprovado e formalizado em RF-31 a RF-36, com criterio de aceite verificavel cada um. Ha MVP definido, estimavel e com criterio de pronto | Solicitante |
 | **RSK-24** | ✅ **ACEITE RECONFIRMADO na v0.6 — reabertura encerrada.** TOCTOU no confinamento de caminho local: entre a resolucao fisica do caminho e o uso efetivo, um `rename` concorrente pode trocar o alvo, permitindo escapar da raiz confinada | Medio | Baixa | **A reavaliacao ocorreu COM `DP-07` ja resolvida** — este registro existe para que o aceite nao volte a parecer apoiado no argumento que caiu. O argumento de portabilidade (`/proc/self/fd` ser exclusivo de Linux) **nao vale mais e nao integra a fundamentacao**: a plataforma e Linux por decisao. O solicitante reconfirmou o aceite com base **exclusivamente** nos dois argumentos remanescentes, ambos verificados: **(a)** validar por `readlink` compara **texto de caminho**, mutavel por `rename` entre a verificacao e o uso — a mitigacao correta exigiria comparacao por **dispositivo e inode**, e nao a que estava avaliada; **(b)** a mitigacao **nao cobre percurso recursivo**, que e justamente o caso real em operacao de lote. Ou seja: a mitigacao disponivel protegeria o caso menos frequente e deixaria descoberto o mais frequente. **Aceitar conscientemente e preferivel a mitigar mal.** Revisitar apenas se surgir mitigacao que cubra percurso recursivo e compare identidade de inode | Solicitante (aceite reconfirmado), Senior Developer (vigilancia) |
 | ~~RSK-25~~ | ❌ **ENCERRADO na v0.5 — apoiava-se em evidencia falsa.** Registrava o padrao "premissa de escopo criada por conveniencia tecnica e registrada como se fosse decisao do solicitante" | — | — | **O unico caso citado nao sustentava o risco:** o solicitante **havia** decidido DP-07 e DP-08. A implementacao nao antecipou nada. Ver o julgamento completo na secao 6 | Business Analyst |
+| **RSK-27** | **Garantia de auditoria estatica que cobre apenas a forma obvia da classe, produzindo falsa seguranca.** Uma verificacao declarada como defesa contra uma classe de defeito, mas que casa somente o padrao mais evidente, e pior que nenhuma: desliga a vigilancia humana sem entregar a protecao prometida | **Alto** | **Media — ja materializado** | **Evidencia:** a auditoria declarada como garantia contra a classe do `$( )` casava apenas `=[$]\(`, deixando passar `+=" ... $(...)"`, e **havia ocorrencia viva em `lib/errors.sh`**. Agravante: era a defesa declarada contra uma classe que **ja ocorrera tres vezes** no projeto. Padrao ampliado e ocorrencia corrigida. **Mitigacao permanente:** toda auditoria estatica declarada como garantia deve ser acompanhada de **teste de mutacao que introduza a forma nao obvia** da classe e confirme a reprovacao; auditoria sem esse par nao pode ser declarada como garantia, apenas como indicio | Senior Developer (construcao), QA (verificacao do par auditoria+mutacao) |
+| **RSK-28** | **Instrumento de observacao interfere na propriedade observada.** Classe recorrente nomeada pelo QA. O mecanismo usado para medir, verificar ou transportar altera justamente aquilo que deveria apenas registrar | **Alto** | **Alta — quatro instancias em dois ciclos** | Tratamento completo, com as instancias e o criterio de projeto, na secao 7. **Mitigacao:** ao introduzir qualquer instrumento de verificacao, medicao ou transporte, perguntar explicitamente o que ele **altera** no objeto observado; preferir canal proprio a canal compartilhado; validar o instrumento com um caso cuja resposta correta seja conhecida de forma independente | Todos os papeis |
 | **RSK-26** | **Falha de propagacao de decisao: decisao tomada pelo solicitante e nao refletida nos artefatos, com o documento desatualizado passando a ser tratado como fonte de verdade.** Substitui `RSK-25` com evidencia real | **Alto** | **Alta — ja materializado uma vez** | **Evidencia:** DP-07 e DP-08 foram decididas e nunca chegaram aos requisitos; tres versoes do documento as registraram como abertas; o estado do documento foi entao lido como prova de ausencia de decisao. **Custo real incorrido:** uma divergencia falsa contra a implementacao (`DIV-15`), um requisito congelado sem motivo (`RNF-01`), um risco criado sobre exemplo inexistente (`RSK-25`) e uma recomendacao tecnica distorcida (`RSK-24`, que recusou `/proc/self/fd` invocando uma DP-07 que ja estava fechada). **Mitigacao:** toda decisao do solicitante deve ser propagada ao artefato correspondente **na mesma rodada** em que e recebida; ausencia em documento **nao** e evidencia de ausencia de decisao — na duvida, confirmar com o solicitante em vez de inferir do artefato; divergencia contra a implementacao exige verificar a origem da decisao, nao apenas o estado do registro | Tech Lead |
 | **RSK-23** | **Reintroducao inadvertida de estado local persistente.** O MVP foi deliberadamente desenhado sem persistencia; uma implementacao "conveniente" de cache de resumos, cursor ou arquivo de trava introduziria silenciosamente o que a decisao de escopo excluiu | Medio | Media | Registro explicito em quatro artefatos de que o MVP nao possui estado local; criterio de aceite arquitetural verificando ausencia de escrita persistente fora do arquivo de configuracao; qualquer proposta nesse sentido e tratada como mudanca de escopo, com nova decisao do solicitante e reabertura de DP-09 | Tech Lead |
 | **RSK-21** | 🟢 **Rebaixado na v0.3.** Contratos nao confirmados tratados como certos | Medio | **Baixa** (era Media) | **`content_hash` CONFIRMADO** — algoritmo publicado e vetor de teste oficial adotado como criterio de aceite em RF-34; `lib/hash` desbloqueado. Cabecalho de correlacao corroborado por fonte secundaria, e RF-30 nao depende do nome exato. **Residual:** mapeamento escopo-por-endpoint de quatro chamadas, cuja ausencia produz `401` explicito na primeira execucao, e nao defeito silencioso | Senior Developer |
@@ -191,6 +193,45 @@ A falha real **existiu**, mas era outra: **falha de propagacao de decisao**. A d
 Esse risco tem evidencia direta e custo mensurado: gerou uma divergencia falsa contra a implementacao, o congelamento indevido de um requisito, a criacao de um risco inexistente e a distorcao de uma recomendacao tecnica em `RSK-24`. Foi classificado como **impacto Alto e probabilidade Alta**, porque **ja se materializou uma vez** neste projeto.
 
 A diferenca entre os dois nao e semantica. `RSK-25` apontava para a implementacao; `RSK-26` aponta para o fluxo documental — que e onde a falha de fato esteve, e onde o Business Analyst tem responsabilidade direta.
+
+---
+
+## 7. Classe recorrente — "instrumento de observacao interfere na propriedade observada"
+
+**Julgamento: merece registro proprio. Sim.** Registrada como `RSK-28` e incorporada ao vocabulario do projeto.
+
+### Criterio do julgamento
+
+Diferentemente de `RSK-25`, que encerrei por falta de evidencia, esta classe tem **quatro instancias documentadas em dois ciclos**, oriundas de **tres papeis diferentes**. Nao e hipotese: e padrao observado com frequencia alta e custo real.
+
+| # | Instancia | Instrumento | O que ele alterou |
+|---|---|---|---|
+| 1 | Subshell em `assert_status` | Verificacao de status | O subshell isolava o efeito que o teste deveria observar |
+| 2 | Conversao de terminador antes da redacao | Transporte de saida | Alterava o texto antes de a politica de redacao agir sobre ele |
+| 3 | Sondas do proprio QA | Medicao | A sonda influenciava o comportamento medido |
+| 4 | Verificacao por `grep` cega por byte NUL | Verificacao documental | O documento continha `NUL`; o `grep` passou a trata-lo como binario e deixou de reportar — **falha silenciosa da propria verificacao** |
+
+### Por que vale mais do que um risco isolado
+
+A observacao mais util do QA e que esta classe **e a mesma familia do problema central do projeto: dado em banda com o canal que o transporta.** Isso nao e coincidencia — e a estrutura recorrente desta base de codigo:
+
+| Manifestacao no produto | Dado | Canal |
+|---|---|---|
+| Segredo destruindo o identificador de correlacao (`RNF-22`) | Diagnostico | Linha de texto |
+| Nome com quebra de linha em saida orientada a linha (`RNF-10`, `DIV-16b`) | Nome de arquivo | Registro delimitado por linha |
+| Colisao de chave composta (`E2-01`) e nome de contexto de origem externa (`RNF-24`) | Identificador | Chave composta |
+| `$( )` consumindo bytes de controle | Conteudo | Substituicao de comando |
+
+Ou seja: **o projeto inteiro e um exercicio de separar dado de canal**, e as falhas de instrumentacao sao a mesma doenca aparecendo do lado de quem observa, em vez do lado de quem transporta. Nomear a classe da poder preditivo — permite antecipar onde procurar, em vez de descobrir por reprovacao.
+
+### Criterio de projeto derivado
+
+Ao introduzir qualquer instrumento de verificacao, medicao ou transporte:
+
+1. **Perguntar o que o instrumento altera** no objeto observado, antes de confiar no que ele reporta.
+2. **Preferir canal proprio a canal compartilhado** — foi a solucao adotada em `PRJ-DEC-14` (agregado da suite por `DBX_HARNESS_RESUMO`) e e a mesma logica do `--null` em `DIV-16b`.
+3. **Validar o instrumento contra um caso de resposta conhecida** de forma independente. O `grep` cego por `NUL` teria sido pego por um unico caso cuja resposta era sabida.
+4. **Desconfiar de silencio.** Nas instancias 1 e 4, o instrumento nao errou o valor: **deixou de reportar**. Ausencia de alerta nao e evidencia de ausencia de problema — o mesmo raciocinio de `RSK-26`.
 
 ---
 
