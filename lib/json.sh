@@ -87,16 +87,23 @@ readonly DBX_JSON_MAXIMO_ENTRADA=262144
 # reportar SUCESSO para uma analise cujo resultado seria descartado. Hoje esse
 # caso devolve status 2 com motivo `subshell`.
 #
-# LIMITACAO CONHECIDA, e nao promessa. Havendo documento corrente, analisar
-# dentro de subshell e recusado mesmo quando a consulta tambem ocorre ali
-# dentro: a guarda nao tem como saber, no momento da analise, se havera consulta
-# interna, e permitir o caso reabriria a obsolescencia silenciosa. A redacao
-# anterior deste comentario prometia que o subshell autocontido continuava
-# valido — o texto e que estava errado, nao a guarda (E3-01).
+# A guarda e avaliada POR CONTEXTO, e o contexto nomeado nao a afrouxa: analisar
+# em subshell sobre estado que pertence a outro processo continua recusado, em
+# qualquer contexto. Analisar em subshell sob contexto novo tambem nao ajuda,
+# porque o estado nao volta e a consulta no processo pai nao encontra o
+# documento — nao ha caminho por onde o E2-09 reentre.
 #
-# CONSEQUENCIA DE DESENHO, ainda sem mecanismo: `lib/http` precisara interpretar
-# um corpo de erro sem destruir uma listagem em curso. A proposta de contexto
-# nomeado esta no registro tecnico e aguarda decisao; nao foi implementada.
+# LIMITACAO CONHECIDA, e nao promessa. Havendo documento corrente NAQUELE
+# contexto, analisar dentro de subshell e recusado mesmo quando a consulta
+# tambem ocorre ali dentro: a guarda nao tem como saber, no momento da analise,
+# se havera consulta interna, e permitir o caso reabriria a obsolescencia
+# silenciosa. A redacao original deste comentario prometia que o subshell
+# autocontido continuava valido — o texto e que estava errado, nao a guarda
+# (E3-01).
+#
+# O caso legitimo que motivava aquela promessa — interpretar um corpo de erro
+# sem destruir uma listagem em curso — passou a ser atendido pelo CONTEXTO
+# NOMEADO, e nao por subshell. Ver `dbx_json_contexto`.
 #
 # Consultar e sempre permitido, por ser leitura: leitura nao deixa estado
 # obsoleto para tras.
@@ -133,6 +140,30 @@ DBX_JSON_ERRO=''
 DBX_JSON_MOTIVO=''
 DBX_JSON_RESULTADO=''
 DBX_JSON_ANALISADO=0
+# Contexto nomeado.
+#
+# `lib/http` precisa interpretar um corpo de erro sem destruir uma listagem em
+# curso. Cada contexto tem raiz propria, e o POOL DE NOS e compartilhado: os
+# identificadores sao globalmente unicos, entao a composicao de chave continua
+# sendo exatamente `<id do pai><separador><segmento>`, com o mesmo argumento de
+# injetividade ja validado. O contexto nao entra na chave, e portanto nao abre
+# porta nova para a classe do E2-01.
+#
+# O nome do contexto e escolhido pelo PROJETO e nunca vem de dado externo. A
+# restricao a letras minusculas e sublinhado e verificada em tempo de execucao,
+# e nao apenas por convencao.
+readonly DBX_JSON_CONTEXTO_PADRAO='padrao'
+DBX_JSON_CONTEXTO=$DBX_JSON_CONTEXTO_PADRAO
+DBX_JSON_CONTEXTO_ANTERIOR=''
+declare -gA DBX_JSON_RAIZ_DO_CONTEXTO=()
+declare -gA DBX_JSON_ANALISADO_DO_CONTEXTO=()
+declare -gA DBX_JSON_PROCESSO_DO_CONTEXTO=()
+declare -gA DBX_JSON_ERRO_DO_CONTEXTO=()
+declare -gA DBX_JSON_MOTIVO_DO_CONTEXTO=()
+declare -gA DBX_JSON_INICIO_DO_CONTEXTO=()
+declare -gA DBX_JSON_FIM_DO_CONTEXTO=()
+declare -gA DBX_JSON_CHAVE_DO_NO=()
+
 declare -ga DBX_JSON_TIPOS=()
 declare -ga DBX_JSON_VALORES=()
 declare -ga DBX_JSON_TAMANHO=()
@@ -149,6 +180,9 @@ _dbx_json_falhar() {
   DBX_JSON_MOTIVO=$1
   DBX_JSON_ERRO=$2
   DBX_JSON_ANALISADO=0
+  DBX_JSON_MOTIVO_DO_CONTEXTO[$DBX_JSON_CONTEXTO]=$1
+  DBX_JSON_ERRO_DO_CONTEXTO[$DBX_JSON_CONTEXTO]=$2
+  DBX_JSON_ANALISADO_DO_CONTEXTO[$DBX_JSON_CONTEXTO]=0
   return "$DBX_JSON_ERRO_REMOTO"
 }
 
@@ -178,6 +212,7 @@ _dbx_json_definir() {
 _dbx_json_criar_filho() {
   local pai=$1 segmento=$2 chave="$1$DBX_JSON_SEP_INDICE$2" indice
   _dbx_json_filho_id=$((++DBX_JSON_PROXIMO_ID))
+  DBX_JSON_CHAVE_DO_NO[$_dbx_json_filho_id]=$chave
   DBX_JSON_TIPOS[_dbx_json_filho_id]=''
   DBX_JSON_VALORES[_dbx_json_filho_id]=''
   DBX_JSON_TAMANHO[_dbx_json_filho_id]=0
@@ -444,8 +479,13 @@ dbx_json_analisar() {
   # shellcheck disable=SC2034  # DBX_JSON_ERRO e DBX_JSON_MOTIVO sao o canal de
   # diagnostico da falha, consumido pelo chamador e pela suite; o analisador nao
   # enxerga esse uso porque ele ocorre em outro arquivo.
-  if [[ $DBX_JSON_ANALISADO -eq 1 && -n $DBX_JSON_PROCESSO_ANALISE &&
-    $BASHPID != "$DBX_JSON_PROCESSO_ANALISE" ]]; then
+  # Guarda de obsolescencia, avaliada POR CONTEXTO e nao afrouxada pelo recurso:
+  # o contexto nomeado separa documentos, mas nao autoriza analisar em subshell
+  # sobre estado que pertence a outro processo.
+  local _dbx_ctx=$DBX_JSON_CONTEXTO
+  if [[ ${DBX_JSON_ANALISADO_DO_CONTEXTO[$_dbx_ctx]:-0} -eq 1 &&
+    -n ${DBX_JSON_PROCESSO_DO_CONTEXTO[$_dbx_ctx]:-} &&
+    $BASHPID != "${DBX_JSON_PROCESSO_DO_CONTEXTO[$_dbx_ctx]}" ]]; then
     _dbx_json_falhar subshell 'analise em subshell sobre estado de outro processo: o resultado se perderia ao voltar e as consultas seguintes devolveriam o documento anterior'
     return "$DBX_JSON_ERRO_USO"
   fi
@@ -455,15 +495,14 @@ dbx_json_analisar() {
   DBX_JSON_ERRO=''
   # shellcheck disable=SC2034
   DBX_JSON_MOTIVO=''
+  DBX_JSON_ERRO_DO_CONTEXTO[$_dbx_ctx]=''
+  DBX_JSON_MOTIVO_DO_CONTEXTO[$_dbx_ctx]=''
   DBX_JSON_RESULTADO=''
   DBX_JSON_ANALISADO=0
-  DBX_JSON_TIPOS=()
-  DBX_JSON_VALORES=()
-  DBX_JSON_TAMANHO=()
-  DBX_JSON_NFILHOS=()
-  DBX_JSON_FILHO=()
-  DBX_JSON_SEGMENTO=()
-  DBX_JSON_PROXIMO_ID=0
+  DBX_JSON_ANALISADO_DO_CONTEXTO[$_dbx_ctx]=0
+  # Libera os nos da analise anterior DESTE contexto. Sem isso, uma listagem
+  # paginada acumularia os nos de todas as paginas ate o fim do processo.
+  _dbx_json_liberar_contexto "$_dbx_ctx"
 
   [[ $# -ge 1 ]] || return "$DBX_JSON_ERRO_USO"
   [[ -n $texto ]] || { _dbx_json_falhar malformado 'entrada vazia'; return $?; }
@@ -488,28 +527,40 @@ dbx_json_analisar() {
   _dbx_json_total=${#_dbx_json_e[@]}
   _dbx_json_pos=0
 
-  # No 0 e a raiz do documento.
-  DBX_JSON_TIPOS[0]=''
-  DBX_JSON_VALORES[0]=''
-  DBX_JSON_TAMANHO[0]=0
-  DBX_JSON_NFILHOS[0]=0
+  # Raiz propria do contexto, alocada no mesmo pool global de nos.
+  local _dbx_raiz=$((++DBX_JSON_PROXIMO_ID))
+  DBX_JSON_INICIO_DO_CONTEXTO[$_dbx_ctx]=$_dbx_raiz
+  DBX_JSON_RAIZ_DO_CONTEXTO[$_dbx_ctx]=$_dbx_raiz
+  DBX_JSON_TIPOS[_dbx_raiz]=''
+  DBX_JSON_VALORES[_dbx_raiz]=''
+  DBX_JSON_TAMANHO[_dbx_raiz]=0
+  DBX_JSON_NFILHOS[_dbx_raiz]=0
 
-  _dbx_json_ler_valor 0 1 || return $?
+  _dbx_json_ler_valor "$_dbx_raiz" 1 || {
+    local _dbx_status=$?
+    DBX_JSON_FIM_DO_CONTEXTO[$_dbx_ctx]=$DBX_JSON_PROXIMO_ID
+    return "$_dbx_status"
+  }
 
   if _dbx_json_avancar; then
     _dbx_json_falhar malformado "conteudo apos o fim do documento: '${_dbx_json_e[$_dbx_json_pos]}'"
     return $?
   fi
 
+  DBX_JSON_FIM_DO_CONTEXTO[$_dbx_ctx]=$DBX_JSON_PROXIMO_ID
   DBX_JSON_ANALISADO=1
+  DBX_JSON_ANALISADO_DO_CONTEXTO[$_dbx_ctx]=1
+  # shellcheck disable=SC2034  # canal publico, lido pelo chamador e pela suite
   DBX_JSON_PROCESSO_ANALISE=$BASHPID
+  DBX_JSON_PROCESSO_DO_CONTEXTO[$_dbx_ctx]=$BASHPID
   return 0
 }
 
 # _dbx_json_localizar <segmentos...> — percorre a arvore por comparacao de
 # segmento, deixando o id em _dbx_json_no. Status 1 se o caminho nao existir.
 _dbx_json_localizar() {
-  local no=0 segmento filho
+  local no=${DBX_JSON_RAIZ_DO_CONTEXTO[$DBX_JSON_CONTEXTO]:-} segmento filho
+  [[ -n $no ]] || return 1
   for segmento in "$@"; do
     filho=${DBX_JSON_FILHO[$no$DBX_JSON_SEP_INDICE$segmento]:-}
     [[ -n $filho ]] || return 1
@@ -522,7 +573,7 @@ _dbx_json_localizar() {
 # subshell e permitida: leitura nao deixa estado obsoleto para tras. O comentario
 # anterior afirmava restricao de processo que o codigo nao aplica (E3-05).
 _dbx_json_pronto() {
-  [[ $DBX_JSON_ANALISADO -eq 1 ]]
+  [[ ${DBX_JSON_ANALISADO_DO_CONTEXTO[$DBX_JSON_CONTEXTO]:-0} -eq 1 ]]
 }
 
 # dbx_json_valor <segmentos...> — resultado exato em DBX_JSON_RESULTADO.
@@ -602,4 +653,81 @@ dbx_json_chaves_nul() {
   for ((indice = 0; indice < total; indice++)); do
     printf '%s\0' "${DBX_JSON_SEGMENTO[$_dbx_json_no$DBX_JSON_SEP_INDICE$indice]}"
   done
+}
+
+# ---------------------------------------------------------------------------
+# Contexto nomeado
+# ---------------------------------------------------------------------------
+
+# _dbx_json_nome_de_contexto_valido <nome>
+#
+# O nome do contexto e escolhido pelo PROJETO e nunca vem de dado externo. A
+# restricao e verificada em execucao, e nao deixada como convencao: se um nome
+# pudesse vir de fora, a classe do E2-01 voltaria por outra porta.
+_dbx_json_nome_de_contexto_valido() {
+  local nome=${1-}
+  [[ $nome =~ ^[a-z_]+$ ]]
+}
+
+# _dbx_json_liberar_contexto <nome> — devolve ao pool os nos da ultima analise
+# do contexto. Os identificadores sao alocados em sequencia durante uma analise,
+# entao os nos de um contexto formam uma faixa continua.
+_dbx_json_liberar_contexto() {
+  local nome=${1-} inicio fim id chave
+  inicio=${DBX_JSON_INICIO_DO_CONTEXTO[$nome]:-}
+  fim=${DBX_JSON_FIM_DO_CONTEXTO[$nome]:-}
+  [[ -n $inicio && -n $fim ]] || return 0
+  for ((id = inicio; id <= fim; id++)); do
+    chave=${DBX_JSON_CHAVE_DO_NO[$id]:-}
+    [[ -n $chave ]] && unset "DBX_JSON_FILHO[$chave]"
+    unset "DBX_JSON_CHAVE_DO_NO[$id]"
+    unset "DBX_JSON_TIPOS[$id]" "DBX_JSON_VALORES[$id]"
+    unset "DBX_JSON_TAMANHO[$id]" "DBX_JSON_NFILHOS[$id]"
+  done
+  unset "DBX_JSON_INICIO_DO_CONTEXTO[$nome]" "DBX_JSON_FIM_DO_CONTEXTO[$nome]"
+  unset "DBX_JSON_RAIZ_DO_CONTEXTO[$nome]"
+}
+
+# dbx_json_contexto <nome> — seleciona o contexto corrente.
+#
+# Devolve o nome anterior em DBX_JSON_CONTEXTO_ANTERIOR, para que o chamador
+# possa restaurar. Uso previsto em lib/http:
+#
+#   dbx_json_contexto erro
+#   dbx_json_analisar "$corpo_de_erro"
+#   dbx_json_valor error_summary
+#   dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+#
+# A listagem em curso no contexto anterior permanece intacta.
+dbx_json_contexto() {
+  local nome=${1-}
+  _dbx_json_nome_de_contexto_valido "$nome" || return "$DBX_JSON_ERRO_USO"
+  # shellcheck disable=SC2034  # canal publico: e por ele que o chamador
+  # restaura o contexto anterior apos interpretar um corpo de erro.
+  DBX_JSON_CONTEXTO_ANTERIOR=$DBX_JSON_CONTEXTO
+  DBX_JSON_CONTEXTO=$nome
+  # Espelha o estado do contexto selecionado nas variaveis de diagnostico, para
+  # que elas descrevam sempre o contexto corrente.
+  # shellcheck disable=SC2034  # espelhos de diagnostico do contexto corrente
+  DBX_JSON_ANALISADO=${DBX_JSON_ANALISADO_DO_CONTEXTO[$nome]:-0}
+  # shellcheck disable=SC2034
+  DBX_JSON_ERRO=${DBX_JSON_ERRO_DO_CONTEXTO[$nome]:-}
+  # shellcheck disable=SC2034
+  DBX_JSON_MOTIVO=${DBX_JSON_MOTIVO_DO_CONTEXTO[$nome]:-}
+  DBX_JSON_RESULTADO=''
+}
+
+# dbx_json_descartar [nome] — libera o contexto indicado, ou o corrente.
+dbx_json_descartar() {
+  local nome=${1:-$DBX_JSON_CONTEXTO}
+  _dbx_json_nome_de_contexto_valido "$nome" || return "$DBX_JSON_ERRO_USO"
+  _dbx_json_liberar_contexto "$nome"
+  DBX_JSON_ANALISADO_DO_CONTEXTO[$nome]=0
+  unset "DBX_JSON_PROCESSO_DO_CONTEXTO[$nome]"
+  [[ $nome == "$DBX_JSON_CONTEXTO" ]] && {
+    # shellcheck disable=SC2034  # espelho de diagnostico do contexto corrente
+    DBX_JSON_ANALISADO=0
+    DBX_JSON_RESULTADO=''
+  }
+  return 0
 }

@@ -503,4 +503,131 @@ teste_analise_seguinte_nao_herda_nos_da_anterior() {
   assert_igual 1 "$(dbx_json_tamanho_arranjo)" 'a raiz nova nao pode contar filhas antigas'
 }
 
+# ---------------------------------------------------------------------------
+# Contexto nomeado (E3-01) — o caso de uso real de lib/http
+# ---------------------------------------------------------------------------
+
+teste_corpo_de_erro_nao_destroi_listagem_em_curso() {
+  # E o padrao que motivou o recurso: interpretar um corpo de erro no meio de
+  # uma listagem paginada, sem perder a pagina corrente.
+  dbx_json_analisar '{"entries":[{"name":"a.txt"}],"cursor":"ABC"}'
+  dbx_json_contexto erro
+  dbx_json_analisar '{"error_summary":"path/not_found/."}'
+  dbx_json_valor error_summary >/dev/null
+  assert_igual 'path/not_found/.' "$DBX_JSON_RESULTADO"
+
+  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  dbx_json_valor cursor >/dev/null
+  assert_igual 'ABC' "$DBX_JSON_RESULTADO" 'a listagem em curso precisa sobreviver'
+  dbx_json_valor entries 0 name >/dev/null
+  assert_igual 'a.txt' "$DBX_JSON_RESULTADO"
+}
+
+teste_contextos_nao_enxergam_os_campos_um_do_outro() {
+  dbx_json_analisar '{"so_no_padrao":1}'
+  dbx_json_contexto erro
+  dbx_json_analisar '{"so_no_erro":2}'
+  assert_status 1 dbx_json_valor so_no_padrao
+  dbx_json_contexto padrao
+  assert_status 1 dbx_json_valor so_no_erro
+  dbx_json_valor so_no_padrao >/dev/null
+  assert_igual '1' "$DBX_JSON_RESULTADO"
+}
+
+teste_contexto_devolve_o_anterior_para_restauracao() {
+  dbx_json_contexto padrao
+  dbx_json_contexto erro
+  assert_igual 'padrao' "$DBX_JSON_CONTEXTO_ANTERIOR"
+  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  assert_igual 'padrao' "$DBX_JSON_CONTEXTO"
+}
+
+teste_diagnostico_acompanha_o_contexto_corrente() {
+  dbx_json_analisar '{"bom":1}'
+  dbx_json_contexto erro
+  dbx_json_analisar '{"ruim":' 2>/dev/null
+  assert_igual 'malformado' "$DBX_JSON_MOTIVO"
+  dbx_json_contexto padrao
+  assert_igual '' "$DBX_JSON_MOTIVO" \
+    'o motivo pertence ao contexto, e nao a ultima operacao global'
+  dbx_json_valor bom >/dev/null
+  assert_igual '1' "$DBX_JSON_RESULTADO"
+}
+
+# ---------------------------------------------------------------------------
+# A restricao do nome precisa ser VERIFICADA, e nao convencionada
+# ---------------------------------------------------------------------------
+
+teste_nome_de_contexto_restrito_a_minusculas_e_sublinhado() {
+  local ruim
+  # As formas com byte de controle usam $'...' e nao $(printf ...): a
+  # substituicao de comando removeria a quebra final e o nome invalido viraria
+  # valido — a mesma classe de armadilha que o caso pretende cobrir.
+  for ruim in 'Erro' 'erro1' 'erro-2' 'erro.x' '' 'com espaco' 'a/b' 'x=y' \
+    $'com\037separador' $'com\nquebra' $'quebra\n'; do
+    if dbx_json_contexto "$ruim" 2>/dev/null; then
+      _harness_falhar "nome de contexto invalido foi aceito: [$ruim]"
+    fi
+  done
+  assert_sucesso dbx_json_contexto erro
+  assert_sucesso dbx_json_contexto com_sublinhado
+  dbx_json_contexto padrao
+}
+
+teste_nome_invalido_nao_troca_o_contexto_corrente() {
+  dbx_json_contexto padrao
+  dbx_json_contexto 'INVALIDO' 2>/dev/null
+  assert_igual 'padrao' "$DBX_JSON_CONTEXTO" \
+    'recusa precisa ser fechada: o contexto corrente nao pode mudar'
+}
+
+teste_descartar_recusa_nome_invalido() {
+  assert_status "$DBX_JSON_ERRO_USO" dbx_json_descartar 'INVALIDO'
+}
+
+# ---------------------------------------------------------------------------
+# A guarda do E2-09 nao pode afrouxar pelo contexto nomeado
+# ---------------------------------------------------------------------------
+
+teste_contexto_nomeado_nao_vira_porta_para_analise_em_subshell() {
+  local status
+  dbx_json_analisar '{"lista":1}'
+  status=$( (dbx_json_analisar '{"outro":2}') >/dev/null 2>&1; echo $? )
+  assert_diferente 0 "$status" 'a guarda continua valendo no contexto corrente'
+
+  # Em contexto novo, analisar dentro de subshell e consultar FORA continua sem
+  # responder: o estado nao volta, e a consulta nao pode inventar valor.
+  ( dbx_json_contexto erro && dbx_json_analisar '{"novo":3}' ) >/dev/null 2>&1
+  dbx_json_contexto erro
+  assert_status 1 dbx_json_valor novo \
+    'estado de subshell nao pode reaparecer no processo pai'
+  dbx_json_contexto padrao
+  dbx_json_valor lista >/dev/null
+  assert_igual '1' "$DBX_JSON_RESULTADO"
+}
+
+# ---------------------------------------------------------------------------
+# Ciclo de vida: reanalise no mesmo contexto nao pode acumular nos
+# ---------------------------------------------------------------------------
+
+teste_reanalise_no_mesmo_contexto_libera_os_nos_anteriores() {
+  local antes depois
+  dbx_json_analisar '{"a":{"b":{"c":1}}}'
+  antes=${#DBX_JSON_FILHO[@]}
+  dbx_json_analisar '{"a":{"b":{"c":1}}}'
+  depois=${#DBX_JSON_FILHO[@]}
+  assert_igual "$antes" "$depois" \
+    'listagem paginada acumularia os nos de todas as paginas sem a liberacao'
+  dbx_json_valor a b c >/dev/null
+  assert_igual '1' "$DBX_JSON_RESULTADO"
+}
+
+teste_descartar_libera_o_contexto() {
+  dbx_json_contexto erro
+  dbx_json_analisar '{"x":1}'
+  dbx_json_descartar
+  assert_status 1 dbx_json_valor x
+  dbx_json_contexto padrao
+}
+
 harness_executar "$@"
