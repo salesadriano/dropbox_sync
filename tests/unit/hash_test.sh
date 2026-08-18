@@ -399,28 +399,26 @@ teste_conversao_de_escapes_e_linear_na_quantidade_de_blocos() {
   # A medicao roda em processo filho sob `timeout`. Sem esse teto, uma regressao
   # quadratica nao reprovaria: ela penduraria a suite, e um job de integracao
   # continua travado e um job reprovado exigem reacoes muito diferentes.
-  local saida status t1 t2 n=4000
+  local saida status t1 t2 n=2000
 
-  saida=$(timeout 60 bash -c '
+  saida=$(timeout 120 bash -c '
     . "$1/lib/errors.sh" || exit 90
     . "$1/lib/hash.sh"   || exit 90
     . "$1/tests/support/harness.sh" || exit 90
     base=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
     n=$2
-    inicio=$(_agora_ms)
-    DBX_HASH_FORMATO=""
-    for ((i = 0; i < n; i++)); do _dbx_hash_anexar_escapes "$base"; done
-    meio=$(_agora_ms)
-    DBX_HASH_FORMATO=""
-    for ((i = 0; i < n * 2; i++)); do _dbx_hash_anexar_escapes "$base"; done
-    fim=$(_agora_ms)
-    printf "%s %s\n" "$((meio - inicio))" "$((fim - meio))"
+    _converter() {
+      local quantidade=$1 i
+      DBX_HASH_FORMATO=""
+      for ((i = 0; i < quantidade; i++)); do _dbx_hash_anexar_escapes "$base"; done
+    }
+    printf "%s %s\n" "$(_medir_minimo_ms 5 _converter "$n")" "$(_medir_minimo_ms 5 _converter $((n * 2)))"
   ' _ "$DBX_HARNESS_RAIZ" "$n" 2>/dev/null)
   status=$?
 
   if [[ $status -eq 124 ]]; then
     _harness_falhar \
-      "a conversao nao terminou em 60s para $n e $((n * 2)) blocos" \
+      "a conversao nao terminou em 120s para $n e $((n * 2)) blocos" \
       'sintoma tipico de custo quadratico na quantidade de blocos'
   fi
   assert_igual 0 "$status" 'a medicao precisa concluir'

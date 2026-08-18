@@ -36,6 +36,16 @@ DBX_TESTES_TMP=$(mktemp -d "${TMPDIR:-/tmp}/dbx-testes.XXXXXXXX") || exit 1
 export DBX_TESTES_TMP
 trap 'rm -rf "$DBX_TESTES_TMP"' EXIT INT TERM
 
+# Diario de reprovacoes. Precisa SOBREVIVER a execucao: a area temporaria acima e
+# removida ao final, e uma reprovacao intermitente so e diagnosticavel se o
+# registro persistir. Fica fora do controle de versao — e evidencia de execucao,
+# nao artefato do projeto.
+if [[ -z ${DBX_HARNESS_DIARIO:-} ]]; then
+  DBX_HARNESS_DIARIO="${DBX_HARNESS_RAIZ:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}/tests/.diagnostico/reprovacoes.log"
+  mkdir -p -- "${DBX_HARNESS_DIARIO%/*}" 2>/dev/null || DBX_HARNESS_DIARIO=''
+fi
+export DBX_HARNESS_DIARIO
+
 total_ok=0
 total_nao_ok=0
 total_pulados=0
@@ -55,7 +65,7 @@ for arquivo in "$RAIZ"/tests/unit/*_test.sh "$RAIZ"/tests/integracao/*_test.sh; 
   resumo_arquivo="$DBX_TESTES_TMP/resumo.$arquivos_executados"
   : >"$resumo_arquivo"
 
-  DBX_HARNESS_RESUMO="$resumo_arquivo" bash "$arquivo"
+  DBX_HARNESS_RESUMO="$resumo_arquivo" DBX_HARNESS_ARQUIVO="$nome" bash "$arquivo"
   status=$?
 
   if [[ ! -s $resumo_arquivo ]]; then

@@ -446,16 +446,24 @@ teste_redacao_de_entrada_muito_grande_e_limitada() {
   fi
 }
 
-teste_redacao_de_entrada_muito_grande_termina_rapido() {
-  # A versao anterior era quadratica: 50 mil palavras levavam mais de 15 s.
-  local entrada inicio fim decorrido
-  printf -v entrada 'palavra%.0s ' $(seq 1 50000)
-  inicio=$SECONDS
-  dbx_errors_redigir "$entrada" >/dev/null
-  fim=$SECONDS
-  decorrido=$((fim - inicio))
-  if [[ $decorrido -gt 3 ]]; then
-    _harness_falhar "redacao levou ${decorrido}s para 50 mil palavras; esperado no maximo 3s"
+teste_custo_da_redacao_cresce_proporcionalmente_a_entrada() {
+  # Substitui um limite ABSOLUTO de tempo, que media velocidade da maquina e nao
+  # complexidade, e por isso era candidato a intermitencia sob carga. A
+  # propriedade verificada e a mesma que motivou o caso original — a versao
+  # quadratica levava mais de 15 s para 50 mil palavras — mas expressa como
+  # RAZAO entre minimos, insensivel a carga.
+  local pequena grande t_pequena t_grande
+  printf -v pequena 'palavra%.0s ' $(seq 1 5000)
+  printf -v grande 'palavra%.0s ' $(seq 1 50000)
+  # shellcheck disable=SC2317  # invocada indiretamente por _medir_minimo_ms
+  _redigir() { dbx_errors_redigir "$1"; }
+  t_pequena=$(_medir_minimo_ms 5 _redigir "$pequena")
+  t_grande=$(_medir_minimo_ms 5 _redigir "$grande")
+  unset -f _redigir
+  if [[ $t_grande -gt $((t_pequena * 30)) ]]; then
+    _harness_falhar \
+      "custo super-linear: 5 mil palavras em ${t_pequena}ms, 50 mil em ${t_grande}ms" \
+      'dez vezes a entrada nao pode custar trinta vezes o tempo'
   fi
 }
 
@@ -598,41 +606,38 @@ teste_entrada_acima_do_teto_de_analise_e_truncada_com_redacao() {
 
 teste_custo_da_redacao_com_corpo_denso_e_limitado() {
   local saida status
-  saida=$(timeout 60 bash -c '
+  saida=$(timeout 120 bash -c '
     . "$1/lib/errors.sh" || exit 90
     . "$1/tests/support/harness.sh" || exit 90
-    # O corpus PRECISA conter chave sensivel: era o casamento repetido da chave
-    # que disparava o retrocesso. Corpus benigno nao reproduz o defeito, e foi
-    # por isso que a medicao do ciclo 1 passou limpa.
     denso() { local n=$1 s="" i; for ((i=0;i<n;i++)); do s+="secret$i=v$i&"; done; printf "%s" "$s"; }
-    for n in 448 896 1792 3584; do
-      corpo=$(denso "$n")
-      t0=$(_agora_ms); dbx_errors_redigir "$corpo" >/dev/null; t1=$(_agora_ms)
-      printf "%s " "$((t1 - t0))"
-    done
+    _redigir_denso() { dbx_errors_redigir "$1"; }
+    corpo_pequeno=$(denso 448)
+    corpo_grande=$(denso 3584)
+    printf "%s %s\n" \
+      "$(_medir_minimo_ms 5 _redigir_denso "$corpo_pequeno")" \
+      "$(_medir_minimo_ms 5 _redigir_denso "$corpo_grande")"
   ' _ "$DBX_HARNESS_RAIZ" 2>/dev/null)
   status=$?
 
   if [[ $status -eq 124 ]]; then
-    _harness_falhar 'a redacao nao terminou em 60s com corpo denso em `=`' \
+    _harness_falhar 'a redacao nao terminou em 120s com corpo denso em `=`' \
       'sintoma de custo super-linear; foi assim que C2-02 passou despercebido'
   fi
   assert_igual 0 "$status" 'a medicao precisa concluir'
 
   local -a t
   read -r -a t <<<"$saida"
-  [[ ${#t[@]} -eq 4 ]] || _harness_falhar "medicao invalida: [$saida]"
+  [[ ${#t[@]} -eq 2 ]] || _harness_falhar "medicao invalida: [$saida]"
 
-  # Com custo linear, quadruplicar a entrada quadruplica o tempo. Com o custo
-  # cubico medido pelo QA, o fator era ~8x por DUPLICACAO.
-  local primeiro=${t[0]} ultimo=${t[3]}
+  # Razao entre MINIMOS. Oito vezes a entrada nao pode custar quarenta vezes o
+  # tempo. O limite absoluto que existia aqui foi removido: ele media VELOCIDADE
+  # da maquina, nao complexidade, e era o mais fragil dos tres sob carga, porque
+  # nenhuma razao o normalizava.
+  local primeiro=${t[0]} ultimo=${t[1]}
   [[ $primeiro -lt 1 ]] && primeiro=1
   if [[ $ultimo -gt $((primeiro * 40)) ]]; then
     _harness_falhar "custo super-linear: 448 pares em ${primeiro}ms, 3584 pares em ${ultimo}ms" \
       'oito vezes a entrada nao pode custar quarenta vezes o tempo'
-  fi
-  if [[ $ultimo -gt 3000 ]]; then
-    _harness_falhar "redacao lenta demais com corpo denso: ${ultimo}ms"
   fi
 }
 

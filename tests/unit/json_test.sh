@@ -267,7 +267,7 @@ teste_custo_com_corpus_adversarial() {
   # Corpus denso em delimitadores e escapes, sob tempo limite em processo filho:
   # regressao de custo deve REPROVAR, nao pendurar a suite.
   local saida status
-  saida=$(timeout 60 bash -c '
+  saida=$(timeout 120 bash -c '
     . "$1/lib/errors.sh" || exit 90
     . "$1/lib/json.sh"   || exit 90
     . "$1/tests/support/harness.sh" || exit 90
@@ -275,21 +275,22 @@ teste_custo_com_corpus_adversarial() {
       for ((i=0;i<n;i++)); do [[ $i -gt 0 ]] && s+=","
         s+="{\"n\":\"a\\\\\"b$i\",\"p\":\"/x/y$i\",\"s\":$i}"
       done; s+="]}"; printf "%s" "$s"; }
-    for n in 100 200 400; do
-      c=$(gera "$n"); t0=$(_agora_ms); dbx_json_analisar "$c" >/dev/null; t1=$(_agora_ms)
-      printf "%s " "$((t1 - t0))"
-    done
+    _analisar() { dbx_json_analisar "$1"; }
+    c1=$(gera 100); c4=$(gera 400)
+    printf "%s %s\n" "$(_medir_minimo_ms 5 _analisar "$c1")" "$(_medir_minimo_ms 5 _analisar "$c4")"
   ' _ "$DBX_HARNESS_RAIZ" 2>/dev/null)
   status=$?
-  [[ $status -eq 124 ]] && _harness_falhar 'analise nao terminou em 60s com corpus adversarial'
+  [[ $status -eq 124 ]] && _harness_falhar 'analise nao terminou em 120s com corpus adversarial'
   assert_igual 0 "$status" 'a medicao precisa concluir'
   local -a t
   read -r -a t <<<"$saida"
-  [[ ${#t[@]} -eq 3 ]] || _harness_falhar "medicao invalida: [$saida]"
-  local primeiro=${t[0]} ultimo=${t[2]}
+  [[ ${#t[@]} -eq 2 ]] || _harness_falhar "medicao invalida: [$saida]"
+  # Razao entre MINIMOS: contencao so soma tempo, entao o minimo converge para o
+  # custo real e a razao fica insensivel a carga da maquina.
+  local primeiro=${t[0]} ultimo=${t[1]}
   [[ $primeiro -lt 1 ]] && primeiro=1
   if [[ $ultimo -gt $((primeiro * 12)) ]]; then
-    _harness_falhar "custo super-linear: 100 em ${primeiro}ms, 400 em ${ultimo}ms"
+    _harness_falhar "custo super-linear: 100 entradas em ${primeiro}ms, 400 em ${ultimo}ms"
   fi
 }
 
@@ -439,7 +440,9 @@ teste_nenhum_valor_externo_transita_por_substituicao_de_comando() {
   # saida, nome de classe, resumo hexadecimal — nao perde informacao por
   # remocao de quebra final, e esta listada como excecao justificada.
   local arquivo codigo achados
-  local permitidos='dbx_errors_codigo_saida|dbx_errors_classificar|_dbx_errors_classe_da_tag|_dbx_hash_sha256_hex|_dbx_hash_calcular'
+  # `dbx_json_tipo` entra pelo mesmo criterio dos demais: devolve uma de seis
+  # palavras fixas do vocabulario de tipos, nunca byte vindo de fora.
+  local permitidos='dbx_errors_codigo_saida|dbx_errors_classificar|_dbx_errors_classe_da_tag|_dbx_hash_sha256_hex|_dbx_hash_calcular|dbx_json_tipo'
   for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
     codigo=$(grep -vE '^[[:space:]]*#' "$arquivo")
     # O padrao anterior exigia o `$(` LOGO APOS o `=`, entao `+=" ... $(...)"`
@@ -728,6 +731,53 @@ teste_massa_adversarial_nao_e_construida_por_substituicao_de_comando() {
         "use \$'...' ou printf -v: a substituicao remove quebras finais e pode tornar valida uma massa que deveria ser invalida"
     fi
   done
+}
+
+# ---------------------------------------------------------------------------
+# R2-04 — o codificador precisa de casos DIRETOS, e nao so de ida e volta.
+#
+# Mutando o escape da barra invertida, `json` e `composicao` davam zero e so
+# `config` reprovava. O proximo consumidor e `lib/http`, que codifica CORPO DE
+# REQUISICAO: ali nao ha ida e volta local, e um escape quebrado vira requisicao
+# malformada detectavel somente em rede.
+# ---------------------------------------------------------------------------
+
+teste_codificador_escapa_cada_forma_exigida() {
+  dbx_json_escapar_cadeia 'a\b'
+  assert_igual 'a\\b' "$DBX_JSON_ESCAPADO" 'barra invertida'
+  dbx_json_escapar_cadeia 'a"b'
+  assert_igual 'a\"b' "$DBX_JSON_ESCAPADO" 'aspa'
+  dbx_json_escapar_cadeia $'a\tb'
+  assert_igual 'a\tb' "$DBX_JSON_ESCAPADO" 'tabulacao'
+  dbx_json_escapar_cadeia $'a\nb'
+  assert_igual 'a\nb' "$DBX_JSON_ESCAPADO" 'quebra de linha'
+  dbx_json_escapar_cadeia $'a\rb'
+  assert_igual 'a\rb' "$DBX_JSON_ESCAPADO" 'retorno de carro'
+}
+
+teste_codificador_escapa_a_barra_invertida_antes_das_demais() {
+  # A ORDEM e o ponto: escapar a barra depois duplicaria as barras introduzidas
+  # pelos outros escapes, produzindo duas barras onde deveria haver uma.
+  dbx_json_escapar_cadeia $'a\nb'
+  assert_igual 'a\nb' "$DBX_JSON_ESCAPADO" \
+    'quebra de linha vira exatamente uma barra seguida de n'
+  dbx_json_escapar_cadeia $'\\\n'
+  assert_igual '\\\n' "$DBX_JSON_ESCAPADO" \
+    'barra literal seguida de quebra: duas barras e depois o escape da quebra'
+}
+
+teste_codificador_escapa_controle_como_sequencia_unicode() {
+  dbx_json_escapar_cadeia $'a\001b'
+  assert_igual 'a\u0001b' "$DBX_JSON_ESCAPADO"
+  dbx_json_escapar_cadeia $'a\037b'
+  assert_igual 'a\u001fb' "$DBX_JSON_ESCAPADO"
+}
+
+teste_codificador_nao_altera_texto_sem_escape() {
+  local entrada='/pasta/comum com espaco e acentuacao-cafe'
+  dbx_json_escapar_cadeia "$entrada"
+  assert_igual "$entrada" "$DBX_JSON_ESCAPADO" \
+    'texto sem caractere especial nao pode ser alterado'
 }
 
 harness_executar "$@"

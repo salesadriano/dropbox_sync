@@ -39,7 +39,15 @@
 [[ -n ${DBX_JSON_CARREGADO:-} ]] && return 0
 DBX_JSON_CARREGADO=1
 
-_dbx_json_diretorio=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+# Resolucao do proprio diretorio SEM utilitario externo. Usar `dirname`
+# aqui criava uma dependencia exercitada ANTES de qualquer verificacao:
+# sem ele o componente carregava com status 0 mas quebrado — dependencias
+# nunca carregadas, constantes de codigo de erro vazias e caminhos de
+# falha devolvendo o status do ultimo comando em vez do classificado.
+# `${BASH_SOURCE[0]%/*}` e expansao do proprio shell (TL-30).
+_dbx_json_diretorio=${BASH_SOURCE[0]%/*}
+[[ $_dbx_json_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_json_diretorio=.
+_dbx_json_diretorio=$(cd -P -- "$_dbx_json_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_json_diretorio/errors.sh"
 unset _dbx_json_diretorio
@@ -747,4 +755,44 @@ dbx_json_descartar() {
     DBX_JSON_RESULTADO=''
   }
   return 0
+}
+
+# dbx_json_escapar_cadeia <texto> — codifica o texto como conteudo de cadeia
+# JSON, deixando o resultado em DBX_JSON_ESCAPADO (sem as aspas externas).
+#
+# Existe para que quem grava JSON use a MESMA base de conhecimento de quem le,
+# em vez de um segundo caminho de codificacao. Escapa os caracteres exigidos
+# pelo RFC e todo caractere de controle, o que e obrigatorio aqui: o analisador
+# recusa caractere de controle cru, entao gravar sem escapar produziria um
+# arquivo que o proprio projeto nao consegue reler.
+dbx_json_escapar_cadeia() {
+  local texto=${1-} indice codigo caractere
+  DBX_JSON_ESCAPADO=''
+  [[ -n $texto ]] && {
+    # Substituicao de padrao, e NAO indexacao caractere a caractere. A versao
+    # anterior usava `${texto:indice:1}`, exatamente a armadilha que o cabecalho
+    # deste arquivo documenta como quadratica — a regra estava violada no
+    # arquivo que a enuncia (P3-05). Aqui sao passagens de custo proporcional ao
+    # tamanho, em numero fixo.
+    #
+    # A barra invertida vem PRIMEIRO: escapa-la depois duplicaria as barras
+    # introduzidas pelos escapes seguintes.
+    texto=${texto//$'\\'/$'\\\\'}
+    texto=${texto//'"'/'\"'}
+    texto=${texto//$'\n'/'\n'}
+    texto=${texto//$'\r'/'\r'}
+    texto=${texto//$'\t'/'\t'}
+    texto=${texto//$'\b'/'\b'}
+    texto=${texto//$'\f'/'\f'}
+    # Demais caracteres de controle, um a um. Sao 27 substituicoes de custo
+    # linear, e nao um laco sobre o comprimento da entrada.
+    for indice in 1 2 3 4 5 6 7 11 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 127; do
+      printf -v caractere '%b' "\\$(printf '%03o' "$indice")"
+      [[ $texto == *"$caractere"* ]] || continue
+      printf -v codigo '%04x' "$indice"
+      texto=${texto//"$caractere"/\\u$codigo}
+    done
+  }
+  # shellcheck disable=SC2034  # canal publico, consumido por lib/config
+  DBX_JSON_ESCAPADO=$texto
 }
