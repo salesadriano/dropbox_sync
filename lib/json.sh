@@ -89,9 +89,24 @@ readonly DBX_JSON_MAXIMO_ENTRADA=262144
 #
 # A guarda e avaliada POR CONTEXTO, e o contexto nomeado nao a afrouxa: analisar
 # em subshell sobre estado que pertence a outro processo continua recusado, em
-# qualquer contexto. Analisar em subshell sob contexto novo tambem nao ajuda,
-# porque o estado nao volta e a consulta no processo pai nao encontra o
-# documento — nao ha caminho por onde o E2-09 reentre.
+# qualquer contexto.
+#
+# PRECISAO IMPORTANTE, corrigindo justificativa anterior. Ja se afirmou aqui que
+# "o caso legitimo e o perigoso sao distinguiveis". ISSO E FALSO. No momento da
+# analise a guarda nao tem como saber se o chamador consultara dentro do
+# subshell ou no processo pai — e exatamente a mesma indistinguibilidade
+# registrada logo abaixo, na limitacao conhecida.
+#
+# O que ocorre e diferente, e melhor: pelo caminho do CONTEXTO NOVO o caso
+# indistinguivel foi tornado INOFENSIVO. O estado nao volta ao pai, entao a
+# consulta la nao encontra o documento em vez de responder com valor de outro.
+# A consequencia migrou de "valor errado" para "falha fechada"; o que resta e um
+# status que mente para o pai, sem janela em que dado errado seja devolvido.
+#
+# A distincao nao e academica. O raciocinio errado — "os casos sao
+# distinguiveis" — poderia justificar, no futuro, relaxar TAMBEM a guarda do
+# MESMO contexto. La a metade perigosa nao esta fechada, o estado anterior segue
+# consultavel, e o E2-09 voltaria inteiro.
 #
 # LIMITACAO CONHECIDA, e nao promessa. Havendo documento corrente NAQUELE
 # contexto, analisar dentro de subshell e recusado mesmo quando a consulta
@@ -536,18 +551,26 @@ dbx_json_analisar() {
   DBX_JSON_TAMANHO[_dbx_raiz]=0
   DBX_JSON_NFILHOS[_dbx_raiz]=0
 
-  _dbx_json_ler_valor "$_dbx_raiz" 1 || {
-    local _dbx_status=$?
-    DBX_JSON_FIM_DO_CONTEXTO[$_dbx_ctx]=$DBX_JSON_PROXIMO_ID
-    return "$_dbx_status"
-  }
+  _dbx_json_ler_valor "$_dbx_raiz" 1
+  local _dbx_status=$?
+
+  # A faixa de nos e fechada aqui, em UM UNICO ponto, valendo para todos os
+  # caminhos — sucesso, falha do analisador e lixo apos o fim do documento.
+  #
+  # Antes, o ramo de lixo retornava sem registrar o fim da faixa. Sem esse
+  # registro, toda liberacao futura daquele contexto retorna cedo e o inicio e
+  # sobrescrito, orfanando as faixas anteriores em definitivo: cinco analises de
+  # um documento pequeno com lixo no fim deixavam 35 nos vivos, contra 7 na
+  # reanalise valida. O vazamento e ilimitado em processo de vida longa, que e
+  # exatamente o cenario de listagem paginada que motivou o contexto nomeado.
+  DBX_JSON_FIM_DO_CONTEXTO[$_dbx_ctx]=$DBX_JSON_PROXIMO_ID
+
+  [[ $_dbx_status -eq 0 ]] || return "$_dbx_status"
 
   if _dbx_json_avancar; then
     _dbx_json_falhar malformado "conteudo apos o fim do documento: '${_dbx_json_e[$_dbx_json_pos]}'"
     return $?
   fi
-
-  DBX_JSON_FIM_DO_CONTEXTO[$_dbx_ctx]=$DBX_JSON_PROXIMO_ID
   DBX_JSON_ANALISADO=1
   DBX_JSON_ANALISADO_DO_CONTEXTO[$_dbx_ctx]=1
   # shellcheck disable=SC2034  # canal publico, lido pelo chamador e pela suite

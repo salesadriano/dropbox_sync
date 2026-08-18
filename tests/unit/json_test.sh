@@ -107,11 +107,11 @@ teste_escapes_simples() {
   _valor '{"v":"a\/b"}' v
   assert_igual 'a/b' "$DBX_JSON_RESULTADO"
   _valor '{"v":"a\tb"}' v
-  assert_igual "$(printf 'a\tb')" "$DBX_JSON_RESULTADO"
+  assert_igual $'a\tb' "$DBX_JSON_RESULTADO"
   _valor '{"v":"a\nb"}' v
-  assert_igual "$(printf 'a\nb')" "$DBX_JSON_RESULTADO"
+  assert_igual $'a\nb' "$DBX_JSON_RESULTADO"
   _valor '{"v":"a\rb"}' v
-  assert_igual "$(printf 'a\rb')" "$DBX_JSON_RESULTADO"
+  assert_igual $'a\rb' "$DBX_JSON_RESULTADO"
 }
 
 teste_quebra_de_linha_no_valor_e_preservada_byte_a_byte() {
@@ -223,9 +223,13 @@ teste_profundidade_excessiva_e_recusada() {
 
 teste_entrada_gigante_e_recusada_pelo_teto() {
   local json
-  json="{\"v\":\"$(printf 'x%.0s' $(seq 1 200))\"}"
+  local recheio
+  printf -v recheio 'x%.0s' $(seq 1 200)
+  json="{\"v\":\"$recheio\"}"
   assert_sucesso dbx_json_analisar "$json"
-  assert_status "$DBX_JSON_ERRO_REMOTO" dbx_json_analisar "$(printf 'y%.0s' $(seq 1 $((DBX_JSON_MAXIMO_ENTRADA + 10))))"
+  local acima_do_teto
+  printf -v acima_do_teto 'y%.0s' $(seq 1 $((DBX_JSON_MAXIMO_ENTRADA + 10)))
+  assert_status "$DBX_JSON_ERRO_REMOTO" dbx_json_analisar "$acima_do_teto"
 }
 
 teste_apos_falha_nao_ha_resultado_residual() {
@@ -315,12 +319,12 @@ teste_sentinela_de_documento_em_chave_nao_sequestra_a_raiz() {
   dbx_json_analisar '{"\u001e":"SEQUESTRO","real":"ok"}'
   dbx_json_valor real >/dev/null
   assert_igual 'ok' "$DBX_JSON_RESULTADO"
-  assert_sucesso dbx_json_existe "$(printf '\036')"
+  assert_sucesso dbx_json_existe $'\036'
 }
 
 teste_chave_contendo_separador_e_enderecavel_por_si() {
   local chave
-  chave="a$(printf '\037')b"
+  chave=$'a\037b'
   _valor '{"a\u001fb":"VALOR-PROPRIO"}' "$chave"
   assert_igual 'VALOR-PROPRIO' "$DBX_JSON_RESULTADO" \
     'a chave com separador designa o proprio campo, e nao outro'
@@ -403,18 +407,20 @@ teste_caractere_de_controle_cru_e_recusado() {
   # G-01: e a defesa contra colisao com o separador da marcacao, e estava sem
   # teste — a mutacao que a removia nao reprovava nada.
   local json
-  json="{\"a$(printf '\001')b\":1}"
+  json=$'{"a\001b":1}'
   assert_status "$DBX_JSON_ERRO_REMOTO" dbx_json_analisar "$json"
   dbx_json_analisar "$json" 2>/dev/null
   assert_igual 'controle' "$DBX_JSON_MOTIVO"
-  json="{\"v\":\"x$(printf '\037')y\"}"
+  json=$'{"v":"x\037y"}'
   assert_status "$DBX_JSON_ERRO_REMOTO" dbx_json_analisar "$json"
 }
 
 teste_teto_de_entrada_e_aplicado() {
   # G-02: um requisito derivado de um valor nao testado nao tem sustentacao.
   local grande
-  grande="{\"v\":\"$(printf 'x%.0s' $(seq 1 $((DBX_JSON_MAXIMO_ENTRADA + 100))))\"}"
+  local recheio
+  printf -v recheio 'x%.0s' $(seq 1 $((DBX_JSON_MAXIMO_ENTRADA + 100)))
+  grande="{\"v\":\"$recheio\"}"
   assert_status "$DBX_JSON_ERRO_REMOTO" dbx_json_analisar "$grande"
   dbx_json_analisar "$grande" 2>/dev/null
   assert_igual 'tamanho' "$DBX_JSON_MOTIVO" \
@@ -441,7 +447,7 @@ teste_nenhum_valor_externo_transita_por_substituicao_de_comando() {
     # mais obvia da classe da falsa seguranca (E3-04). Agora qualquer
     # substituicao de comando sobre funcao do projeto e sinalizada, em qualquer
     # posicao da linha.
-    achados=$(printf '%s\n' "$codigo" | grep -nE '[$]\((_dbx_|dbx_)' |
+    achados=$(grep -nE '[$]\((_dbx_|dbx_)' <<<"$codigo" |
       grep -vE "[$]\\((${permitidos})" || true)
     if [[ -n $achados ]]; then
       _harness_falhar "captura de canal de dado externo por substituicao de comando em $(basename "$arquivo"): $achados" \
@@ -628,6 +634,100 @@ teste_descartar_libera_o_contexto() {
   dbx_json_descartar
   assert_status 1 dbx_json_valor x
   dbx_json_contexto padrao
+}
+
+# ---------------------------------------------------------------------------
+# E4-01 — o ciclo de vida precisa valer TAMBEM no caminho de excecao
+#
+# O ramo de lixo apos o fim do documento retornava sem fechar a faixa de nos.
+# Sem esse registro, toda liberacao futura do contexto retornava cedo e o inicio
+# era sobrescrito, orfanando as faixas anteriores em definitivo. Cinco analises
+# deixavam 35 nos vivos contra 7 na reanalise valida — vazamento ilimitado em
+# processo de vida longa, que e o cenario de listagem paginada.
+#
+# A invariante fixada nao e "o ramo de lixo fecha a faixa", e sim "TODA analise
+# fecha a faixa, qualquer que seja o desfecho". Por isso o caso varre os sete
+# desfechos, e nao apenas o que falhou.
+# ---------------------------------------------------------------------------
+
+_dbx_nos_vivos() { printf '%s' "${#DBX_JSON_FILHO[@]}"; }
+
+teste_nenhum_desfecho_de_analise_vaza_nos() {
+  local documento antes depois
+  local -a documentos=(
+    '{"a":1,"b":{"c":2},"d":[1,2,3]}'
+    '{"a":1,"b":{"c":2},"d":[1,2,3]}extra'
+    '{"a":1,"b":{"c":2}'
+    '{"a":1,}'
+    '{"a":"sem fechamento}'
+    'nao_e_json'
+    '{"a":tru}'
+  )
+  for documento in "${documentos[@]}"; do
+    dbx_json_analisar "$documento" >/dev/null 2>&1
+    antes=$(_dbx_nos_vivos)
+    for _ in 1 2 3 4 5; do
+      dbx_json_analisar "$documento" >/dev/null 2>&1
+    done
+    depois=$(_dbx_nos_vivos)
+    if [[ $antes != "$depois" ]]; then
+      _harness_falhar \
+        "nos acumulando ao reanalisar [$documento]: $antes para $depois" \
+        'toda analise precisa fechar a faixa de nos, inclusive nos caminhos de falha'
+    fi
+  done
+}
+
+teste_faixa_de_nos_e_fechada_mesmo_quando_a_analise_falha() {
+  # Verificacao direta da invariante, e nao apenas do seu efeito.
+  dbx_json_analisar '{"a":1}extra' >/dev/null 2>&1
+  assert_diferente '' "${DBX_JSON_FIM_DO_CONTEXTO[padrao]:-}" \
+    'o fim da faixa precisa ser registrado tambem no desfecho de excecao'
+  assert_diferente '' "${DBX_JSON_INICIO_DO_CONTEXTO[padrao]:-}"
+}
+
+teste_falha_no_meio_de_listagem_paginada_nao_acumula() {
+  # Combinacao que motivou o contexto nomeado: paginas boas intercaladas com uma
+  # resposta corrompida, no mesmo contexto.
+  local antes depois
+  dbx_json_analisar '{"entries":[{"n":1}],"cursor":"A"}' >/dev/null 2>&1
+  antes=$(_dbx_nos_vivos)
+  for _ in 1 2 3; do
+    dbx_json_analisar '{"entries":[{"n":1}],"cursor":"A"}' >/dev/null 2>&1
+    dbx_json_analisar '{"entries":[{"n":1}],"cursor":"A"}lixo' >/dev/null 2>&1
+  done
+  dbx_json_analisar '{"entries":[{"n":1}],"cursor":"A"}' >/dev/null 2>&1
+  depois=$(_dbx_nos_vivos)
+  assert_igual "$antes" "$depois" 'resposta corrompida no meio do percurso nao pode acumular nos'
+  dbx_json_valor cursor >/dev/null
+  assert_igual 'A' "$DBX_JSON_RESULTADO"
+}
+
+# ---------------------------------------------------------------------------
+# RSK-28 — contramedida verificavel para a classe "instrumento de observacao
+# interfere na propriedade observada".
+#
+# Seis instancias em tres papeis ate aqui: duas do QA com sondas usando
+# substituicao de comando sobre quebra de linha, uma do coordenador com `grep`
+# cegado por byte de controle, e tres do desenvolvimento — inclusive uma DENTRO
+# de um teste escrito para cobrir essa mesma familia.
+#
+# Regra adotada: massa adversarial se constroi com `$'...'` ou `printf -v`,
+# nunca com substituicao de comando, que remove quebras finais e converte massa
+# invalida em valida em silencio.
+# ---------------------------------------------------------------------------
+
+teste_massa_adversarial_nao_e_construida_por_substituicao_de_comando() {
+  local arquivo codigo achados
+  for arquivo in "$DBX_HARNESS_RAIZ"/tests/unit/*.sh "$DBX_HARNESS_RAIZ"/tests/support/*.sh; do
+    codigo=$(grep -vE '^[[:space:]]*#' "$arquivo")
+    achados=$(grep -nE '[$]\(printf' <<<"$codigo" || true)
+    if [[ -n $achados ]]; then
+      _harness_falhar \
+        "massa construida por substituicao de comando em $(basename "$arquivo"): $achados" \
+        "use \$'...' ou printf -v: a substituicao remove quebras finais e pode tornar valida uma massa que deveria ser invalida"
+    fi
+  done
 }
 
 harness_executar "$@"
