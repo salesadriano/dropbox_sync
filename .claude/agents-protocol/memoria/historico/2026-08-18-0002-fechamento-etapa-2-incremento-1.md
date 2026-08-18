@@ -60,12 +60,43 @@ Destaques:
 
 ## Bloqueios que dependem exclusivamente do solicitante
 
-| Item | Descricao |
+| Item | Estado em 2026-08-18 |
 |---|---|
-| `DP-20` | titular do copyright; `LICENSE` publicado com espaco reservado no historico publico |
-| `TL-17` em `MEMORIA-COMPARTILHADA.md` | autorizacao para editar a memoria geral |
-| `DEC-STR-07` | aprovacao formal sobre os testes do QA, com o template proprio |
-| PR de entrega | abertura com label de review e review request nativo (item 25 do protocolo) |
+| `DP-20` | 🔴 **ABERTO** — titular do copyright; `LICENSE` publicado com espaco reservado no historico publico |
+| `DEC-STR-07` | 🔴 **ABERTO** — aprovacao formal sobre os testes do QA, com o template proprio |
+| `TL-17` em `MEMORIA-COMPARTILHADA.md` | ✅ **RESOLVIDO como desvio** — autorizacao **NEGADA**. `TL-09` e `TL-17` valem so neste projeto (`PRJ-DEC-41`) |
+| PR de entrega | ✅ **RESOLVIDO** — PR [#1](https://github.com/salesadriano/dropbox_sync/pull/1) aberto com label `review` (`PRJ-DEC-44`) |
+
+## Respostas do solicitante ao fechamento (2026-08-18)
+
+### `MEMORIA-COMPARTILHADA.md` — autorizacao NEGADA
+
+`TL-09` e `TL-17` ficam registrados **apenas neste projeto**. Motivo concreto: o arquivo veio do pacote `ai_team` e e usado tambem em
+`/home/sales/diad` e `/home/sales/comprac_app`; alterar a copia local nao propaga e criaria divergencia entre copias do mesmo pacote.
+
+**Desvio ao item 32 do protocolo comum registrado em `PRJ-DEC-41`.** A regra transversal existe e vale aqui, **sem** a contrapartida na memoria geral.
+**Rastreabilidade obrigatoria:** se o pacote for um dia sincronizado a partir da origem, `TL-09` e `TL-17` precisam reaparecer como candidatas a memoria geral.
+
+### PR aberto — item 25 atendido com desvio justificado
+
+PR [#1](https://github.com/salesadriano/dropbox_sync/pull/1), `feature/camada-dominio-e-adaptadores` -> `develop`, label `review`, estado OPEN.
+Convencao semantica de commits e nomenclatura Gitflow atendidas. **Review request nativa nao atribuida:** repositorio de colaborador unico,
+sem revisor distinto do autor a designar — **desvio justificado, nao pendencia** (`PRJ-DEC-44`).
+
+**Divergencia de contagem esclarecida pelo Tech Lead:** o corpo do PR declara doze commits semanticos e o PR expoe **onze**.
+Os doze existem e sao todos semanticos, mas o duodecimo — `2b3698f docs: fechamento do incremento 1 da Etapa 2`, que versiona os artefatos
+deste fechamento — **existe apenas no repositorio local e nao foi publicado**. `origin/feature/camada-dominio-e-adaptadores` continua em `bf3ff0d`.
+
+> **Consequencia operacional:** o PR descreve o fechamento mas **ainda nao contem os documentos de fechamento**.
+> Antes do merge, o solicitante precisa publicar `2b3698f` e o commit das correcoes posteriores desta rodada.
+
+### Licao de processo registrada (`PRJ-DEC-45`)
+
+**Entregar estado ja verificado transfere o ponto cego junto.** O relato de que `RNF-24` estava satisfeito era verdadeiro para a guarda de alfabeto
+e falso para a procedencia; so apareceu porque o Tech Lead escreveu a mutacao que o criterio 3 descreve (M3) em vez de aceitar que o criterio 4 a cobria.
+Confirmado depois pelo coordenador de forma independente: `path`, `conflict`, `too_many_write_operations`, `incorrect_offset` e `restricted_content`
+passam todas pela guarda, e a unica auditoria estatica existente busca captura por `$( )`, que **nao alcanca** `dbx_json_contexto "$tag"`.
+**Irma de `RSK-27`:** la o instrumento cobre so a forma obvia da classe; aqui o relato cobre so a parte obvia do criterio.
 
 ```mermaid
 flowchart LR
