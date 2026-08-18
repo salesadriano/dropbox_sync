@@ -41,6 +41,11 @@
 # SERVICO, e nao substituicao de credencial. Isso fica registrado como intencao
 # porque, se constasse apenas como efeito colateral, um afrouxamento futuro da
 # verificacao de dono removeria a protecao sem que a ligacao fosse percebida.
+#
+# FRONTEIRA DE CONFIANCA: o usuario do sistema. Contra o proprio usuario a
+# substituicao sempre sera possivel, porque ele pode escrever o arquivo real sem
+# recorrer a variavel alguma. O que estas verificacoes impedem e a substituicao
+# por OUTRO usuario e o desvio por ambiente.
 
 [[ -n ${DBX_CONFIG_CARREGADO:-} ]] && return 0
 DBX_CONFIG_CARREGADO=1
@@ -57,6 +62,9 @@ DBX_CONFIG_ERRO_CONFIGURACAO=$(dbx_errors_codigo_saida configuracao)
 readonly DBX_CONFIG_ERRO_USO DBX_CONFIG_ERRO_CONFIGURACAO
 
 readonly DBX_CONFIG_ARQUIVO='credencial.json'
+# Minutos a partir dos quais um temporario e considerado orfao mesmo com
+# processo vivo. Gravacao legitima e instantanea; a folga e larga de proposito.
+readonly DBX_CONFIG_IDADE_ORFAO=5
 readonly DBX_CONFIG_VERSAO=1
 
 # shellcheck disable=SC2034  # canais publicos: sao lidos pelo chamador e pela
@@ -93,8 +101,16 @@ _dbx_config_varrer_orfaos() {
     [[ -e $orfao ]] || continue
     processo=${orfao##*/.credencial.}
     processo=${processo%%.*}
-    [[ $processo =~ ^[0-9]+$ ]] || continue
-    kill -0 "$processo" 2>/dev/null && continue
+    # Criterio duplo. So o processo nao basta: um temporario nomeado com o
+    # identificador de um processo VIVO qualquer sobrevive indefinidamente, e a
+    # reciclagem de identificadores torna o orfao permanente — a varredura era
+    # probabilistica (R2-03). A idade cobre esse caso sem quebrar a
+    # concorrencia, porque nenhuma gravacao legitima leva minutos.
+    if [[ $processo =~ ^[0-9]+$ ]] && kill -0 "$processo" 2>/dev/null; then
+      # Processo vivo: so remove se for antigo demais para ser uma gravacao em
+      # andamento.
+      [[ -n $(find "$orfao" -mmin +"$DBX_CONFIG_IDADE_ORFAO" 2>/dev/null) ]] || continue
+    fi
     rm -f -- "$orfao" 2>/dev/null
   done
   return 0
