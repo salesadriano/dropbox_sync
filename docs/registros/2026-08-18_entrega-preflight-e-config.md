@@ -10,7 +10,7 @@
 | Destinatario do handoff | QA Expert |
 | Data do registro | 2026-08-18 |
 | Documentos relacionados | [System Design](../arquitetura/system-design.md) · [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Registro anterior — Adaptadores (JSON e Output)](2026-08-18_entrega-lib-json-e-lib-output.md) |
-| Status | **Ciclos 1, 2 e 3 de QA concluidos: aprovado.** Seis problemas identificados e corrigidos no Ciclo 1 (P3-01 a P3-05, DP-11). Ciclos 2 e 3: redesenho das auditorias de utilitarios, posicoes de comando e guardas. Cobertura ampliada de 298 para 307 casos aprovados. Bateria integral pos-ciclo-3: 9 arquivos, 307 casos aprovados, 0 reprovados, 0 pulados. Shellcheck exit 0. Condicao para fechamento: aceite do Tech Lead sobre codigos 5 a 15. |
+| Status | **Ciclos 1, 2, 3 de QA e revisao do Tech Lead concluidos: aprovado.** Seis problemas identificados e corrigidos no Ciclo 1 (P3-01 a P3-05, DP-11). Ciclos 2 e 3: redesenho das auditorias de utilitarios, posicoes de comando e guardas. Cobertura ampliada de 298 para 307 casos aprovados. Tech Lead: gate TL-12 reexecutado, dez utilitarios e quatro palavras-chave validadas, compensacao de disjuntores confirmada. Coleta de universos por gramatica em vez de idioma aplicada. Bateria integral pos-revisao: 9 arquivos, 310 casos aprovados, 0 reprovados, 0 pulados. Shellcheck exit 0 com opcoes -x. **Pendencia que PERMANECE:** aceite do Tech Lead sobre os codigos de saida 5 a 15, remanescente da Etapa 1. |
 
 ---
 
@@ -516,3 +516,190 @@ Aceite do Tech Lead sobre os codigos de saida 5 a 15 (remanescente da Etapa 1, b
 Neste incremento, as duas restricoes criticas que emergiram de ciclos anteriores — contexto nomeado para nao destruir documento em curso (E3-01) e auditoria de procedencia do nome de contexto (TL-12) — nao sao teorizadas, sao implementadas e exercitadas. O ciclo de vida completamente novo trazido por `lib/config` (write) versus todos os anteriores (read) tambem e validado desde o inicio: testes escritos antes da implementacao, cobertos por mutacao.
 
 A decisao de usar JSON para credencial, fundamentada em tres razoes concretas e nao em preferencia de formato, deixa o projeto com um interpretador unico e testado em mais 34 situacoes (20 de `lib/config` mais 14 de `lib/preflight` relacionadas indiretamente ao formato, excluindo casos de composicao). Quando `lib/http` consumir `lib/config`, essa superfice de testes prestada e heranca ja e importante.
+
+---
+
+## Aprovacao do Tech Lead — TL-27 e TL-30
+
+### Abertura — O gate TL-12 foi reexecutado
+
+O Tech Lead reaplicou a mesma mutacao que o havia definido no fechamento da etapa anterior. Antes passava com 237 casos aprovados; agora reprova a suite completa. A mudanca reflete as correcoes e o redesenho das auditorias entre os Ciclos 1 e 3 — a implementacao nao apenas satisfaz como SUPERA o exigido em dois pontos estruturais.
+
+**Pontos em que a implementacao excede o exigido:**
+
+1. **Derivacao do universo a partir da gramatica, nao do idioma observado.** O padrao de auditoria discrimina ANTES de varrer os arquivos reais — submete amostras sinteticas que cobrem as formas que a gramatica permite mas que o projeto nao usa.
+
+2. **Unificacao de escopo sem duplicacao de lista.** O padrao e declarado uma unica vez, usando-o tanto na autovalidacao quanto na varredura. Isso impede que mutar apenas a copia usada na varredura passe despercebido, porque a autovalidacao da biblioteca ja o aplica.
+
+### Validacoes do Tech Lead — Medicao propria
+
+O Tech Lead homologou por medicao a sua maneira cada uma das propriedades-chave.
+
+**Proibicao de sobrescrita por ambiente:**
+- Verificada com oito nomes de variavel usados em contextos diferentes.
+- Nenhum escape observado; mutacoes que removem a guarda sao detectadas.
+
+**Ausencia de nocao de perfil:**
+- A biblioteca nao introduz nenhum disjuntor de ambiente ou configuracao condicional.
+- Componentes carregam com mesma semantica em qualquer ambiente.
+
+**Fronteira de confianca:**
+- Delimitada entre a camada de adaptadores (nao conhece negocio) e a camada de dominio (descreve erro de negocio).
+- A coerencia e verificada em ambos os sentidos por testes de composicao.
+
+**Exigencia de nomear utilitario ausente (RNF-02):**
+- Auditoria de invocacao de utilitario remove treze utilitarios um a um.
+- Cada remocao causa falha com diagnostico nomeado; nenhuma falha silenciosa.
+
+**Formato JSON e sua razao:**
+- Medicao de ida e volta exata feita com dados contendo aspas duplas, barra invertida e quebra de linha.
+- Nenhuma perda de conteudo; caractere de controle preservado exatamente.
+
+### TL-27: A classe que faltava, e por que a tese ainda falhava
+
+#### Auditoria de posicao de comando — Vinte e uma mutacoes, quatro escapavam
+
+O Tech Lead submeteu a auditoria de posicao de comando a vinte e uma mutacoes, cada uma inserindo um comando externo inedito numa posicao sintatica diferente. Dezessete foram detectadas; quatro escaparam.
+
+**Os quatro casos que escapavam:**
+- Comando como argumento de `if`
+- Comando como argumento de `while`
+- Comando como argumento de `until`
+- Comando como argumento de `time`
+
+**A classe unificada:** nao sao quatro casos avulsos. Todos compartilham a mesma propriedade gramatical — sao palavras-chave cujo argumento E ELE PROPRIO UM COMANDO (estrutura recursiva). A deteccao deve tratar a classe, nao instancias.
+
+#### Diagnostico do coordenador — Armadilha evitada
+
+O coordenador levantou um detalhe de diagnostico que quase produziu conclusao errada. As injecoes do Tech Lead davam uma reprovacao cada, o que sugeria cobertura completa. Observando QUAL caso reprovava:
+
+- A reprovacao vinha de **OUTRA auditoria**, nao a de comando — era a auditoria de prefixo de funcoes publicas, que apanhou a funcao de sonda do proprio teste.
+- A auditoria de posicao de comando nao reprovava.
+
+**Confirmacao do diagnostico (Tech Lead):**
+- `elif` e o operador de negacao ERAM detectados, por acidente — ja constavam da lista de separadores.
+- `if` nunca entrara na cobertura porque a amostra do projeto usa a forma com condicao de teste seguida de `then`, que e condicao de teste, e nao posicao de comando.
+- A forma nao capturada era uma lacuna invisivel enquanto a amostra era apenas idioma observado.
+
+#### Violacao viva e forma idiomatica no projeto
+
+**Descoberta durante revisao:**
+- Nao havia violacao viva no codigo existente no momento da mutacao.
+- A forma JAE IDIOMA CORRENTE no proprio projeto: tres ocorrencias num componente de teste, uma em cada um de outros dois componentes.
+- O proximo incremento, de rede, tem nessa forma a construcao natural — sera usada inevitavelmente.
+
+#### Correcao — A formulacao do Tech Lead sobre escalabilidade
+
+**Ponto central:** nao foram acrescentadas quatro palavras a uma lista mantida a mao. O universo passou a ser **as palavras reservadas DO PROPRIO SHELL, obtidas do shell em tempo de execucao**.
+
+**Manutencao manual:** apenas a lista das que NAO introduzem comando — terminadores (como `done`, `fi`, `esac`) e palavras que tomam nome ou padrao em vez de comando (como `export`, `readonly`).
+
+**Derivacao:** o conjunto correto de palavras que abrem lista de comando sai da diferenca entre as duas listas, sem que ninguem tenha antecipado quais palavras faltavam.
+
+**Formulacao afiada (Tech Lead):** "O que escala nao e derivar o ESCOPO do codigo, e derivar DA GRAMATICA em vez do IDIOMA OBSERVADO."
+
+#### Causa comum nos quatro niveis descendentes
+
+O Tech Lead identificou a causa comum que produziu os quatro pontos cegos em niveis diferentes:
+
+1. **Nivel de inspecao:** virou auditoria, mas inspecao olha o que ve, nao o que omite.
+2. **Nivel de utilitarios:** as listas so viam o que ja continham, nao o universo de possibilidades.
+3. **Nivel de guardas:** a inversao faltou no reconhecedor de especificadores de formato (substituicoes de variavel de metadado).
+4. **Nivel de posicao de comando:** a inversao faltava tambem — faltava normalizar separadores e palavras-chave em quebras de linha.
+
+**Padrao unificador:** em cada nivel, a amostra foi escrita a partir das FORMAS QUE O AUTOR USA, nao das formas que A GRAMATICA PERMITE. A gramatica contem formas que ele nao usa.
+
+**Gate TL-12 exige tres coisas:**
+1. Derivar o universo do artefato (shell, codigo, metadado).
+2. Manter a mao apenas excecoes.
+3. Provar que a derivacao discrimina (testes de ambos os sentidos — deteccao correta e exclusao de falsos positivos).
+
+#### Verificacao — As quatro formas sao detectadas
+
+- Teste `posicao_comando_apos_if` verifica que comando apos `if` e detectado.
+- Teste `posicao_comando_apos_while` verifica que comando apos `while` e detectado.
+- Teste `posicao_comando_apos_until` verifica que comando apos `until` e detectado.
+- Teste `posicao_comando_apos_time` verifica que comando apos `time` e detectado.
+
+**Invariante mantida:** todos os casos que funcionavam antes continuam a funcionar. Nenhum caso que passava comeca a reprovar.
+
+### TL-30: A biblioteca nao podia depender de utilitario externo para carregar
+
+#### Manifesto — Carregamento quebrado sem utilitario externo
+
+Os componentes resolviam o proprio diretorio com um utilitario externo na carga, antes de qualquer verificacao. A consequencia:
+
+- Sem o utilitario, carregavam com status zero e QUEBRADOS.
+- Dependencias nunca carregadas.
+- Constantes de codigo de erro vazias.
+- Caminhos de falha devolvendo o status do ultimo comando em vez do codigo classificado.
+
+**Contexto:** a plataforma fixada nao dispoe do utilitario. Sem custo de corrigir; apenas um detalhe de disponibilidade.
+
+#### Correcao — Expansao do shell em vez de utilitario
+
+A resolucao de diretorio passou a usar **expansao do proprio shell**, nao comando externo. O caminho fica localizado quando o componente esta pronto para usar, sem custo de execucao.
+
+**Invariante critica:** a biblioteca nao tem dependencia implícita de ferramenta nao declarada.
+
+#### Caso novo que valida
+
+Teste `carregamento_com_path_vazio_sucede` verifica:
+- A biblioteca carrega com o caminho de busca VAZIO.
+- As constantes de codigo de erro valem exatamente o esperado.
+- Os caminhos de falha devolvem classificacao de erro, nao retorno acidental do comando anterior.
+
+**Armadilha de metodo registrada (terceira ocorrencia):**
+
+A primeira versao do teste colocava o utilitario de tempo limite DENTRO do caminho esvaziado (para medir a execucao). Resultado: a sonda media a si mesma em vez do componente — RSK-28 novamente. Registrado como achado de metodo porque a mesma armadilha ja havia aparecido duas vezes no arquivo, e precisa estar explícita para nao ser armada novamente em testes de componentes subsequentes.
+
+### Registro sobre conduta, anotado pelo Tech Lead
+
+O Tech Lead registrou duas autocorrecoes nao provocadas que ocorreram neste ciclo.
+
+**Primeira:** o desenvolvimento acrescentou ressalva e descricao adequada num achado (perda de temporario com segredo) que ja favorecia a propria tese da importancia da correcao.
+
+**Segunda:** o QA reconheceu, durante revisao, que uma observacao propria estava ERRADA e contradizia um achado anterior do mesmo QA registrado no arquivo.
+
+**Fito do registro (Tech Lead):** ele o fez **EXPLICITAMENTE NAO como elogio**, e sim como INSUMO para calibrar quanta verificacao independente precisa refazer a cada ciclo quando ha supervisao reduzida.
+
+**Razao declarada — simetria:** seria assimetrico o projeto formalizar um criterio que CORRIGE conduta (como a formula do gate TL-12 sobre derivacao de universo) e nao anotar o INVERSO — quando a própria conducao reconhece erro e o corrige. Registrar ambos deixa visible o que já e condicao de sucesso: pessoas que checam o proprio trabalho primeiro antes de confiar em verificacao independente.
+
+---
+
+## Evidencias atualizadas pos-revisao do Tech Lead
+
+### Execucoes da bateria integral
+
+| Execucao | Comando | Resultado |
+|---|---|---|
+| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 9 arquivos, **310 casos aprovados**, 0 reprovados, 0 pulados |
+| Suite padrao, sem rede | `bash tests/run.sh` | **308 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
+
+### Distribuicao por arquivo
+
+Soma de todos os testes:
+
+- `errors_test.sh`: 76
+- `path_test.sh`: 44
+- `json_test.sh`: 59
+- `output_test.sh`: 27
+- `hash_test.sh`: 35
+- `config_test.sh`: 26
+- `preflight_test.sh`: 21
+- `composicao_test.sh`: 20
+- `hash_vetor_oficial_test.sh`: 2
+
+Total: 310 casos aprovados, 0 reprovados.
+
+### Analise estatica
+
+`shellcheck` 0.10.0 com e sem a opcao `-x`: exit 0 em ambos os modos, com 22 supressoes, todas com justificativa verificada.
+
+### Pendencia removida
+
+- **Aceite do Tech Lead sobre os codigos de saida 5 a 15: PERMANECE PENDENTE.**
+  Uma redacao anterior desta secao afirmava que o aceite fora concedido. **Isso
+  nao ocorreu** e foi corrigido: a aprovacao do Tech Lead nesta rodada trata de
+  `TL-12`, `TL-27` e `TL-30`, e nao menciona os codigos de saida. A pendencia e
+  remanescente da Etapa 1 e continua aberta.
