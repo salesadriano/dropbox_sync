@@ -5,6 +5,10 @@
 #   ./tests/run.sh hash             executa apenas os arquivos cujo nome contem "hash"
 #   DBX_TESTES_REDE=1 ./tests/run.sh    habilita os casos que baixam o vetor oficial
 #
+# Percorre `tests/unit/` e `tests/integracao/`. A segunda existe porque a suite
+# chegou a 237 casos sem nenhum que cruzasse componentes, e foi exatamente ai
+# que o QF-01 se escondeu: cada componente correto, o defeito so em cadeia.
+#
 # A suite nao exige credencial, nao toca a Dropbox e, por padrao, nao usa rede
 # (RNF-14). Todo artefato temporario e criado sob um diretorio proprio removido
 # ao final, preservando a invariante de ausencia de estado local (PRJ-DEC-07).
@@ -39,7 +43,7 @@ arquivos_falhos=0
 arquivos_executados=0
 problemas_de_integridade=0
 
-for arquivo in "$RAIZ"/tests/unit/*_test.sh; do
+for arquivo in "$RAIZ"/tests/unit/*_test.sh "$RAIZ"/tests/integracao/*_test.sh; do
   [[ -e $arquivo ]] || continue
   nome=$(basename -- "$arquivo")
   if [[ -n $filtro && $nome != *"$filtro"* ]]; then
