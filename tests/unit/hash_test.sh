@@ -395,7 +395,6 @@ teste_contagem_confere_com_o_tamanho_real_do_arquivo() {
 # DBX_HASH_FORMATO e o acumulador global escrito por _dbx_hash_anexar_escapes,
 # definido em lib/hash.sh. O analisador estatico nao enxerga esse uso porque ele
 # esta em outro arquivo, dai a supressao abaixo.
-# shellcheck disable=SC2034
 teste_conversao_de_escapes_e_linear_na_quantidade_de_blocos() {
   # A medicao roda em processo filho sob `timeout`. Sem esse teto, uma regressao
   # quadratica nao reprovaria: ela penduraria a suite, e um job de integracao

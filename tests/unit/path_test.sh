@@ -65,13 +65,11 @@ teste_caminho_relativo_ou_vazio_e_uso_invalido() {
 teste_nomes_com_caracteres_especiais_sao_preservados() {
   assert_igual '/pasta com espaco/arquivo.txt' \
     "$(dbx_path_remoto_normalizar '/pasta com espaco/arquivo.txt')"
-  # shellcheck disable=SC2016  # o cifrao e dado de teste: o caso verifica justamente
   # que o componente nao expande a variavel embutida no nome (RNF-10).
   assert_igual '/a/$VAR nao expandida' "$(dbx_path_remoto_normalizar '/a/$VAR nao expandida')"
   assert_igual '/a/*.txt' "$(dbx_path_remoto_normalizar '/a/*.txt')"
   assert_igual "/a/aspas'simples\"duplas" "$(dbx_path_remoto_normalizar "/a/aspas'simples\"duplas")"
   assert_igual '/a/acentuacao-cafe-uniao' "$(dbx_path_remoto_normalizar '/a/acentuacao-cafe-uniao')"
-  # shellcheck disable=SC2016  # idem: metacaracteres sao dado de teste.
   assert_igual '/a/til~cifrao$e&comercial' "$(dbx_path_remoto_normalizar '/a/til~cifrao$e&comercial')"
 }
 
@@ -253,7 +251,6 @@ teste_codigo_de_recusa_corresponde_a_taxonomia_de_erro() {
 
 teste_confinamento_preserva_nomes_adversariais() {
   local esperado
-  # shellcheck disable=SC2016  # idem: o cifrao faz parte do nome sob teste.
   esperado='/backups/nome com espaco e $cifrao.txt'
   assert_igual "$esperado" "$(dbx_path_remoto_confinar '/backups' "$esperado")"
   esperado="/backups/nome"$'\n'"quebrado.txt"
