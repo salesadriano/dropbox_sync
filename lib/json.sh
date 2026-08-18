@@ -748,3 +748,38 @@ dbx_json_descartar() {
   }
   return 0
 }
+
+# dbx_json_escapar_cadeia <texto> — codifica o texto como conteudo de cadeia
+# JSON, deixando o resultado em DBX_JSON_ESCAPADO (sem as aspas externas).
+#
+# Existe para que quem grava JSON use a MESMA base de conhecimento de quem le,
+# em vez de um segundo caminho de codificacao. Escapa os caracteres exigidos
+# pelo RFC e todo caractere de controle, o que e obrigatorio aqui: o analisador
+# recusa caractere de controle cru, entao gravar sem escapar produziria um
+# arquivo que o proprio projeto nao consegue reler.
+dbx_json_escapar_cadeia() {
+  local texto=${1-} saida='' indice caractere codigo
+  DBX_JSON_ESCAPADO=''
+  for ((indice = 0; indice < ${#texto}; indice++)); do
+    caractere=${texto:indice:1}
+    case $caractere in
+      '"') saida+='\"' ;;
+      $'\\') saida+=$'\\\\' ;;
+      $'\n') saida+='\n' ;;
+      $'\r') saida+='\r' ;;
+      $'\t') saida+='\t' ;;
+      $'\b') saida+='\b' ;;
+      $'\f') saida+='\f' ;;
+      *)
+        if [[ $caractere == [[:cntrl:]] ]]; then
+          printf -v codigo '%04x' "'$caractere"
+          saida+="\\u$codigo"
+        else
+          saida+=$caractere
+        fi
+        ;;
+    esac
+  done
+  # shellcheck disable=SC2034  # canal publico, consumido por lib/config
+  DBX_JSON_ESCAPADO=$saida
+}
