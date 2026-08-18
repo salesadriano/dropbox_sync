@@ -148,10 +148,8 @@ readonly DBX_JSON_SEP_INDICE=$'\x1f'
 
 readonly DBX_JSON_DELIMITADORES=('{' '}' '[' ']' ':' ',' '"' $'\\' ' ' $'\t' $'\n' $'\r')
 
-# shellcheck disable=SC2034  # canal de diagnostico lido pelo chamador e pela
 # suite; o analisador nao enxerga o uso porque ele esta em outro arquivo.
 DBX_JSON_ERRO=''
-# shellcheck disable=SC2034
 DBX_JSON_MOTIVO=''
 DBX_JSON_RESULTADO=''
 DBX_JSON_ANALISADO=0
@@ -491,7 +489,6 @@ _dbx_json_arranjo() {
 dbx_json_analisar() {
   local texto=${1-} sem_quebras delimitador marcado separador=$'\x01'
 
-  # shellcheck disable=SC2034  # DBX_JSON_ERRO e DBX_JSON_MOTIVO sao o canal de
   # diagnostico da falha, consumido pelo chamador e pela suite; o analisador nao
   # enxerga esse uso porque ele ocorre em outro arquivo.
   # Guarda de obsolescencia, avaliada POR CONTEXTO e nao afrouxada pelo recurso:
@@ -505,10 +502,8 @@ dbx_json_analisar() {
     return "$DBX_JSON_ERRO_USO"
   fi
 
-  # shellcheck disable=SC2034  # canal de diagnostico lido pelo chamador e pela
   # suite; o uso ocorre em outro arquivo e o analisador nao o enxerga.
   DBX_JSON_ERRO=''
-  # shellcheck disable=SC2034
   DBX_JSON_MOTIVO=''
   DBX_JSON_ERRO_DO_CONTEXTO[$_dbx_ctx]=''
   DBX_JSON_MOTIVO_DO_CONTEXTO[$_dbx_ctx]=''
@@ -731,7 +726,6 @@ dbx_json_contexto() {
   DBX_JSON_CONTEXTO=$nome
   # Espelha o estado do contexto selecionado nas variaveis de diagnostico, para
   # que elas descrevam sempre o contexto corrente.
-  # shellcheck disable=SC2034  # espelhos de diagnostico do contexto corrente
   DBX_JSON_ANALISADO=${DBX_JSON_ANALISADO_DO_CONTEXTO[$nome]:-0}
   # shellcheck disable=SC2034
   DBX_JSON_ERRO=${DBX_JSON_ERRO_DO_CONTEXTO[$nome]:-}

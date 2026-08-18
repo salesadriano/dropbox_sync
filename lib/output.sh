@@ -112,6 +112,13 @@ _dbx_output_chave_valida() {
 }
 
 # dbx_output_campo <chave> <valor> — alimenta o modelo de resultado.
+#
+# ASSIMETRIA DELIBERADA em relacao a `dbx_output_diagnostico`: o campo de
+# RESULTADO nao passa por redacao. Os valores aqui vem do proprio modelo —
+# caminhos, tamanhos, resumos — e redigi-los destruiria conteudo legitimo: um
+# caminho contendo `secret=` ou `code=` seria mascarado. O canal de diagnostico
+# e o oposto: carrega texto vindo de fora, onde a redacao e obrigatoria. A
+# guarda de fronteira de linha, essa sim, vale para os DOIS canais.
 dbx_output_campo() {
   [[ $# -ge 2 ]] || return "$DBX_OUTPUT_ERRO_USO"
   _dbx_output_chave_valida "${1-}" || return "$DBX_OUTPUT_ERRO_USO"
@@ -152,11 +159,18 @@ _dbx_output_terminar() {
 #
 # A recusa e fechada e ocorre ANTES de qualquer emissao, para nao deixar saida
 # parcial. A acao corretiva e o modo de terminador nulo.
+# Recebe o NOME do vetor a validar, e nao um vetor fixo. A versao anterior
+# guardava apenas o canal de resultado; o canal de diagnostico ficou de fora.
+# Correcao parcial com aparencia de completa (QF-01): um `error_summary`
+# multilinha, vindo do corpo remoto, atravessava o canal de diagnostico e o
+# consumidor lia CAMPO FORJADO — dois `http_status` onde um fora alimentado, o
+# forjado escolhido por quem controla a resposta.
 _dbx_output_validar_para_linha() {
-  local indice total=${#DBX_OUTPUT_CHAVES[@]}
+  local -n _vetor=$1
+  local indice total=${#_vetor[@]}
   [[ $DBX_OUTPUT_TERMINADOR == 'linha' ]] || return 0
   for ((indice = 0; indice < total; indice++)); do
-    if ! dbx_path_seguro_para_linha "${DBX_OUTPUT_VALORES[indice]}"; then
+    if ! dbx_path_seguro_para_linha "${_vetor[indice]}"; then
       return "$DBX_OUTPUT_ERRO_USO"
     fi
   done
@@ -167,7 +181,7 @@ _dbx_output_validar_para_linha() {
 dbx_output_render() {
   local indice total=${#DBX_OUTPUT_CHAVES[@]}
 
-  _dbx_output_validar_para_linha || return "$DBX_OUTPUT_ERRO_USO"
+  _dbx_output_validar_para_linha DBX_OUTPUT_VALORES || return "$DBX_OUTPUT_ERRO_USO"
 
   if [[ $DBX_OUTPUT_MODO == 'estruturada' ]]; then
     printf 'contrato=%s' "$DBX_OUTPUT_VERSAO_CONTRATO"
@@ -204,6 +218,11 @@ _dbx_output_e_sensivel() {
 # coincida com a fronteira do registro nos dois modos.
 dbx_output_render_diagnostico() {
   local indice total=${#DBX_OUTPUT_DIAG_CHAVES[@]} chave valor
+
+  # Mesma guarda do canal de resultado. Ambos os canais emitem registros que um
+  # consumidor le como pares chave-valor, entao ambos precisam da mesma
+  # protecao de fronteira.
+  _dbx_output_validar_para_linha DBX_OUTPUT_DIAG_VALORES || return "$DBX_OUTPUT_ERRO_USO"
 
   # RF-28: diagnostico pertence a saida de ERRO. Emitindo na saida padrao, ele
   # se mistura ao resultado e quebra o consumidor automatizado, que le a saida

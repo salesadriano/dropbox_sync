@@ -327,8 +327,13 @@ dbx_errors_classificar() {
 # dbx_errors_politica_retentativa <codigo_http> <error_summary> [idempotente]
 #
 # `idempotente` vale `sim` ou `nao`; omitido, assume `nao`, que e o lado seguro.
-# Valores possiveis de retorno: nenhuma, recuo_exponencial,
-# respeitar_retry_after, renovar_token_uma_vez, reiniciar, indeterminado.
+# Valores possiveis de retorno, SETE ao todo: nenhuma, recuo_exponencial,
+# respeitar_retry_after, renovar_token_uma_vez, reiniciar, retomar,
+# indeterminado.
+#
+# A versao anterior deste comentario listava seis, omitindo `retomar` — que
+# governa a retomada de sessao em partes, e portanto o pior dos sete a faltar
+# num contrato que `lib/http` lera antes de ler o codigo (TL-18).
 #
 # Sobre `indeterminado`: sem resposta HTTP nao ha como saber se a escrita foi
 # aplicada do outro lado. Devolver `nenhuma` nesse caso seria enganoso, porque
