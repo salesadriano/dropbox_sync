@@ -327,29 +327,51 @@ teste_config_nao_destroi_documento_de_outro_contexto() {
 # _guardas_de_metadado_em <funcao> <arquivo> — extrai do CODIGO o conjunto de
 # guardas que a funcao aplica sobre metadado da credencial.
 #
-# Deriva do texto da propria funcao: toda condicao que teste permissao, dono ou
-# tipo do arquivo e do diretorio.
+# CRITERIO, reenunciado. Uma divergencia entre gemeos importa quando cria um
+# SEGUNDO CAMINHO NAO GUARDADO ATE O MESMO RISCO. Nao e "metadado contra
+# conteudo": essa formulacao coincide com a certa hoje apenas porque o preflight
+# nunca alcanca o conteudo, havendo uma unica porta para a interpretacao —
+# guardar a unica porta que alcanca o risco e desenho, nao assimetria. Quando
+# houver dois pontos que interpretem corpo de resposta, uma guarda de conteudo
+# em um lado so SERA divergencia legitima, e o criterio por categoria de dado a
+# excluiria por engano.
 #
-# A EXISTENCIA (`-e`) fica de fora de proposito, e e a unica assimetria
-# legitima entre os dois: o preflight verifica AMBIENTE e trata credencial
-# ausente como estado normal antes da configuracao inicial, enquanto a leitura
-# verifica AUTORIZACAO e exige o arquivo. Incluir a existencia faria a auditoria
-# reprovar uma diferenca que e desenho, e uma auditoria que reprova por engano
-# deixa de ser consultada. A versao anterior desta auditoria comparava o
-# comportamento sobre dez modos FIXOS, e por isso era teste de regressao da
-# divergencia que existia quando foi escrita, e nao garantia de paridade —
-# guarda NOVA em um gemeo so nao reprovava nada (R2-02).
+# A EXISTENCIA (`-e` contra `-f`) fica de fora pelo mesmo criterio: o preflight
+# verifica ambiente e trata credencial ausente como estado normal antes da
+# configuracao inicial, enquanto a leitura verifica autorizacao. Nao ha segundo
+# caminho ate o risco, e sim duas perguntas diferentes.
+#
+# O RECONHECEDOR tambem deriva do codigo. A versao anterior mantinha a mao a
+# lista de nomes de variavel que contavam como metadado, e por isso guardas
+# novas sobre `%Y` ou `%i` passavam despercebidas — a mesma inversao que ja
+# fora feita para o conjunto de guardas, faltando um nivel abaixo (R3-02).
+# Agora as variaveis de metadado sao descobertas pelas proprias atribuicoes a
+# partir de `stat`, e a assinatura da guarda carrega o ESPECIFICADOR, e nao o
+# nome da variavel: assim `%a` e `%Y` nao se confundem.
 _guardas_de_metadado_em() {
-  local funcao=$1 arquivo=$2
-  awk -v alvo="$funcao" '
+  local funcao=$1 arquivo=$2 corpo variavel especificador
+  corpo=$(awk -v alvo="$funcao" '
     $0 ~ "^" alvo "\\(\\)" { dentro = 1 }
     dentro && /^}/ { dentro = 0 }
     dentro { print }
-  ' "$arquivo" |
-    grep -vE '^[[:space:]]*#' |
-    grep -oE '(modo|modo_diretorio|dono)[[:space:]]*(=~|==)[[:space:]]*[^]|&)]*|-[fdwrx][[:space:]]+"?\$(arquivo|diretorio)' |
-    sed -e 's/[[:space:]]\+/ /g' -e 's/ $//' |
-    sort -u
+  ' "$arquivo" | grep -vE '^[[:space:]]*#')
+
+  {
+    # Guardas sobre variaveis derivadas de `stat`, nomeadas pelo especificador.
+    while IFS= read -r atribuicao; do
+      [[ -n $atribuicao ]] || continue
+      variavel=${atribuicao%%=*}
+      variavel=${variavel##* }
+      especificador=$(grep -oE "%[a-zA-Z]" <<<"$atribuicao" | head -1)
+      [[ -n $variavel && -n $especificador ]] || continue
+      grep -oE "\\\$${variavel}[[:space:]]*(=~|==|!=|-(eq|ne|gt|ge|lt|le))[[:space:]]*[^]|&)]*" <<<"$corpo" |
+        sed -e "s/\\\$$variavel/$especificador/" -e 's/[[:space:]]\+/ /g' -e 's/ $//'
+    done < <(grep -oE '[a-z_]+=\$\(stat[^)]*\)' <<<"$corpo")
+
+    # Testes de arquivo sobre os caminhos da credencial, exceto existencia.
+    grep -oE '\-[fdwrxs][[:space:]]+"?\$(arquivo|diretorio)' <<<"$corpo" |
+      sed 's/[[:space:]]\+/ /g'
+  } | sort -u
 }
 
 teste_gemeos_aplicam_o_mesmo_conjunto_de_guardas_de_metadado() {
@@ -376,15 +398,20 @@ teste_auditoria_de_gemeos_detecta_guarda_nova_em_um_lado_so() {
   amostra_b=$(mktemp "$DBX_TESTES_TMP/gem.XXXXXX")
   {
     printf '%s\n' 'f_a() {'
+    printf '%s\n' '  modo=$(stat -c "%a" "$arquivo")'
+    printf '%s\n' '  dono=$(stat -c "%u" "$arquivo")'
     printf '%s\n' '  [[ $modo =~ ^[4567]00$ ]] || return 1'
     printf '%s\n' '  [[ $dono == "$EUID" ]] || return 1'
     printf '%s\n' '}'
   } >"$amostra_a"
   {
     printf '%s\n' 'f_b() {'
+    printf '%s\n' '  modo=$(stat -c "%a" "$arquivo")'
+    printf '%s\n' '  dono=$(stat -c "%u" "$arquivo")'
+    printf '%s\n' '  mtime=$(stat -c "%Y" "$arquivo")'
     printf '%s\n' '  [[ $modo =~ ^[4567]00$ ]] || return 1'
     printf '%s\n' '  [[ $dono == "$EUID" ]] || return 1'
-    printf '%s\n' '  [[ $modo_diretorio =~ ^[0-7]00$ ]] || return 1'
+    printf '%s\n' '  [[ $mtime == 0 ]] || return 1'
     printf '%s\n' '}'
   } >"$amostra_b"
   guardas_a=$(_guardas_de_metadado_em f_a "$amostra_a")
@@ -392,6 +419,8 @@ teste_auditoria_de_gemeos_detecta_guarda_nova_em_um_lado_so() {
   rm -f "$amostra_a" "$amostra_b"
   assert_diferente "$guardas_a" "$guardas_b" \
     'guarda nova em um lado so precisa produzir conjuntos diferentes'
+  assert_contem '%Y' "$guardas_b" \
+    'o reconhecedor precisa enxergar especificador novo sem que ninguem o liste'
 }
 
 teste_gemeos_decidem_igual_em_todo_o_espaco_de_permissao() {

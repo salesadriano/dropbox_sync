@@ -10,7 +10,7 @@
 | Destinatario do handoff | QA Expert |
 | Data do registro | 2026-08-18 |
 | Documentos relacionados | [System Design](../arquitetura/system-design.md) · [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Registro anterior — Adaptadores (JSON e Output)](2026-08-18_entrega-lib-json-e-lib-output.md) |
-| Status | **Ciclo 1 de QA concluido: aprovado com ressalva.** Seis problemas identificados e corrigidos (P3-01 a P3-05, DP-11). Bateria integral pos-correcao: 9 arquivos, 298 casos aprovados, 0 reprovados, 0 pulados. Shellcheck exit 0. Condicao para fechamento: aceite do Tech Lead sobre codigos 5 a 15. |
+| Status | **Ciclos 1, 2 e 3 de QA concluidos: aprovado.** Seis problemas identificados e corrigidos no Ciclo 1 (P3-01 a P3-05, DP-11). Ciclos 2 e 3: redesenho das auditorias de utilitarios, posicoes de comando e guardas. Cobertura ampliada de 298 para 307 casos aprovados. Bateria integral pos-ciclo-3: 9 arquivos, 307 casos aprovados, 0 reprovados, 0 pulados. Shellcheck exit 0. Condicao para fechamento: aceite do Tech Lead sobre codigos 5 a 15. |
 
 ---
 
@@ -211,8 +211,8 @@ Resultado real, obtido por execucao da suite neste ambiente.
 
 | Execucao | Comando | Resultado |
 |---|---|---|
-| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 9 arquivos, **298 casos aprovados**, 0 reprovados, 0 pulados |
-| Suite padrao, sem rede | `bash tests/run.sh` | **296 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
+| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 9 arquivos, **307 casos aprovados**, 0 reprovados, 0 pulados |
+| Suite padrao, sem rede | `bash tests/run.sh` | **305 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
 
 ### Distribuicao por arquivo
 
@@ -220,15 +220,15 @@ Soma de todos os testes:
 
 - `errors_test.sh`: 76
 - `path_test.sh`: 44
-- `json_test.sh`: 55
+- `json_test.sh`: 59
 - `output_test.sh`: 27
 - `hash_test.sh`: 35
-- `config_test.sh`: 25
-- `composicao_test.sh`: 18
-- `preflight_test.sh`: 16
+- `config_test.sh`: 26
+- `composicao_test.sh`: 20
+- `preflight_test.sh`: 18
 - `hash_vetor_oficial_test.sh`: 2
 
-Total: 298 casos aprovados, 0 reprovados.
+Total: 307 casos aprovados, 0 reprovados.
 
 ### Analise estatica
 
@@ -282,7 +282,7 @@ Novas pendencias tecnologicas estruturais: nenhuma. Ambos os componentes sao aut
 
 ## Roteiro para o QA Expert
 
-1. **Reexecutar suite em dois modos:** `bash tests/run.sh` e `DBX_TESTES_REDE=1 bash tests/run.sh`, conferindo os numeros **289 e 291 casos aprovados** (0 reprovados em ambos).
+1. **Reexecutar suite em dois modos:** `bash tests/run.sh` e `DBX_TESTES_REDE=1 bash tests/run.sh`, conferindo os numeros **305 e 307 casos aprovados** (0 reprovados em ambos).
 
 2. **Reexecutar shellcheck:** `shellcheck -x lib/preflight.sh lib/config.sh tests/unit/preflight_test.sh tests/unit/config_test.sh`, conferindo exit 0. Observar as supressoes em SC2034 (canais publicos) e SC2016 (entrega de script literal).
 
@@ -315,13 +315,13 @@ Os dois arquivos de teste (`preflight_test.sh` e `config_test.sh`) seguem o padr
 
 ### Estado final da suite
 
-Neste ponto da Etapa 3, a suite ja cobre:
+Neste ponto apos os Ciclos 2 e 3 de QA, a suite ja cobre:
 - Dominio: `lib/errors` (76 casos), `lib/path` (44), `lib/hash` (35)
-- Adaptadores: `lib/json` (55), `lib/output` (27), `lib/preflight` (14), `lib/config` (20)
-- Composicao: (18 casos, incluindo 6 novos)
+- Adaptadores: `lib/json` (59), `lib/output` (27), `lib/preflight` (18), `lib/config` (26)
+- Composicao: (20 casos, incluindo redesenho das auditorias)
 - Vetor oficial: (2 casos)
 
-Total: 291 casos. Nenhum foi deixado de lado para a Etapa 4.
+Total: 307 casos. Nenhum foi deixado de lado para a Etapa 4.
 
 ---
 
@@ -415,6 +415,87 @@ O QA Expert executou a suite de testes contra o codigo entregue e registrou as s
 - **Distribuicao por arquivo:** errors 76, path 44, json 55, output 27, hash 35, config 25, composicao 18, preflight 16, vetor oficial 2.
 - **Shellcheck 0.10.0:** exit 0 com e sem a opcao de seguir origens. 22 supressoes, todas justificadas.
 - **Validacao por mutacao das correcoes:** 6 mutacoes de forma nao obvia, todas detectadas.
+
+### Pendencia que permanece
+
+Aceite do Tech Lead sobre os codigos de saida 5 a 15 (remanescente da Etapa 1, bloqueando commit).
+
+---
+
+## Ciclos 2 e 3 de QA — o redesenho das auditorias
+
+### Abertura — o diagnostico que orientou as duas rodadas
+
+Converter inspecao em auditoria foi certo, mas insuficiente. O que escala nao e TER uma auditoria: e uma auditoria cujo ESCOPO DERIVE DO CODIGO, e nao de uma lista mantida a mao. As duas auditorias escritas no ciclo anterior eram listas a mao, e ambas eram cegas exatamente onde a lista terminava. A conclusao ja havia se cumprido parcialmente — a auditoria de gemeos apanhou o proprio desenvolvimento numa divergencia — e ainda assim as duas ficaram cegas.
+
+Esta licao geral do projeto: a verificacao que nao se autoexecuta da prova é, na melhor das hipoteses, um aviso que sera ignorado; na pior, um registro falso de seguranca.
+
+### R2-01: a auditoria de utilitarios era circular
+
+**Problema original:** a auditoria extraia invocacoes comparando contra uma lista fixa de vinte nomes escrita no proprio teste. O cenario que o comentario declarava cobrir — a biblioteca passar a invocar um utilitario NOVO — nao era detectado, porque o nome novo nao estava na lista de busca. Oito utilitarios injetados, zero reprovacoes. Segunda cegueira: a ancora excluia barra a esquerda, entao invocacao por caminho absoluto escapava.
+
+**Redesenho:** os candidatos saem do texto do proprio codigo. Toda palavra em posicao de comando e coletada, e dela subtraem-se coisas que TAMBEM derivam do codigo ou do shell:
+- Embutidos e palavras reservadas obtidos do proprio shell
+- Funcoes do projeto pelo prefixo
+- Nomes de variavel extraidos das proprias atribuicoes
+- Blocos de literal de vetor
+- Rotulos de `case`
+- Vocabulario de argumentos passados a funcoes do projeto
+
+Sobra uma lista de EXCECOES com cinco nomes, e essa e a unica coisa mantida a mao. A inversao e o ponto: manter excecoes e barato e visivel; manter o universo de nomes possiveis e impossivel.
+
+**Resultado medido:** de zero em oito para oito em oito; invocacao por caminho absoluto de utilitario nao exigido tambem detectada. Ha caso que prova a discriminacao nos DOIS sentidos, porque falso positivo tambem e defeito: uma auditoria que reprova por engano deixa de ser consultada.
+
+**Argumento empirico:** a auditoria redesenhada apanhou o proprio autor, ao detectar que o utilitario de busca introduzido pela varredura por idade nao constava do preflight. Foi a primeira vez em oito instancias desta classe que a verificacao chegou antes de qualquer revisao humana.
+
+### R3-01: o ponto cego era mais largo — quatro formas
+
+**Problema original:** a classe de posicao de comando cobria inicio de linha e separadores, mas nao abertura de bloco nem as palavras reservadas que abrem lista de comandos. Tres das quatro formas cegas eram idiomaticas, e nao estilo de conveniencia.
+
+**Diagnostico da causa:** ancorar a expressao no separador nao servia, porque a propria ancora consumia a correspondencia e o comando seguinte ficava de fora.
+
+**Redesenho:** a extracao passou a NORMALIZAR — todo separador e toda palavra reservada que abre lista viram quebra de linha, e o primeiro campo de cada linha resultante e a posicao de comando. As quatro formas entraram na amostra sintetica da prova, para a correcao nascer pinada.
+
+**Verificado:** as quatro formas sao detectadas.
+
+### R2-02: o criterio dos gemeos, reenunciado
+
+**Contexto:** o QA havia injetado uma divergencia e a auditoria de composicao a detectara. Agora o QA concedeu que aquela divergencia estava fora do escopo, e reformulou o criterio de modo mais forte: uma divergencia entre gemeos importa quando cria um SEGUNDO CAMINHO NAO GUARDADO ATE O MESMO RISCO.
+
+**Licao registrada:** a razao antes declarada — metadado contra conteudo — era fragil, e por que: ela coincide com o criterio certo apenas porque o preflight nunca alcanca o conteudo, havendo uma unica porta para a interpretacao. Guardar a unica porta que alcanca o risco e desenho, nao assimetria. Quando houver dois pontos que interpretem corpo de resposta, uma guarda de conteudo em um lado so SERA divergencia legitima, e o criterio por categoria de dado a excluiria por engano.
+
+**Reenunciacao:** o criterio foi reenunciado pelo alcance ate o risco no proprio codigo da auditoria. A exclusao da existencia permanece, agora justificada pelo criterio novo: preflight e leitura fazem perguntas diferentes, e nao ha segundo caminho ate o mesmo risco.
+
+### R3-02: a mesma inversao faltava um nivel abaixo
+
+**Problema original:** o conjunto de guardas passara a derivar do codigo, mas o RECONHECEDOR do que conta como guarda continuava mantido a mao, como lista de nomes de variavel. Consequencia medida pelo QA: guardas novas sobre data de modificacao e sobre inode nao eram detectadas.
+
+**Redesenho:** as variaveis de metadado passam a ser descobertas pelas proprias atribuicoes a partir do utilitario de inspecao, e a assinatura da guarda carrega o ESPECIFICADOR de formato, e nao o nome da variavel, de modo que especificadores diferentes nao se confundem. O conjunto de operadores de comparacao tambem foi ampliado, porque a versao inicial so reconhecia igualdade e correspondencia, deixando comparacoes numericas de fora.
+
+**Verificado:** guardas novas sobre data de modificacao e sobre inode passam a ser detectadas.
+
+**Divergencia registrada, para decisao:** com o reconhecedor derivado, uma guarda sobre TAMANHO tambem passa a ser detectada. O QA havia registrado que nao detecta-la estaria correto, por considera-la fora do escopo. A implementacao mantem a deteccao, e a razao e explicita: excluir o especificador de tamanho exigiria uma excecao mantida a mao dentro do reconhecedor, que e exatamente o que esta rodada eliminou. Alem disso, pelo criterio reenunciado, o tamanho e alcancavel pelos dois gemeos, o que faz de uma guarda em um lado so uma divergencia legitima. Fica para o QA confirmar ou refutar.
+
+### Sugestao de metodo adotada
+
+**Problema:** executar um arquivo de teste isoladamente reprovava casos por falta do ambiente que o executor monta, produzindo diagnostico enganoso, a ponto de sugerir que o executor mascarava falhas.
+
+**Solucao:** o arquivo passou a RECUSAR-SE a rodar, com mensagem explicita indicando o comando correto e o motivo. Falha clara em vez de resultado que engana.
+
+### Confirmado sem ressalva pelo QA
+
+- **Criterio duplo da varredura de orfaos:** verificado nas tres direcoes: orfao antigo com identificador de processo vivo removido; orfao recente preservado, porque corresponde a gravacao em curso; dez gravacoes concorrentes produzindo um arquivo e nenhum orfao; e seis interrupcoes incondicionais seguidas de gravacao sem deixar orfao.
+
+- **Mutacao do escape da barra invertida:** passou a reprovar tambem nos testes do proprio componente de interpretacao, e nao apenas nos de configuracao. Nas palavras do QA, a propriedade passou a ser dona de si.
+
+- **Fronteira de confianca:** a registrada corresponde ao comportamento, sem prometer mais do que entrega.
+
+### Evidencias atualizadas pos-ciclos-2-e-3
+
+- **Suite completa com vetor oficial habilitado:** 9 arquivos, **307 casos aprovados**, 0 reprovados, 0 pulados.
+- **Suite padrao, sem rede:** **305 aprovados**, 0 reprovados, 2 pulados.
+- **Distribuicao por arquivo:** errors 76, json 59, path 44, hash 35, output 27, config 26, composicao 20, preflight 18, vetor oficial 2.
+- **Shellcheck 0.10.0:** exit 0 com e sem a opcao de seguir origens.
 
 ### Pendencia que permanece
 

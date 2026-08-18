@@ -20,6 +20,17 @@ set -u
 DBX_HARNESS_RAIZ=${DBX_HARNESS_RAIZ:-$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}
 export DBX_HARNESS_RAIZ
 
+# Executar um arquivo de teste isoladamente, sem o ambiente que o executor
+# monta, fazia casos reprovarem por falta de area temporaria — diagnostico
+# enganoso, que chega a sugerir que o executor mascara falhas. A recusa e
+# explicita e imediata: falha clara em vez de resultado que engana.
+if [[ -z ${DBX_TESTES_TMP:-} ]]; then
+  printf 'Este arquivo de teste precisa do ambiente montado pelo executor.\n' >&2
+  printf 'Use: bash tests/run.sh [filtro]\n' >&2
+  printf 'Motivo: DBX_TESTES_TMP nao esta definida.\n' >&2
+  exit 2
+fi
+
 # ---------------------------------------------------------------------------
 # Assercoes. Toda assercao que falha encerra o caso de teste corrente.
 # ---------------------------------------------------------------------------

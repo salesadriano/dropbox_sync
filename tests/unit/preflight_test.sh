@@ -240,6 +240,13 @@ _comandos_externos_de() {
   # Descarta, nesta ordem: comentarios; literais entre aspas, porque conteudo de
   # mensagem nao e codigo; BLOCOS DE LITERAL DE VETOR, cujas linhas de
   # continuacao sao indistinguiveis de linhas de comando; e rotulos de `case`.
+  #
+  # Depois NORMALIZA: todo separador de comando e toda palavra reservada que
+  # abre lista vira quebra de linha, e o primeiro campo de cada linha resultante
+  # e a posicao de comando. Ancorar a expressao no separador nao servia: a
+  # propria ancora consumia a correspondencia e o comando seguinte ficava de
+  # fora — era por isso que `then`, `do`, `else` e abertura de bloco eram cegos
+  # (R3-01), e as tres primeiras sao idiomaticas, nao estilo de conveniencia.
   sed -e 's/^[[:space:]]*#.*//' -e "s/'[^']*'/ /g" -e 's/"[^"]*"/ /g' "$@" |
     awk '
       /^[[:space:]]*(declare[[:space:]]+-[a-zA-Z]+[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?=\(/ { dentro = 1; next }
@@ -248,8 +255,10 @@ _comandos_externos_de() {
       { print }
     ' |
     grep -vE '^[[:space:]]*[^|&;()]+([[:space:]]*\|[[:space:]]*[^|&;()]+)*[[:space:]]*\)' |
-    grep -oE '(^|[;&|(]|&&|\|\|)[[:space:]]*[/a-zA-Z][-_/a-zA-Z0-9.]*([[:space:]]|$)' |
-    grep -oE '[/a-zA-Z][-_/a-zA-Z0-9.]*' |
+    sed -E -e 's/&&/\n/g' -e 's/\|\|/\n/g' -e 's/[;&|(){}!]/\n/g' \
+      -e 's/\<(then|do|else|elif|in)\>/\n/g' |
+    awk '{ print $1 }' |
+    grep -vE '[$:=]' |
     sed 's|.*/||' |
     grep -E '^[a-z][a-z0-9_-]*$' |
     sort -u
@@ -268,9 +277,22 @@ _nomes_de_variavel_de() {
   } 2>/dev/null | grep -E '^[a-z_][a-z0-9_]*$' | sort -u
 }
 
-# _nao_e_comando_externo <palavra> <nomes_de_variavel>
+# _vocabulario_de_argumento_de <arquivo...> — palavras passadas como ARGUMENTO
+# a funcoes do projeto. Tambem derivado do codigo: sao termos do dominio, como
+# nomes de tipo e de classe, que aparecem em posicao de comando apenas quando a
+# linha e reescrita pela normalizacao.
+_vocabulario_de_argumento_de() {
+  grep -ohE '(_dbx_|dbx_)[a-z_]+([[:space:]]+[^|&;()#]*)?' "$@" |
+    sed -E 's/^[^[:space:]]+[[:space:]]*//' |
+    tr ' ' '\n' |
+    grep -E '^[a-z][a-z0-9_-]*$' |
+    sort -u
+}
+
+# _nao_e_comando_externo <palavra> <nomes_de_variavel> <vocabulario>
 _nao_e_comando_externo() {
-  local palavra=$1 variaveis=$2
+  local palavra=$1 variaveis=$2 vocabulario=${3-}
+  [[ -n $vocabulario ]] && grep -qxF "$palavra" <<<"$vocabulario" && return 0
   [[ $palavra == dbx_* || $palavra == _dbx_* ]] && return 0
   compgen -b | grep -qxF "$palavra" && return 0
   compgen -k | grep -qxF "$palavra" && return 0
@@ -279,10 +301,11 @@ _nao_e_comando_externo() {
   # visivel; manter o universo de nomes possiveis e impossivel — foi essa
   # inversao que faltou na versao anterior desta auditoria.
   #
-  # `openssl` e `shasum` sao membros da familia de resumo, cuja presenca e
+  # `sha256sum`, `openssl` e `shasum` sao membros da familia de resumo, cuja
+  # presenca e
   # verificada em conjunto por `dbx_hash_verificar_dependencias`, e nao
   # individualmente: exigir os tres reprovaria ambiente que tem apenas um.
-  local excecoes=' sudo env openssl shasum '
+  local excecoes=' sudo env sha256sum openssl shasum '
   [[ $excecoes == *" $palavra "* ]] && return 0
   return 1
 }
@@ -292,11 +315,12 @@ teste_todo_comando_externo_de_lib_e_exigido_pelo_preflight() {
   # de vinte nomes escrita no proprio teste, e portanto era circular: o cenario
   # que o comentario declarava cobrir — a biblioteca invocar um utilitario NOVO
   # — nao era detectado, porque o nome novo nao estava na lista de busca.
-  local comando faltantes='' variaveis
+  local comando faltantes='' variaveis vocabulario
   variaveis=$(_nomes_de_variavel_de "$DBX_HARNESS_RAIZ"/lib/*.sh)
+  vocabulario=$(_vocabulario_de_argumento_de "$DBX_HARNESS_RAIZ"/lib/*.sh)
   while IFS= read -r comando; do
     [[ -n $comando ]] || continue
-    _nao_e_comando_externo "$comando" "$variaveis" && continue
+    _nao_e_comando_externo "$comando" "$variaveis" "$vocabulario" && continue
     case " $DBX_PREFLIGHT_UTILITARIOS " in *" $comando "*) continue ;; esac
     faltantes+=" $comando"
   done < <(_comandos_externos_de "$DBX_HARNESS_RAIZ"/lib/*.sh)
@@ -309,15 +333,23 @@ teste_auditoria_de_comandos_enxerga_utilitario_fora_de_qualquer_lista() {
   # era detectada. A que faltava era a biblioteca passar a invocar algo novo.
   local amostra extraidos
   amostra=$(mktemp "$DBX_TESTES_TMP/amostra.XXXXXX")
+  # As QUATRO formas de posicao de comando, e nao apenas a de linha propria: as
+  # tres que faltavam — apos abertura de bloco, apos `then` e apos `do` — sao
+  # idiomaticas, e nao estilo de conveniencia. A amostra cobre todas para que a
+  # correcao nasca pinada.
   {
     printf '%s\n' 'saida=$(cut -d: -f1 "$arquivo")'
     printf '%s\n' '/usr/bin/paste "$a" "$b"'
     printf '%s\n' 'date +%s'
+    printf '%s\n' 'if [[ -n $1 ]]; then touch "$a"; fi'
+    printf '%s\n' 'for _x in a; do du -sh "$a"; done'
+    printf '%s\n' 'if [[ -n $1 ]]; then :; else expr 1 + 1; fi'
+    printf '%s\n' '{ sort "$a"; }'
   } >"$amostra"
   extraidos=$(_comandos_externos_de "$amostra")
   rm -f "$amostra"
   local esperado
-  for esperado in cut paste date; do
+  for esperado in cut paste date touch du expr sort; do
     assert_contem "$esperado" "$extraidos" \
       "a extracao precisa enxergar '$esperado', que nao consta de lista alguma"
   done
