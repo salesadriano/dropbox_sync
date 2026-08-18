@@ -10,7 +10,7 @@
 | Destinatario do handoff | QA Expert |
 | Data do registro | 2026-08-18 |
 | Documentos relacionados | [System Design](../arquitetura/system-design.md) · [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Registro anterior — Camada de Dominio](2026-08-17_entrega-camada-dominio.md) |
-| Status | **Entrega completa, Ciclo 3 de QA aprovado com ressalva.** Ciclo 1: 13 defeitos (2 ALTA, 7 MEDIA-ALTA/MEDIA, 4 BAIXA), todos corrigidos com casos de teste. Ciclo 2: 7 ressalvas verificadas e corrigidas (3 MEDIA, 4 BAIXA). Ciclo 3 (QA): Contexto Nomeado validado por injetividade sondada em tres premissas e revalidacao de colisoes; vazamento de nos em caminho de excecao (E4-01) corrigido; justificativa de indistinguibilidade reescrita; contramedida RSK-28 verificada por auditoria estatica (3 ocorrencias encontradas); cobertura sondada e validada. Parecer em [qa-validacao-lib-json-e-lib-output.md](2026-08-18_qa-validacao-lib-json-e-lib-output.md). |
+| Status | **Entrega completa e APROVADA COM RESSALVA. Ciclo 3 finalizado.** Ciclo 1: 13 defeitos (2 ALTA, 7 MEDIA-ALTA/MEDIA, 4 BAIXA), todos corrigidos com casos de teste. Ciclo 2: 7 ressalvas verificadas e corrigidas (3 MEDIA, 4 BAIXA). Ciclo 3 (QA): Contexto Nomeado validado por injetividade sondada em tres premissas e revalidacao de colisoes; vazamento de nos em caminho de excecao (E4-01) corrigido; justificativa de indistinguibilidade reescrita; contramedida RSK-28 verificada por auditoria estatica (3 ocorrencias encontradas); cobertura sondada e validada. Parecer final: bateria integral 239 aprovados, 0 reprovados, 0 pulados. Vetor oficial de content_hash confirmado ponta a ponta (RF-34). Integridade estrutural validada: seis ordens de carregamento, carga tripla, espaco de nomes, 36 funcoes publicas sem colisao, coerencia de codigos de saida em dez situacoes. Suite de composicao criada e integrada (12 casos). Parecer em [qa-validacao-lib-json-e-lib-output.md](2026-08-18_qa-validacao-lib-json-e-lib-output.md). |
 
 ---
 
@@ -152,12 +152,12 @@ Resultado real, obtido por execucao da suite neste ambiente — nao estimado.
 
 | Execucao | Comando | Resultado |
 |---|---|---|
-| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 6 arquivos, **239 casos aprovados**, 0 reprovados, 0 pulados |
-| Suite padrao, sem rede | `bash tests/run.sh` | **237 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
+| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 7 arquivos, **251 casos aprovados**, 0 reprovados, 0 pulados |
+| Suite padrao, sem rede | `bash tests/run.sh` | **249 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
 
-Por arquivo: `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 55, `output_test.sh` 27, `hash_test.sh` 35, `hash_vetor_oficial_test.sh` 2.
+Por arquivo: `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 55, `output_test.sh` 27, `hash_test.sh` 35, `composicao_test.sh` 12, `hash_vetor_oficial_test.sh` 2.
 
-`shellcheck` 0.10.0 com `-x`: exit 0. RNF-13 mantido.
+`shellcheck` 0.10.0 com `-x`: exit 0, com 15 supressoes, todas verificadas como ainda necessarias. RNF-13 mantido.
 
 ### Ciclo TDD
 
@@ -636,3 +636,92 @@ Resultado da suite apos correcoes de ciclo 3:
 
 - **Aceite do Tech Lead** sobre os codigos de saida 5 a 15 (remanescente de ciclo 1).
 - **Titular do copyright** no LICENSE (remanescente de ciclo 1).
+
+---
+
+## Parecer final do estado completo — correcoes de composicao e suite de integracao
+
+### Contexto final
+
+O QA Expert emitiu parecer final do estado completo. Decisao: **APROVADO COM RESSALVA**. Bateria integral, incluindo rede: 251 casos aprovados, 0 reprovados, 0 pulados. Os dois casos antes pulados (dependentes de `DBX_TESTES_REDE=1`) fecharam. O vetor oficial de content_hash foi confirmado contra o arquivo real da Dropbox, por arquivo e por fluxo — RF-34 verificado ponta a ponta. Auditoria de integridade estrutural executada: seis ordens de carregamento, carga tripla, ausencia de globais sem prefixo, 36 funcoes publicas sem colisao, e coerencia de codigos de saida em dez situacoes. Tudo limpo.
+
+### QF-01: defeito de composicao, e a pergunta que ele levanta
+
+**Manifestacao:** cada componente estava individualmente correto. O defeito so existia em cadeia — a composicao de dois componentes irmaos produzia campo forjado.
+
+**Detalhe do defeito:** a guarda de seguranca de linha exigida em E2-05 fora aplicada a `dbx_output_render` e NAO ao irmao `dbx_output_render_diagnostico`. Correcao parcial com aparencia de completa.
+
+**Reproducao e resumo de erro multilinha como viria de corpo remoto:** o canal de resultado recusa com status 2; o canal de diagnostico emitia com status 0, produzindo dois campos `http_status` onde apenas um fora alimentado, o segundo dizendo `200` e um campo `resultado=sucesso` inexistente. Importante: isso nao e corrupcao, e sim campo forjado controlado por quem controla a resposta remota. O QA nao reprovou porque o canal de resultado estava guardado, o codigo de saida nao era afetado, a redacao por valor funcionava e nenhum segredo vazava — mas classificou como bloqueante da Etapa 3.
+
+**Correcao aplicada:** o validador passou a receber o NOME do vetor a validar, e ambos os canais o invocam antes de qualquer emissao. Casos na suite de integracao: `ambos_os_canais_de_saida_recusam_valor_que_parte_o_registro` e `nenhum_canal_emite_registro_forjado_antes_de_recusar`. A mutacao que remove a guarda do canal de diagnostico reprova 2 casos.
+
+**A pergunta que ele levanta — e a resposta:** "onde mais uma guarda foi aplicada a um caminho e nao ao irmao?" A auditoria encontrou uma assimetria adicional, e ela e DELIBERADA: a redacao de segredo se aplica ao canal de diagnostico e nao ao de resultado. A razao: os valores de resultado vem do modelo interno — caminhos, tamanhos, resumos — e redigi-los destruiria conteudo legitimo, porque um caminho contendo `secret=` ou `code=` seria mascarado. O canal de diagnostico e o oposto, carrega texto vindo de fora. A guarda de fronteira de linha, essa sim, vale para os dois.
+
+### TL-12: procedencia do nome de contexto, e a consequencia agravada
+
+**Confirmacao de risco pelo QA Expert:** o QA concordou com o Tech Lead e acrescentou consequencia que nao estava registrada: derivar o nome de contexto de uma tag remota nao e apenas brecha de procedencia — produz COLISAO COM PERDA DE DOCUMENTO. Dois corpos de erro com tags coincidentes gravam no mesmo contexto, e o segundo destroi o primeiro. E exatamente o modo de falha que o contexto nomeado existe para impedir.
+
+**Estado de testes antes da auditoria:** casos sobre procedencia na suite eram ZERO, e o ciclo anterior testou o validador de alfabeto e a mutacao no validador, concluindo satisfeito o RNF-24 — mas o criterio 3 e sobre procedencia no SITIO DE CHAMADA, propriedade diferente da validacao de formato. Implementada a auditoria estatica correspondente: nenhum uso de `dbx_json_contexto` em lib/ ou commands/ pode receber valor que nao seja literal do alfabeto permitido ou a variavel de restauracao publicada pelo proprio componente. Verificado que a auditoria reprova quando um sitio derivado e introduzido.
+
+**Caso complementar demonstra o risco concreto:** as tags reais da Dropbox passam pelo alfabeto, e e justamente por passarem que derivar o nome delas seria perigoso — a colisao entre duas respostas de mesma tag nao seria barrada por validacao de formato.
+
+### TL-18: contrato de politica de retentativa
+
+**Lacuna encontrada:** o comentario de contrato listava seis valores e a funcao emite sete. Faltava `retomar`, que governa a retomada de sessao em partes — o pior dos sete a omitir de um contrato que lib/http lera antes de ler o codigo.
+
+**Correcao aplicada:** contrato foi corrigido com a lista completa. A nota do que faltava foi incorporada como observacao historica.
+
+### Suite de integracao: por que ela precisava existir
+
+**Constatacao:** a suite chegou a 237 casos sem um unico que cruzasse componentes, e foi exatamente ali que o QF-01 se escondeu. Nenhum teste de unidade podia enxerga-lo, porque nenhum olhava para dois caminhos irmaos ao mesmo tempo.
+
+**Criacao da suite:** novo arquivo `tests/integracao/composicao_test.sh` com 12 casos. O executor foi atualizado para percorrer tambem esse diretorio.
+
+**Eixos cobertos na suite de integracao:**
+
+1. Ordens de carregamento: seis permutacoes.
+2. Carga multipla: verificando idempotencia da guarda de carga.
+3. Espaco de nomes global: nenhuma variavel nem funcao sem prefixo do projeto.
+4. Ausencia de colisao entre as funcoes publicas.
+5. Coerencia dos codigos de saida derivados da taxonomia por todos os componentes.
+6. O caminho que produziu o QF-01.
+7. Cobertura de irmaos: verificando que toda funcao de consulta de lib/json recusa quando nao ha documento analisado.
+
+**Achado de metodo:** a primeira versao da sonda de globais reprovava por causa de variaveis mantidas pelo proprio bash, que apareciam por causa da sonda e nao da biblioteca. A sonda estava se medindo — manifestacao da classe RSK-28, agora dentro da suite criada para cobrir composicao.
+
+### Revisao das supressoes de shellcheck
+
+**Reconhecimento de erro anterior:** o numero correto era 25, e nao 7 como vinha sendo repassado.
+
+**Metodo de revisao:** a revisao nao se limitou a recontar: cada supressao foi removida individualmente e o analisador reexecutado, para verificar se ainda produzia aviso. Dez supressoes haviam PERDIDO A RAZAO DE SER com as reescritas dos ultimos ciclos — sete SC2034 e tres SC2016 — e foram removidas. Restam 15, todas com justificativa e todas ainda necessarias, verificado pelo mesmo metodo.
+
+**Estado final:** o analisador continua com saida limpa, exit 0.
+
+### Mutacao nula registrada, conforme RSK-27
+
+**Descricao:** a mutacao que remove a verificacao de documento analisado de `dbx_json_chaves_nul` nao e detectada, e a razao foi apurada: sem analise previa a raiz do contexto nao existe, entao a funcao de localizacao ja falha fechada. A verificacao e redundancia defensiva, nao cobertura ausente.
+
+**Invariante que a torna nula:** nenhuma consulta responde sem documento analisado — esta pinada pelo caso de cobertura de irmaos, que varre as sete funcoes de consulta.
+
+### Autocritica do QA, registrada a pedido dele
+
+**Assuncao de responsabilidade:** o QA assumiu o erro do ciclo 3 sem rodeio: testou o validador de alfabeto e a mutacao no validador e declarou RNF-24 satisfeito, quando o criterio 3 trata de propriedade diferente (procedencia no sitio de chamada), que nao testou. Aceitou a mutacao vizinha como equivalente a que o criterio enuncia — RSK-27 reincidindo na forma que o proprio RSK-27 descreve.
+
+**Recomendacao registrada:** o risco deve incorporar o caso com o QA como sujeito, e nao apenas o desenvolvimento. A monitoracao dessa classe de risco agora e responsabilidade compartilhada.
+
+---
+
+## Evidencias atualizadas do estado final
+
+- **Suite completa com vetor oficial habilitado:** `DBX_TESTES_REDE=1 bash tests/run.sh` → 7 arquivos, **251 casos aprovados**, 0 reprovados, 0 pulados.
+- **Suite padrao, sem rede:** `bash tests/run.sh` → **249 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`).
+- **Por arquivo:** `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 55, `output_test.sh` 27, `hash_test.sh` 35, `composicao_test.sh` 12, `hash_vetor_oficial_test.sh` 2.
+- **shellcheck 0.10.0 com `-x`:** exit 0, com 15 supressoes, todas verificadas como ainda necessarias.
+- **DP-20 resolvida:** LICENSE publicado com Copyright (c) 2026 Adriano Sales Santos.
+- **Versionamento:** dezesseis commits na branch de feature, PR numero 1 aberto. O Senior Developer segue sem commitar conforme instrucao.
+
+---
+
+## Pendencia final
+
+- **Aceite do Tech Lead** sobre os codigos de saida 5 a 15 (permanece em aberto).
