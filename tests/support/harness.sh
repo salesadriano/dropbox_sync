@@ -102,6 +102,29 @@ assert_arquivo_ausente() {
   _harness_falhar "$descricao" "caminho presente indevidamente: [$caminho]"
 }
 
+# _dbx_estado_da_maquina — instantaneo do host, so com recursos internos do
+# shell. Ler `/proc` por redirecionamento evita introduzir dependencia de
+# utilitario externo que teria de passar pelo preflight.
+_dbx_estado_da_maquina() {
+  local carga='desconhecida' memoria='desconhecida' processadores=0 campo valor
+  [[ -r /proc/loadavg ]] && read -r carga </proc/loadavg
+  if [[ -r /proc/meminfo ]]; then
+    while read -r campo valor _; do
+      [[ $campo == 'MemAvailable:' ]] && {
+        memoria=$valor
+        break
+      }
+    done </proc/meminfo
+  fi
+  if [[ -r /proc/cpuinfo ]]; then
+    while read -r campo _; do
+      [[ $campo == 'processor' ]] && processadores=$((processadores + 1))
+    done </proc/cpuinfo
+  fi
+  printf 'processadores=%s memoria_disponivel_kB=%s carga=[%s]' \
+    "$processadores" "$memoria" "$carga"
+}
+
 # _agora_ms — relogio monotonico em milissegundos, para medir custo relativo.
 _agora_ms() {
   if [[ -n ${EPOCHREALTIME:-} ]]; then
@@ -157,6 +180,31 @@ pular() {
 # Execucao
 # ---------------------------------------------------------------------------
 
+# _harness_registrar_reprovacao <caso> <status> <estado_inicial> <arquivo_saida>
+#
+# Grava o diagnostico em ARQUIVO que sobrevive a execucao, e nao apenas na saida
+# padrao. Uma reprovacao intermitente so e diagnosticavel se, no momento em que
+# ocorre, ficarem registrados o caso, os valores medidos e o estado do host —
+# sem depender de alguem lembrar depois o que estava rodando na maquina.
+_harness_registrar_reprovacao() {
+  local caso=$1 status=$2 estado_inicial=$3 arquivo_saida=$4 linha
+  local diario=${DBX_HARNESS_DIARIO:-}
+  [[ -n $diario ]] || return 0
+  {
+    printf '=== reprovacao ===\n'
+    printf 'caso: %s\n' "$caso"
+    printf 'arquivo: %s\n' "${DBX_HARNESS_ARQUIVO:-desconhecido}"
+    printf 'momento: %s\n' "${EPOCHREALTIME:-$SECONDS}"
+    printf 'status: %s\n' "$status"
+    printf 'host_no_inicio: %s\n' "$estado_inicial"
+    printf 'host_na_falha:  %s\n' "$(_dbx_estado_da_maquina)"
+    printf 'diagnostico do caso:\n'
+    while IFS= read -r linha; do printf '  %s\n' "$linha"; done <"$arquivo_saida"
+    printf '\n'
+  } >>"$diario" 2>/dev/null
+  return 0
+}
+
 harness_executar() {
   local filtro=${1:-}
   local -a casos=()
@@ -192,22 +240,35 @@ harness_executar() {
     return 1
   fi
 
-  local indice=0 ok=0 nao_ok=0 pulados=0 status motivo
+  # Estado do host ANTES de executar. Colher apenas apos a reprovacao mediria o
+  # estado pos-falha, que pode diferir do estado durante — e o instrumento
+  # voltaria a interferir no observado. Os dois instantaneos juntos dizem o que
+  # nenhum diz sozinho.
+  local estado_inicial
+  estado_inicial=$(_dbx_estado_da_maquina)
+
+  local indice=0 ok=0 nao_ok=0 pulados=0 status motivo saida_do_caso linha
   # Area controlada da suite, e nao `mktemp` puro: um temporario fora de
   # $DBX_TESTES_TMP escapa da limpeza do executor.
   DBX_HARNESS_ARQ_PULAR=$(mktemp "${DBX_TESTES_TMP:-${TMPDIR:-/tmp}}/dbx-harness.XXXXXX") || return 1
   export DBX_HARNESS_ARQ_PULAR
   trap 'rm -f "$DBX_HARNESS_ARQ_PULAR"' EXIT
 
+  saida_do_caso="${DBX_TESTES_TMP:-${TMPDIR:-/tmp}}/dbx-caso.$$"
+
   for nome in "${casos[@]}"; do
     indice=$((indice + 1))
     : >"$DBX_HARNESS_ARQ_PULAR"
+    # A saida do caso e desviada para arquivo e reemitida em seguida: sem isso
+    # as linhas de diagnostico so existiriam no terminal, que rola e se perde —
+    # foi exatamente o que aconteceu com a reprovacao sem causa estabelecida.
     (
       set -u
       if declare -F preparar_caso >/dev/null; then preparar_caso; fi
       "$nome"
-    )
+    ) 2>"$saida_do_caso"
     status=$?
+    while IFS= read -r linha; do printf '%s\n' "$linha" >&2; done <"$saida_do_caso"
     case $status in
       0)
         ok=$((ok + 1))
@@ -221,6 +282,7 @@ harness_executar() {
       *)
         nao_ok=$((nao_ok + 1))
         printf 'not ok %d - %s\n' "$indice" "${nome#teste_}"
+        _harness_registrar_reprovacao "$nome" "$status" "$estado_inicial" "$saida_do_caso"
         ;;
     esac
   done
