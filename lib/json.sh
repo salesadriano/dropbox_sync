@@ -758,28 +758,33 @@ dbx_json_descartar() {
 # recusa caractere de controle cru, entao gravar sem escapar produziria um
 # arquivo que o proprio projeto nao consegue reler.
 dbx_json_escapar_cadeia() {
-  local texto=${1-} saida='' indice caractere codigo
+  local texto=${1-} indice codigo caractere
   DBX_JSON_ESCAPADO=''
-  for ((indice = 0; indice < ${#texto}; indice++)); do
-    caractere=${texto:indice:1}
-    case $caractere in
-      '"') saida+='\"' ;;
-      $'\\') saida+=$'\\\\' ;;
-      $'\n') saida+='\n' ;;
-      $'\r') saida+='\r' ;;
-      $'\t') saida+='\t' ;;
-      $'\b') saida+='\b' ;;
-      $'\f') saida+='\f' ;;
-      *)
-        if [[ $caractere == [[:cntrl:]] ]]; then
-          printf -v codigo '%04x' "'$caractere"
-          saida+="\\u$codigo"
-        else
-          saida+=$caractere
-        fi
-        ;;
-    esac
-  done
+  [[ -n $texto ]] && {
+    # Substituicao de padrao, e NAO indexacao caractere a caractere. A versao
+    # anterior usava `${texto:indice:1}`, exatamente a armadilha que o cabecalho
+    # deste arquivo documenta como quadratica — a regra estava violada no
+    # arquivo que a enuncia (P3-05). Aqui sao passagens de custo proporcional ao
+    # tamanho, em numero fixo.
+    #
+    # A barra invertida vem PRIMEIRO: escapa-la depois duplicaria as barras
+    # introduzidas pelos escapes seguintes.
+    texto=${texto//$'\\'/$'\\\\'}
+    texto=${texto//'"'/'\"'}
+    texto=${texto//$'\n'/'\n'}
+    texto=${texto//$'\r'/'\r'}
+    texto=${texto//$'\t'/'\t'}
+    texto=${texto//$'\b'/'\b'}
+    texto=${texto//$'\f'/'\f'}
+    # Demais caracteres de controle, um a um. Sao 27 substituicoes de custo
+    # linear, e nao um laco sobre o comprimento da entrada.
+    for indice in 1 2 3 4 5 6 7 11 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 127; do
+      printf -v caractere '%b' "\\$(printf '%03o' "$indice")"
+      [[ $texto == *"$caractere"* ]] || continue
+      printf -v codigo '%04x' "$indice"
+      texto=${texto//"$caractere"/\\u$codigo}
+    done
+  }
   # shellcheck disable=SC2034  # canal publico, consumido por lib/config
-  DBX_JSON_ESCAPADO=$saida
+  DBX_JSON_ESCAPADO=$texto
 }

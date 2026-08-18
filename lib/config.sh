@@ -34,6 +34,13 @@
 # DP-11 proibe sobrescrita da credencial por variavel de ambiente, para remover
 # o vetor de leitura do ambiente do processo. `XDG_CONFIG_HOME` continua valendo
 # porque define LOCALIZACAO, e nao segredo.
+#
+# PROPRIEDADE PRETENDIDA, e nao acidental: quem controla o ambiente pode apontar
+# `XDG_CONFIG_HOME` para um diretorio proprio, mas as verificacoes de dono e de
+# permissao recusam a credencial plantada. O ataque degrada para NEGACAO DE
+# SERVICO, e nao substituicao de credencial. Isso fica registrado como intencao
+# porque, se constasse apenas como efeito colateral, um afrouxamento futuro da
+# verificacao de dono removeria a protecao sem que a ligacao fosse percebida.
 
 [[ -n ${DBX_CONFIG_CARREGADO:-} ]] && return 0
 DBX_CONFIG_CARREGADO=1
@@ -66,6 +73,31 @@ _dbx_config_limpar_credencial() {
   DBX_CONFIG_APP_SECRET=''
   DBX_CONFIG_REFRESH_TOKEN=''
   DBX_CONFIG_RAIZ_REMOTA=''
+}
+
+# _dbx_config_varrer_orfaos <diretorio>
+#
+# Remove temporarios deixados por interrupcao. Um `SIGKILL` durante a gravacao
+# nao pode ser interceptado, entao o temporario — que CONTEM O SEGREDO, com
+# permissao 0600 — sobrevivia indefinidamente num arquivo oculto que nenhum
+# caminho de codigo removia. Isso contradizia a invariante de escrita unica e
+# derrotava a rotacao de credencial, porque o token antigo permanecia em disco.
+#
+# O nome do temporario carrega o identificador do processo que o criou, e so os
+# de processos MORTOS sao removidos. Sem isso, a varredura apagaria o
+# temporario de uma gravacao concorrente em andamento.
+_dbx_config_varrer_orfaos() {
+  local diretorio=$1 orfao processo
+  [[ -d $diretorio ]] || return 0
+  for orfao in "$diretorio"/.credencial.*; do
+    [[ -e $orfao ]] || continue
+    processo=${orfao##*/.credencial.}
+    processo=${processo%%.*}
+    [[ $processo =~ ^[0-9]+$ ]] || continue
+    kill -0 "$processo" 2>/dev/null && continue
+    rm -f -- "$orfao" 2>/dev/null
+  done
+  return 0
 }
 
 _dbx_config_falhar() {
@@ -132,14 +164,24 @@ dbx_config_gravar() {
   corpo+=",\"raiz_remota\":\"$DBX_JSON_ESCAPADO\""
   corpo+='}'
 
-  temporario=$(mktemp "$diretorio/.credencial.XXXXXXXX" 2>/dev/null) || {
+  _dbx_config_varrer_orfaos "$diretorio"
+
+  temporario=$(mktemp "$diretorio/.credencial.$$.XXXXXXXX" 2>/dev/null) || {
     umask "$mascara_anterior"
     _dbx_config_falhar gravacao
     return $?
   }
-  if ! printf '%s\n' "$corpo" >"$temporario" 2>/dev/null ||
-    ! chmod 600 -- "$temporario" 2>/dev/null ||
-    ! mv -f -- "$temporario" "$DBX_CONFIG_RESULTADO" 2>/dev/null; then
+  # A escrita ocorre em subshell com `trap` proprio, para que sinal
+  # interceptavel durante a gravacao remova o temporario sem alterar os `trap`
+  # do processo chamador. `SIGKILL` continua fora de alcance por definicao, e e
+  # a varredura de orfaos que cobre esse caso.
+  if ! (
+    trap 'rm -f -- "$1" 2>/dev/null' EXIT INT TERM HUP
+    set -- "$temporario"
+    printf '%s\n' "$corpo" >"$1" &&
+      chmod 600 -- "$1" &&
+      mv -f -- "$1" "$DBX_CONFIG_RESULTADO"
+  ) 2>/dev/null; then
     rm -f -- "$temporario" 2>/dev/null
     umask "$mascara_anterior"
     _dbx_config_falhar gravacao
@@ -170,7 +212,20 @@ dbx_config_carregar() {
   # efetivamente sai do disco.
   modo=$(stat -c '%a' -- "$arquivo" 2>/dev/null) ||
     { _dbx_config_falhar inspecao; return $?; }
-  [[ $modo == '600' ]] || { _dbx_config_falhar permissao; return $?; }
+  # Aceita QUALQUER modo sem bits para grupo e outros, e nao apenas 0600: 0400
+  # e mais restritiva e recusa-la desfaria a escolha do operador — o mesmo
+  # principio ja aplicado ao diretorio, que nao estava aplicado ao arquivo
+  # (P3-03). Exige-se leitura para o dono, sem a qual a operacao nao ocorre.
+  [[ $modo =~ ^[4567]00$ ]] || { _dbx_config_falhar permissao; return $?; }
+
+  # A permissao do DIRETORIO tambem e verificada: um diretorio 0777 permite
+  # substituir o arquivo por outro, e nenhum dos dois caminhos olhava para ele
+  # (P3-04).
+  local modo_diretorio
+  modo_diretorio=$(stat -c '%a' -- "$(dirname -- "$arquivo")" 2>/dev/null) ||
+    { _dbx_config_falhar inspecao; return $?; }
+  [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
+    { _dbx_config_falhar permissao_diretorio; return $?; }
   dono=$(stat -c '%u' -- "$arquivo" 2>/dev/null)
   [[ $dono == "$EUID" ]] || { _dbx_config_falhar dono; return $?; }
 

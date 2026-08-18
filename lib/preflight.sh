@@ -35,9 +35,14 @@ readonly DBX_PREFLIGHT_ERRO_USO DBX_PREFLIGHT_ERRO_CONFIGURACAO
 readonly DBX_PREFLIGHT_BASH_MAIOR=4
 readonly DBX_PREFLIGHT_BASH_MENOR=4
 
-# Dependencia externa unica (DP-08), mais o utilitario de resumo exigido por
-# `lib/hash`, sem o qual RF-34 fica inviavel.
-readonly DBX_PREFLIGHT_UTILITARIOS='curl'
+# Dependencia externa unica do PROJETO e o cURL (DP-08). A lista abaixo, porem,
+# e a dos utilitarios efetivamente invocados pela biblioteca — os de instalacao
+# base admitidos por RNF-02 — porque RNF-02 exige NOMEAR o que falta, e um
+# preflight que aprova ambiente onde a primeira operacao ja falha e pior do que
+# nao existir: cria confianca falsa e empurra o diagnostico para um ponto mais
+# obscuro. Ha caso de teste que reprova se a biblioteca passar a invocar um
+# utilitario ausente desta lista.
+readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head wc readlink dirname'
 
 DBX_PREFLIGHT_MOTIVO=''
 DBX_PREFLIGHT_DETALHE=''
@@ -113,8 +118,17 @@ dbx_preflight_verificar() {
       { _dbx_preflight_falhar credencial 'o caminho da credencial nao e arquivo comum'; return $?; }
     modo=$(stat -c '%a' "$arquivo" 2>/dev/null) ||
       { _dbx_preflight_falhar credencial 'nao foi possivel inspecionar a credencial'; return $?; }
-    [[ $modo == '600' ]] ||
-      { _dbx_preflight_falhar credencial "permissao da credencial precisa ser 0600, encontrada $modo"; return $?; }
+    # Mesma regra do caminho gemeo em lib/config: qualquer modo sem bits para
+    # grupo e outros e aceito, porque recusar 0400 desfaria uma escolha MAIS
+    # restritiva do operador. Manter as duas verificacoes identicas e o que
+    # impede que uma delas vire porta de entrada.
+    [[ $modo =~ ^[4567]00$ ]] ||
+      { _dbx_preflight_falhar credencial "permissao da credencial precisa nao ter bits para grupo e outros, encontrada $modo"; return $?; }
+
+    local modo_diretorio
+    modo_diretorio=$(stat -c '%a' -- "$diretorio" 2>/dev/null)
+    [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
+      { _dbx_preflight_falhar credencial "permissao do diretorio de configuracao precisa nao ter bits para grupo e outros, encontrada $modo_diretorio"; return $?; }
     dono=$(stat -c '%u' "$arquivo" 2>/dev/null)
     [[ $dono == "$EUID" ]] ||
       { _dbx_preflight_falhar credencial 'a credencial pertence a outro usuario'; return $?; }
