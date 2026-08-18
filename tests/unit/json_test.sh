@@ -267,7 +267,7 @@ teste_custo_com_corpus_adversarial() {
   # Corpus denso em delimitadores e escapes, sob tempo limite em processo filho:
   # regressao de custo deve REPROVAR, nao pendurar a suite.
   local saida status
-  saida=$(timeout 60 bash -c '
+  saida=$(timeout 120 bash -c '
     . "$1/lib/errors.sh" || exit 90
     . "$1/lib/json.sh"   || exit 90
     . "$1/tests/support/harness.sh" || exit 90
@@ -275,21 +275,22 @@ teste_custo_com_corpus_adversarial() {
       for ((i=0;i<n;i++)); do [[ $i -gt 0 ]] && s+=","
         s+="{\"n\":\"a\\\\\"b$i\",\"p\":\"/x/y$i\",\"s\":$i}"
       done; s+="]}"; printf "%s" "$s"; }
-    for n in 100 200 400; do
-      c=$(gera "$n"); t0=$(_agora_ms); dbx_json_analisar "$c" >/dev/null; t1=$(_agora_ms)
-      printf "%s " "$((t1 - t0))"
-    done
+    _analisar() { dbx_json_analisar "$1"; }
+    c1=$(gera 100); c4=$(gera 400)
+    printf "%s %s\n" "$(_medir_minimo_ms 5 _analisar "$c1")" "$(_medir_minimo_ms 5 _analisar "$c4")"
   ' _ "$DBX_HARNESS_RAIZ" 2>/dev/null)
   status=$?
-  [[ $status -eq 124 ]] && _harness_falhar 'analise nao terminou em 60s com corpus adversarial'
+  [[ $status -eq 124 ]] && _harness_falhar 'analise nao terminou em 120s com corpus adversarial'
   assert_igual 0 "$status" 'a medicao precisa concluir'
   local -a t
   read -r -a t <<<"$saida"
-  [[ ${#t[@]} -eq 3 ]] || _harness_falhar "medicao invalida: [$saida]"
-  local primeiro=${t[0]} ultimo=${t[2]}
+  [[ ${#t[@]} -eq 2 ]] || _harness_falhar "medicao invalida: [$saida]"
+  # Razao entre MINIMOS: contencao so soma tempo, entao o minimo converge para o
+  # custo real e a razao fica insensivel a carga da maquina.
+  local primeiro=${t[0]} ultimo=${t[1]}
   [[ $primeiro -lt 1 ]] && primeiro=1
   if [[ $ultimo -gt $((primeiro * 12)) ]]; then
-    _harness_falhar "custo super-linear: 100 em ${primeiro}ms, 400 em ${ultimo}ms"
+    _harness_falhar "custo super-linear: 100 entradas em ${primeiro}ms, 400 em ${ultimo}ms"
   fi
 }
 

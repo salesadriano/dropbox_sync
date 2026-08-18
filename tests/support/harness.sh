@@ -112,6 +112,41 @@ _agora_ms() {
   printf '%s' "$((SECONDS * 1000))"
 }
 
+# _medir_minimo_ms <repeticoes> <comando...> — menor tempo observado.
+#
+# Instrumento para verificar COMPLEXIDADE ALGORITMICA, propriedade que por
+# definicao nao depende da carga da maquina — mas que era medida por um proxy,
+# tempo de parede, que depende. Sob contencao, uma medicao isolada infla
+# arbitrariamente, e a razao entre duas medicoes dispara sem que o algoritmo
+# tenha mudado. Agravante: nos casos afetados a medicao maior vem sempre depois,
+# entao carga que chegue durante a execucao penaliza sempre o mesmo lado.
+#
+# O minimo e robusto porque contencao so pode SOMAR tempo, nunca subtrair: com
+# repeticoes suficientes, o menor valor converge para o custo real, e a razao
+# entre minimos fica insensivel a carga.
+#
+# Alternativas avaliadas e descartadas, com evidencia:
+#   - tempo de CPU pelo `times` do shell: mediria desescalonamento corretamente,
+#     mas devolve zero para trabalho em processo neste `bash`, o que o torna
+#     inutilizavel aqui;
+#   - contagem de operacoes: mediria a complexidade diretamente, sem proxy, mas
+#     o custo destes casos esta DENTRO de primitivas do shell — fatiamento e
+#     concatenacao de cadeia — e nao e contavel no nivel do script.
+_medir_minimo_ms() {
+  local repeticoes=$1
+  shift
+  local indice inicio fim atual minimo=''
+  for ((indice = 0; indice < repeticoes; indice++)); do
+    inicio=$(_agora_ms)
+    "$@" >/dev/null 2>&1
+    fim=$(_agora_ms)
+    atual=$((fim - inicio))
+    [[ -z $minimo || $atual -lt $minimo ]] && minimo=$atual
+  done
+  [[ $minimo -lt 1 ]] && minimo=1
+  printf '%s' "$minimo"
+}
+
 # pular <motivo> — marca o caso como nao executado, sem falhar a suite.
 pular() {
   printf '%s\n' "${1:-sem motivo declarado}" >"${DBX_HARNESS_ARQ_PULAR:-/dev/null}"
