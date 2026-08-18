@@ -177,7 +177,7 @@ readonly DBX_ERRORS_MAXIMO_ENTRADA=16384
 
 DBX_ERRORS_CHAVES_SENSIVEIS=(
   access_token refresh_token client_secret app_secret oauth_token id_token
-  api_key apikey auth authorization cookie set_cookie
+  api_key apikey auth authorization proxy_authorization cookie set_cookie
   password passwd secret token tokens code
 )
 
@@ -266,11 +266,14 @@ _dbx_errors_classe_da_tag() {
 # A remocao exige a barra: `path/` e qualificador, `pathological` nao e. Sem
 # essa exigencia, remover o qualificador afrouxaria o casamento para "comeca
 # com" e devolveria justamente o defeito de fronteira que a suite ja cobre.
+# Deixa o restante em DBX_ERRORS_RESTANTE em vez de imprimir: o `error_summary`
+# vem de fora e a substituicao de comando removeria quebras finais dele.
 _dbx_errors_remover_qualificador() {
   local resumo=$1 qualificador
+  DBX_ERRORS_RESTANTE=''
   for qualificador in "${DBX_ERRORS_QUALIFICADORES[@]}"; do
     if [[ $resumo == "$qualificador/"* ]]; then
-      printf '%s' "${resumo#"$qualificador"/}"
+      DBX_ERRORS_RESTANTE=${resumo#"$qualificador"/}
       return 0
     fi
   done
@@ -306,7 +309,8 @@ dbx_errors_classificar() {
       printf '%s\n' "$classe"
       return "$DBX_ERRORS_STATUS_OK"
     fi
-    restante=$(_dbx_errors_remover_qualificador "$restante") || break
+    _dbx_errors_remover_qualificador "$restante" || break
+    restante=$DBX_ERRORS_RESTANTE
     voltas=$((voltas + 1))
   done
 
@@ -363,7 +367,8 @@ dbx_errors_politica_retentativa() {
         printf 'retomar\n'
         return "$DBX_ERRORS_STATUS_OK"
       fi
-      restante=$(_dbx_errors_remover_qualificador "$restante") || break
+      _dbx_errors_remover_qualificador "$restante" || break
+    restante=$DBX_ERRORS_RESTANTE
       voltas=$((voltas + 1))
     done
   fi
@@ -453,6 +458,7 @@ _dbx_errors_e_espaco() {
 # requisicao que RF-30 existe para preservar.
 dbx_errors_redigir() {
   local texto=${1:-}
+  DBX_ERRORS_REDIGIDO=''
   [[ -n $texto ]] || return 0
 
   # O separador de fronteiras usado internamente e um byte de controle. Se ele
@@ -465,7 +471,8 @@ dbx_errors_redigir() {
   # e retorno de carro) nao e analisado, e nada dele e emitido.
   local sem_quebras=${texto//[$'\t\n\r']/}
   if [[ $sem_quebras == *[[:cntrl:]]* ]]; then
-    printf '%s' '[REDIGIDO: corpo com caractere de controle, nao analisavel]'
+    DBX_ERRORS_REDIGIDO='[REDIGIDO: corpo com caractere de controle, nao analisavel]'
+    printf '%s' "$DBX_ERRORS_REDIGIDO"
     return 0
   fi
 
@@ -576,6 +583,7 @@ dbx_errors_redigir() {
   if [[ ${#texto} -gt $DBX_ERRORS_LIMITE_REDACAO ]]; then
     texto="${texto:0:$DBX_ERRORS_LIMITE_REDACAO} [...truncado]"
   fi
+  DBX_ERRORS_REDIGIDO=$texto
   printf '%s' "$texto"
 }
 
@@ -638,7 +646,10 @@ dbx_errors_mensagem() {
   dbx_errors_classe_valida "$classe" || return "$DBX_ERRORS_STATUS_USO"
   texto=${DBX_ERRORS_MENSAGEM[$classe]}
   if [[ -n $detalhe ]]; then
-    texto+=" Detalhe: $(dbx_errors_redigir "$detalhe")"
+    # Canal por variavel: a substituicao de comando removeria quebras finais do
+    # detalhe, que vem de fora. E a mesma classe de D1, C2-01 e E2-04.
+    dbx_errors_redigir "$detalhe" >/dev/null
+    texto+=" Detalhe: $DBX_ERRORS_REDIGIDO"
   fi
   printf '%s\n' "$texto"
 }
