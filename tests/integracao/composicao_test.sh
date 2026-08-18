@@ -335,15 +335,18 @@ teste_ambas_as_verificacoes_de_permissao_da_credencial_concordam() {
   . "$DBX_LIB/config.sh"
   area=$(mktemp -d "$DBX_TESTES_TMP/perm.XXXXXX")
   mkdir -p "$area/config/dbx"
+  # O diretorio tambem passou a ser verificado (P3-04): sem restringi-lo, o
+  # caso mediria a permissao do diretorio em vez da do arquivo.
+  chmod 700 "$area/config/dbx"
   arquivo="$area/config/dbx/credencial.json"
   printf '{"versao":1,"app_key":"AK","app_secret":"AS","refresh_token":"RT","raiz_remota":"/r"}' >"$arquivo"
-  for modo in 600 644 640 604 660 606 666 700; do
+  for modo in 600 400 700 644 640 604 660 606 666 200; do
     chmod "$modo" "$arquivo"
     XDG_CONFIG_HOME="$area/config" dbx_preflight_verificar >/dev/null 2>&1
     status_preflight=$?
     XDG_CONFIG_HOME="$area/config" dbx_config_carregar >/dev/null 2>&1
     status_config=$?
-    if [[ $modo == '600' ]]; then
+    if [[ $modo =~ ^[4567]00$ ]]; then
       assert_igual 0 "$status_preflight" "modo $modo devia passar no preflight"
       assert_igual 0 "$status_config" "modo $modo devia passar na leitura"
     else

@@ -209,4 +209,43 @@ teste_diagnostico_do_preflight_nao_ecoa_conteudo_da_credencial() {
   assert_nao_contem 'RT9pQrSecretoTotal' "$saida"
 }
 
+# ---------------------------------------------------------------------------
+# P3-02 — RNF-02 exige NOMEAR o utilitario ausente, para todos eles
+# ---------------------------------------------------------------------------
+
+teste_todo_utilitario_ausente_reprova_e_e_nomeado() {
+  local utilitario caminho saida
+  for utilitario in mktemp mv rm chmod mkdir stat head wc readlink dirname; do
+    caminho=$(_sem "$utilitario")
+    saida=$(PATH="$caminho" timeout 30 bash -c '
+      . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
+      dbx_preflight_verificar >/dev/null 2>&1
+      printf "%s|%s" "$?" "$DBX_PREFLIGHT_DETALHE"
+    ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+    assert_contem "$DBX_PREFLIGHT_ERRO_CONFIGURACAO|" "$saida" \
+      "ambiente sem $utilitario foi aprovado pelo preflight"
+    assert_contem "$utilitario" "$saida" \
+      "RNF-02 exige nomear o utilitario ausente: $utilitario"
+  done
+}
+
+teste_lista_do_preflight_cobre_o_que_a_biblioteca_invoca() {
+  # Pergunta dos gemeos, transformada em auditoria: se a biblioteca passar a
+  # invocar um utilitario novo, o preflight precisa passar a exigi-lo, senao
+  # volta a aprovar ambiente onde a primeira operacao falha.
+  local invocados utilitario nao_exigidos=''
+  invocados=$(grep -vhE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ"/lib/*.sh |
+    grep -ohE '(^|[^-_a-zA-Z/.])(mktemp|mv|rm|chmod|mkdir|stat|head|wc|readlink|dirname|basename|cat|cp|ln|find|tr|sed|awk|curl)([^-_a-zA-Z]|$)' |
+    grep -ohE '(mktemp|mv|rm|chmod|mkdir|stat|head|wc|readlink|dirname|basename|cat|cp|ln|find|tr|sed|awk|curl)' |
+    sort -u)
+  for utilitario in $invocados; do
+    case " $DBX_PREFLIGHT_UTILITARIOS " in
+      *" $utilitario "*) ;;
+      *) nao_exigidos+=" $utilitario" ;;
+    esac
+  done
+  assert_igual '' "$nao_exigidos" \
+    "utilitarios invocados por lib/ e nao exigidos pelo preflight:$nao_exigidos"
+}
+
 harness_executar "$@"

@@ -181,7 +181,8 @@ teste_permissao_frouxa_e_recusada() {
   area=$(_area)
   _com_xdg "$area"
   dbx_config_gravar 'AK' 'AS' 'RT' '/r'
-  for modo in 644 640 604 660 606 700 666; do
+  # 0700 NAO entra: nao ha bits para grupo nem outros, entao nao e frouxa.
+  for modo in 644 640 604 660 606 666 402 601; do
     chmod "$modo" "$DBX_CONFIG_RESULTADO"
     assert_status "$DBX_CONFIG_ERRO_CONFIGURACAO" dbx_config_carregar
   done
@@ -269,6 +270,79 @@ teste_carregar_usa_contexto_proprio_e_nao_destroi_documento_em_curso() {
   dbx_config_carregar
   dbx_json_valor cursor >/dev/null
   assert_igual 'XYZ' "$DBX_JSON_RESULTADO" 'a listagem em curso precisa sobreviver'
+}
+
+# ---------------------------------------------------------------------------
+# P3-01 — interrupcao nao pode deixar o segredo em orfao
+# ---------------------------------------------------------------------------
+
+teste_interrupcao_nao_deixa_orfao_com_segredo() {
+  local area orfaos
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  # Simula o residuo que um SIGKILL deixaria: temporario de processo ja morto.
+  printf '{"refresh_token":"RT-VAZADO"}' >"$area/config/dbx/.credencial.999999.AbCdEfGh"
+  chmod 600 "$area/config/dbx/.credencial.999999.AbCdEfGh"
+  dbx_config_gravar 'AK2' 'AS2' 'RT2' '/r2'
+  orfaos=$(find "$area/config/dbx" -mindepth 1 ! -name 'credencial.json' 2>/dev/null)
+  assert_igual '' "$orfaos" \
+    'temporario de processo morto contem o segredo e precisa ser removido'
+}
+
+teste_varredura_nao_remove_temporario_de_processo_vivo() {
+  # A varredura nao pode quebrar gravacao concorrente: 10 gravacoes simultaneas
+  # ja foram verificadas sem orfaos, e apagar o temporario alheio destruiria
+  # justamente essa propriedade.
+  local area vivo
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  vivo="$area/config/dbx/.credencial.$$.ZzZzZzZz"
+  printf 'em andamento' >"$vivo"
+  _dbx_config_varrer_orfaos "$area/config/dbx"
+  assert_arquivo_existe "$vivo" \
+    'temporario de processo vivo pertence a uma gravacao em andamento'
+  rm -f "$vivo"
+}
+
+# ---------------------------------------------------------------------------
+# P3-03 e P3-04 — permissao mais restritiva e permissao do diretorio
+# ---------------------------------------------------------------------------
+
+teste_permissao_mais_restritiva_que_0600_e_aceita() {
+  # Mesmo principio ja aplicado ao diretorio: nao desfazer escolha mais
+  # restritiva do operador.
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  chmod 400 "$DBX_CONFIG_RESULTADO"
+  assert_sucesso dbx_config_carregar
+  assert_igual 'RT' "$DBX_CONFIG_REFRESH_TOKEN"
+}
+
+teste_permissao_sem_leitura_para_o_dono_e_recusada() {
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  chmod 200 "$DBX_CONFIG_RESULTADO"
+  assert_status "$DBX_CONFIG_ERRO_CONFIGURACAO" dbx_config_carregar
+  chmod 600 "$DBX_CONFIG_RESULTADO"
+}
+
+teste_diretorio_acessivel_a_terceiros_e_recusado() {
+  local area modo
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  for modo in 777 755 750 707 701; do
+    chmod "$modo" "$area/config/dbx"
+    assert_status "$DBX_CONFIG_ERRO_CONFIGURACAO" dbx_config_carregar
+  done
+  chmod 700 "$area/config/dbx"
+  assert_sucesso dbx_config_carregar
 }
 
 harness_executar "$@"
