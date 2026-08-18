@@ -190,6 +190,13 @@ _harness_registrar_reprovacao() {
   local caso=$1 status=$2 estado_inicial=$3 arquivo_saida=$4 linha
   local diario=${DBX_HARNESS_DIARIO:-}
   [[ -n $diario ]] || return 0
+  # A taxonomia de redacao e carregada aqui se ainda nao estiver: sem ela o
+  # recuo apagaria o diagnostico inteiro, que e o defeito equivalente ao
+  # vazamento — diario ilegivel nao diagnostica nada.
+  if ! declare -F dbx_errors_redigir >/dev/null; then
+    # shellcheck source=lib/errors.sh
+    . "$DBX_HARNESS_RAIZ/lib/errors.sh" 2>/dev/null || return 0
+  fi
   {
     printf '=== reprovacao ===\n'
     printf 'caso: %s\n' "$caso"
@@ -199,7 +206,15 @@ _harness_registrar_reprovacao() {
     printf 'host_no_inicio: %s\n' "$estado_inicial"
     printf 'host_na_falha:  %s\n' "$(_dbx_estado_da_maquina)"
     printf 'diagnostico do caso:\n'
-    while IFS= read -r linha; do printf '  %s\n' "$linha"; done <"$arquivo_saida"
+    # A saida do caso vai para ARQUIVO PERSISTENTE, entao passa pela redacao
+    # antes de ser gravada. Uma assercao que falhe comparando credencial imprime
+    # o valor comparado, e sem isso o diario — instituido para diagnosticar
+    # intermitencia — viraria um deposito de segredo em disco. Verificado: sem a
+    # redacao, um `refresh_token` de teste chegava integro ao arquivo.
+    while IFS= read -r linha; do
+      dbx_errors_redigir "$linha" >/dev/null
+      printf '  %s\n' "$DBX_ERRORS_REDIGIDO"
+    done <"$arquivo_saida"
     printf '\n'
   } >>"$diario" 2>/dev/null
   return 0
