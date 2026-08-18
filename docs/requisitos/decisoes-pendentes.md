@@ -5,8 +5,16 @@
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
 | Data | 2026-08-17 |
-| Versao | **v0.4 — pos-ciclo de QA da camada de dominio** |
-| Status | ✅ **Nenhuma decisao bloqueante (P0) em aberto.** 4 resolvidas · 9 estruturantes (P1), com **DP-07 em urgencia elevada** · 6 de refinamento (P2) |
+| Versao | **v0.6** |
+| Status | ✅ **Nenhuma decisao bloqueante.** 11 resolvidas · 4 estruturantes (P1) · 6 de refinamento (P2). Unica pendencia com custo crescente: `DP-20` |
+
+> ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
+>
+> As versoes v0.2 a v0.4 deste documento registraram `DP-07` e `DP-08` como **em aberto**. **Estava errado.** O solicitante havia respondido a uma pergunta explicitamente rotulada como "Dependencias e plataforma (DP-07 e DP-08)" escolhendo **"So cURL, bash 4+, Linux"**. Essa resposta era a decisao, e nunca foi propagada para os documentos de requisitos.
+>
+> O erro se agravou em cadeia: o documento desatualizado passou a ser lido como prova de que nao havia decisao; a partir dai foi aberta a divergencia `DIV-15` acusando a implementacao de antecipar decisao do solicitante, `RNF-01` foi congelado e o risco `RSK-25` foi criado sobre um exemplo falso.
+>
+> **Nada disso se sustentava.** A premissa do Senior Developer estava **correta** desde o inicio. Esta versao corrige as quatro consequencias. A falha real — decisao tomada e nao refletida no documento — esta registrada como `RSK-26`.
 | Documentos relacionados | [Escopo e requisitos](escopo-requisitos-e-criterios-de-aceite.md) · [Funcionalidades candidatas](funcionalidades-candidatas.md) · [Riscos e licenciamento](riscos-restricoes-e-licenciamento.md) · [System Design](../arquitetura/system-design.md) |
 
 > Este documento lista apenas o que **nao pode ser inferido com seguranca** a partir da demanda. Nada aqui foi decidido pelo Business Analyst.
@@ -32,13 +40,13 @@
 | DP-02 | Quais funcionalidades novas justificam o projeto | ✅ **Resolvida** | — |
 | DP-03 | Modo de uso predominante | ✅ **Resolvida** | — |
 | DP-04 | Tipo de conta e escopo de acesso | ✅ **Resolvida** | — |
-| DP-05 | Multiplas contas ou perfis | ⬜ Em aberto | P1 |
+| DP-05 | Multiplas contas ou perfis | ✅ **Resolvida** | — |
 | DP-06 | Conjunto de comandos de paridade no MVP | ⬜ Em aberto | P1 |
-| DP-07 | Plataformas e shells suportados | ⚠️ **Em aberto — premissa antecipada pela implementacao (DIV-15)** | **P1, urgencia elevada** |
-| DP-08 | Dependencias e interpretacao de JSON | ⬜ Em aberto | P1 |
+| DP-07 | Plataformas e shells suportados | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
+| DP-08 | Dependencias e interpretacao de JSON | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
 | DP-09 | Semantica de sincronizacao e estado local | ✅ **Fechada sem impacto** | — |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
-| DP-11 | Armazenamento de credencial | ⬜ Em aberto | P1 *(peso elevado por DP-04)* |
+| DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |
 | DP-13 | Shell interativo | ⬜ Em aberto | P2 |
 | DP-14 | Empacotamento e distribuicao | ⬜ Em aberto | P2 |
@@ -46,8 +54,9 @@
 | DP-16 | Monitoramento de alteracoes | ⬜ Em aberto | P2 |
 | DP-17 | Rede corporativa | ⬜ Em aberto | P2 |
 | DP-18 | Compartilhamento | ⬜ Em aberto | P2 |
-| DP-19 | Governanca do repositorio | ⬜ Em aberto | P2 |
-| DP-20 | Licenca especifica a adotar | ⬜ Em aberto **(novo)** | P1 |
+| DP-19 | Governanca do repositorio | ✅ **Resolvida** *(consumada na pratica)* | — |
+| DP-20 | Licenca especifica a adotar | ⚠️ **Em aberto — agora com placeholder no historico publico** | **P1, urgencia elevada** |
+| DIV-16b | Formato de saida para nomes com quebra de linha | ✅ **Resolvida** — destrava `lib/output` | — |
 
 ```mermaid
 flowchart TD
@@ -181,28 +190,34 @@ Requisitos afetados: RF-06 (fora de escopo), RF-21, RNF-03, RNF-04.
 
 ## P1 — Estruturantes
 
-### DP-20 — Licenca especifica a adotar *(novo, derivado de DP-01)*
+### DP-20 — Titular do copyright e licenca ⚠️ **URGENCIA ELEVADA na v0.5**
 
-Com DP-01 resolvida como reimplementacao independente, o projeto tem liberdade de escolha.
+Com DP-01 resolvida como reimplementacao independente, o projeto tem liberdade de escolha da licenca.
 
-**Perguntas:**
-1. Qual licenca adotar? (MIT, Apache-2.0, BSD, GPLv3 por opcao propria, proprietaria, ou sem licenca publica para uso estritamente interno)
-2. O resultado sera publicado, distribuido a terceiros, ou permanecera de uso interno?
-3. Havera aceitacao de contribuicoes externas? (implica politica de contribuicao)
-
-**Bloqueia:** RNF-17, arquivo de licenca na raiz, cabecalhos de copyright.
-**Observacao:** a licenca deve ser publicada **antes do primeiro commit de codigo**. Definir depois obriga a concordancia de todos os autores que ja tiverem contribuido.
-
-### DP-05 — Multiplas contas ou perfis *(rebaixada de P0 para P1)*
-
-Rebaixada porque, com DP-04 resolvida como conta pessoal unica, deixou de ser bloqueante para o inicio. Continua estruturante por definir o formato e a localizacao do arquivo de configuracao.
+> **Mudanca de situacao.** A recomendacao anterior era publicar a licenca **antes do primeiro commit**. Isso **nao ocorreu**: o repositorio foi criado e publicado com o `LICENSE` contendo o **titular do copyright em espaco reservado**. O placeholder esta agora no historico publico de `github.com:salesadriano/dropbox_sync`.
+>
+> Consequencias praticas: um arquivo de licenca sem titular identificado tem eficacia juridica duvidosa, e enquanto isso o repositorio esta publicamente acessivel. Alem disso, quanto mais commits e eventuais contribuicoes se acumularem, mais custosa fica a formalizacao — definir titularidade depois pode exigir concordancia de todos os que ja contribuiram. **Isto e reversivel a baixo custo agora e caro depois.** Divergencia associada: `DIV-E`.
 
 **Perguntas:**
-1. Uma instalacao precisa atender mais de uma conta Dropbox simultaneamente?
-2. Em caso positivo, a selecao deve ser por parametro, por variavel de ambiente, ou ambos?
-3. Perfis diferentes serao usados por usuarios diferentes do mesmo host?
+1. **Quem e o titular do copyright?** Pessoa fisica nominal, ou pessoa juridica?
+2. Qual licenca adotar? (MIT, Apache-2.0, BSD, GPLv3 por opcao propria, proprietaria, ou sem licenca publica para uso interno)
+3. O repositorio permanece publico? Havera aceitacao de contribuicoes externas? (implica politica de contribuicao e, possivelmente, acordo de contribuidor)
 
-**Bloqueia:** RF-05, F-18, formato e localizacao do arquivo de configuracao.
+**Bloqueia:** RNF-17, preenchimento do `LICENSE`, cabecalhos de copyright nos arquivos de codigo.
+
+### DP-05 — Multiplas contas ou perfis ✅
+
+**Decisao do solicitante: uma conta so.** Um unico arquivo de credencial, **sem nocao de perfil**. Nao havera opcao `--profile`, nem arquivo por perfil, nem selecao por variavel de ambiente.
+
+**Justificativa registrada:** acrescentar perfis depois e uma mudanca **aditiva** — um sinalizador novo e um caminho de arquivo alternativo — que **nao quebra o contrato publico congelado por RF-35**. Como o custo de adiar e baixo e o de antecipar e real (multiplexacao em `lib/config`, mais superficie de teste, mais estados possiveis), antecipar nao se justifica agora.
+
+**Consequencias:**
+
+1. **`RF-05` (perfis e multiplas contas) sai do escopo desta versao**, junto com `F-18`. Permanecem no backlog como incremento aditivo.
+2. **O desenho de `lib/config` esta fechado.** Combinada com `DP-11`, a regra e: **um arquivo, um caminho, sem multiplexacao** — `0600` sob `$XDG_CONFIG_HOME` com recuo para `~/.config`, sem sobrescrita por ambiente, sem seletor.
+3. **Simplificacao verificavel:** nenhum caminho de codigo em `lib/config` recebe seletor de perfil, e nao ha ramificacao por identidade de conta.
+
+**Nao ha mais decisao pendente para iniciar `lib/config`.**
 
 ### DP-06 — Conjunto de comandos do MVP
 
@@ -213,45 +228,79 @@ Rebaixada porque, com DP-04 resolvida como conta pessoal unica, deixou de ser bl
 **Observacao:** esta decisao trata dos comandos **ja existentes no modelo**. As funcionalidades **novas** sao tratadas em DP-02.
 **Bloqueia:** dimensionamento do MVP e priorizacao dos RF da secao 5 do documento de requisitos.
 
-### DP-07 — Plataformas e shells suportados ⚠️ **EM ABERTO — nao fechar por inferencia**
+### DP-07 — Plataformas e shells suportados ✅ *(registro corrigido na v0.5)*
 
-> **Alerta de processo (DIV-15).** A implementacao da camada de dominio ja usa recursos que pressupoem um piso de `bash` moderno, e a justificativa registrada afirmava que "o solicitante fixou Linux com `bash` 4+". **Isso nao ocorreu.** O que existe e "stack detectada: `bash` 4+" na memoria de projeto, que e **observacao do ambiente de desenvolvimento, nao decisao de escopo**.
->
-> Esta decisao **continua sendo do solicitante**. O Business Analyst nao a fecha, e `RNF-01` permanece congelado com a redacao original ate que ela seja respondida. Risco associado: `RSK-25`.
+**Decisao do solicitante: plataforma Linux, shell `bash` 4+.** Respondida a pergunta rotulada "Dependencias e plataforma (DP-07 e DP-08)" com **"So cURL, bash 4+, Linux"**. A decisao existia desde entao; o que faltou foi propaga-la a este documento.
 
-**Dado novo, apurado no ciclo — o piso real e `bash` 4.4, nao 4.0:**
+**Refinamento tecnico do piso — 4.4, nao 4.0.** Isto **nao e decisao nova**: e a traducao precisa de "bash 4+" para o menor numero que sustenta o codigo efetivamente escrito.
 
 | Recurso em uso | Versao minima que o suporta |
 |---|---|
 | `declare -A` (array associativo) | 4.0 |
 | `${var,,}` (conversao para minusculas) | 4.0 |
 | `declare -g` (variavel global em funcao) | **4.2** |
-| `"${arr[@]}"` com array vazio sob `set -u`, usado na harness de teste | **4.4** |
+| `"${casos[@]}"` com array vazio sob `set -u`, na harness de teste | **4.4** |
 
-**Consequencia material para a decisao:** com piso 4.4, **RHEL 6 fica fora** — sua versao de fabrica e `bash` 4.1. macOS de fabrica (`bash` 3.2) ja estava fora por larga margem.
+**Consequencia material, mantida em registro:** com piso 4.4, **RHEL 6 fica fora** — sua versao de fabrica e `bash` 4.1. Se houver necessidade futura de suportar RHEL 6, e preciso reescrever a harness de teste e substituir `declare -g`; nesse caso a questao volta ao solicitante.
 
-**Perguntas:**
-1. Quais sistemas devem ser suportados oficialmente? (Linux com glibc, Alpine/musl, macOS, *BSD, WSL, container, dispositivo embarcado)
-2. `bash` e aceitavel como requisito, ou e necessario suporte a `sh` POSIX / BusyBox `ash`?
-3. **RHEL 6 e derivados (`bash` 4.1) precisam ser suportados?** Se sim, a harness de teste e o uso de `declare -g` precisam ser reescritos.
-4. Se macOS estiver no escopo, exige-se o `bash` 3.2 de fabrica ou pode-se depender de `bash` moderno instalado a parte?
+**Fora de escopo por decorrencia:** macOS, *BSD, BusyBox `ash` e `sh` POSIX. A camada de compatibilidade entre utilitarios GNU e BSD **deixa de ser necessaria** — simplificacao relevante de `lib/preflight` e de toda chamada a `stat`, `sed`, `date` e `base64`.
 
-**Bloqueia:** `RNF-01` (congelado), `lib/preflight`, camada de compatibilidade entre utilitarios GNU e BSD, e a reavaliacao de `RSK-24` (a mitigacao de TOCTOU por `/proc/self/fd` so seria admissivel se a resposta restringir o escopo a Linux — e adota-la antes da resposta **fecharia DP-07 a forca**).
+**Desbloqueia:** `RNF-01` (descongelado, piso 4.4), `lib/preflight`, e a reavaliacao de `RSK-24` — com Linux confirmado, `/proc/self/fd` deixa de ser inadmissivel por portabilidade.
 
-### DP-08 — Politica de dependencias e interpretacao de JSON
+---
 
-| Opcao | Vantagem | Custo |
+### DP-08 — Politica de dependencias e interpretacao de JSON ✅ *(registro corrigido na v0.5)*
+
+**Decisao do solicitante: apenas `cURL` como dependencia externa. `jq` NAO sera exigido.** O interpretador de JSON e **proprio**, escrito em shell.
+
+Corresponde a **opcao A** das tres apresentadas: dependencia zero e portabilidade maxima, ao custo de complexidade e de superficie de teste maior no componente de interpretacao.
+
+**Consequencias:**
+
+1. **`lib/json` esta desbloqueado** e tem desenho definido: implementacao propria, sem caminho alternativo condicional. Nao ha os "dois caminhos de codigo" que a opcao C traria.
+2. **`RNF-11` ganha peso critico.** A opcao escolhida e exatamente aquela cujo risco de defeito silencioso e maior — foi o defeito `DIV-04` do modelo de referencia. O conjunto de teste com JSON de formatacao variada, ordem de campos alterada e valores contendo `"`, `:` e `\` deixa de ser desejavel e passa a ser a principal defesa do componente.
+3. **`RNF-02` fica simples de verificar:** ambiente com shell, `cURL` e coreutils executa todos os comandos.
+4. **`lib/hash` continua dependendo de um utilitario de resumo SHA-256**, que faz parte do conjunto base de coreutils e nao constitui dependencia adicional.
+
+---
+
+### DP-11 — Armazenamento de credencial ✅
+
+**Decisao do solicitante:** arquivo com permissao **`0600`**, localizado sob **`~/.config`** seguindo a convencao XDG — `$XDG_CONFIG_HOME` quando definido, com recuo para `~/.config`. A permissao e **verificada no preflight**. **Nao ha sobrescrita por variavel de ambiente.**
+
+**Consequencias:**
+
+1. **`lib/config` esta desbloqueado** quanto ao mecanismo. O que resta e a estrutura interna do arquivo, que depende de `DP-05` (perfis nomeados).
+2. **Nao ha cofre de segredos** — nem `pass`, nem `gpg`, nem keyring. O controle e a permissao do sistema de arquivos.
+3. **Credencial nao pode vir do ambiente.** Isso remove um vetor de vazamento comum (variavel exportada visivel a processos filhos e a `/proc/<pid>/environ`) e e coerente com `RNF-03`. **Contrapartida a registrar:** uso em container efemero e em CI passa a exigir montagem de arquivo com permissao correta, e nao injecao de variavel — restricao operacional real, decorrente da decisao.
+4. **`RSK-19` permanece o risco dominante.** Com acesso a Dropbox inteira (DP-04), a permissao `0600` e literalmente o unico controle entre um usuario local privilegiado e todo o conteudo da conta. A verificacao no preflight e o que impede que uma permissao afrouxada passe despercebida.
+
+---
+
+### DIV-16b — Formato de saida para nomes com quebra de linha ✅
+
+**Decisao do solicitante:** saida **orientada a linha por padrao**; opcao **`--null`** usa o byte nulo (`\0`) como terminador de registro, no padrao consagrado de `find -print0` e `xargs -0`.
+
+Resolve a divergencia de requisito que restava de `DIV-16`: o formato de linha de `RF-28` e `RF-35` nao consegue representar sem ambiguidade um nome que contenha quebra de linha (`RNF-10`). O terminador nulo resolve, porque `\0` e o unico byte que nao pode ocorrer em um nome de arquivo POSIX.
+
+**Escolha de desenho acertada por dois motivos:** preserva a legibilidade do padrao para uso interativo (DP-03) e adota um contrato que ferramentas de shell ja sabem consumir, em vez de inventar escape proprio.
+
+> ⚠️ **Interacao com `RNF-22` — o modo `--null` NAO dispensa a restricao.** A redacao de cabecalho sensivel consome o **restante da linha**, e essa politica opera sobre quebras de linha, nao sobre terminadores de registro. Em `--null`, varios registros podem compartilhar a mesma linha fisica; concatenar diagnostico a um cabecalho sensivel continua destruindo o identificador de correlacao que `RF-30` existe para preservar — e, em `--null`, pode destruir **mais** conteudo do que destruiria no modo padrao. A restricao vale nos dois modos e deve ter caso de teste em cada um.
+
+**Desbloqueia:** `lib/output`.
+
+---
+
+### DP-19 — Governanca do repositorio ✅ *(consumada na pratica)*
+
+**Situacao:** o solicitante criou o repositorio, fez o commit inicial e publicou em `github.com:salesadriano/dropbox_sync`, branch `master`. **Gitflow autorizado**; `develop` criado a partir de `master`; o trabalho passa a ocorrer em `feature/*` com Conventional Commits.
+
+**Desvios ja consumados, registrados para rastreabilidade e nao para correcao:**
+
+| Desvio | Situacao | Tratamento |
 |---|---|---|
-| **A** — Apenas `cURL` e utilitarios base, com interpretador JSON proprio em shell | Dependencia zero, maxima portabilidade | Complexidade alta, risco de defeito, mais codigo para testar |
-| **B** — Exigir `jq` | Interpretacao correta e simples | Uma dependencia adicional a instalar |
-| **C** — Usar `jq` quando presente, com recuo para interpretacao propria | Melhor dos dois | Dois caminhos de codigo para manter e testar |
-
-**Perguntas:**
-1. `jq` pode ser exigido como dependencia?
-2. Ha ambiente alvo onde instalar pacote adicional e proibido?
-
-**Bloqueia:** RNF-02, RNF-11 e o desenho do componente de interpretacao de resposta.
-**Observacao adicional:** F-02 e F-11 exigem calculo local do `content_hash`, que depende de um utilitario de resumo SHA-256 disponivel no host. Esta decisao deve considerar tambem essa dependencia.
+| O commit inicial nao seguiu convencao semantica | Consumado e publicado | Nao reescrever historico publico. A convencao passa a valer dos proximos commits em diante. Sem impacto tecnico |
+| O `LICENSE` foi publicado com o **titular do copyright em espaco reservado** | Consumado e publicado | **Nao e apenas cosmetico.** `DP-20` e `DIV-E` continuam abertas, e agora o placeholder esta no historico publico do repositorio. Ver a urgencia elevada de `DP-20` |
 
 ### DP-10 — Auditoria, log e conformidade
 
@@ -263,18 +312,6 @@ Rebaixada porque, com DP-04 resolvida como conta pessoal unica, deixou de ser bl
 
 **Bloqueia:** RF-30, politica de retencao, eventual mascaramento de caminhos.
 **Observacao:** com acesso a Dropbox inteira (DP-04), a trilha de auditoria ganha peso, pois qualquer operacao pode alcancar qualquer area da conta.
-
-### DP-11 — Armazenamento de credencial *(peso elevado por DP-04)*
-
-Com acesso a Dropbox inteira, o refresh token passa a ser o unico controle entre um usuario local e **todo** o conteudo da conta.
-
-**Perguntas:**
-1. Arquivo local com permissao `0600` e aceitavel, ou e exigido cofre de segredos (`pass`, `gpg`, keyring do sistema, Vault, cofre de nuvem)?
-2. As credenciais podem ser fornecidas por variavel de ambiente para uso em container e CI?
-3. Ha politica de rotacao periodica de credencial?
-4. Faz sentido restringir por configuracao o caminho raiz que as rotinas automatizadas podem alcancar, limitando o raio de acao mesmo com acesso amplo concedido?
-
-**Bloqueia:** RNF-03, RNF-04 e o desenho do componente de configuracao.
 
 ### DP-12 — Volume, frequencia e dimensionamento
 
@@ -327,10 +364,6 @@ Ha proxy HTTP obrigatorio, inspecao TLS corporativa com autoridade certificadora
 
 Links compartilhados precisam de controle de expiracao, senha ou restricao de audiencia (F-16)? Esses recursos dependem do plano Dropbox contratado.
 
-### DP-19 — Governanca do repositorio
-
-O projeto sera versionado em git com o fluxo Gitflow e a governanca de Pull Request previstos no protocolo do pacote? Em qual origem remota? O diretorio alvo ainda nao e repositorio git.
-
 ---
 
 ## O que o Senior Developer precisa para comecar
@@ -346,7 +379,7 @@ Trabalho com escopo, contrato e criterio de aceite definidos, sem dependencia de
 | 1 | **Estrutura modular do projeto** — `bin/dbx`, `lib/*`, `commands/*`, `tests/`, com dependencia unidirecional entre camadas | RNF-16, System Design |
 | 2 | **`lib/hash`** — calculo do `content_hash`: blocos de 4 MiB, SHA-256 por bloco, concatenacao **binaria** dos resumos, SHA-256 final, saida hexadecimal. Vetor de teste oficial disponivel como criterio de aceite | RF-34 ✅ **contrato confirmado** |
 | 3 | **`lib/errors`** — taxonomia de erro, correspondencia por **prefixo** do `error_summary`, tabela de codigos de saida | RF-29, RNF-08 |
-| 4 | ⚠️ **`lib/output`** — modelo de resultado unico com duas apresentacoes; deteccao de terminal; sobreposicao por sinalizador; versionamento do contrato. **Movido para o bloco B na v0.4** — ver item 10 do bloco B | RF-28, RF-35, RNF-19, RNF-22 |
+| 4 | ✅ **`lib/output`** — modelo de resultado unico com duas apresentacoes; deteccao de terminal; sobreposicao por sinalizador; versionamento do contrato; **saida orientada a linha por padrao e `--null` com terminador `\0`**. **Destravado na v0.5** por DIV-16b. Atencao: `RNF-22` vale **nos dois modos** | RF-28, RF-35, RNF-19, RNF-22, DIV-16b |
 | 5 | **`lib/http`** — ponto unico de saida de rede, segredo fora do `argv`, recuo exponencial com `Retry-After`, sem retentativa em `400` | RNF-03, RNF-07, RNF-12 |
 | 6 | **`lib/auth`** — fluxo de refresh token, `expires_in`, revogacao com advertencia de cascata | RF-02, RF-06a, RES-04, RES-12 |
 | 7 | **`lib/tmp`, `lib/path`** — temporarios com `mktemp` e limpeza por `trap`; normalizacao e confinamento de raiz | RNF-05, RNF-10, RNF-20 |
@@ -354,43 +387,43 @@ Trabalho com escopo, contrato e criterio de aceite definidos, sem dependencia de
 | 9 | **`lib/report`** — relatorio de execucao nas duas apresentacoes | RF-36 |
 | 10 | **Suite de testes e analise estatica** — duplo de teste HTTP, execucao sem rede e sem credencial real, `shellcheck` limpo | RNF-13, RNF-14 |
 | 11 | **Verificacao residual de escopos OAuth** — confirmar o escopo exigido por `files/search_v2`, `sharing/create_shared_link_with_settings`, `users/get_current_account` e `users/get_space_usage` na pagina de cada endpoint. Baixo risco: ausencia produz `401` explicito | DIV-14 |
+| 12 | ✅ **`lib/json`** — interpretador **proprio**, sem `jq` e sem caminho alternativo condicional. **Destravado na v0.5** por DP-08 | RNF-02, RNF-11 |
+| 13 | ✅ **`lib/preflight`** — piso `bash` **4.4**, verificacao de utilitarios e **verificacao da permissao `0600`** do arquivo de credencial. **Destravado na v0.5** por DP-07 e DP-11 | RNF-01, RNF-02, DP-11 |
+| 14 | ✅ **`lib/config` — desenho INTEGRALMENTE fechado na v0.6.** Um arquivo, um caminho, **sem multiplexacao**: `0600` sob `$XDG_CONFIG_HOME` com recuo para `~/.config` (DP-11), **sem nocao de perfil** e sem seletor (DP-05), sem sobrescrita por ambiente. Nenhuma decisao pendente | RNF-04, RNF-20 |
+| 15 | ✅ **Camada de compatibilidade GNU/BSD — NAO e mais necessaria.** DP-07 fixou Linux, entao `stat`, `sed`, `date` e `base64` podem assumir sintaxe GNU. **Simplificacao, nao trabalho** | DP-07 |
 
 ### B — Dependente de decisao: nao comecar antes
 
 | # | Item bloqueado | Decisao | Por que bloqueia |
 |---|---|---|---|
-| 1 | **Primeiro commit de codigo** | **DP-20** | O arquivo de licenca deve estar publicado antes. Definir depois obriga a concordancia de todos os autores que ja tiverem contribuido |
-| 2 | **`lib/json`** — estrategia de interpretacao de resposta | **DP-08** | Exigir `jq`, implementar interpretador proprio ou manter os dois caminhos sao desenhos incompativeis entre si. O contrato interno do componente ja esta definido, o que permite programar contra ele; a implementacao, nao |
-| 3 | **`lib/preflight`** — versao minima de shell e utilitarios obrigatorios | **DP-07** | Suportar `bash` 3.2 do macOS proibe arrays associativos, `mapfile` e expansoes modernas; suportar apenas Linux moderno libera tudo. Decidir depois implica reescrita ampla |
-| 4 | **Camada de compatibilidade de utilitarios** (`stat`, `sed`, `date`, `base64`) | **DP-07** | GNU e BSD divergem em sintaxe. O conjunto de plataformas define se essa camada precisa existir |
-| 5 | **`lib/config`** — formato e localizacao do arquivo de credencial | **DP-11**, DP-05 | Arquivo `0600`, variavel de ambiente ou cofre de segredos produzem desenhos distintos. DP-05 define se ha perfis nomeados |
-| 6 | **Valores padrao de dimensionamento** — tamanho de parte, limite de retentativas | **DP-12** | Nao impede comecar com padroes conservadores, mas os valores finais dependem dos volumes reais |
-| 7 | **Comandos de paridade com o modelo** | **DP-06** | Define quais dos comandos existentes (`saveurl`, `monitor`, `share`, `search`) entram na primeira entrega |
-| 8 | **Politica de log e retencao** | **DP-10** | Define se caminhos de arquivo podem ser registrados e se ha integracao com coletor centralizado |
-| 9 | **Inicializacao do repositorio git e Gitflow** | **DP-19** | Precede o item 1 do bloco B |
-| 10 | **`lib/output`** — formato da saida estruturada | **DIV-16** *(decisao de desenho, nao do solicitante)* | **Novo na v0.4.** O formato orientado a linha de RF-28 e RF-35 nao representa sem ambiguidade um nome de arquivo que contenha quebra de linha (RNF-10). E preciso decidir antes de implementar: delimitador alternativo, sequencia de escape ou terminador nulo. Decidir depois implica quebrar o contrato publico que RF-35 promete estabilizar |
-| 11 | **`lib/output`** — disposicao dos campos de diagnostico | **RNF-22** *(requisito, ja definido)* | **Novo na v0.4.** A redacao de cabecalho sensivel consome o restante da linha. Concatenar diagnostico na mesma linha de um cabecalho sensivel destroi o identificador de correlacao que RF-30 existe para preservar. Nao e decisao pendente — e restricao a respeitar desde a primeira linha de `lib/output` |
+| 1 | **Preenchimento do `LICENSE` e cabecalhos de copyright** | **DP-20** | ⚠️ O `LICENSE` **ja foi publicado** com o titular em espaco reservado. Nao bloqueia mais o primeiro commit, que ja ocorreu, mas passou a ser **divida com o placeholder no historico publico**. Quanto mais commits acumularem, mais caro formalizar |
+| 2 | **Valores padrao de dimensionamento** — tamanho de parte, limite de retentativas | **DP-12** | Nao impede comecar com padroes conservadores, mas os valores finais dependem dos volumes de negocio |
+| 3 | **Comandos de paridade com o modelo** | **DP-06** | Define quais dos comandos existentes (`saveurl`, `monitor`, `share`, `search`) entram na primeira entrega |
+| 4 | **Politica de log e retencao** | **DP-10** | Define se caminhos de arquivo podem ser registrados e se ha integracao com coletor centralizado |
+| ~~5~~ | ~~**Estrutura interna do arquivo de configuracao**~~ | ~~DP-05~~ | ✅ **Removido na v0.6.** DP-05 fixou conta unica sem perfis; o desenho de `lib/config` esta fechado |
 
 ### Sequencia recomendada
 
 ```mermaid
 flowchart TD
-  P1[DP-20 licenca<br/>DP-19 repositorio] --> G[Inicializar repo + LICENSE]
-  G --> E1[Etapa 1: dominio puro<br/>lib/hash, lib/errors, lib/path]
-  E1 --> E2[Etapa 2: infraestrutura<br/>lib/http, lib/auth, lib/tmp, lib/output]
+  G[Repositorio criado e publicado<br/>develop a partir de master] --> E1[Etapa 1: dominio puro<br/>lib/hash, lib/errors, lib/path<br/>CONCLUIDA]
+  E1 --> E2[Etapa 2: infraestrutura<br/>lib/output, lib/json, lib/preflight,<br/>lib/config, lib/http, lib/auth, lib/tmp]
   E2 --> E3[Etapa 3: transferencia<br/>lib/transfer, lib/stream, lib/report]
   E3 --> E4[Etapa 4: comandos e integracao]
 
-  P2[DP-07 plataformas<br/>DP-08 jq] -.necessarias em.-> E2
-  P3[DP-11 credencial<br/>DP-05 perfis] -.necessarias em.-> E2
-  P4[DP-06 comandos<br/>DP-10 log] -.necessarias em.-> E4
-  P5[DP-12 volumes] -.calibra.-> E3
+  P1[DP-20 titular do copyright] -.divida aberta.-> E4
+  P2[DP-05 perfis] -.necessaria em.-> E2
+  P3[DP-06 comandos<br/>DP-10 log] -.necessarias em.-> E4
+  P4[DP-12 volumes] -.calibra.-> E3
 
   style E1 fill:#e8f5e9
-  style G fill:#fff3e0
+  style E2 fill:#e8f5e9
+  style G fill:#e8f5e9
 ```
 
-**Leitura:** a Etapa 1 e inteiramente destravada e contem o componente de maior risco tecnico (`lib/hash`), cujo contrato acabou de ser confirmado e que possui vetor de teste oficial. Comecar por ela produz valor verificavel sem depender de nenhuma decisao pendente, enquanto DP-07, DP-08, DP-11 e DP-20 sao respondidas em paralelo.
+**Leitura na v0.5.** A Etapa 2 ficou **quase integralmente destravada**: DP-07, DP-08, DP-11 e DIV-16b liberaram `lib/preflight`, `lib/json`, `lib/config` e `lib/output`, que eram os quatro pontos bloqueados. Resta apenas a estrutura interna do arquivo de configuracao, dependente de DP-05, o que nao impede iniciar o componente.
+
+Duas consequencias vale destacar. **(1)** A camada de compatibilidade GNU/BSD deixou de ser necessaria — e trabalho removido do plano, nao adicionado. **(2)** A unica pendencia com custo crescente e `DP-20`: o `LICENSE` ja esta publicado com titular em espaco reservado, e a formalizacao encarece a cada commit e a cada contribuidor.
 
 ---
 
@@ -402,18 +435,25 @@ flowchart TD
 
 ### Estruturantes (P1) — em ordem de urgencia para a implementacao
 
-| ID | Pergunta em uma linha | Bloqueia |
-|---|---|---|
-| DP-20 | Qual licenca adotar? Havera publicacao ou distribuicao? | Primeiro commit de codigo |
-| **DP-07** | **Quais sistemas e shells? RHEL 6 (`bash` 4.1) precisa ser suportado?** Urgencia elevada: a implementacao ja pressupoe piso 4.4 sem que a decisao tenha sido tomada (DIV-15) | `RNF-01` congelado, `lib/preflight`, compatibilidade de utilitarios, reavaliacao de `RSK-24` |
-| DP-08 | `jq` pode ser exigido como dependencia? | `lib/json` |
-| DP-11 | Arquivo `0600` basta para a credencial, ou e exigido cofre de segredos? | `lib/config` |
-| DP-05 | Precisa atender mais de uma conta na mesma instalacao? | Formato de configuracao |
-| DP-06 | Quais comandos de paridade com o modelo entram no MVP? | Escopo da camada de comandos |
-| DP-10 | Ha exigencia de auditoria, retencao de log ou conformidade regulatoria? | Politica de log |
-| DP-12 | Tamanhos, quantidades, frequencia e numero de hosts? | Calibragem de dimensionamento |
-| DP-19 | Repositorio git com Gitflow? Qual origem remota? | Inicializacao do repositorio |
+| ID | Pergunta em uma linha | Bloqueia | Custo de adiar |
+|---|---|---|---|
+| **DP-20** | **Quem e o titular do copyright? Qual licenca?** | `LICENSE` e cabecalhos de copyright | ⚠️ **Crescente.** O placeholder ja esta no historico publico, e formalizar encarece a cada commit e a cada contribuidor |
+| DP-06 | Quais comandos de paridade com o modelo entram no MVP? | Escopo da camada de comandos | Baixo — necessario so na Etapa 4 |
+| DP-10 | Ha exigencia de auditoria, retencao de log ou conformidade regulatoria? | Politica de log | Baixo — necessario so na Etapa 4 |
+| DP-12 | Tamanhos, quantidades, frequencia e numero de hosts? | Calibragem de dimensionamento | Baixo — padroes conservadores servem ate la |
 
 ### Refinamento (P2)
 
 DP-13 shell interativo · DP-14 empacotamento · DP-15 idioma · DP-16 monitoramento · DP-17 rede corporativa · DP-18 compartilhamento.
+
+### Resolvidas nesta versao
+
+| ID | Decisao | Efeito |
+|---|---|---|
+| DP-07 | Linux, `bash` 4+ *(piso tecnico 4.4)* | Descongela `RNF-01`; destrava `lib/preflight`; **elimina** a camada de compatibilidade GNU/BSD; permite reavaliar `RSK-24` |
+| DP-08 | Apenas `cURL`; interpretador JSON **proprio**, sem `jq` | Destrava `lib/json`; eleva `RNF-11` a defesa principal do componente |
+| DP-11 | Arquivo `0600` sob XDG (`$XDG_CONFIG_HOME`, recuo `~/.config`); sem sobrescrita por ambiente | Destrava `lib/config`; acrescenta verificacao de permissao ao preflight |
+| DIV-16b | Linha por padrao; `--null` com terminador `\0` | Destrava `lib/output`; `RNF-22` vale nos dois modos |
+| DP-19 | Repositorio publicado; Gitflow com `develop` e `feature/*` | Encerrada. Desvios consumados registrados |
+| **DP-05** | **Uma conta so, sem nocao de perfil** | Fecha o desenho de `lib/config`: um arquivo, um caminho, sem multiplexacao. `RF-05` e `F-18` saem para o backlog como incremento **aditivo**, que nao quebra o contrato de `RF-35` |
+| **RSK-24** | **Aceite do TOCTOU reconfirmado**, com `DP-07` ja resolvida | Reabertura encerrada. A fundamentacao passa a repousar **apenas** nos dois argumentos tecnicos verificados, sem o argumento de portabilidade que havia caido |

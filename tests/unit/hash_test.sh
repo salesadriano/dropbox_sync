@@ -300,7 +300,7 @@ teste_valida_formato_de_content_hash() {
 
 teste_comparacao_ignora_caixa_mas_nao_valores_diferentes() {
   local maiusculo
-  maiusculo=$(printf '%s' "$ESPERADO_VAZIO" | tr 'a-f' 'A-F')
+  maiusculo=${ESPERADO_VAZIO^^}
   assert_sucesso dbx_hash_iguais "$ESPERADO_VAZIO" "$maiusculo"
   assert_status 1 dbx_hash_iguais "$ESPERADO_VAZIO" "$ESPERADO_UM_BYTE"
 }

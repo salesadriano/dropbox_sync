@@ -59,12 +59,19 @@ assert_nao_contem() {
 }
 
 # assert_status <esperado> <comando...>
+#
+# A saida e desviada para arquivo, e NAO capturada com `$( )`. Substituicao de
+# comando cria subshell, o que impede testar funcao que mantenha estado global
+# e mascara defeitos de obsolescencia de estado — foi o que escondeu E2-09.
 assert_status() {
   local esperado=$1
   shift
-  local saida obtido
-  saida=$("$@" 2>&1)
+  local saida obtido arquivo
+  arquivo="${DBX_TESTES_TMP:-${TMPDIR:-/tmp}}/dbx-assert.$$"
+  "$@" >"$arquivo" 2>&1
   obtido=$?
+  saida=$(cat "$arquivo" 2>/dev/null)
+  rm -f "$arquivo"
   [[ $esperado == "$obtido" ]] && return 0
   _harness_falhar "status de saida divergente ao executar: $*" \
     "esperado: $esperado" "obtido:   $obtido" "saida:    ${saida//$'\n'/ | }"

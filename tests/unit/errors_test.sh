@@ -44,7 +44,7 @@ teste_tabela_de_codigos_de_saida_e_congelada() {
 _taxonomia() {
   local lista quantidade
   lista=$(dbx_errors_listar_classes 2>/dev/null)
-  quantidade=$(printf '%s\n' "$lista" | grep -c '^[a-z_]\{3,\}$')
+  quantidade=$(grep -c '^[a-z_]\{3,\}$' <<<"$lista")
   if [[ $quantidade -lt 10 ]]; then
     _harness_falhar "taxonomia incompleta: $quantidade classe(s) declarada(s), minimo 10"
   fi
@@ -436,7 +436,7 @@ teste_redacao_de_entrada_muito_grande_e_limitada() {
   # O segredo e posto no INICIO, para que o teste prove redacao e nao apenas
   # que o truncamento jogou o segredo fora.
   local entrada saida
-  entrada=$(printf 'palavra%.0s ' $(seq 1 3000))
+  printf -v entrada 'palavra%.0s ' $(seq 1 3000)
   saida=$(dbx_errors_redigir "sl.SEGREDO-NO-INICIO $entrada")
   assert_nao_contem 'sl.SEGREDO-NO-INICIO' "$saida" \
     'segredo antes do teto precisa ser redigido'
@@ -449,7 +449,7 @@ teste_redacao_de_entrada_muito_grande_e_limitada() {
 teste_redacao_de_entrada_muito_grande_termina_rapido() {
   # A versao anterior era quadratica: 50 mil palavras levavam mais de 15 s.
   local entrada inicio fim decorrido
-  entrada=$(printf 'palavra%.0s ' $(seq 1 50000))
+  printf -v entrada 'palavra%.0s ' $(seq 1 50000)
   inicio=$SECONDS
   dbx_errors_redigir "$entrada" >/dev/null
   fim=$SECONDS
@@ -552,7 +552,7 @@ teste_truncagem_nao_deixa_segredo_escapar() {
   # O recheio e dimensionado para que o VALOR comece `distancia` caracteres
   # antes do corte, de modo que a chave fique dentro e o valor atravesse.
   for distancia in 20 35 50; do
-    recheio=$(printf 'x%.0s' $(seq 1 $((4096 - distancia - 25))))
+    printf -v recheio 'x%.0s' $(seq 1 $((4096 - distancia - 25)))
     entrada="{\"a\":\"$recheio\",\"refresh_token\":\"SEGREDOxSEGREDOxSEGREDOxSEGREDOxSEGREDOxSEGREDO\"}"
     saida=$(dbx_errors_redigir "$entrada")
     assert_nao_contem 'SEGREDOxSEGREDO' "$saida" \
@@ -563,7 +563,7 @@ teste_truncagem_nao_deixa_segredo_escapar() {
 
 teste_saida_permanece_limitada_apos_a_redacao() {
   local entrada saida
-  entrada=$(printf 'z%.0s' $(seq 1 20000))
+  printf -v entrada 'z%.0s' $(seq 1 20000)
   saida=$(dbx_errors_redigir "$entrada")
   if [[ ${#saida} -gt 6000 ]]; then
     _harness_falhar "saida sem teto apos a redacao: ${#saida} caracteres"
@@ -575,7 +575,9 @@ teste_entrada_acima_do_teto_de_analise_e_truncada_com_redacao() {
   # e seguro porque o mascaramento nao depende de delimitador de fechamento —
   # invariante fixada em `valor_sem_delimitador_de_fechamento_e_mascarado_ate_o_fim`.
   local entrada saida
-  entrada="sl.TOKENSECRETO refresh_token=9pQrSegredoNoInicio $(printf 'w%.0s' $(seq 1 40000))"
+  local recheio
+  printf -v recheio 'w%.0s' $(seq 1 40000)
+  entrada="sl.TOKENSECRETO refresh_token=9pQrSegredoNoInicio $recheio"
   saida=$(dbx_errors_redigir "$entrada")
   assert_nao_contem 'sl.TOKENSECRETO' "$saida" 'segredo dentro da janela analisada precisa ser mascarado'
   assert_nao_contem '9pQrSegredoNoInicio' "$saida"
@@ -639,7 +641,7 @@ teste_teto_de_redacao_nao_e_afrouxavel_pelo_ambiente() {
   local tamanho
   tamanho=$(DBX_ERRORS_LIMITE_REDACAO=999999 timeout 30 bash -c '
     . "$1/lib/errors.sh" || exit 90
-    entrada=$(printf "y%.0s" $(seq 1 20000))
+    printf -v entrada "y%.0s" $(seq 1 20000)
     saida=$(dbx_errors_redigir "$entrada")
     printf "%s" "${#saida}"
   ' _ "$DBX_HARNESS_RAIZ" 2>/dev/null)
@@ -749,7 +751,7 @@ teste_arquivo_de_teste_com_filtro_sem_correspondencia_reprova() {
 
 teste_byte_de_controle_em_chave_sensivel_nao_contorna_a_redacao() {
   local entrada saida
-  entrada="{\"access$(printf '\001')_token\":\"9pQrRefreshTokenAbcdef\"}"
+  entrada=$'{"access\001_token":"9pQrRefreshTokenAbcdef"}'
   saida=$(dbx_errors_redigir "$entrada")
   assert_nao_contem '9pQrRefreshTokenAbcdef' "$saida" \
     'byte de controle dentro da chave nao pode liberar o valor'
@@ -758,7 +760,7 @@ teste_byte_de_controle_em_chave_sensivel_nao_contorna_a_redacao() {
 
 teste_byte_de_controle_nao_e_apagado_silenciosamente() {
   local saida
-  saida=$(dbx_errors_redigir "$(printf 'ctrl\001aqui')")
+  saida=$(dbx_errors_redigir $'ctrl\001aqui')
   assert_diferente 'ctrlaqui' "$saida" \
     'apagar o byte em silencio esconde do operador que houve manipulacao'
   assert_contem 'REDIGIDO' "$saida"
