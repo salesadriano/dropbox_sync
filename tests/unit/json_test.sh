@@ -732,4 +732,51 @@ teste_massa_adversarial_nao_e_construida_por_substituicao_de_comando() {
   done
 }
 
+# ---------------------------------------------------------------------------
+# R2-04 — o codificador precisa de casos DIRETOS, e nao so de ida e volta.
+#
+# Mutando o escape da barra invertida, `json` e `composicao` davam zero e so
+# `config` reprovava. O proximo consumidor e `lib/http`, que codifica CORPO DE
+# REQUISICAO: ali nao ha ida e volta local, e um escape quebrado vira requisicao
+# malformada detectavel somente em rede.
+# ---------------------------------------------------------------------------
+
+teste_codificador_escapa_cada_forma_exigida() {
+  dbx_json_escapar_cadeia 'a\b'
+  assert_igual 'a\\b' "$DBX_JSON_ESCAPADO" 'barra invertida'
+  dbx_json_escapar_cadeia 'a"b'
+  assert_igual 'a\"b' "$DBX_JSON_ESCAPADO" 'aspa'
+  dbx_json_escapar_cadeia $'a\tb'
+  assert_igual 'a\tb' "$DBX_JSON_ESCAPADO" 'tabulacao'
+  dbx_json_escapar_cadeia $'a\nb'
+  assert_igual 'a\nb' "$DBX_JSON_ESCAPADO" 'quebra de linha'
+  dbx_json_escapar_cadeia $'a\rb'
+  assert_igual 'a\rb' "$DBX_JSON_ESCAPADO" 'retorno de carro'
+}
+
+teste_codificador_escapa_a_barra_invertida_antes_das_demais() {
+  # A ORDEM e o ponto: escapar a barra depois duplicaria as barras introduzidas
+  # pelos outros escapes, produzindo duas barras onde deveria haver uma.
+  dbx_json_escapar_cadeia $'a\nb'
+  assert_igual 'a\nb' "$DBX_JSON_ESCAPADO" \
+    'quebra de linha vira exatamente uma barra seguida de n'
+  dbx_json_escapar_cadeia $'\\\n'
+  assert_igual '\\\n' "$DBX_JSON_ESCAPADO" \
+    'barra literal seguida de quebra: duas barras e depois o escape da quebra'
+}
+
+teste_codificador_escapa_controle_como_sequencia_unicode() {
+  dbx_json_escapar_cadeia $'a\001b'
+  assert_igual 'a\u0001b' "$DBX_JSON_ESCAPADO"
+  dbx_json_escapar_cadeia $'a\037b'
+  assert_igual 'a\u001fb' "$DBX_JSON_ESCAPADO"
+}
+
+teste_codificador_nao_altera_texto_sem_escape() {
+  local entrada='/pasta/comum com espaco e acentuacao-cafe'
+  dbx_json_escapar_cadeia "$entrada"
+  assert_igual "$entrada" "$DBX_JSON_ESCAPADO" \
+    'texto sem caractere especial nao pode ser alterado'
+}
+
 harness_executar "$@"

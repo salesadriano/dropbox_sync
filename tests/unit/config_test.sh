@@ -290,6 +290,22 @@ teste_interrupcao_nao_deixa_orfao_com_segredo() {
     'temporario de processo morto contem o segredo e precisa ser removido'
 }
 
+teste_orfao_com_identificador_de_processo_vivo_e_removido_por_idade() {
+  # A varredura por processo e PROBABILISTICA: basta nomear o temporario com o
+  # identificador de um processo vivo qualquer para ele sobreviver, e com
+  # reciclagem de identificadores o orfao vira permanente (R2-03).
+  local area antigo
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  antigo="$area/config/dbx/.credencial.$$.AnTiGo01"
+  printf '{"refresh_token":"RT-VAZADO"}' >"$antigo"
+  touch -d '2 hours ago' "$antigo"
+  _dbx_config_varrer_orfaos "$area/config/dbx"
+  assert_arquivo_ausente "$antigo" \
+    'temporario antigo e orfao mesmo que o identificador pertenca a processo vivo'
+}
+
 teste_varredura_nao_remove_temporario_de_processo_vivo() {
   # A varredura nao pode quebrar gravacao concorrente: 10 gravacoes simultaneas
   # ja foram verificadas sem orfaos, e apagar o temporario alheio destruiria

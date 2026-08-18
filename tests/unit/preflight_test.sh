@@ -229,23 +229,119 @@ teste_todo_utilitario_ausente_reprova_e_e_nomeado() {
   done
 }
 
-teste_lista_do_preflight_cobre_o_que_a_biblioteca_invoca() {
-  # Pergunta dos gemeos, transformada em auditoria: se a biblioteca passar a
-  # invocar um utilitario novo, o preflight precisa passar a exigi-lo, senao
-  # volta a aprovar ambiente onde a primeira operacao falha.
-  local invocados utilitario nao_exigidos=''
-  invocados=$(grep -vhE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ"/lib/*.sh |
-    grep -ohE '(^|[^-_a-zA-Z/.])(mktemp|mv|rm|chmod|mkdir|stat|head|wc|readlink|dirname|basename|cat|cp|ln|find|tr|sed|awk|curl)([^-_a-zA-Z]|$)' |
-    grep -ohE '(mktemp|mv|rm|chmod|mkdir|stat|head|wc|readlink|dirname|basename|cat|cp|ln|find|tr|sed|awk|curl)' |
-    sort -u)
-  for utilitario in $invocados; do
-    case " $DBX_PREFLIGHT_UTILITARIOS " in
-      *" $utilitario "*) ;;
-      *) nao_exigidos+=" $utilitario" ;;
-    esac
-  done
-  assert_igual '' "$nao_exigidos" \
-    "utilitarios invocados por lib/ e nao exigidos pelo preflight:$nao_exigidos"
+# _comandos_externos_de <arquivo...> — candidatos a comando externo, extraidos
+# do TEXTO do codigo, e nao de uma lista de nomes conhecidos.
+#
+# Descarta, nesta ordem: comentarios, literais entre aspas (conteudo de mensagem
+# nao e codigo) e rotulos de `case`. Depois toma a palavra em POSICAO DE
+# COMANDO: inicio de linha ou apos separador de comando, seguida de espaco ou
+# fim de linha. Invocacao por caminho absoluto e reduzida ao nome do utilitario.
+_comandos_externos_de() {
+  # Descarta, nesta ordem: comentarios; literais entre aspas, porque conteudo de
+  # mensagem nao e codigo; BLOCOS DE LITERAL DE VETOR, cujas linhas de
+  # continuacao sao indistinguiveis de linhas de comando; e rotulos de `case`.
+  sed -e 's/^[[:space:]]*#.*//' -e "s/'[^']*'/ /g" -e 's/"[^"]*"/ /g' "$@" |
+    awk '
+      /^[[:space:]]*(declare[[:space:]]+-[a-zA-Z]+[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?=\(/ { dentro = 1; next }
+      dentro && /^[[:space:]]*\)/ { dentro = 0; next }
+      dentro { next }
+      { print }
+    ' |
+    grep -vE '^[[:space:]]*[^|&;()]+([[:space:]]*\|[[:space:]]*[^|&;()]+)*[[:space:]]*\)' |
+    grep -oE '(^|[;&|(]|&&|\|\|)[[:space:]]*[/a-zA-Z][-_/a-zA-Z0-9.]*([[:space:]]|$)' |
+    grep -oE '[/a-zA-Z][-_/a-zA-Z0-9.]*' |
+    sed 's|.*/||' |
+    grep -E '^[a-z][a-z0-9_-]*$' |
+    sort -u
 }
+
+# _nomes_de_variavel_de <arquivo...> — nomes atribuidos no proprio codigo.
+# Derivado, e nao listado: e o que remove `indice`, `posicao`, `alto` e afins,
+# que aparecem em posicao de comando dentro de expressao aritmetica.
+_nomes_de_variavel_de() {
+  {
+    grep -ohE '(^|[[:space:](])(local[[:space:]]+)?[a-z_][a-z0-9_]*=' "$@" |
+      tr -d ' (' | sed 's/=$//'
+    grep -ohE 'for[[:space:]]*\(\([[:space:]]*[a-z_][a-z0-9_]*' "$@" |
+      sed 's/.*[( ]//'
+    grep -ohE 'local[[:space:]]+[a-z_ ]+' "$@" | sed 's/local[[:space:]]*//' | tr ' ' '\n'
+  } 2>/dev/null | grep -E '^[a-z_][a-z0-9_]*$' | sort -u
+}
+
+# _nao_e_comando_externo <palavra> <nomes_de_variavel>
+_nao_e_comando_externo() {
+  local palavra=$1 variaveis=$2
+  [[ $palavra == dbx_* || $palavra == _dbx_* ]] && return 0
+  compgen -b | grep -qxF "$palavra" && return 0
+  compgen -k | grep -qxF "$palavra" && return 0
+  grep -qxF "$palavra" <<<"$variaveis" && return 0
+  # Unica lista mantida a mao, e de EXCECOES. Manter excecoes e barato e
+  # visivel; manter o universo de nomes possiveis e impossivel — foi essa
+  # inversao que faltou na versao anterior desta auditoria.
+  #
+  # `openssl` e `shasum` sao membros da familia de resumo, cuja presenca e
+  # verificada em conjunto por `dbx_hash_verificar_dependencias`, e nao
+  # individualmente: exigir os tres reprovaria ambiente que tem apenas um.
+  local excecoes=' sudo env openssl shasum '
+  [[ $excecoes == *" $palavra "* ]] && return 0
+  return 1
+}
+
+teste_todo_comando_externo_de_lib_e_exigido_pelo_preflight() {
+  # ESCOPO DERIVADO DO CODIGO. A versao anterior comparava contra uma lista fixa
+  # de vinte nomes escrita no proprio teste, e portanto era circular: o cenario
+  # que o comentario declarava cobrir — a biblioteca invocar um utilitario NOVO
+  # — nao era detectado, porque o nome novo nao estava na lista de busca.
+  local comando faltantes='' variaveis
+  variaveis=$(_nomes_de_variavel_de "$DBX_HARNESS_RAIZ"/lib/*.sh)
+  while IFS= read -r comando; do
+    [[ -n $comando ]] || continue
+    _nao_e_comando_externo "$comando" "$variaveis" && continue
+    case " $DBX_PREFLIGHT_UTILITARIOS " in *" $comando "*) continue ;; esac
+    faltantes+=" $comando"
+  done < <(_comandos_externos_de "$DBX_HARNESS_RAIZ"/lib/*.sh)
+  assert_igual '' "$faltantes" \
+    "comandos externos invocados por lib/ e nao exigidos pelo preflight:$faltantes"
+}
+
+teste_auditoria_de_comandos_enxerga_utilitario_fora_de_qualquer_lista() {
+  # RSK-27, forma NAO OBVIA: a forma obvia — reduzir a lista do preflight — ja
+  # era detectada. A que faltava era a biblioteca passar a invocar algo novo.
+  local amostra extraidos
+  amostra=$(mktemp "$DBX_TESTES_TMP/amostra.XXXXXX")
+  {
+    printf '%s\n' 'saida=$(cut -d: -f1 "$arquivo")'
+    printf '%s\n' '/usr/bin/paste "$a" "$b"'
+    printf '%s\n' 'date +%s'
+  } >"$amostra"
+  extraidos=$(_comandos_externos_de "$amostra")
+  rm -f "$amostra"
+  local esperado
+  for esperado in cut paste date; do
+    assert_contem "$esperado" "$extraidos" \
+      "a extracao precisa enxergar '$esperado', que nao consta de lista alguma"
+  done
+}
+
+teste_auditoria_de_comandos_ignora_o_que_nao_e_comando() {
+  # Falso positivo tambem e defeito: uma auditoria que reprova por engano deixa
+  # de ser consultada.
+  local amostra extraidos
+  amostra=$(mktemp "$DBX_TESTES_TMP/amostra.XXXXXX")
+  {
+    printf '%s\n' "  [configuracao]='Verifique o arquivo; consulte a ajuda'"
+    printf '%s\n' '      app_key) DBX_CONFIG_APP_KEY=$valor ;;'
+    printf '%s\n' '  # comentario com sudo e rm dentro'
+    printf '%s\n' '  local caminho=$1'
+  } >"$amostra"
+  extraidos=$(_comandos_externos_de "$amostra")
+  rm -f "$amostra"
+  local proibido
+  for proibido in consulte app_key caminho; do
+    assert_nao_contem "$proibido" "$extraidos" \
+      "'$proibido' nao e comando externo e nao pode ser extraido"
+  done
+}
+
 
 harness_executar "$@"

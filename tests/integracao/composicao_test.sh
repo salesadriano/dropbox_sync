@@ -324,37 +324,111 @@ teste_config_nao_destroi_documento_de_outro_contexto() {
   assert_igual 'padrao' "$DBX_JSON_CONTEXTO" 'o contexto precisa ser restaurado'
 }
 
-teste_ambas_as_verificacoes_de_permissao_da_credencial_concordam() {
-  # Pergunta do QF-01 aplicada a este incremento: a guarda de permissao existe
-  # em DOIS caminhos gemeos — preflight e leitura. Ambas precisam recusar os
-  # mesmos modos, senao uma delas e porta de entrada.
-  local area arquivo modo status_preflight status_config
+# _guardas_de_metadado_em <funcao> <arquivo> — extrai do CODIGO o conjunto de
+# guardas que a funcao aplica sobre metadado da credencial.
+#
+# Deriva do texto da propria funcao: toda condicao que teste permissao, dono ou
+# tipo do arquivo e do diretorio.
+#
+# A EXISTENCIA (`-e`) fica de fora de proposito, e e a unica assimetria
+# legitima entre os dois: o preflight verifica AMBIENTE e trata credencial
+# ausente como estado normal antes da configuracao inicial, enquanto a leitura
+# verifica AUTORIZACAO e exige o arquivo. Incluir a existencia faria a auditoria
+# reprovar uma diferenca que e desenho, e uma auditoria que reprova por engano
+# deixa de ser consultada. A versao anterior desta auditoria comparava o
+# comportamento sobre dez modos FIXOS, e por isso era teste de regressao da
+# divergencia que existia quando foi escrita, e nao garantia de paridade —
+# guarda NOVA em um gemeo so nao reprovava nada (R2-02).
+_guardas_de_metadado_em() {
+  local funcao=$1 arquivo=$2
+  awk -v alvo="$funcao" '
+    $0 ~ "^" alvo "\\(\\)" { dentro = 1 }
+    dentro && /^}/ { dentro = 0 }
+    dentro { print }
+  ' "$arquivo" |
+    grep -vE '^[[:space:]]*#' |
+    grep -oE '(modo|modo_diretorio|dono)[[:space:]]*(=~|==)[[:space:]]*[^]|&)]*|-[fdwrx][[:space:]]+"?\$(arquivo|diretorio)' |
+    sed -e 's/[[:space:]]\+/ /g' -e 's/ $//' |
+    sort -u
+}
+
+teste_gemeos_aplicam_o_mesmo_conjunto_de_guardas_de_metadado() {
+  # ESCOPO DERIVADO DO CODIGO. Guarda de metadado acrescentada a um gemeo e nao
+  # ao outro passa a reprovar POR CONSTRUCAO, e nao por acaso de o modo novo
+  # estar entre os fixados.
+  local do_preflight do_config
+  do_preflight=$(_guardas_de_metadado_em dbx_preflight_verificar "$DBX_LIB/preflight.sh")
+  do_config=$(_guardas_de_metadado_em dbx_config_carregar "$DBX_LIB/config.sh")
+
+  if [[ -z $do_preflight || -z $do_config ]]; then
+    _harness_falhar 'a extracao nao encontrou guarda alguma: a auditoria estaria vazia'
+  fi
+  assert_igual "$do_preflight" "$do_config" \
+    'os dois caminhos gemeos precisam aplicar o mesmo conjunto de guardas de metadado'
+}
+
+teste_auditoria_de_gemeos_detecta_guarda_nova_em_um_lado_so() {
+  # RSK-27 na forma NAO OBVIA: nao basta detectar a divergencia que existia — e
+  # preciso detectar uma divergencia NOVA. A amostra e sintetica para nao
+  # depender de mutar o codigo real.
+  local amostra_a amostra_b guardas_a guardas_b
+  amostra_a=$(mktemp "$DBX_TESTES_TMP/gem.XXXXXX")
+  amostra_b=$(mktemp "$DBX_TESTES_TMP/gem.XXXXXX")
+  {
+    printf '%s\n' 'f_a() {'
+    printf '%s\n' '  [[ $modo =~ ^[4567]00$ ]] || return 1'
+    printf '%s\n' '  [[ $dono == "$EUID" ]] || return 1'
+    printf '%s\n' '}'
+  } >"$amostra_a"
+  {
+    printf '%s\n' 'f_b() {'
+    printf '%s\n' '  [[ $modo =~ ^[4567]00$ ]] || return 1'
+    printf '%s\n' '  [[ $dono == "$EUID" ]] || return 1'
+    printf '%s\n' '  [[ $modo_diretorio =~ ^[0-7]00$ ]] || return 1'
+    printf '%s\n' '}'
+  } >"$amostra_b"
+  guardas_a=$(_guardas_de_metadado_em f_a "$amostra_a")
+  guardas_b=$(_guardas_de_metadado_em f_b "$amostra_b")
+  rm -f "$amostra_a" "$amostra_b"
+  assert_diferente "$guardas_a" "$guardas_b" \
+    'guarda nova em um lado so precisa produzir conjuntos diferentes'
+}
+
+teste_gemeos_decidem_igual_em_todo_o_espaco_de_permissao() {
+  # ESCOPO DERIVADO DO DOMINIO: os 512 modos possiveis, e nao uma amostra.
+  local area arquivo modo octal status_preflight status_config divergentes=0
   . "$DBX_LIB/errors.sh"
   . "$DBX_LIB/json.sh"
   . "$DBX_LIB/preflight.sh"
   . "$DBX_LIB/config.sh"
-  area=$(mktemp -d "$DBX_TESTES_TMP/perm.XXXXXX")
+  area=$(mktemp -d "$DBX_TESTES_TMP/espaco.XXXXXX")
   mkdir -p "$area/config/dbx"
-  # O diretorio tambem passou a ser verificado (P3-04): sem restringi-lo, o
-  # caso mediria a permissao do diretorio em vez da do arquivo.
   chmod 700 "$area/config/dbx"
   arquivo="$area/config/dbx/credencial.json"
   printf '{"versao":1,"app_key":"AK","app_secret":"AS","refresh_token":"RT","raiz_remota":"/r"}' >"$arquivo"
-  for modo in 600 400 700 644 640 604 660 606 666 200; do
-    chmod "$modo" "$arquivo"
+
+  for ((modo = 0; modo < 512; modo++)); do
+    printf -v octal '%03o' "$modo"
+    chmod "$octal" "$arquivo" 2>/dev/null || continue
     XDG_CONFIG_HOME="$area/config" dbx_preflight_verificar >/dev/null 2>&1
     status_preflight=$?
     XDG_CONFIG_HOME="$area/config" dbx_config_carregar >/dev/null 2>&1
     status_config=$?
-    if [[ $modo =~ ^[4567]00$ ]]; then
-      assert_igual 0 "$status_preflight" "modo $modo devia passar no preflight"
-      assert_igual 0 "$status_config" "modo $modo devia passar na leitura"
-    else
-      assert_diferente 0 "$status_preflight" "modo $modo passou no preflight"
-      assert_diferente 0 "$status_config" "modo $modo passou na leitura"
+    # Concordancia de DECISAO: ambos aceitam ou ambos recusam.
+    local aceita_preflight=nao aceita_config=nao
+    [[ $status_preflight -eq 0 ]] && aceita_preflight=sim
+    [[ $status_config -eq 0 ]] && aceita_config=sim
+    if [[ $aceita_preflight != "$aceita_config" ]]; then
+      divergentes=$((divergentes + 1))
+      [[ $divergentes -le 3 ]] && printf '# divergencia no modo %s: preflight=%s config=%s\n' \
+        "$octal" "$status_preflight" "$status_config" >&2
     fi
   done
+  chmod 600 "$arquivo"
+  assert_igual 0 "$divergentes" \
+    'os gemeos precisam decidir identicamente em TODO o espaco de permissao'
 }
+
 
 teste_credencial_gravada_e_integralmente_redigida_pela_taxonomia() {
   # Composicao entre o FORMATO escolhido e a redacao: se o formato mudasse e a
