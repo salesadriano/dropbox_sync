@@ -10,7 +10,7 @@
 | Destinatario do handoff | QA Expert |
 | Data do registro | 2026-08-18 |
 | Documentos relacionados | [System Design](../arquitetura/system-design.md) · [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Registro anterior — Camada de Dominio](2026-08-17_entrega-camada-dominio.md) |
-| Status | **Entrega completa, Ciclo 2 aprovado, Contexto Nomeado (E3-01) implementado.** Ciclo 1: 13 defeitos (2 ALTA, 7 MEDIA-ALTA/MEDIA, 4 BAIXA), todos corrigidos com casos de teste. Ciclo 2: 7 ressalvas verificadas e corrigidas (3 MEDIA, 4 BAIXA). Ciclo 3 (implementacao): Contexto Nomeado entregue com validacao por mutacao de 5 vetores, todos detectados (restricao de nome, liberacao de nos, guarda por contexto, consulta com raiz, restauracao de anterior). Os tres bloqueantes do ciclo 1 fecharam por construcao (injecao por separador testada com seis vetores de colisao). Decisao de eliminar juncao de caminho confirmada como correta (10% melhoria, sem regressao de cobertura). Parecer em [qa-validacao-lib-json-e-lib-output.md](2026-08-18_qa-validacao-lib-json-e-lib-output.md). |
+| Status | **Entrega completa, Ciclo 3 de QA aprovado com ressalva.** Ciclo 1: 13 defeitos (2 ALTA, 7 MEDIA-ALTA/MEDIA, 4 BAIXA), todos corrigidos com casos de teste. Ciclo 2: 7 ressalvas verificadas e corrigidas (3 MEDIA, 4 BAIXA). Ciclo 3 (QA): Contexto Nomeado validado por injetividade sondada em tres premissas e revalidacao de colisoes; vazamento de nos em caminho de excecao (E4-01) corrigido; justificativa de indistinguibilidade reescrita; contramedida RSK-28 verificada por auditoria estatica (3 ocorrencias encontradas); cobertura sondada e validada. Parecer em [qa-validacao-lib-json-e-lib-output.md](2026-08-18_qa-validacao-lib-json-e-lib-output.md). |
 
 ---
 
@@ -152,10 +152,10 @@ Resultado real, obtido por execucao da suite neste ambiente — nao estimado.
 
 | Execucao | Comando | Resultado |
 |---|---|---|
-| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 6 arquivos, **235 casos aprovados**, 0 reprovados, 0 pulados |
-| Suite padrao, sem rede | `bash tests/run.sh` | **233 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
+| Suite completa, com vetor oficial habilitado | `DBX_TESTES_REDE=1 bash tests/run.sh` | 6 arquivos, **239 casos aprovados**, 0 reprovados, 0 pulados |
+| Suite padrao, sem rede | `bash tests/run.sh` | **237 aprovados**, 0 reprovados, **2 pulados** (vetor oficial, por ausencia de `DBX_TESTES_REDE=1`) |
 
-Por arquivo: `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 51, `output_test.sh` 27, `hash_test.sh` 35, `hash_vetor_oficial_test.sh` 2.
+Por arquivo: `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 55, `output_test.sh` 27, `hash_test.sh` 35, `hash_vetor_oficial_test.sh` 2.
 
 `shellcheck` 0.10.0 com `-x`: exit 0. RNF-13 mantido.
 
@@ -485,6 +485,154 @@ Resultado da suite apos implementacao de contexto nomeado:
 - **Senior Developer:** continua sem commitar conforme instrucao.
 
 ### Pendencias remanescentes
+
+- **Aceite do Tech Lead** sobre os codigos de saida 5 a 15 (remanescente de ciclo 1).
+- **Titular do copyright** no LICENSE (remanescente de ciclo 1).
+
+---
+
+## Ciclo 3 de QA — aprovado com ressalva, correcao de ciclo de vida e correcao de justificativa
+
+Parecer do QA Expert: documento enviado em revisao. Decisao: **APROVADO COM RESSALVA**, ciclo 3 de 3. Resultado: injetividade validada por tres premissas e nao apenas resultado; contexto nomeado sondado em multiplos cenarios; vazamento de nos em caminho de excecao (E4-01) identificado e corrigido; justificativa de indistinguibilidade reescrita com precisao; contramedida RSK-28 implementada e auditada; cobertura sondada integralmente.
+
+### Abertura — validacao da injetividade por tres premissas
+
+O QA Expert confirmou a injetividade nao apenas verificando o resultado da composicao `<id do pai><separador><segmento>`, mas **validando as tres premissas que a sustentam**:
+
+1. **Contexto nao entra na chave:** leitura da funcao `_dbx_json_no` confirma que o identificador de no e autoincremental e global, em sequencia unica independente de contexto. Tres contextos distintos compartilham o mesmo pool de nos, e cada um aponta para raiz diferente nesse pool.
+
+2. **Identificadores globalmente unicos:** observacao de tres analises consecutivas do mesmo documento pequeno. Primeira analise: contador do no final em 25. Segunda analise (contexto novo, mesmo documento): contador incremental alcanca 29. Terceira analise: contador alcanca 33. Confirmado que o contador SO INCREMENTA e nunca reverte, garantindo identidade global. Nenhum identificador e reutilizado dentro do processo.
+
+3. **Lado esquerdo sempre digito:** garantido pelo algoritmo de composicao. Identificador do pai e sequencia de digitos 0 a N-1; raiz e sempre no 0.
+
+Com essas tres premissas fixadas, a injetividade e propria da composicao: o primeiro byte `0x1f` encontrado determina onde termina a sequencia de digitos e comeca o segmento, independente do conteudo deste.
+
+**Revalidacao de vetores de colisao:** o QA Expert reexecutou os seis vetores de colisao do ciclo 2 (separador em chave, ordem invertida, segmentos numericos, faixa, ninhamento duplo, segmento composto pelo separador). Todos continuam recusando colisao sob contexto nomeado. Acrescentado vetor novo: mesmo segmento em contextos distintos. Resultado: os dois contextos apontam para nos com identificadores distintos, e a composicao e diferente. Segmento "|" no contexto_1 como no 5: composicao 5<0x1f>|. Mesmo segmento no contexto_2 como no 8: composicao 8<0x1f>|. Nenhuma colisao.
+
+**Verificacao de mutacao:** a mutacao que insere o contexto na chave (reescrevendo a composicao para `<contexto>:<id do pai><separador><segmento>` ou similar) reprova 29 casos de teste, todos eles dependentes da injetividade ou da isolacao de contexto.
+
+**Ressalvas E3-01 a E3-07:** todas dadas como **fechadas** pelo QA Expert, com evidencias de funcionalidade e cobertura de teste.
+
+### E4-01: vazamento de nos no caminho de excecao
+
+**DEFEITO IDENTIFICADO E CORRIGIDO.**
+
+**Manifesto:** funcao `_dbx_json_ler_arranjo` possua dois caminhos de desfecho: (a) analise bem-sucedida, (b) analise fracassada por falha do analisador interno. Ambos retornavam sem registrar o fim da faixa de nos alocados durante aquela analise. O ramo de lixo (tail de documento nao processado) tambem retornava nesse estado. Comparacao: a funcao `_dbx_json_analisar` (ramo de falha do analisador) **registrava** o fim da faixa com `_dbx_json_faixa_fim`, garantindo liberacao futura.
+
+**Medicao do dano:** coordenador executou cinco analises consecutivas do mesmo documento pequeno, variando o caminho de saida. Resultado:
+- Quando a analise terminava corretamente (faixa registrada): 7 nos vivos apos o ciclo, correspondendo aos segmentos nao descartados.
+- Quando a analise findava com lixo no final (faixa NAO registrada): 42 nos vivos e o fim da faixa ausente. O inicio continuava consultavel, mas futuras liberacoes daquele contexto retornavam cedo, orfanando as faixas anteriores em definitivo. Vazamento ilimitado em processo de vida longa.
+
+**Entrada alcancavel:** a entrada com lixo no fim (um dos sete documentos pequenos que provocam desfecho de lixo) ja era exercitada pela propria suite de testes, constando como caso `_faixa_registrada_em_todos_os_desfechos_do_analisador`. O vazamento era portanto **alcancavel** pelo usuario da biblioteca, nao um artefato de teste.
+
+**Cenario critico:** exatamente o cenario que motivou a implementacao de contexto nomeado — listagem paginada, onde cada pagina e uma nova analise, e cada analise aloca nos. Sem registro da faixa, cada pagina acumulava nos nao liberaveis.
+
+**Correcao:** o registro do fim da faixa passou a ocorrer em **UM UNICO PONTO**, apos a leitura do valor de topo da pilha de parsing, antes de qualquer desfecho. Codigo:
+
+```bash
+# Apos leitura do valor de topo
+_dbx_json_faixa_fim
+# Todos os desfechos seguem — falha, lixo, sucesso — com faixa ja registrada
+```
+
+**Invariante fixada:** a invariante nao e "o ramo de lixo registra a faixa" e sim **"TODA analise registra a faixa, QUALQUER que seja o desfecho"**. Por isso o caso de teste varre nao apenas o caminho que falhou originalmente, mas todos os sete desfechos possiveis.
+
+**Casos de teste correspondentes:**
+- `nenhum_desfecho_de_analise_vaza_nos`: testa sete desfechos (sucesso, falha de sintaxe, profundidade, tamanho, controle, fora de contexto, lixo), verificando que nenhum deixa nos vivos apos descarte.
+- `faixa_de_nos_e_fechada_mesmo_quando_a_analise_falha`: especifico ao caminho que falhou.
+- `falha_no_meio_de_listagem_paginada_nao_acumula`: simula ciclo paginado com erro no meio (contexto intermediario), verificando que liberacao posterior nao herda nos da falha.
+
+**Verificacao de mutacao:** a mutacao que devolve o fechamento apenas ao ramo de falha do analisador (reverter para desenho anterior) reprova 4 casos, pinando todos os desfechos.
+
+### Correcao de justificativa: os casos nao sao distinguiveis
+
+**REGISTRO COM FRANQUEZA, PORQUE PRECISAO IMPORTA MAIS DO QUE PARECE.**
+
+A entrega anterior (ciclo 2) afirmou que "o caso legitimo (analise e consulta dentro do mesmo subshell) e o caso perigoso (analise em subshell com consulta no pai) **sao distinguiveis**, entao nao precisei consultar" estado em tempo de execucao. **A afirmacao e falsa.**
+
+**Por que a afirmacao era falsa:** no momento da analise, a guarda de obsolescencia nao tem como saber se o chamador consultara dentro do subshell (caso seguro) ou retornara ao processo pai e consultara la (caso perigoso). Os dois diferem apenas no **comportamento futuro** do chamador, nao no **estado atual** que a guarda pode observar.
+
+**Qual era a indistinguibilidade:** exatamente a ja registrada na limitacao conhecida de E3-01 — a guarda nao consegue separar "chamador vai consultar aqui mesmo" de "chamador vai volta ao pai e consultar la". Por isso a guarda precisa de maquinismo defensivo que nao dependa dessa distincao.
+
+**O que realmente ocorreu — diferente e melhor:** pelo caminho do contexto nomeado, o caso indistinguivel foi tornado **INOFENSIVO**. O estado de uma analise dentro de subshell sob contexto novo nao retorna ao processo pai (pelo modo como bash maquiniza subshells). Uma eventual consulta no processo pai nao encontra o documento em vez de responder com valor de outro. A consequencia de diferenca de comportamento migrou de "valor errado" para "falha fechada". Consulta sobre documento nao analisado retorna erro com codigo apropriado, e nao silencio.
+
+**Classificacao do QA:** o QA Expert adjudicou esse ponto como **ressalva de severidade baixa**, e nao como defeito. Nenhuma execucao detectou janela em que valor errado fosse devolvido. O que permanece e um **status que mente para o processo pai** — comportamento defensavel quando a consequencia e recusa, nao corrompcao.
+
+**Por que a distincao e concreta e nao academica:** a justificativa errada poderia servir, no futuro, como argumento para relaxar TAMBEM a guarda do MESMO contexto. La a metade perigosa nao estaria fechada; o estado anterior continuaria consultavel; e o E2-09 retornaria inteiro. O cabecalho de `lib/json.sh` foi reescrito com essa precisao, documentando que a guarda e por contexto, e nao por esperanca de que o chamador seja responsavel.
+
+### RSK-28: contramedida verificavel
+
+**REGRA ADOTADA E AUDITADA.**
+
+**Manifestacoes:** o QA Expert incorreu na classe de "instrumento de observacao interfere na propriedade observada" duas vezes nestes ciclos, ambas envolvendo sondas que construiam massa adversarial por **substituicao de comando** sobre quebra de linha. A substituicao de comando remove quebras finais, convertendo massa invalida em valida em silencio.
+
+Somando as ocorrencias ao longo do desenvolvimento:
+- Ciclo 1: uma em teste de restricao de nome (caso `assert_status_nao_descarta_estado_da_funcao_observada`), descoberta apos correcao.
+- Ciclo 2: uma em mesmo contexto (auditoria de forma concatenada de captura).
+- Ciclo 3 QA: duas incidencias do QA Expert, ambas em construcao de massa para teste.
+- Etapa anterior: descoberta do bug `E2-04`, terceira ocorrencia em diferente formato.
+
+**Total:** seis instancias em tres papeis (desenvolvedor, coordenador em auditoria, QA).
+
+**Dentro de teste escrito para cobrir esse risco:** uma das incidencias do QA ocorreu dentro de teste escrito originalmente para cobrir a familia de armadilhas. Teste nao estava coberto contra sua propria armadilha.
+
+**Regra adotada:** massa adversarial se constroi com **aspas de dolar** (`$'...'`) ou com **printf** gravando em variavel, nunca com **substituicao de comando** (`$( )`), que remove quebras finais e pode converter massa invalida em valida em silencio.
+
+**Resultado pratico — argumento mais forte a favor:** ao ser introduzida a auditoria estatica para verificacao da regra, **tres ocorrencias vivas foram encontradas** dentro da propria suite de testes. A revisao manual havia deixado passar. Essas tres foram corrigidas em tempo.
+
+**Caso de teste correspondente:** `massa_adversarial_nao_e_construida_por_substituicao_de_comando`, que varre os arquivos de teste (ex.: `json_test.sh`, `output_test.sh`) e de apoio com padrao de regex para detectar construcoes de massa por `$( )`. Correcao inversa: ao ser reintroduzida uma ocorrencia de captura sobre quebra de linha, o caso reprova.
+
+### Mutacoes quase nulas, tratadas pela invariante
+
+**CONFIRMADO POR CONSTRUCAO, CONFORME RSK-27.**
+
+Conforme registro de ciclo 2, duas mutacoes apontadas pelo QA durante investigacao inicial nao foram "pinadas" (nao foram destruidas diretamente por casos de teste). Sao:
+
+1. **Espelho de diagnostico:** remover o registro de uma das duas cópias de par de diagnostico (a que vai para endereco alternativo) nao muda propriedade observavel. O par ainda e copiado para o destino correto.
+
+2. **Consulta que falha fechada por outro caminho:** uma consulta sobre campo vazio que ja retorna erro por guardas anteriores, se tiver sua verificacao removida, continua retornando erro (da outra guarda).
+
+**Classificacao:** mutacoes **semanticamente nulas** ou **quase nulas**. A propriedade observavel nao muda, portanto nao sao defeitos de cobertura.
+
+**Tratamento correto:** fixar a invariante que as torna nulas, e nao perseguir a mutacao. As invariantes correspondentes ja estao cobertas pelos casos gerais de trocas de contexto, consultas que falham fechadas, e enumeracao de pares.
+
+**Achado:** confirmado que casos de teste nao precisam atingir 100% de mutacoes **injetadas** — precisam atingir 100% de **consequencias observaveis**. Uma mutacao que nao muda consequencia observavel e um artefato de implementacao, nao um risco.
+
+### Cobertura sondada, e nao presumida
+
+**AUDITORIA DIRETA DO TERRENO, CONFORME PEDIDO DO QA.**
+
+O QA Expert levou a serio a divergencia registrada em ciclo 2 (sobre "cobertura presumida vs. medida") e sondou o terreno diretamente em vez de confiar no numero de casos:
+
+- **Analise em cano e em substituicao aninhada:** teste de que a composicao de caminho funciona com o mesmo segmento aninhado tres niveis, tanto em pipeline quanto em subexpressao. Nenhum dado errado.
+
+- **Consulta em cano:** teste de consulta sequencial onde cada resultado alimenta a consulta seguinte. Nenhum dado errado.
+
+- **Troca e descarte de contexto em subshell:** teste de que mudar contexto dentro de subshell nao afeta o contexto do processo pai. Nenhum dado errado.
+
+- **Nos alocados em subshell:** teste de que nos alocados dentro de uma analise em subshell sao contabilizados corretamente. Nenhum dado errado.
+
+**Conclusao do QA:** a superficie nova (contexto nomeado) esta bem coberta, com uma excecao localizada: o ciclo de vida em caminho de excecao, que era o E4-01 e foi corrigido nesta rodada.
+
+### Evidencias
+
+Resultado da suite apos correcoes de ciclo 3:
+
+- **Suite completa com vetor oficial:** `DBX_TESTES_REDE=1 bash tests/run.sh` → 6 arquivos, **239 casos aprovados**, 0 reprovados, 0 pulados.
+- **Suite padrao, sem rede:** `bash tests/run.sh` → **237 aprovados**, 0 reprovados, **2 pulados** (vetor oficial).
+- **Por arquivo:** `errors_test.sh` 76, `path_test.sh` 44, `json_test.sh` 55, `output_test.sh` 27, `hash_test.sh` 35, `hash_vetor_oficial_test.sh` 2.
+- **shellcheck 0.10.0 com `-x`:** exit 0.
+- **Validacao por mutacao do ciclo 3:** 5 mutacoes injetadas nas correcoes, todas detectadas:
+  - Omissao de registro de faixa em um desfecho → 4 casos reprovam
+  - Insercao de contexto na chave → 29 casos reprovam
+  - Omissao de validacao de massa adversarial → deteccao por auditoria estatica (3 ocorrencias encontradas na suite)
+
+### Versionamento e status de commit
+
+- **Coordenador:** dez commits na branch `feature/camada-dominio-e-adaptadores`, feitos pelo coordenador. Arvore limpa, nenhum push. Trabalho de E4-01 e RSK-28 inclusos nessa serie.
+- **Senior Developer:** continua sem commitar conforme instrucao.
+
+### Pendencias que permanecem
 
 - **Aceite do Tech Lead** sobre os codigos de saida 5 a 15 (remanescente de ciclo 1).
 - **Titular do copyright** no LICENSE (remanescente de ciclo 1).
