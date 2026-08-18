@@ -54,6 +54,12 @@ readonly DBX_HTTP_TENTATIVAS_MAXIMAS=3
 DBX_HTTP_ESPERA_BASE_MS=${DBX_HTTP_ESPERA_BASE_MS:-250}
 DBX_HTTP_AREA_TEMP=''
 
+# Modo de autorizacao da chamada corrente e nome do vetor de campos do modo
+# formulario. Internos: nao fazem parte do contrato publico do componente.
+_DBX_HTTP_MODO='bearer'
+_DBX_HTTP_TOKEN=''
+_DBX_HTTP_CAMPOS_NOME=''
+
 # shellcheck disable=SC2034  # canais publicos, lidos pelo chamador e pela suite
 DBX_HTTP_CODIGO=''
 # shellcheck disable=SC2034
@@ -132,10 +138,62 @@ _dbx_http_interpretar_erro() {
   return 0
 }
 
+# _dbx_http_opcoes — emite as linhas de configuracao lidas por `curl -K -`.
+#
+# Tudo que e sensivel sai por AQUI, isto e, pela entrada padrao: nem token nem
+# campo de formulario aparecem em `argv`, que e legivel por qualquer processo em
+# `/proc/<pid>/cmdline` (RNF-03).
+#
+# O modo `formulario` existe para a troca de refresh token por token curto: o
+# segredo vai em campos `data-urlencode`, tambem pela entrada padrao, e nao por
+# arquivo de corpo. Escrever o refresh token em arquivo temporario criaria uma
+# janela de credencial em disco que nenhuma permissao elimina — melhor nao
+# existir a superficie do que protege-la.
+_dbx_http_opcoes() {
+  printf 'silent\n'
+  printf 'show-error\n'
+  case $_DBX_HTTP_MODO in
+    formulario)
+      printf 'header = "Content-Type: application/x-www-form-urlencoded"\n'
+      local -n _campos=$_DBX_HTTP_CAMPOS_NOME
+      local campo escapado
+      for campo in "${_campos[@]}"; do
+        escapado=${campo//\\/\\\\}
+        escapado=${escapado//\"/\\\"}
+        printf 'data-urlencode = "%s"\n' "$escapado"
+      done
+      ;;
+    *)
+      printf 'header = "Authorization: Bearer %s"\n' "$_DBX_HTTP_TOKEN"
+      ;;
+  esac
+}
+
 # dbx_http_requisitar <metodo> <url> <token> <corpo> <idempotente>
 dbx_http_requisitar() {
   [[ $# -ge 5 ]] || return "$DBX_HTTP_ERRO_USO"
-  local metodo=$1 url=$2 token=$3 corpo=$4 idempotente=$5
+  _DBX_HTTP_MODO=bearer
+  _DBX_HTTP_TOKEN=$3
+  _dbx_http_executar "$1" "$2" "$4" "$5"
+}
+
+# dbx_http_formulario <url> <nome_do_vetor_de_campos>
+#
+# O vetor e passado por NOME, como em lib/output: campo com quebra de linha ou
+# aspas nao sobreviveria a uma passagem por cadeia unica, e o nome mantem a
+# procedencia visivel no ponto de chamada.
+dbx_http_formulario() {
+  [[ $# -ge 2 ]] || return "$DBX_HTTP_ERRO_USO"
+  [[ -n $1 && -n $2 ]] || return "$DBX_HTTP_ERRO_USO"
+  _DBX_HTTP_MODO=formulario
+  _DBX_HTTP_CAMPOS_NOME=$2
+  # Sem corpo em arquivo: os campos vao pela entrada padrao.
+  # Nao idempotente: uma troca de token repetida as cegas nao e desejavel.
+  _dbx_http_executar POST "$1" '' nao
+}
+
+_dbx_http_executar() {
+  local metodo=$1 url=$2 corpo=$3 idempotente=$4
   local tentativa=1 estado codigo politica
 
   case $idempotente in
@@ -165,11 +223,7 @@ dbx_http_requisitar() {
     : >"$area/resposta"
     : >"$area/cabecalhos"
     codigo=$(
-      {
-        printf 'header = "Authorization: Bearer %s"\n' "$token"
-        printf 'silent\n'
-        printf 'show-error\n'
-      } | if [[ -n $corpo ]]; then
+      _dbx_http_opcoes | if [[ -n $corpo ]]; then
         curl -K - -X "$metodo" --data-binary "@$area/requisicao" \
           -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
       else

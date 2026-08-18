@@ -15,10 +15,15 @@
 #   branch. Quando diminuir de proposito, a reducao tem de estar declarada, e
 #   nao acontecer por omissao.
 #
-# REFERENCIA: a base de merge com a branch de integracao, nao `HEAD`.
+# REFERENCIA: a MAIOR contagem observada na base de merge ou em qualquer commit
+# da branch — nao `HEAD`, e nao apenas a base.
 #   Contra `HEAD` a guarda so enxergaria remocao ainda nao commitada: uma
 #   remocao commitada no meio da branch desapareceria da comparacao ja no
 #   commit seguinte. A branch e a unidade em que a revisao acontece.
+#
+#   So contra a base tambem nao basta: arquivo criado na propria branch tem zero
+#   na base, e casos adicionados e removidos dentro da mesma branch ficariam
+#   invisiveis. O maximo ao longo do historico da branch fecha esse vao.
 #
 # DECLARACAO DE REMOCAO INTENCIONAL
 #   Trailer numa mensagem de commit da propria branch:
@@ -70,45 +75,70 @@ while read -r _ arquivo quantidade _; do
   declarado[$arquivo]=$((${declarado[$arquivo]:-0} + quantidade))
 done < <(git log --format=%B "$base..HEAD" | grep -E '^Remocao-de-casos:[[:space:]]')
 
+# Referencia = MAIOR contagem ja observada para o arquivo na base ou em
+# qualquer commit da branch.
+#
+# Comparar so contra a base deixava um vao real: arquivo CRIADO na propria
+# branch tem zero na base, entao qualquer contagem restante e maior e a remocao
+# some. Foi medido — 3 casos removidos de um arquivo nascido na branch passavam
+# com exit 0. O mesmo vao existe para arquivo que existia na base, cresceu no
+# meio da branch e depois encolheu de volta para acima do valor inicial.
+#
+# O maximo ao longo do historico resolve os dois com uma regra so, e continua
+# derivado do artefato: nenhum numero e mantido a mao.
+declare -A referencia=()
+declare -A origem=()
+
+_registrar_referencia() { # <revisao> <rotulo>
+  local revisao=$1 rotulo=$2 arquivo quantidade
+  while IFS= read -r arquivo; do
+    [[ -n $arquivo ]] || continue
+    quantidade=$(git show "$revisao:$arquivo" 2>/dev/null | _contar_casos_em_texto)
+    quantidade=${quantidade:-0}
+    if ((quantidade > ${referencia[$arquivo]:-0})); then
+      referencia[$arquivo]=$quantidade
+      origem[$arquivo]=$rotulo
+    fi
+  done < <(git ls-tree -r --name-only "$revisao" -- tests | grep -E "$PADRAO_DE_ARQUIVO")
+}
+
+_registrar_referencia "$base" "base ${base:0:8}"
+while IFS= read -r revisao; do
+  [[ -n $revisao ]] || continue
+  _registrar_referencia "$revisao" "commit ${revisao:0:8}"
+done < <(git rev-list "$base..HEAD")
+
 reducoes=0
-total_base=0
+total_referencia=0
 total_atual=0
 
 while IFS= read -r arquivo; do
   [[ -n $arquivo ]] || continue
-  na_base=$(git show "$base:$arquivo" 2>/dev/null | _contar_casos_em_texto)
-  na_base=${na_base:-0}
+  alvo=${referencia[$arquivo]}
   if [[ -f $arquivo ]]; then
     agora=$(_contar_casos_em_texto <"$arquivo")
   else
     agora=0
   fi
-  total_base=$((total_base + na_base))
+  total_referencia=$((total_referencia + alvo))
   total_atual=$((total_atual + agora))
 
-  perda=$((na_base - agora))
+  perda=$((alvo - agora))
   ((perda > 0)) || continue
 
   coberto=${declarado[$arquivo]:-0}
   if ((coberto >= perda)); then
     printf 'declarado  %-42s %s -> %s (reducao de %s declarada)\n' \
-      "$arquivo" "$na_base" "$agora" "$perda"
+      "$arquivo" "$alvo" "$agora" "$perda"
     continue
   fi
-  printf 'REDUCAO    %-42s %s -> %s (%s caso(s) a menos, %s declarado(s))\n' \
-    "$arquivo" "$na_base" "$agora" "$perda" "$coberto" >&2
+  printf 'REDUCAO    %-42s %s -> %s (%s caso(s) a menos, %s declarado(s); referencia: %s)\n' \
+    "$arquivo" "$alvo" "$agora" "$perda" "$coberto" "${origem[$arquivo]}" >&2
   reducoes=$((reducoes + 1))
-#
-# O universo de arquivos vem da BASE, nunca da arvore de trabalho. Passar um
-# glob do shell como pathspec (`-- tests/*/*_test.sh`) faria o shell expandi-lo
-# contra a arvore atual ANTES de `git` ver: um arquivo apagado sumiria da
-# propria lista que deveria acusa-lo. Foi o defeito que a prova de
-# discriminacao encontrou nesta guarda. A filtragem e feita sobre a saida de
-# `git`, ja restrita a base.
-done < <(git ls-tree -r --name-only "$base" -- tests | grep -E "$PADRAO_DE_ARQUIVO")
+done < <(printf '%s\n' "${!referencia[@]}" | sort)
 
-printf 'base %s .. arvore de trabalho: %s -> %s caso(s)\n' \
-  "${base:0:8}" "$total_base" "$total_atual"
+printf 'referencia (base %s + commits da branch) .. arvore de trabalho: %s -> %s caso(s)\n' \
+  "${base:0:8}" "$total_referencia" "$total_atual"
 
 if ((reducoes > 0)); then
   printf '\n%s arquivo(s) com reducao NAO declarada.\n' "$reducoes" >&2
