@@ -6,7 +6,7 @@
 | Responsavel | Business Analyst |
 | Data | 2026-08-17 |
 | Versao | **v0.8** |
-| Status | 🟡 **`DP-27` reduziu o bloqueio do `sync`.** A escolha por sincronizacao **direcional**, com a origem como autoridade, tornou `DP-21` e `DP-22` **sem objeto** — nao ha conflito a arbitrar. Resta **`DP-28`** (P0): o par de raizes cujo tipo nao e decidivel e recusado por `RF-53`, o que fecha um caso de uso legitimo sem saida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
+| Status | 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
 >
@@ -54,7 +54,7 @@
 | DP-27 | Semantica do `sync`: direcao e autoridade | ✅ **Resolvida — direcional; a origem manda** | — |
 | DP-27a | Como origem e destino sao declarados | ✅ **Resolvida — sinalizadores `--origem` e `--destino`** | — |
 | DP-27b | A linha de base sobrevive a queda da bidirecionalidade? | ✅ **Resolvida — fica, rebaixada a memoria de desempenho** | — |
-| DP-28 | Saida para o par de raizes cujo tipo nao e decidivel | ⬜ **Em aberto** | **P0 — bloqueia caso de uso legitimo do `sync`** |
+| DP-28 | Como o operador declara o sentido do `sync` | ✅ **Resolvida — sinalizador `--enviar` / `--receber`, OBRIGATORIO** | — |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
 | DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |
@@ -502,23 +502,38 @@ O cenario: um defeito na travessia local — ponto de montagem nao pronto, permi
 
 ---
 
-### DP-28 — saida para o par de raizes cujo tipo nao e decidivel
+### DP-28 — como o operador declara o sentido do `sync`
 
-⬜ **Em aberto. P0, porque bloqueia caso de uso legitimo.**
+✅ **Resolvida — sinalizador `--enviar` / `--receber`.**
 
-`RF-53` determina que o tipo de cada lado seja apurado por resolucao — e local o lado que resolve para diretorio existente — e que a **ambiguidade seja recusada**, nunca adivinhada. A recusa esta certa: classificar errado inverte o sentido do espelhamento e apaga a arvore oposta a pretendida, e esse e o unico erro do `sync` que nao tem diagnostico posterior.
+**Decisao do solicitante (2026-08-19):** o sentido vem de sinalizador explicito, e nao de inferencia sobre os caminhos.
 
-**O problema e que a recusa fecha um caso legitimo.** Para receber a raiz remota `/fotos` num diretorio local, o operador precisa que o diretorio local exista; se ele existir com o mesmo nome absoluto do caminho remoto — ou se nenhum dos dois existir ainda —, os dois lados resolvem igual e o comando recusa. Nao ha, hoje, como o operador desfazer o empate.
+##### A leitura adotada: OBRIGATORIO, e nao opcional no empate
 
-| Saida | O que custa |
-|---|---|
-| **Marcador de tipo no caminho** (`dbx:/fotos`) | Notacao nova. Resolve por construcao e torna o sentido legivel na propria linha |
-| **Sinalizador de sentido** (`--enviar` / `--receber`) | Sem notacao nova; o sentido vira obrigatorio, ou opcional so no empate |
-| **Sinalizador de desempate** (`--remoto origem|destino`) | Usado somente quando a resolucao empata; nao aparece no uso comum |
+A opcao escolhida admitia duas leituras — sentido obrigatorio em toda invocacao, ou opcional apenas quando a resolucao empatasse. **Adotada a primeira**, e a razao nao e de estilo:
 
-**Recomendacao do Business Analyst:** a terceira. Nao muda a forma comum de invocar, aparece exatamente onde a ambiguidade aparece, e nao pede ao operador que declare em toda execucao algo que a ferramenta apura sozinha na maioria dos casos.
+Na leitura opcional, a inferencia continuaria decidindo em todos os casos que **nao empatam** — e e justamente ali que mora o erro perigoso. Considere `--origem /fotos --destino ./fotos` com a intencao de **receber**, num sistema onde `/fotos` existe localmente e `./fotos` ainda nao: **nao ha empate**, a inferencia conclui "origem e local" com toda a confianca, e o `sync` **envia** — sobrescrevendo o remoto com a arvore errada. O sinalizador opcional nunca teria sido pedido, porque nada pareceu ambiguo.
 
-**Enquanto nao decidida,** o `sync` implementa `RF-53` como escrito: apura o tipo e recusa nomeando a ambiguidade. Nenhum caso fica errado — alguns ficam impossiveis, e o diagnostico diz qual e a condicao que impede.
+Ou seja: a leitura opcional protege o caso que a ferramenta **sabe** que nao sabe, e deixa aberto o caso em que ela **acha que sabe e esta errada**. So a leitura obrigatoria elimina a classe.
+
+##### O que isso apaga do desenho
+
+Com o sentido declarado, o tipo de cada lado e **consequencia**, e nao apuracao:
+
+| Sinalizador | `--origem` | `--destino` |
+|---|---|---|
+| `--enviar` | local | remoto |
+| `--receber` | remoto | local |
+
+Some, portanto, **toda a maquinaria de inferencia** que `RF-53` previa: a resolucao por existencia no sistema de arquivos, a eliminacao, a recusa por empate e o caso de uso que a recusa fechava. Nao ha ambiguidade a recusar porque nao ha nada a adivinhar.
+
+**Custo aceito, e ele e real:** toda invocacao carrega um sinalizador a mais, inclusive as triviais. E o preco de nao ter uma classe de erro cujo unico sintoma e a arvore errada ja apagada.
+
+##### O que permanece verificavel
+
+- `--enviar` e `--receber` sao **mutuamente exclusivos**; os dois juntos, ou nenhum, e recusa por uso invalido.
+- O sentido apurado e **declarado no relatorio antes de qualquer escrita**, para que a simulacao (`RF-44`) o exponha.
+- O diretorio local continua tendo de existir, mas por outro motivo: nao para decidir tipo, e sim porque nao se percorre o que nao existe.
 
 ---
 
