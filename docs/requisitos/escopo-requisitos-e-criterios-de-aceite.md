@@ -79,7 +79,7 @@ A demanda solicita uma aplicacao em shell script que exponha as capacidades da D
 ### 2.2 Fora do escopo (nesta versao)
 
 - Interface grafica, web ou TUI.
-- Sincronizacao bidirecional continua com resolucao de conflito.
+- Sincronizacao **bidirecional** — o `sync` e direcional por `DP-27`, com a origem como autoridade. Sincronizacao continua, tambem fora.
 - Daemon residente em memoria.
 - Servidor de callback OAuth em `localhost` (o fluxo previsto e por codigo de autorizacao colado manualmente).
 - Suporte a provedores de armazenamento alem do Dropbox.
@@ -229,147 +229,164 @@ Formalizacao das candidatas aprovadas em `PRJ-DEC-04`. Todas com status **Aprova
 | RF-35 | Estabilidade e versionamento do contrato de saida estruturada, para que consumidores automatizados nao quebrem em atualizacoes | P0 | F-04 | A saida estruturada declara a versao do contrato; dentro de uma mesma versao principal, campos existentes nao mudam de nome, tipo ou semantica, e apenas acrescimo de campo e permitido; dado consumidor escrito contra a versao corrente, quando uma atualizacao compativel e aplicada, entao o consumidor continua funcionando sem alteracao. **Contrato de codigos de saida fixado na v0.4:** a faixa e **0..15**, aceita como contrato publico; cada codigo esta publicado na documentacao e coberto por teste que reprova se mudar de significado; a coerencia entre classe de erro e politica de retentativa e verificada. **Proposta de codigo 16 (`dependencia_ausente`) rejeitada pelo solicitante:** o problema diagnosticado era precisao de mensagem, nao escassez de codigo, e foi resolvido reescrevendo a mensagem da classe `configuracao` e mapeando falha de area temporaria para ela. Ampliar a faixa sem necessidade real degradaria o contrato publico |
 | RF-36 | Relatorio de execucao ao final de operacoes em lote, disponivel nas duas apresentacoes de saida | P1 | F-05 | Dada operacao sobre multiplos itens, quando ela conclui, entao o relatorio informa quantidade de itens transferidos, omitidos por conteudo identico, falhados, total de bytes transferidos, duracao e numero de chamadas emitidas a API; os mesmos dados estao disponiveis na apresentacao estruturada, permitindo que um orquestrador decida alertar por limiar sem analisar texto livre; dado que ao menos um item falhe, entao o codigo de saida reflete a falha ainda que outros itens tenham sido concluidos |
 
-### 5.8 Comando `sync` — bidirecional com linha de base persistente
+### 5.8 Comando `sync` — direcional, com a origem como autoridade
 
+> ### ⚠️ `DP-27` — MUDANCA DE ESCOPO DECIDIDA PELO SOLICITANTE (2026-08-19)
+>
+> **Decisao registrada, na forma em que foi dada:** o `sync` recebe **`--origem` e `--destino` como parametros obrigatorios**, e **o estado dos arquivos na origem e que determina o comportamento**. Um dos dois lados e local e o outro e remoto, **nunca os dois do mesmo tipo**: origem local implica destino remoto e operacao base de **envio**; origem remota implica destino local e operacao base de **recebimento**.
+>
+> **`DP-27a`** — os papeis vem de **sinalizador explicito** (`--origem`, `--destino`), e nao de posicao na linha de comando. O solicitante reviu a escolha por posicao ao ver que ela decide o *papel* e nao diz de que **lado** cada caminho esta.
+>
+> **`DP-27b`** — a **linha de base persiste**, por decisao do solicitante, mas **rebaixada a memoria auxiliar de desempenho**: ela **nao arbitra** decisao alguma. A decisao le origem e destino agora.
+>
+> **O QUE ISTO REVOGA.** O `sync` **deixa de ser bidirecional**. Com isso caem, por perda de premissa e nao por preferencia:
+>
+> - a **matriz de tres estados** de 5.8.2, com suas treze linhas e quatro classes de conflito — nao ha conflito quando um dos lados manda;
+> - `DP-21` (ultimo a escrever vence) e `DP-22` (honrar a exclusao), que eram **politicas de arbitragem de conflito**;
+> - `RF-39a` e `RF-40a`, que ordenavam vencedor por carimbo de tempo e por recuperabilidade;
+> - o argumento de 5.8.1, que derivava a linha de base **por construcao** da bidirecionalidade.
+>
+> **O QUE ISTO NAO REVOGA, E FICA MAIS IMPORTANTE.** `RF-40` (exclusao desabilitada por padrao), `RF-41` (salvaguardas contra exclusao em massa), `RF-47` (registro nominal de toda perda) e `RF-48` (reconhecimento na primeira execucao com espelhamento). A razao esta em 5.8.1: a protecao que a linha de base dava contra exclusao indevida **desapareceu junto com o papel dela**, e essas quatro passam a ser a defesa inteira.
+>
+> **`PRJ-DEC-07` continua revogado** para o escopo do `sync`, e `DP-09` continua reaberta — nao pela correcao, que ja nao exige estado, mas pela escolha de `DP-27b`. O handoff do DBA segue acionado, com escopo reduzido: o artefato passou de **arbitro** a **memoria descartavel**, e o custo de perde-lo caiu de "decisao errada" para "trabalho repetido".
+
+> ### 📜 Registro da decisao anterior — `DP-06`, superada por `DP-27`
+>
+> **O bloco abaixo e preservado, e nao apagado.** Ele registra a escolha vigente ate 2026-08-19 e a razao dela, e e o que torna legivel por que a linha de base existe, por que `PRJ-DEC-07` foi revogado e por que o handoff do DBA foi acionado. Onde ele disser **bidirecional**, leia-se **superado**.
+>
 > **Mudanca de escopo autorizada.** `DP-06` fixou os comandos do MVP em **`upload`, `download`, `list`, `delete`, `info` e `sync`**, e o solicitante escolheu para o `sync`: **bidirecional**, **remocao de orfaos sob opcao explicita** (promove `F-06` do Bloco 2) e **cursor persistente** (aproxima `F-14`).
 >
 > **Isto revoga `PRJ-DEC-07` para o escopo do `sync`.** O invariante de ausencia de estado local persistente deixa de valer, `DP-09` esta **reaberta** e o **handoff do DBA foi acionado**. O invariante permanece valido para todos os demais comandos.
 
-#### 5.8.1 Por que o estado persistente e requisito derivado, e nao otimizacao
+#### 5.8.1 A premissa que caiu, e a protecao que caiu junto com ela
 
-As tres escolhas do solicitante **nao sao independentes**. Sincronizacao bidirecional com propagacao de exclusao **exige linha de base persistente por construcao**.
-
-Com apenas dois estados observaveis — local agora e remoto agora — duas situacoes opostas sao **indistinguiveis**:
+A versao anterior desta secao provava que **sincronizacao bidirecional com propagacao de exclusao exige linha de base persistente por construcao**. A prova estava correta, e continua correta: com apenas dois estados observaveis, duas situacoes opostas sao indistinguiveis.
 
 | Observacao | Interpretacao A | Interpretacao B | Acao correta |
 |---|---|---|---|
 | Ausente no local, presente no remoto | O usuario **apagou** localmente | O arquivo **nunca foi baixado** | Oposta: apagar no remoto **ou** baixar |
 | Presente no local, ausente no remoto | O arquivo e **novo** localmente | O usuario **apagou** no remoto | Oposta: enviar **ou** apagar local |
 
-Sem um terceiro estado — **o que havia na ultima sincronizacao bem-sucedida** — a ferramenta nao tem como escolher, e qualquer escolha fixa destroi dado em metade dos casos.
+**`DP-27` dissolve a ambiguidade removendo a pergunta, e nao respondendo-a.** Ela so existe porque os dois lados podem originar mudanca. Com a origem como autoridade unica, "ausente na origem" tem **uma leitura so** — nao ha o que arbitrar, e o terceiro estado deixa de ser necessario para decidir.
 
-**Consequencia a registrar:** o cursor **nao e ganho de desempenho**; e **condicao de correcao**. Remove-lo nao torna o `sync` mais lento — torna-o incorreto. Isso muda a natureza da decisao: nao e trade-off negociavel por desempenho.
+##### A consequencia que precisa estar escrita, porque nao e obvia
 
-#### 5.8.2 Matriz de decisao de tres estados
+A linha de base **nao era so um desempatador**. Ela era, tambem, **um limitador de exclusao**, e essa segunda funcao desapareceu sem substituto automatico.
 
-`B` = linha de base (ultima sincronizacao) · `L` = local agora · `R` = remoto agora. Comparacoes de conteudo por `content_hash` (RF-34).
+Na matriz antiga, exclusao so era possivel quando `B` estava presente: um caminho que a ferramenta **nunca tinha visto** jamais podia ser apagado, porque nao havia registro de que ele um dia existira do outro lado. Isso dava uma garantia estrutural — **primeira execucao nunca apaga nada**.
 
-| B | L | R | Situacao | Acao |
-|:--:|:--:|:--:|---|---|
-| — | — | — | Inexistente | Nenhuma |
-| — | ✔ | — | Novo no local | Enviar |
-| — | — | ✔ | Novo no remoto | Receber |
-| — | ✔ | ✔ | Criado nos dois lados | **Conflito**, salvo se `L` e `R` tiverem `content_hash` identico |
-| ✔ | =B | =B | Inalterado | Nenhuma |
-| ✔ | ≠B | =B | Alterado no local | Enviar |
-| ✔ | =B | ≠B | Alterado no remoto | Receber |
-| ✔ | ≠B | ≠B | Alterado nos dois lados | **Conflito**, salvo se convergiram ao mesmo `content_hash` |
-| ✔ | — | =B | Apagado no local | Apagar no remoto — **somente com espelhamento habilitado** |
-| ✔ | =B | — | Apagado no remoto | Apagar no local — **somente com espelhamento habilitado** |
-| ✔ | — | ≠B | Apagado no local, alterado no remoto | **Conflito de exclusao contra alteracao** |
-| ✔ | ≠B | — | Alterado no local, apagado no remoto | **Conflito de alteracao contra exclusao** |
-| ✔ | — | — | Apagado nos dois lados | Remover da linha de base |
+No modelo direcional essa garantia **nao existe**. "Ausente na origem, presente no destino" e observavel na primeira execucao, sem historico algum, e com espelhamento ligado isso e ordem de exclusao. Uma raiz de origem apontada por engano — diretorio vazio, ponto de montagem que nao subiu, caminho remoto trocado — vira **exclusao integral do destino**, e nada na estrutura do algoritmo impede.
 
-**Quatro classes de conflito:** criacao/criacao, alteracao/alteracao, exclusao/alteracao e alteracao/exclusao. As duas ultimas sao qualitativamente distintas: **nao ha "os dois lados" para preservar** — um lado nao tem conteudo.
+**Por isso `RF-40`, `RF-41`, `RF-47` e `RF-48` deixam de ser defesa em profundidade e passam a ser a defesa unica.** Elas foram escritas como camada redundante sobre uma garantia estrutural que agora nao existe, e precisam ser lidas com esse peso novo. `RF-41(a)` em particular — origem ilegivel ou incompleta **aborta em vez de interpretar ausencia como exclusao** — deixa de ser zelo e vira a barreira principal.
 
-#### 5.8.3 Politica de resolucao de conflito — decidida
+##### O que a linha de base ainda faz, por `DP-27b`
 
-**Decisao do solicitante:**
+Memoria auxiliar de desempenho, e **nada alem disso**:
 
-| Decisao | Escolha | Recomendacao do Business Analyst | Razao da recomendacao |
-|---|---|---|---|
-| `DP-21` | **Ultimo a escrever vence** | Recusar e reportar como padrao | A ordenacao por carimbo de tempo depende de comparar `mtime` local com `server_modified` da Dropbox, que sao **grandezas de relogios distintos** — offset, fuso, granularidade e `mtime` nao preservado por copia. O erro de ordenacao e possivel e a perda resultante e silenciosa |
-| `DP-22` | **Honrar a exclusao** | Ressuscitar, ou recusar | Em conflito de exclusao contra alteracao, honrar a exclusao destroi a alteracao do outro lado |
-| `DP-24` | **Sem teto de exclusoes** | Teto configuravel | Sem teto, a protecao contra exclusao em massa passa a depender integralmente de `RF-41(a)` |
+- guarda `content_hash` por caminho para dispensar releitura de arquivo grande cujo tamanho e `mtime` nao mudaram;
+- **nao participa de decisao alguma**: perdida, corrompida ou ausente, o `sync` decide igual e so trabalha mais;
+- por isso o tratamento de corrupcao **inverte** em relacao a `RF-42` original: base ilegivel e **descartada e reconstruida**, e nao motivo de recusa. Recusar execucao por causa de um cache seria transformar artefato descartavel em ponto unico de falha.
 
-> **Registro para revisao futura.** As decisoes acima foram tomadas **com o custo apresentado e aceito**, e nao por desconhecimento. A recomendacao contraria e a sua razao ficam registradas para que uma revisao posterior saiba que a analise ocorreu. **A analise permanece valida como descricao de fato:** a incomparabilidade entre `mtime` local e `server_modified` e propriedade dos sistemas envolvidos, nao preferencia de metodo. O que a decisao estabelece e **o que fazer diante dela**, e essa e prerrogativa do solicitante.
+**Verificacao que fixa esse contrato:** executar o `sync` duas vezes com a base apagada entre as duas produz **o mesmo conjunto de operacoes** que executa-lo com a base intacta. Se as duas execucoes divergirem, a base esta arbitrando alguma coisa, e `DP-27b` foi violada.
 
-##### A distincao que confina a incerteza
+#### 5.8.2 Tabela de decisao direcional
 
-A incerteza **nao contamina o `sync` inteiro**. Ela fica restrita a uma unica etapa:
+`O` = origem agora · `D` = destino agora. Comparacao de conteudo por `content_hash` (RF-34), nunca por carimbo de tempo (RF-39).
 
-| Etapa | Sinal usado | Confiabilidade |
+| O | D | Situacao | Acao |
+|:--:|:--:|---|---|
+| ✔ | — | Existe so na origem | **Transferir** |
+| ✔ | ✔, `≠O` | Existe nos dois, conteudo diverge | **Transferir** — a origem prevalece, sempre |
+| ✔ | ✔, `=O` | Existe nos dois, conteudo identico | Nenhuma (RF-33) |
+| — | ✔ | Existe so no destino | **Apagar no destino — somente com espelhamento habilitado.** Sem espelhamento, nenhuma |
+| — | — | Inexistente | Nenhuma |
+
+**Cinco linhas, nenhuma classe de conflito.** A tabela nao tem ramo de arbitragem porque nao ha o que arbitrar: divergencia de conteudo e resolvida por definicao a favor da origem. E o que `DP-27` decidiu, e o custo esta declarado — **alteracao feita no destino e perdida sem aviso previo**, o que torna `RF-47` obrigatorio, e nao desejavel.
+
+**Carimbo de tempo nao aparece em lugar algum desta tabela**, nem como desempate. `RF-39` proibia o carimbo na *deteccao* e `RF-39a` o admitia na *ordenacao*; sem ordenacao, a proibicao passa a ser total, e isso e simplificacao real: a unica etapa do `sync` que dependia de comparar relogios de duas maquinas deixou de existir.
+
+#### 5.8.3 Politica de resolucao de conflito — ~~decidida~~ **sem objeto por `DP-27`**
+
+> **Esta secao inteira perdeu objeto, e fica registrada em vez de apagada.** Ela decidia como arbitrar conflito entre dois lados que podiam ambos originar mudanca. Com `DP-27`, a origem prevalece por definicao e **nao ha conflito para arbitrar**.
+
+| Item | O que decidia | Situacao sob `DP-27` |
 |---|---|---|
-| **Deteccao** — houve conflito? | `content_hash` de cada lado contra a linha de base | ✅ **Exata.** Nenhum relogio envolvido |
-| **Ordenacao** — qual lado e mais recente? | Carimbo de tempo | ⚠️ **Fonte de erro possivel** |
+| `DP-21` — ultimo a escrever vence | Qual lado prevalece em alteracao contra alteracao | **Sem objeto.** A origem prevalece sempre |
+| `DP-22` — honrar a exclusao | Exclusao contra alteracao | **Sem objeto.** O estado da origem e a unica leitura |
+| `RF-39a` — ordenacao por carimbo | Qual lado e mais recente | **Sem objeto.** Nenhuma etapa ordena lados |
+| `RF-40a` — desempate ao lado recuperavel | Conflito de ordenacao indeterminada | **Sem objeto.** Nao ha ordenacao |
+| Analise de qualidade do sinal de ordenacao | `rev`, `server_modified`, `client_modified` | **Sem objeto** para o `sync` |
 
-Isso e estrutural e deve ser preservado pelo desenho: **carimbo de tempo nunca decide *se* algo mudou** — apenas *qual* dos dois prevalece, depois que a mudanca ja foi estabelecida por resumo de conteudo.
+**`DP-24` (sem teto de exclusoes) NAO cai — e fica pior.** Ele transferia integralmente a protecao contra exclusao em massa para `RF-41(a)`. Sob `DP-27`, `RF-41(a)` perdeu o companheiro estrutural que a linha de base fornecia (5.8.1), e passa a ser a **unica** barreira entre uma raiz de origem lida pela metade e a exclusao integral do destino.
 
-##### Qualidade do sinal de ordenacao — o que melhora sem mudar a decisao
+##### O que sobrevive da analise, com valor aumentado
 
-Analise dos sinais disponiveis:
-
-| Sinal | Serve para ordenar local contra remoto? | Observacao |
-|---|---|---|
-| `rev` da Dropbox | ❌ **Nao.** E monotonico **por arquivo no lado remoto**, e nao existe equivalente local. Ordena versoes remotas entre si, nao remoto contra local | Tem outro uso valioso: **concorrencia otimista** na escrita — ver RF-49 |
-| `server_modified` | ⚠️ Fraco. E o instante em que a Dropbox **recebeu** o arquivo, nao em que o conteudo foi editado. Um envio que aguardou em fila carrega carimbo posterior a edicao real | Nao usar como chave de ordenacao |
-| `client_modified` | ✅ **Melhor disponivel.** Carimbo fornecido **pelo cliente que enviou**. Se esta aplicacao sempre o define a partir do `mtime` local no envio, entao, para todo arquivo que ela mesma enviou, **os dois lados passam a carregar carimbos da mesma origem de relogio** | Requisito RNF-27 |
-| **Diferenca contra a linha de base** | ✅ **Melhor metodo.** Comparar `Δlocal` e `Δremoto`, cada um medido **dentro do proprio relogio**, contra o valor registrado na ultima sincronizacao | Cancela o **offset** entre relogios; resta apenas a **deriva** no intervalo, que e ordens de grandeza menor |
-
-**Conclusao:** a ordenacao continua sendo por carimbo de tempo, como decidido, mas **a qualidade do sinal pode ser materialmente melhor** — carimbos de mesma origem (`client_modified` definido por nos) comparados por diferenca contra a base (cancelando offset). Isso nao altera a decisao; altera o quanto ela erra.
-
-##### Assimetria de recuperabilidade — consequencia que orienta o desempate
-
-Nem toda perda por conflito e igual:
+**A assimetria de recuperabilidade nao depende de conflito** e continua valendo:
 
 | Lado que perde | Recuperavel? |
 |---|---|
-| **Remoto sobrescrito** | ✅ **Sim.** A Dropbox mantem historico de revisoes do arquivo |
+| **Remoto sobrescrito** | ✅ **Sim.** A Dropbox mantem historico de revisoes |
 | **Local sobrescrito** | ❌ **Nao.** O conteudo anterior deixa de existir |
-| **Remoto apagado** (`DP-22`) | ✅ Recuperavel pelo historico e lixeira da Dropbox |
-| **Local apagado** (`DP-22`) | ❌ **Permanente** |
+| **Remoto apagado** | ✅ Recuperavel pelo historico e lixeira |
+| **Local apagado** | ❌ **Permanente** |
 
-Duas consequencias praticas:
+Consequencia direta sob `DP-27`: **`sync` com origem remota e destino local e o sentido perigoso**, porque toda sobrescrita e toda exclusao cai na coluna nao recuperavel. O sentido inverso erra para o lado do historico da Dropbox. Isso nao muda a decisao — muda o peso de `RF-47` e `RF-48` conforme o sentido, e o relatorio deve tornar o sentido visivel ao operador.
 
-1. **Desempate deve preferir preservar o local** (RF-40a). Quando a ordenacao for indeterminada — carimbos iguais, ausentes ou invalidos —, prevalecer o **local** faz a perda recair sobre o lado **recuperavel**.
-2. **`F-07` (revisoes e restauracao), no backlog, tornou-se materialmente mais valioso**: e o caminho de recuperacao para metade das perdas por conflito. Registrado como recomendacao de promocao, nao como escopo.
+**`F-07` (revisoes e restauracao), no backlog, continua materialmente mais valioso** pelo mesmo motivo.
+
+##### `RNF-27` continua justificado por outro caminho
+
+`client_modified` a partir do `mtime` local foi implementado em `upload` para dar aos dois lados carimbo da mesma origem de relogio, e sustentava a **ordenacao** que agora nao existe. Permanece util por dois motivos independentes: preserva a data real do arquivo para quem o consulta na Dropbox, e e o unico sinal barato que permite a memoria auxiliar de `DP-27b` decidir se pode reaproveitar um `content_hash` sem reler o arquivo.
 
 ---
 
-#### 5.8.3 Requisitos
+#### 5.8.4 Requisitos
 
 | ID | Requisito | Prior. | Criterio de aceite |
 |---|---|---|---|
-| RF-37 | Comando `sync` bidirecional entre uma raiz local e uma raiz remota, convergindo os dois lados com base na matriz de 5.8.2 | P0 | Dado par de raizes e linha de base valida, quando o `sync` conclui sem conflito, entao **toda** a matriz de 5.8.2 foi aplicada item a item, os dois lados apresentam o mesmo conjunto de caminhos com `content_hash` coincidente, e a linha de base foi atualizada para refletir o estado convergido; dada segunda execucao imediata sem alteracao externa, entao **nenhuma** operacao de escrita e emitida — **idempotencia verificavel** |
-| RF-38 | Linha de base persistente registrando, por caminho, o estado da ultima sincronizacao bem-sucedida | P0 | A linha de base guarda, por caminho, ao menos `content_hash`, o identificador de revisao remota e os carimbos de tempo de cada lado exigidos por RF-39a; dado que a linha de base seja removida, quando o `sync` executa, entao ele **degrada para tratamento de "novo nos dois lados"** e **nunca** interpreta ausencia de base como exclusao; a base e vinculada ao **par de raizes** (local, remota) **e a identidade da conta** (RF-52), e a divergencia de qualquer um dos tres invalida a base em vez de reaproveita-la. Os caminhos registrados obedecem a RF-50 |
-| RF-39 | **Deteccao de conflito exclusivamente por `content_hash` contra a linha de base — nunca por carimbo de tempo** | P0 | Dado qualquer caminho, quando o `sync` determina **se** houve alteracao em cada lado, entao a decisao usa **somente** `content_hash` comparado a linha de base; **nenhum carimbo de tempo participa desta etapa**. Dado que `L` e `R` tenham `content_hash` identico, quando ambos divergem de `B`, entao **nao ha conflito** e apenas a linha de base e atualizada. Dado arquivo cujo carimbo de tempo mudou mas cujo conteudo e identico ao da base, entao **nao ha alteracao** e nenhuma transferencia ocorre. **Verificacao:** teste que altera apenas carimbos de tempo, em ambos os lados, e exige zero operacoes de escrita; mutacao que introduza carimbo de tempo na deteccao reprova a suite |
-| RF-39a | **Ordenacao de vencedor em conflito — etapa unica em que carimbo de tempo participa** | P0 | Aplicada **somente** apos RF-39 estabelecer que ha conflito. Ordem de preferencia do metodo: **(1)** comparacao por **diferenca contra a linha de base** — `Δlocal` e `Δremoto`, cada um medido dentro do proprio relogio, o que cancela o offset entre relogios; **(2)** quando a base nao registrar carimbo de um dos lados, comparacao direta entre `mtime` local e **`client_modified`** remoto — nunca `server_modified`; **(3)** quando nenhum dos dois for possivel, a ordenacao e **indeterminada** e aplica-se RF-40a. **O requisito declara explicitamente que esta e a fonte de erro possivel do `sync`**, pelas razoes registradas em 5.8.3: relogios distintos, granularidade distinta e `mtime` nao preservado por copia. Toda resolucao registra qual dos tres metodos foi usado, e o metodo consta do relatorio |
-| RF-40a | **Desempate por preferencia ao lado recuperavel** | P0 | Dado conflito cuja ordenacao seja **indeterminada** — carimbos iguais, ausentes ou invalidos —, entao **prevalece o lado local**, de modo que a perda recaia sobre o remoto, que e recuperavel pelo historico de revisoes da Dropbox. Dado que o desempate seja acionado, entao o caminho e marcado como **resolvido por desempate** no relatorio, distinguivel de resolucao por ordenacao efetiva |
-| RF-40 | Propagacao de exclusao **desabilitada por padrao**, habilitada por opcao explicita de espelhamento | P0 | Dado `sync` sem a opcao de espelhamento, quando um caminho existe na base e desapareceu de um dos lados, entao **nenhuma exclusao e propagada**, o caminho e reportado como divergencia nao resolvida e o codigo de saida indica convergencia parcial; dado `sync` **com** a opcao, entao a exclusao e propagada apenas nas linhas da matriz que a preveem, e nunca em linha classificada como conflito |
+| RF-37 | **Comando `sync` direcional, com a origem como autoridade** (`DP-27`) | P0 | `--origem` e `--destino` sao **obrigatorios**; a ausencia de qualquer um dos dois e recusada com codigo de uso invalido, e nunca suprida por valor presumido. Dado par de raizes valido, quando o `sync` conclui, entao **toda** a tabela de 5.8.2 foi aplicada item a item e **todo caminho presente na origem existe no destino com `content_hash` coincidente**; dada segunda execucao imediata sem alteracao externa, entao **nenhuma** operacao de escrita e emitida — **idempotencia verificavel**. Dado que a memoria auxiliar (`RF-38`) seja apagada entre duas execucoes, entao o **conjunto de operacoes decididas e identico** ao da execucao com ela intacta — verificacao que fixa `DP-27b` e reprova se a memoria voltar a arbitrar |
+| RF-38 | **Memoria auxiliar de desempenho, sem papel na decisao** (`DP-27b`) | P1 *(rebaixado de P0)* | Guarda, por caminho, `content_hash` e os metadados baratos que permitem decidir se ele pode ser reaproveitado sem reler o arquivo — tamanho e `mtime` no lado local, `rev` no lado remoto. **Nao participa de decisao alguma:** dada memoria ausente, corrompida ou obsoleta, o `sync` decide igual e apenas trabalha mais. E vinculada ao **par de raizes** e a **identidade da conta** (RF-52), e a divergencia de qualquer um invalida a memoria em vez de reaproveita-la. Os caminhos registrados obedecem a `RF-50` |
+| RF-39 | **Comparacao de conteudo exclusivamente por `content_hash` — carimbo de tempo nunca decide transferencia** | P0 | Dado qualquer caminho, quando o `sync` decide entre transferir e omitir, entao a decisao usa **apenas** `content_hash` (RF-34). Sob `DP-27` a proibicao passou a ser **total**: `RF-39a` admitia carimbo na etapa de ordenacao, e essa etapa deixou de existir. **Verificacao:** mutacao que introduza qualquer carimbo de tempo em qualquer ramo de decisao reprova. Carimbo e tamanho podem ser usados **somente** para decidir se um `content_hash` ja calculado pode ser reaproveitado da memoria auxiliar, nunca para decidir se algo mudou |
+| ~~RF-39a~~ | ~~Ordenacao de vencedor em conflito por carimbo de tempo~~ | — | ❌ **SEM OBJETO por `DP-27`.** Ordenava qual lado prevalece em conflito; com a origem como autoridade nao ha conflito e nao ha ordenacao. Fica registrado, e nao apagado, porque a proibicao de carimbo em `RF-39` era **parcial** por causa dele e agora e total — quem ler `RF-39` sem este registro nao entende por que a excecao sumiu |
+| ~~RF-40a~~ | ~~Desempate por preferencia ao lado recuperavel~~ | — | ❌ **SEM OBJETO por `DP-27`.** A assimetria de recuperabilidade que o motivava **continua valendo** e migrou para 5.8.3: deixa de orientar desempate e passa a qualificar o **sentido** do `sync`, porque origem remota com destino local poe toda perda na coluna nao recuperavel |
+| RF-40 | Propagacao de exclusao **desabilitada por padrao**, habilitada por opcao explicita de espelhamento | P0 | Dado `sync` sem a opcao de espelhamento, quando um caminho existe no destino e **nao existe na origem**, entao ele e **preservado** e o relatorio o registra como divergencia nao propagada; dado `sync` com espelhamento, entao a exclusao ocorre apos as salvaguardas de `RF-41`. **Peso alterado por `DP-27`:** a garantia estrutural de que a primeira execucao nunca apagava nada — que vinha da matriz de tres estados, onde exclusao exigia `B` presente — **deixou de existir** (5.8.1). Este requisito e `RF-41` passam a ser a defesa inteira |
 | RF-41 | 🔴 **Salvaguardas contra exclusao em massa — BLOQUEANTE.** Aplicadas **antes** de qualquer exclusao. `DP-24` dispensou o teto, o que torna a alinea **(a)** a unica protecao estrutural contra exclusao em massa | **P0 — bloqueante** | **(a) Travessia parcial e fatal para exclusao — criterio reforcado.** Dado que o percurso local tenha encontrado **qualquer** erro — diretorio ilegivel, ciclo de symlink, falha de `stat`, ponto de montagem ausente, limite de descritores, permissao negada em qualquer nivel —, entao a propagacao de exclusao e **integralmente desabilitada naquela execucao**, ainda que o espelhamento esteja ligado; a execucao prossegue apenas com envio e recebimento; o motivo e o caminho que falhou constam do relatorio; **o codigo de saida difere de `0`**. **A condicao e "qualquer erro", nao "erro na raiz"**: um subdiretorio ilegivel em qualquer profundidade desabilita a exclusao para a execucao inteira, e nao apenas para aquele ramo. **Verificacao obrigatoria:** casos que tornam ilegivel um subdiretorio em profundidade 1, em profundidade N, e que removem o ponto de montagem no meio da travessia — em todos, zero exclusoes emitidas; mutacao que restrinja o efeito ao ramo com erro reprova a suite. **(b) Guarda de origem vazia ou ausente:** dado que a raiz local nao exista, nao seja diretorio, ou esteja vazia enquanto a linha de base registra caminhos, entao a execucao e **recusada integralmente**, sem nenhuma escrita. **(c)** ~~Teto de exclusoes~~ — **dispensado por `DP-24`**. **(d) Exclusoes sao anunciadas antes de executadas:** a lista completa consta do relatorio e da saida estruturada antes da primeira exclusao |
-| RF-42 | Ciclo de vida da linha de base: deteccao de corrupcao, versionamento de formato e recuperacao segura | P0 | A linha de base carrega **versao de formato** e **verificacao de integridade**; dado que esteja corrompida ou em formato desconhecido, entao o `sync` **recusa a execucao** com codigo dedicado, e **nao** prossegue tratando-a como vazia sem consentimento explicito; dado consentimento explicito de reconstrucao, entao a base e descartada e a execucao degrada para "novo nos dois lados", com propagacao de exclusao **forcadamente desabilitada** nessa execucao |
+| RF-42 | Ciclo de vida da memoria auxiliar: deteccao de corrupcao e versionamento de formato | P1 *(rebaixado de P0)* | Carrega **versao de formato** e e recusada quando a versao e desconhecida. **`DP-27b` INVERTE o tratamento de corrupcao:** memoria ilegivel ou inconsistente e **descartada e reconstruida**, e **nunca** motivo para recusar a execucao. Recusar um `sync` por causa de um cache transformaria artefato descartavel em ponto unico de falha — o oposto do que a versao anterior deste requisito determinava, quando o artefato ainda arbitrava decisao |
 | RF-43 | Distincao estrita entre o **cursor de enumeracao da Dropbox** e a **linha de base de sincronizacao** | P0 | Sao dois artefatos distintos e nao podem ser conflacionados; dado que a Dropbox responda `reset` ao cursor de enumeracao, quando a politica `reiniciar` da taxonomia e aplicada, entao a enumeracao recomeca **e a linha de base permanece intacta**; dado teste que substitua a linha de base pelo cursor de enumeracao, entao a suite reprova |
 | RF-44 | Simulacao de `sync` com plano completo de acoes | P0 | Dado `sync` em modo de simulacao, quando concluido, entao o plano lista toda operacao prevista por classe — enviar, receber, apagar local, apagar remoto, conflito — sem emitir **nenhuma** escrita local ou remota, e o codigo de saida e `0`; o plano de simulacao e **identico** ao conjunto de acoes que a execucao real emitiria sobre o mesmo estado |
-| RF-45 | Incompatibilidade explicita entre `sync` e transferencia por fluxo | P1 | Dado `sync` invocado com `-` como origem ou destino, entao a operacao e recusada com erro de uso e codigo `2`. **Razao:** RF-31 e RF-32 operam sobre um unico objeto de tamanho desconhecido e sem caminho comparavel; o `sync` opera sobre arvores com linha de base por caminho. As duas capacidades sao ortogonais e combina-las nao tem semantica definida |
+| RF-45 | Incompatibilidade explicita entre `sync` e transferencia por fluxo | P1 | Dado `--origem` ou `--destino` com valor `-`, entao a operacao e recusada com diagnostico proprio: `sync` opera sobre arvores, e fluxo nao tem arvore. A recusa nomeia qual dos dois sinalizadores trazia o valor |
 | RF-46 | Relatorio de `sync` com contadores proprios | P1 | Alem dos contadores de RF-36, o relatorio informa: enviados, recebidos, omitidos por conteudo identico, apagados no local, apagados no remoto, **conflitos por classe**, e caminhos ignorados por erro de travessia; dado qualquer conflito ou divergencia nao resolvida, entao o codigo de saida **difere de `0`** ainda que todas as demais operacoes tenham concluido |
 | RF-47 | 🔴 **Registro nominal de toda perda de dado — a perda deixa de ser evitavel, mas nao pode ser invisivel** | **P0** | Dado que o `sync` sobrescreva conteudo por resolucao de conflito ou propague uma exclusao, entao **cada ocorrencia e listada nominalmente** no relatorio e na saida estruturada, com: **caminho**; **lado que perdeu** (local ou remoto); **classe do conflito**; **metodo de ordenacao aplicado** (diferenca contra a base, comparacao direta, ou desempate de RF-40a); e **marcacao de recuperabilidade** — `recuperavel` quando o lado perdedor for o remoto, cujo conteudo permanece no historico de revisoes da Dropbox, e **`permanente`** quando for o local. Dado execucao sem nenhuma perda, entao a secao consta vazia e explicitamente, e nao omitida. **Razao de ser:** `DP-21`, `DP-22` e `DP-24` recusaram as politicas cujo custo era visivel **antes** da acao; este requisito torna o custo visivel **depois**, o que nao contraria nenhuma delas — elas decidem o que fazer, nao o que registrar. Sem isso, uma sobrescrita errada por ordenacao imprecisa e indistinguivel de uma execucao limpa |
-| RF-48 | **Reconhecimento obrigatorio na primeira execucao com espelhamento sobre par de raizes sem linha de base** | P0 | Dado `sync` com espelhamento sobre um par de raizes **sem linha de base registrada**, entao a execucao **exige** simulacao previa (RF-44) ou sinalizador explicito de confirmacao; sem um dos dois, e recusada com codigo dedicado. **Razao precisa:** sem linha de base **nenhuma exclusao e possivel** — a matriz de 5.8.2 so preve exclusao quando `B` esta presente. O perigo real e outro: todo caminho presente nos dois lados cai em **criacao/criacao**, resolvido por ultimo a escrever vence, e uma raiz apontada por engano pode **sobrescrever permanentemente arquivos locais** com conteudo remoto sem relacao. Este e o unico momento do ciclo de vida em que o volume de conflitos e maximo e a informacao para arbitra-los e minima. **Nao e teto de exclusoes e nao contraria `DP-24`** |
-| RF-50 | 🔴 **A linha de base so registra o que a propria descida verificou** | **P0** | Dado qualquer caminho gravado na linha de base, entao ele provem **exclusivamente** da travessia por descida de `RNF-28`, e **nunca** de re-resolucao de caminho a partir de texto, de reconstrucao absoluta ou de reaproveitamento de valor calculado fora da descida. **Razao — risco composto `RSK-34`:** uma travessia que tenha escapado da raiz gravaria na base caminhos de **fora** dela; na execucao seguinte esses caminhos apareceriam como orfaos e seriam **apagados, com o atacante ja ausente**. A janela de ataque e transitoria; a consequencia, persistente. Sem esta regra, `RNF-28` protegeria a execucao corrente e **deixaria o dano para a seguinte**. **Verificacao:** dado experimento em que a travessia e induzida a escapar, quando a base e inspecionada, entao **nenhum caminho fora da raiz consta dela**; mutacao que permita gravar caminho obtido por re-resolucao reprova a suite |
+| RF-48 | **Reconhecimento obrigatorio na primeira execucao com espelhamento sobre um par de raizes ainda nao visto** | P0 | Dado `sync` com espelhamento sobre par de raizes sem registro anterior, entao a execucao **exige** simulacao previa (RF-44) ou sinalizador explicito de confirmacao; sem um dos dois, e recusada com codigo dedicado. **RAZAO REESCRITA POR `DP-27`, e ela se inverteu.** A versao anterior dizia que sem linha de base **nenhuma exclusao era possivel**, porque a matriz so previa exclusao com `B` presente, e o perigo era sobrescrita por criacao/criacao. Isso **ficou falso**: no modelo direcional, "ausente na origem, presente no destino" e observavel na primeira execucao, sem historico algum, e com espelhamento ligado **e ordem de exclusao integral**. Uma raiz de origem apontada por engano — diretorio vazio, ponto de montagem que nao subiu, caminho remoto trocado — apaga o destino inteiro na primeira execucao. O requisito continua o mesmo; o que mudou e que ele passou de precaucao a barreira |
+| RF-50 | 🔴 **Toda decisao usa apenas o que a propria descida verificou** | **P0** | Dado qualquer caminho sobre o qual o `sync` decida transferir, apagar ou registrar, entao ele provem **exclusivamente** da travessia por descida de `RNF-28`, e **nunca** de re-resolucao de caminho a partir de texto, de reconstrucao absoluta ou de reaproveitamento de valor calculado fora da descida. **RAZAO AMPLIADA POR `DP-27`:** o risco composto `RSK-34` descrevia uma travessia escapada gravando caminhos de fora da raiz na linha de base, que a execucao seguinte apagaria como orfaos — **dano diferido**. No modelo direcional o dano deixou de ser diferido e virou **imediato**: a decisao de apagar le a arvore de agora, entao uma travessia escapada apaga no destino, na mesma execucao, caminho que nunca pertenceu ao par de raizes. A regra vale igual e o prazo encurtou. **Verificacao:** dado experimento em que a travessia e induzida a escapar, entao nenhum caminho fora da raiz entra em decisao alguma; mutacao que permita decisao por re-resolucao reprova a suite |
 | RF-51 | **`unlink` trata o estado local, e nao apenas o token remoto** | P0 | Dado `unlink` confirmado, entao: **(a)** a revogacao remota e emitida e sua cascata sobre os access tokens derivados e advertida (RF-06a); **(b)** o **refresh token e removido do arquivo de credencial**, que sem ele e inutil; **(c)** por padrao **o arquivo de credencial e removido integralmente**, incluindo `app key` e `app secret`, que sao segredos e cuja permanencia contraria a semantica de "desvincular esta instalacao" — a preservacao de `app key` e `app secret` para relink posterior so ocorre sob sinalizador explicito; **(d)** **toda linha de base de `sync` e invalidada**, com a lista das raizes afetadas informada ao operador; **(e)** comando subsequente que exija autenticacao falha com codigo `3`, e nao com erro de rede |
-| RF-52 | 🔴 **A linha de base e vinculada a identidade da conta, alem do par de raizes** | **P0** | A linha de base registra o **identificador da conta** sob a qual foi criada; dado que o identificador da conta corrente **nao coincida** com o registrado, entao a base e **recusada** e a execucao nao prossegue com ela. **Razao — caminho de destruicao de dado identificado na analise de `DP-25`:** apos `unlink`, uma nova vinculacao a **conta diferente** deixaria a base antiga semanticamente invalida. Um caminho `P` registrado na base (`B` presente), inalterado no local (`L = B`) e **ausente no remoto da nova conta** (`R` ausente) casa a linha "apagado no remoto" da matriz de 5.8.2 e, **com espelhamento ligado, apaga o arquivo local do usuario** — por ele ter trocado de conta, e nao por ter apagado nada. **Verificacao:** teste que troca a identidade da conta entre duas execucoes e exige recusa da base, com zero exclusoes locais |
+| RF-52 | 🔴 **A memoria auxiliar e vinculada a identidade da conta, alem do par de raizes** | **P0** | Registra o **identificador da conta** sob a qual foi criada; dado que o identificador corrente **nao coincida**, entao a memoria e **descartada** e a execucao prossegue reconstruindo-a. **RAZAO REESCRITA POR `DP-27b`:** o caminho de destruicao original — base antiga apos troca de conta fazendo a matriz apagar arquivo local — **nao existe mais**, porque a memoria nao decide exclusao. O risco remanescente e outro e e de CORRECAO, nao de destruicao: `content_hash` reaproveitado de outra conta faz o `sync` **omitir uma transferencia que era necessaria**, e a divergencia passa despercebida justamente porque nenhuma operacao e emitida. **Verificacao:** troca de identidade entre duas execucoes descarta a memoria, e o conjunto de operacoes decididas e igual ao de uma execucao sem memoria alguma |
 | RF-49 | **Concorrencia otimista na escrita remota usando `rev`** | P1 | Dado que o `sync` decida sobrescrever um arquivo remoto, quando o envio e emitido, entao ele carrega o `rev` esperado, obtido na leitura de estado daquela execucao; dado que o remoto tenha mudado entre a leitura e a escrita, entao a Dropbox **recusa** a escrita e a aplicacao trata o caminho como conflito novo, em vez de sobrescrever cegamente. **Razao:** o `rev` nao resolve ordenacao entre local e remoto — nao ha equivalente local —, mas e monotonico por arquivo no lado remoto e fecha a janela entre ler o estado e escrever sobre ele. Sem isso, uma alteracao remota ocorrida durante a travessia e perdida sem deteccao |
+| RF-53 | 🔴 **Contrato dos dois lados: sentido declarado, tipo por consequencia** (`DP-27a`, `DP-28`) | **P0** | **(a)** `--origem` e `--destino` sao obrigatorios e nomeiam o PAPEL; a posicao na linha de comando nao significa nada. **(b)** `--enviar` ou `--receber` e **obrigatorio** e declara o SENTIDO; os dois juntos, ou nenhum, e recusa por uso invalido. **(c)** O tipo de cada lado e **consequencia do sentido, e nunca inferido**: `--enviar` implica origem local e destino remoto; `--receber` implica origem remota e destino local. **(d)** O sentido apurado e **declarado no relatorio antes de qualquer escrita**, inclusive em simulacao. **RAZAO DE `DP-28` TER FECHADO A INFERENCIA:** a versao anterior deste requisito apurava o tipo por existencia no sistema de arquivos e recusava o empate. Isso protegia o caso em que a ferramenta **sabe que nao sabe**, e deixava aberto o caso em que ela **acha que sabe e esta errada** — `--origem /fotos --destino ./fotos` com intencao de receber, onde `/fotos` existe no disco e `./fotos` nao, nao empata, e o `sync` enviaria sobrescrevendo o remoto com a arvore errada, sem nada parecer ambiguo. Com o sentido declarado a classe inteira deixa de existir. **Verificacao:** mutacao que reintroduza qualquer inferencia de tipo a partir do caminho reprova |
 
 | ID | Requisito nao funcional | Categoria | Criterio de aceite |
 |---|---|---|---|
 | RNF-25 | Integridade e confinamento da linha de base | Seguranca / Confiabilidade | A linha de base e gravada com escrita atomica — arquivo temporario e substituicao — de modo que interrupcao **nunca** deixe base parcial; permissao `0600`; dado que a interrupcao ocorra durante a gravacao, entao a base anterior permanece valida e utilizavel; a base **nao** guarda credencial nem conteudo de arquivo, apenas metadados de caminho |
-| RNF-26 | Delimitacao do estado persistente autorizado | Arquitetura | O estado persistente autorizado se limita a: **linha de base de sincronizacao** e **cursor de enumeracao**, ambos vinculados ao par de raizes. Qualquer outra escrita persistente — cache de resumos, indice auxiliar, arquivo de trava — permanece **fora de escopo** e constitui mudanca de escopo. Verificavel por auditoria dos caminhos de escrita. **Localizacao fixada por `DP-23`:** `$XDG_STATE_HOME` com recuo para `~/.local/state` — **estado**, e nao configuracao, e portanto separado da credencial de `DP-11` |
+| RNF-26 | Delimitacao do estado persistente autorizado | Arquitetura | O estado persistente autorizado se limita a: **memoria auxiliar de `content_hash` do `sync`** (`RF-38`) e **cursor de enumeracao**, ambos vinculados ao par de raizes e a identidade da conta (`RF-52`). Qualquer outra escrita persistente — indice auxiliar, arquivo de trava — permanece **fora de escopo** e constitui mudanca de escopo. Verificavel por auditoria dos caminhos de escrita. **Localizacao fixada por `DP-23`:** `$XDG_STATE_HOME` com recuo para `~/.local/state`. **CONTRADICAO RESOLVIDA POR `DP-27b`:** a redacao anterior autorizava a "linha de base de sincronizacao" e proibia nominalmente **cache de resumos** — e `DP-27b` rebaixou a base a exatamente isso. O que a proibicao queria impedir era estado que **decide**; a memoria auxiliar nao decide nada (`RF-38`), e a delimitacao passa a ser essa: **nenhum artefato persistente participa de decisao** |
 | RNF-28 | 🔴 **Travessia por descida com nome relativo — mitigacao estrutural de `RSK-24`.** Adotada em `DP-26` | Seguranca | A travessia local desce **um nivel por vez, mantendo o diretorio aberto**, e opera sempre com **nome relativo** — nunca reconstruindo caminho absoluto em texto para reabrir. Em `bash`, `cd` referencia o **inode**, nao o texto; e o equivalente em shell de `openat` com `O_NOFOLLOW` por componente. **Criterio:** dado o experimento de troca por symlink em componente intermediario durante a travessia, quando a implementacao usa caminho absoluto reconstruido, entao o alvo **fora da raiz** e alcancado — comportamento que reprova; quando usa descida com nome relativo, entao **na mesma janela de ataque o alvo sobrevive**. Auditoria estatica: nenhum ponto da travessia reconstroi caminho absoluto para reabrir um componente ja percorrido. ⚠️ **Limite declarado, nao escondido:** protege os componentes **ja percorridos**, e **nao** a troca ocorrida imediatamente antes de descer. E **reducao de superficie, nao eliminacao** — `RSK-24` permanece no registro com probabilidade reduzida, e nao encerrado |
-| RNF-27 | **Qualidade do sinal de ordenacao: `client_modified` sempre definido no envio** | Corretude | Dado qualquer envio emitido por esta aplicacao, entao ele define `client_modified` a partir do `mtime` do arquivo local. **Efeito:** para todo arquivo que esta aplicacao enviou, os dois lados passam a carregar carimbos originados do **mesmo relogio**, o que remove a incomparabilidade entre relogios distintos nesses casos. Dado conflito envolvendo arquivo enviado por outro cliente, entao o carimbo remoto continua sendo de origem alheia e a ordenacao recai no metodo (2) ou (3) de RF-39a, com o metodo registrado no relatorio. **`server_modified` nunca e usado como chave de ordenacao** — e o instante de recebimento pela Dropbox, nao o de autoria do conteudo. Verificavel por auditoria: nenhuma comparacao de ordenacao referencia `server_modified` |
+| RNF-27 | **`client_modified` sempre definido no envio** | Corretude | Dado qualquer envio emitido por esta aplicacao, entao ele define `client_modified` a partir do `mtime` do arquivo local. **PROPOSITO REESCRITO POR `DP-27`.** O requisito nasceu para dar aos dois lados carimbos do **mesmo relogio** e sustentar a ordenacao de conflito; essa ordenacao deixou de existir, e o restante do texto original — metodos (2) e (3) de `RF-39a`, escolha de chave de ordenacao — ficou **sem objeto**. O requisito sobrevive por dois motivos independentes da ordenacao: **(a)** preserva a data real do arquivo para quem o consulta pela Dropbox, e **(b)** e o sinal que permite a memoria auxiliar de `RF-38` decidir se pode reaproveitar um `content_hash` sem reler o arquivo. **`server_modified` continua proibido como sinal de decisao** — e o instante de recebimento pela Dropbox, nao o de autoria do conteudo —, e agora a proibicao e mais simples: nenhum carimbo decide coisa alguma (`RF-39`) |
 
-#### 5.8.4 Requisitos existentes afetados
+#### 5.8.5 Requisitos existentes afetados
 
 | Requisito | Efeito da entrada do `sync` |
 |---|---|
 | RF-34 (`content_hash`) | ⬆️ **Criticidade elevada.** Deixa de ser apenas verificacao de integridade e passa a ser a **primitiva de comparacao** de toda a matriz de 5.8.2. Um defeito aqui produz sincronizacao errada, nao apenas alarme falso |
-| RF-33 (omissao por conteudo identico) | Reaproveitado como determinacao de "inalterado" na matriz |
+| RF-33 (omissao por conteudo identico) | Reaproveitado como a terceira linha da tabela de 5.8.2: conteudo identico nos dois lados nao produz transferencia |
+| RNF-27 (`client_modified` no envio) | ⚠️ **Justificativa trocada por `DP-27`.** Sustentava a ordenacao de conflito, que deixou de existir. Sobrevive por dois motivos independentes: preserva a data real do arquivo do lado remoto, e e o sinal que permite a memoria auxiliar decidir se reaproveita um `content_hash` sem reler |
+| `PRJ-DEC-07` / `DP-09` (sem estado local) | Continuam revogado e reaberta — mas por **escolha** (`DP-27b`), e nao mais por necessidade de correcao. O modelo direcional decide sem estado algum |
 | RF-16 (listagem) e RNF-23 (paginacao) | O `sync` percorre arvores inteiras; `limit` explicito e paginacao passam a ser caminho quente, nao caso de borda |
 | RF-21 (exclusao com confirmacao) | Confirmacao item a item e **inviavel** em lote. O `sync` substitui por RF-40 e RF-41: opt-in de espelhamento, teto, anuncio previo e recusa sob travessia parcial |
-| RNF-09 (sem estado parcial) | Precisa de definicao propria: o `sync` e multi-operacao por natureza. "Parcial" passa a significar **linha de base consistente com o que foi efetivamente aplicado** |
+| RNF-09 (sem estado parcial) | Precisa de definicao propria: o `sync` e multi-operacao por natureza. Sob `DP-27` a definicao **simplifica**: nao ha estado a manter coerente entre operacoes, porque a memoria auxiliar nao decide nada. "Parcial" passa a significar apenas **conjunto de transferencias concluidas menor que o planejado**, relatado item a item por `RF-36` e `RF-47` |
 | RNF-20 (confinamento) | Passa a operar sobre **percurso recursivo**, que era justamente o caso ausente do escopo quando `RSK-24` foi aceito |
 | RNF-21 (concorrencia) | `RES-11` proibe listagem simultanea para o mesmo usuario; o `sync` deve respeitar mesmo percorrendo arvores grandes |
 | RF-31, RF-32 (fluxo) | Declarados incompativeis com `sync` em RF-45 |
 
-#### 5.8.5 Conjunto final de comandos — `DP-06` e `DP-25`
+#### 5.8.6 Conjunto final de comandos — `DP-06` e `DP-25`
 
 **Nove comandos no MVP:** `upload`, `download`, `list`, `delete`, `info`, `sync`, **`config`**, **`unlink`** e **`space`**.
 
@@ -480,15 +497,18 @@ Rastreabilidade prospectiva: requisito → componente previsto no [System Design
 | RNF-20 | `lib/config`, `lib/path`, `cmd/config` | TC-SEC-06..08 — escopos minimos documentados, confirmacao obrigatoria em operacao destrutiva; **TC-SEC-09..17 — os oito vetores de confinamento** (symlink absoluto, relativo, para arquivo de sistema, ciclo, `..` acima da raiz, absoluto externo, raiz que e symlink, prefixo semelhante) **e o opt-in da raiz `/`** |
 | RNF-22 | `lib/output`, `lib/log` | TC-RED-01..02 — identificador de correlacao em linha propria sobrevive a redacao; reprovacao se concatenado a cabecalho sensivel; **um caso por modo de terminador** |
 | RNF-23 | `lib/json`, `lib/http`, `cmd/list`, `cmd/search` | TC-PAG-01..03 — pasta que ultrapassa 256 KiB em resposta unica conclui por paginacao; auditoria estatica reprova chamada de colecao sem `limit`/`max_results` explicito |
-| RF-39, RF-39a, RF-40a | `lib/sync`, `lib/hash`, `lib/state` | TC-SYN-01..08 — deteccao sem carimbo de tempo; mutacao que introduza carimbo na deteccao reprova; os tres metodos de ordenacao; desempate preferindo o local |
+| RF-39 | `lib/sync`, `lib/hash` | TC-SYN-01..05 — comparacao so por `content_hash`; mutacao que introduza carimbo em qualquer ramo de decisao reprova |
+| ~~RF-39a, RF-40a~~ | — | ❌ Sem objeto por `DP-27`: nao ha conflito a ordenar nem a desempatar |
 | RNF-28 | `lib/walk` | TC-TOC-01..03 — experimento de troca por symlink em componente intermediario: reprova com caminho absoluto reconstruido, sobrevive com descida e nome relativo; auditoria confirma ausencia de reconstrucao absoluta |
-| RF-50 | `lib/walk`, `lib/state` | TC-BASE-01..02 — travessia induzida a escapar nao grava caminho fora da raiz; mutacao que permita gravacao por re-resolucao reprova |
+| RF-50 | `lib/walk`, `lib/sync` | TC-BASE-01..02 — travessia induzida a escapar nao produz caminho para transferir nem para apagar; mutacao que permita decisao por re-resolucao reprova |
 | RF-51 | `cmd/unlink`, `lib/config`, `lib/state` | TC-UNL-01..05 — revogacao remota, remocao do refresh token, remocao integral do arquivo por padrao, invalidacao das bases, codigo `3` em comando subsequente |
-| RF-52 | `lib/state` | TC-CONTA-01 — troca de identidade de conta entre execucoes recusa a base, com zero exclusoes locais |
+| RF-52 | `lib/state` | TC-CONTA-01 — troca de identidade de conta entre execucoes descarta a memoria, e o conjunto de operacoes decididas iguala o de execucao sem memoria |
 | RF-41 | `lib/sync`, `lib/walk` | TC-DEL-01..06 — subdiretorio ilegivel em profundidade 1 e em profundidade N, ponto de montagem removido durante a travessia, raiz vazia com base povoada; **zero exclusoes em todos**; mutacao que restrinja o efeito ao ramo com erro reprova |
 | RF-47 | `lib/sync`, `lib/report`, `lib/output` | TC-PERDA-01..04 — cada sobrescrita e exclusao listada nominalmente com lado perdedor, metodo e marcacao de recuperabilidade; secao vazia explicita quando nao ha perda |
 | RF-48 | `cmd/sync`, `lib/state` | TC-INI-01..02 — primeira execucao com espelhamento sem base exige simulacao ou confirmacao |
 | RF-49 | `lib/sync`, `lib/http` | TC-REV-01..02 — escrita com `rev` esperado; alteracao remota concorrente vira conflito, nao sobrescrita |
+| RF-37, RF-53 | `cmd/sync`, `lib/path` | TC-LADO-01..05 — `--origem`/`--destino` obrigatorios; `--enviar`/`--receber` obrigatorio e mutuamente exclusivo; sentido declarado antes de qualquer escrita; mutacao que infira tipo a partir do caminho reprova |
+| RF-38, RF-42 | `lib/state` | TC-MEM-01..03 — memoria apagada entre execucoes nao muda o conjunto de operacoes; memoria corrompida e descartada e reconstruida, e nao recusa a execucao |
 | RNF-27 | `lib/transfer`, `lib/http` | TC-CM-01..02 — `client_modified` definido em todo envio; auditoria confirma que `server_modified` nao e chave de ordenacao |
 | RNF-24 | `lib/json`, `lib/http` | TC-CTX-01..04 — analise de corpo de erro preserva listagem em curso; nome fora de `[a-z_]` recusado; auditoria estatica reprova nome composto a partir de origem externa; **mutacao que permita nome externo reprova a suite** |
 | RNF-21 | `lib/http`, `lib/walk` | TC-ERR-08 — ausencia de chamadas simultaneas de listagem para o mesmo usuario |
