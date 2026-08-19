@@ -70,6 +70,16 @@ DBX_AUTH_ERRO_AUTENTICACAO=$(dbx_errors_codigo_saida autenticacao)
 DBX_AUTH_ERRO_REMOTO=$(dbx_errors_codigo_saida erro_remoto)
 
 readonly DBX_AUTH_URL_TOKEN='https://api.dropbox.com/oauth2/token'
+readonly DBX_AUTH_URL_AUTORIZAR='https://www.dropbox.com/oauth2/authorize'
+readonly DBX_AUTH_URL_REVOGAR='https://api.dropboxapi.com/2/auth/token/revoke'
+
+# Conjunto de caracteres NAO RESERVADOS da RFC 3986. A chave de aplicativo entra
+# numa URL que o operador vai colar num navegador, e por isso a validacao deriva
+# da GRAMATICA da URL, e nao do formato que as chaves da Dropbox hoje aparentam
+# ter. Restringir ao que se observa criaria recusa de chave legitima no dia em
+# que o emissor mudar o alfabeto; restringir ao nao reservado garante que nao ha
+# o que escapar, que e a propriedade de que precisamos.
+readonly DBX_AUTH_ALFABETO_CHAVE='A-Za-z0-9._~-'
 
 # Margem antes do vencimento. Um token que expira em transito produz falha que
 # parece do servico e nao da credencial; trocar antes custa uma chamada e evita
@@ -81,6 +91,12 @@ DBX_AUTH_TOKEN=''
 DBX_AUTH_EXPIRA_EM=0
 # shellcheck disable=SC2034  # canal publico
 DBX_AUTH_MOTIVO=''
+# Publicados apenas pela troca do codigo de autorizacao.
+# shellcheck disable=SC2034  # canais publicos: lidos por commands/config e pela
+# suite; a analise estatica nao cruza arquivos e os ve como escrita sem leitura.
+DBX_AUTH_REFRESH_TOKEN=''
+# shellcheck disable=SC2034  # idem
+DBX_AUTH_CONTA=''
 # shellcheck disable=SC2034  # canal publico
 DBX_AUTH_RENOVOU='nao'
 DBX_AUTH_LIDO=''
@@ -297,4 +313,144 @@ dbx_auth_conteudo() {
 dbx_auth_conteudo_receber() {
   [[ $# -ge 4 ]] || return "$DBX_AUTH_ERRO_USO"
   _dbx_auth_com_renovacao dbx_http_conteudo_receber "$1" "$2" "$3" "$4"
+}
+
+# ---------------------------------------------------------------------------
+# Vinculo e desvinculo (RF-01, RF-04, RF-06a)
+# ---------------------------------------------------------------------------
+
+# dbx_auth_chave_de_aplicativo_valida <chave>
+dbx_auth_chave_de_aplicativo_valida() {
+  local chave=${1-}
+  [[ -n $chave ]] || return 1
+  [[ $chave == *[!$DBX_AUTH_ALFABETO_CHAVE]* ]] && return 1
+  return 0
+}
+
+# dbx_auth_url_de_autorizacao <app_key> — imprime a URL que o operador abre.
+#
+# `token_access_type=offline` E O PARAMETRO QUE DECIDE TUDO. Sem ele a Dropbox
+# devolve so um access token de quatro horas e NENHUM refresh token, e a
+# aplicacao inteira — que se sustenta em renovar sozinha — para de funcionar no
+# dia seguinte, com sintoma que aparece longe da causa. Por isso ele nao e opcao
+# nem parametro: e literal desta funcao, e ha caso que reprova se sair da URL.
+dbx_auth_url_de_autorizacao() {
+  local chave=${1-}
+  dbx_auth_chave_de_aplicativo_valida "$chave" || return "$DBX_AUTH_ERRO_USO"
+  printf '%s?client_id=%s&response_type=code&token_access_type=offline' \
+    "$DBX_AUTH_URL_AUTORIZAR" "$chave"
+}
+
+# dbx_auth_trocar_codigo <app_key> <app_secret> <codigo>
+#
+# GEMEA de `dbx_auth_renovar`: as duas postam no mesmo endpoint de token, com o
+# mesmo transporte por entrada padrao, e as duas precisam limpar os canais do
+# transporte antes de retornar — o corpo da resposta contem o refresh token, que
+# e o segredo de maior valor do projeto. Escrever a limpeza so numa delas seria a
+# forma exata das ocorrencias anteriores; por isso `_dbx_auth_limpar_transporte`
+# e chamada em TODAS as saidas daqui, inclusive nas de erro.
+#
+# O codigo de autorizacao e de USO UNICO e expira em minutos. Isso muda o
+# diagnostico: `invalid_grant` aqui NAO significa credencial revogada, como
+# significa na renovacao — significa codigo expirado ou ja usado, e o remedio e
+# abrir a URL de novo para obter um codigo NOVO. Dar a mesma mensagem nos dois
+# lugares mandaria o operador refazer o aplicativo por um codigo vencido.
+dbx_auth_trocar_codigo() {
+  [[ $# -ge 3 ]] || return "$DBX_AUTH_ERRO_USO"
+  local chave=$1 segredo=$2 codigo=$3
+  # shellcheck disable=SC2034  # canais publicos
+  DBX_AUTH_MOTIVO=''
+  DBX_AUTH_REFRESH_TOKEN=''
+  DBX_AUTH_CONTA=''
+
+  [[ -n $chave && -n $codigo ]] || {
+    _dbx_auth_falhar "$DBX_AUTH_ERRO_USO" 'chave de aplicativo ou codigo ausente'
+    return $?
+  }
+
+  local -a campos=(
+    "grant_type=authorization_code"
+    "code=$codigo"
+    "client_id=$chave"
+  )
+  [[ -n $segredo ]] && campos+=("client_secret=$segredo")
+
+  local estado
+  dbx_http_formulario "$DBX_AUTH_URL_TOKEN" campos
+  estado=$?
+
+  if [[ $estado -ne 0 ]]; then
+    local erro=''
+    _dbx_auth_interpretar "$DBX_HTTP_CORPO" error && erro=$DBX_AUTH_LIDO
+    _dbx_auth_limpar_transporte
+    if [[ $erro == 'invalid_grant' ]]; then
+      _dbx_auth_falhar "$DBX_AUTH_ERRO_AUTENTICACAO" \
+        'codigo de autorizacao recusado: invalid_grant (codigo expirado ou ja usado; abra a URL de autorizacao de novo e informe um codigo novo)'
+      return $?
+    fi
+    _dbx_auth_falhar "$estado" "troca de codigo falhou (codigo ${DBX_HTTP_CODIGO:-0}${erro:+, $erro})"
+    return $?
+  fi
+
+  # AUSENCIA DE REFRESH TOKEN NAO E ERRO DE SERVICO: e autorizacao pedida sem
+  # `token_access_type=offline`. A resposta chega com 200 e um access token
+  # perfeitamente valido, entao tratar isto como sucesso gravaria credencial que
+  # funciona hoje e para de funcionar em quatro horas. O diagnostico nomeia a
+  # causa em vez de descrever o sintoma.
+  if ! _dbx_auth_interpretar "$DBX_HTTP_CORPO" refresh_token || [[ -z $DBX_AUTH_LIDO ]]; then
+    _dbx_auth_limpar_transporte
+    _dbx_auth_falhar "$DBX_AUTH_ERRO_REMOTO" \
+      'resposta sem refresh_token: a autorizacao foi concedida sem token_access_type=offline'
+    return $?
+  fi
+  DBX_AUTH_REFRESH_TOKEN=$DBX_AUTH_LIDO
+
+  # `account_id` e informativo aqui e obrigatorio adiante: RF-52 vincula a linha
+  # de base a IDENTIDADE DA CONTA, para que religar a outra conta com base antiga
+  # nao apague arquivo local do operador. Registrar quando o campo vem e ausencia
+  # tolerada, e o que faz a informacao existir antes de `lib/state` precisar dela.
+  _dbx_auth_interpretar "$DBX_HTTP_CORPO" account_id && DBX_AUTH_CONTA=$DBX_AUTH_LIDO
+
+  # O access token que veio junto e aproveitado: e valido, e descarta-lo obrigaria
+  # a uma renovacao imediata e desnecessaria.
+  local validade=0
+  _dbx_auth_interpretar "$DBX_HTTP_CORPO" access_token && DBX_AUTH_TOKEN=$DBX_AUTH_LIDO
+  _dbx_auth_interpretar "$DBX_HTTP_CORPO" expires_in && validade=$DBX_AUTH_LIDO
+  [[ $validade =~ ^[0-9]+$ ]] || validade=0
+  DBX_AUTH_EXPIRA_EM=$((SECONDS + validade - DBX_AUTH_MARGEM_SEGUNDOS))
+  [[ $DBX_AUTH_EXPIRA_EM -lt 0 ]] && DBX_AUTH_EXPIRA_EM=0
+
+  # `DBX_AUTH_LIDO` guarda o ULTIMO valor lido e passou pelo refresh token no
+  # caminho acima. E o canal vizinho da mesma classe ja corrigida em lib/config.
+  DBX_AUTH_LIDO=''
+  _dbx_auth_limpar_transporte
+  return 0
+}
+
+# dbx_auth_esquecer_vinculo — apaga da memoria o que a troca publicou.
+#
+# Conjunto onde incide: todo caminho que termine de usar `DBX_AUTH_REFRESH_TOKEN`
+# — hoje so `commands/config`, depois qualquer religamento.
+dbx_auth_esquecer_vinculo() {
+  # shellcheck disable=SC2034  # canais publicos, ver nota na declaracao
+  DBX_AUTH_REFRESH_TOKEN=''
+  # shellcheck disable=SC2034  # canais publicos, ver nota na declaracao
+  DBX_AUTH_CONTA=''
+  return 0
+}
+
+# dbx_auth_revogar — revoga o token corrente junto a Dropbox (RF-04).
+#
+# CASCATA (RES-12, RF-06a): a revogacao NAO se limita ao access token com que a
+# chamada e feita. Ela invalida o refresh token de onde ele saiu e, com ele, todo
+# access token derivado — inclusive os de outras maquinas e de outros processos
+# em curso. Advertir sobre isso e exigir confirmacao e obrigacao de quem chama;
+# esta funcao supoe a decisao ja tomada.
+#
+# Sem corpo: o endpoint identifica o token pelo cabecalho de autorizacao. Marcada
+# como NAO idempotente porque e escrita; repetir depois de revogar nao causa dano,
+# mas a taxonomia decide retentativa por essa propriedade, e declarar escrita como
+# idempotente aqui abriria excecao que o proximo caso de escrita herdaria.
+dbx_auth_revogar() {
+  dbx_auth_requisitar POST "$DBX_AUTH_URL_REVOGAR" '' nao
 }

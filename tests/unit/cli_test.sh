@@ -14,7 +14,7 @@
 
 teste_comando_conhecido_e_aceito() {
   local nome
-  for nome in upload download list delete info space; do
+  for nome in upload download list delete info space config unlink; do
     dbx_cli_comando_valido "$nome" ||
       _harness_falhar "comando previsto no bloco foi recusado: $nome"
   done
@@ -23,7 +23,9 @@ teste_comando_conhecido_e_aceito() {
 
 teste_comando_desconhecido_e_recusado() {
   local nome
-  for nome in sync config unlink inexistente ''; do
+  # `sync` continua fora: recusado como qualquer nome desconhecido, e nao aceito
+  # para falhar adiante com mensagem de outro assunto.
+  for nome in sync inexistente ''; do
     dbx_cli_comando_valido "$nome" &&
       _harness_falhar "comando fora do bloco foi aceito: [$nome]"
   done
@@ -152,6 +154,47 @@ teste_ajuda_e_versao_nao_exigem_ambiente() {
   # maquina sem o cliente de rede tem de funcionar.
   assert_igual 'nenhum' "$(dbx_cli_requisito_interno help)" 'ajuda'
   assert_igual 'nenhum' "$(dbx_cli_requisito_interno version)" 'versao'
+}
+
+
+teste_tabela_de_despacho_e_os_arquivos_de_comando_se_correspondem() {
+  # O UNIVERSO DERIVA DO ARTEFATO. A tabela e de nomes literais, escrita a mao, e
+  # e por isso que ela precisa ser confrontada com o conjunto que ninguem mantem
+  # a mao: os arquivos em `commands/`. Comando novo que chegue sem entrada na
+  # tabela reprova aqui, e nao no primeiro uso.
+  # A resolucao le `DBX_CLI_RAIZ`, que o ponto de entrada publica. Aqui ele e
+  # definido explicitamente: sem isso a funcao falharia por variavel ausente e a
+  # auditoria acusaria divergencia onde ha so ambiente incompleto.
+  # shellcheck disable=SC2034  # lida DENTRO da funcao sob teste, que a analise
+  # estatica nao segue por ser de outro arquivo.
+  local DBX_CLI_RAIZ=$DBX_HARNESS_RAIZ
+  local arquivo nome destino faltando=()
+  for arquivo in "$DBX_HARNESS_RAIZ"/commands/*.sh; do
+    [[ -e $arquivo ]] || continue
+    nome=${arquivo##*/}
+    nome=${nome%.sh}
+    dbx_cli_comando_valido "$nome" ||
+      faltando+=("$nome tem arquivo e nao esta na tabela de nomes")
+    destino=$(_dbx_cli_arquivo_do_comando "$nome") ||
+      faltando+=("$nome nao resolve para arquivo algum")
+    [[ $destino == "$arquivo" ]] ||
+      faltando+=("$nome resolve para [$destino] em vez de [$arquivo]")
+  done
+  [[ ${#faltando[@]} -eq 0 ]] ||
+    _harness_falhar 'tabela de despacho e arquivos de comando divergem' "${faltando[@]}"
+  return 0
+}
+
+teste_nome_sem_arquivo_nao_resolve_para_caminho() {
+  # O outro sentido da correspondencia: o que a tabela nao conhece nao pode
+  # produzir caminho. Sem este caso, um `*)` que devolvesse caminho qualquer
+  # passaria pela auditoria acima, que so percorre os arquivos existentes.
+  local destino
+  destino=$(_dbx_cli_arquivo_do_comando sync) &&
+    _harness_falhar "nome fora da tabela resolveu para caminho: [$destino]"
+  destino=$(_dbx_cli_arquivo_do_comando '../../etc/passwd') &&
+    _harness_falhar "nome arbitrario resolveu para caminho: [$destino]"
+  return 0
 }
 
 harness_executar "$@"

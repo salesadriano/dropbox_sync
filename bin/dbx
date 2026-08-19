@@ -18,6 +18,32 @@ export DBX_CLI_RAIZ
 # shellcheck source=lib/cli.sh
 . "$DBX_CLI_RAIZ/lib/cli.sh"
 
+# dbx_carregar_camada_de_credencial — sourcing dos componentes que lidam com a
+# credencial e com a rede autenticada.
+#
+# UM SO LUGAR ENUMERA A LISTA. Ela e usada por dois caminhos diferentes:
+#
+#   - o nivel `credencial`, logo abaixo, que carrega E EXIGE credencial valida;
+#   - os comandos `config` e `unlink`, que declaram o nivel `ambiente` porque
+#     precisam funcionar SEM credencial valida — um para grava-la, outro para
+#     remove-la — mas ainda assim precisam dos mesmos componentes.
+#
+# Duplicar a lista faria a proxima dependencia nova entrar num caminho e nao no
+# outro, com sintoma de funcao inexistente longe da causa. Os componentes tem
+# guarda de carga unica, entao chamar isto duas vezes e inofensivo.
+dbx_carregar_camada_de_credencial() {
+  # shellcheck source=lib/json.sh
+  . "$DBX_CLI_RAIZ/lib/json.sh"
+  # shellcheck source=lib/config.sh
+  . "$DBX_CLI_RAIZ/lib/config.sh"
+  # shellcheck source=lib/http.sh
+  . "$DBX_CLI_RAIZ/lib/http.sh"
+  # shellcheck source=lib/auth.sh
+  . "$DBX_CLI_RAIZ/lib/auth.sh"
+  # shellcheck source=lib/cmd.sh
+  . "$DBX_CLI_RAIZ/lib/cmd.sh"
+}
+
 _dbx_falhar() {
   local classe=$1 texto=$2
   dbx_output_iniciar
@@ -37,7 +63,7 @@ case $DBX_CLI_COMANDO in
     ;;
   help)
     printf 'Uso: dbx [--json] [--null] [--dry-run] <comando> [argumentos]\n\n'
-    printf 'Comandos: upload download list delete info space\n'
+    printf 'Comandos: config unlink upload download list delete info space\n'
     printf 'Opcoes:   --help --version\n'
     exit 0
     ;;
@@ -57,19 +83,13 @@ case $_dbx_requisito in
   ambiente | credencial)
     # shellcheck source=lib/preflight.sh
     . "$DBX_CLI_RAIZ/lib/preflight.sh"
-    dbx_preflight_verificar ||
+    # O NIVEL VIAJA: sem ele, `ambiente` herdaria a recusa por permissao de
+    # credencial e o assistente de configuracao nao rodaria justamente quando a
+    # credencial esta errada, que e quando ele existe para ser usado.
+    dbx_preflight_verificar "$_dbx_requisito" ||
       _dbx_falhar configuracao "$(dbx_preflight_mensagem)"
     if [[ $_dbx_requisito == 'credencial' ]]; then
-      # shellcheck source=lib/json.sh
-      . "$DBX_CLI_RAIZ/lib/json.sh"
-      # shellcheck source=lib/config.sh
-      . "$DBX_CLI_RAIZ/lib/config.sh"
-      # shellcheck source=lib/http.sh
-      . "$DBX_CLI_RAIZ/lib/http.sh"
-      # shellcheck source=lib/auth.sh
-      . "$DBX_CLI_RAIZ/lib/auth.sh"
-      # shellcheck source=lib/cmd.sh
-      . "$DBX_CLI_RAIZ/lib/cmd.sh"
+      dbx_carregar_camada_de_credencial
       dbx_config_carregar ||
         _dbx_falhar configuracao "credencial indisponivel: $DBX_CONFIG_MOTIVO"
     fi

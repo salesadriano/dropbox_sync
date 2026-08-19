@@ -54,6 +54,14 @@
 #     nenhum      ajuda e versao: nao tocam ambiente nem credencial
 #     ambiente    piso de shell e utilitarios obrigatorios
 #     credencial  ambiente mais permissao do arquivo de credencial
+#
+#   O nivel `ambiente` ficou SEM NENHUMA OCORRENCIA enquanto os seis comandos do
+#   bloco anterior declaravam todos `credencial`, e nesse periodo o impasse
+#   descrito acima continuava existindo dentro de `lib/preflight`, que inspecionava
+#   a credencial em qualquer nivel. `config` e `unlink` sao as duas primeiras
+#   ocorrencias, e sao exatamente as que precisam rodar com a credencial quebrada:
+#   uma para regravar, outra para remover. Vocabulario declarado nao vale nada
+#   enquanto ninguem o exerce.
 
 # shellcheck disable=SC2034
 # Justificativa: as variaveis abaixo sao os canais publicos consumidos por
@@ -76,12 +84,12 @@ DBX_CLI_MOTIVO=''
 
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
 #
-# Bloco corrente: seis comandos diretos. `config`, `unlink` e `sync` ficam de
-# fora deliberadamente e sao recusados como qualquer outro nome desconhecido,
-# em vez de aceitos e falhando adiante.
+# Bloco corrente: oito comandos. `sync` fica de fora deliberadamente e e recusado
+# como qualquer outro nome desconhecido, em vez de aceito e falhando adiante.
 dbx_cli_comando_valido() {
   case ${1-} in
     upload | download | list | delete | info | space) return 0 ;;
+    config | unlink) return 0 ;;
     help | version) return 0 ;;
   esac
   return 1
@@ -101,6 +109,8 @@ _dbx_cli_arquivo_do_comando() {
     delete) printf '%s' "$raiz/commands/delete.sh" ;;
     info) printf '%s' "$raiz/commands/info.sh" ;;
     space) printf '%s' "$raiz/commands/space.sh" ;;
+    config) printf '%s' "$raiz/commands/config.sh" ;;
+    unlink) printf '%s' "$raiz/commands/unlink.sh" ;;
     *) return 1 ;;
   esac
 }

@@ -379,7 +379,12 @@ teste_gemeos_aplicam_o_mesmo_conjunto_de_guardas_de_metadado() {
   # ao outro passa a reprovar POR CONSTRUCAO, e nao por acaso de o modo novo
   # estar entre os fixados.
   local do_preflight do_config
-  do_preflight=$(_guardas_de_metadado_em dbx_preflight_verificar "$DBX_LIB/preflight.sh")
+  # O gemeo do lado do preflight passou a ser `dbx_preflight_credencial`, que e a
+  # funcao dedicada criada quando o nivel virou parametro. A auditoria segue a
+  # funcao que INSPECIONA, e nao o nome antigo: apontada para a funcao errada ela
+  # extrairia conjunto vazio, e conjunto vazio compara igual a conjunto vazio.
+  # E por isso que a guarda de vacuidade logo abaixo existe.
+  do_preflight=$(_guardas_de_metadado_em dbx_preflight_credencial "$DBX_LIB/preflight.sh")
   do_config=$(_guardas_de_metadado_em dbx_config_carregar "$DBX_LIB/config.sh")
 
   if [[ -z $do_preflight || -z $do_config ]]; then
