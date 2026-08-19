@@ -600,4 +600,35 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
   return 0
 }
 
+# A guarda de fronteira de linha de lib/output NAO incide sobre canal de corpo
+# do transporte — e nao deve incidir: corpo pode conter byte nulo, que variavel
+# de shell nao carrega e que a apresentacao nao sabe terminar.
+#
+# Declarar isso em comentario e o que ja falhou sete vezes. Aqui e CASO: se
+# algum comando passar um canal de corpo para a apresentacao, reprova. A regra
+# deriva do nome do canal, entao vale tambem para o canal binario que ainda vai
+# existir, sem ninguem precisar lembrar de acrescenta-lo.
+teste_canal_de_corpo_nunca_e_alimentado_na_apresentacao() {
+  local arquivo achados=()
+  for arquivo in "$DBX_HARNESS_RAIZ"/commands/*.sh "$DBX_HARNESS_RAIZ"/lib/cmd.sh; do
+    [[ -e $arquivo ]] || continue
+    while IFS= read -r linha; do
+      [[ -n $linha ]] || continue
+      achados+=("${arquivo##*/}: $linha")
+    done < <(grep -vE '^[[:space:]]*#' "$arquivo" |
+      grep -nE 'dbx_output_(campo|diagnostico)[^#]*DBX_(HTTP|JSON)_CORPO' || true)
+  done
+  [[ ${#achados[@]} -eq 0 ]] ||
+    _harness_falhar 'canal de corpo do transporte alimentado na apresentacao' "${achados[@]}"
+
+  # Prova de discriminacao: o reconhecedor precisa reagir a forma que procura.
+  local amostra='  dbx_output_campo conteudo "$DBX_HTTP_CORPO_ARQUIVO"'
+  grep -qE 'dbx_output_(campo|diagnostico)[^#]*DBX_(HTTP|JSON)_CORPO' <<<"$amostra" ||
+    _harness_falhar 'o reconhecedor nao detecta a forma que deveria proibir'
+  local inocente='  dbx_output_campo total "$total"'
+  grep -qE 'dbx_output_(campo|diagnostico)[^#]*DBX_(HTTP|JSON)_CORPO' <<<"$inocente" &&
+    _harness_falhar 'o reconhecedor acusa forma legitima'
+  return 0
+}
+
 harness_executar "$@"
