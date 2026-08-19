@@ -354,4 +354,49 @@ teste_renovacao_bem_sucedida_seguida_de_401_nao_entra_em_laco() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# QH-01: o canal adjacente
+# ---------------------------------------------------------------------------
+
+teste_canal_de_corpo_do_transporte_nao_retem_o_token_apos_renovar() {
+  local dir
+  dir=$(_duplo 200 "$(_resposta_de_token)")
+  _credencial
+  PATH=$dir:$PATH dbx_auth_renovar
+  assert_igual 0 $? 'renovacao deve concluir'
+  assert_segredo_ausente 'sl.AC_token_curto' "$DBX_HTTP_CORPO" \
+    'access token retido no canal de corpo do transporte'
+  assert_segredo_ausente 'sl.AC_token_curto' "$DBX_JSON_RESULTADO" \
+    'access token retido no canal de resultado do analisador'
+}
+
+teste_canal_de_corpo_nao_retem_segredo_quando_o_servico_ecoa_a_requisicao() {
+  # Servico que devolve no corpo o que recebeu: caminho realista de depuracao
+  # em servidor mal configurado, e o pior caso para canal publico esquecido.
+  local dir eco
+  eco="{\"error\":\"invalid_request\",\"echo\":\"refresh_token $REFRESH client_secret=$APP_SECRET\"}"
+  dir=$(_duplo 400 "$eco")
+  _credencial
+  PATH=$dir:$PATH dbx_auth_renovar
+  assert_diferente 0 $? 'a chamada deve falhar'
+  assert_segredo_ausente "$REFRESH" "$DBX_HTTP_CORPO" 'refresh token retido no corpo publicado'
+  assert_segredo_ausente "$APP_SECRET" "$DBX_HTTP_CORPO" 'segredo do aplicativo retido no corpo'
+  assert_segredo_ausente "$REFRESH" "$DBX_HTTP_RESUMO_DE_ERRO" 'refresh token no resumo'
+  assert_segredo_ausente "$REFRESH" "$DBX_JSON_RESULTADO" 'refresh token no resultado do analisador'
+}
+
+teste_limpeza_do_transporte_nao_apaga_a_resposta_que_o_chamador_precisa() {
+  # A limpeza tem de ser SELETIVA: no caminho de requisicao comum o corpo e o
+  # dado util. Zelo aplicado sem criterio viraria defeito.
+  local dir
+  dir=$(_duplo 200 "$(_resposta_de_token)")
+  _credencial
+  PATH=$dir:$PATH dbx_auth_token
+  local dir2
+  dir2=$(_duplo 200 '{"entries":[],"has_more":false}')
+  PATH=$dir2:$PATH dbx_auth_requisitar POST https://exemplo/api '{}' sim
+  assert_igual 0 $? 'requisicao deve concluir'
+  assert_contem 'has_more' "$DBX_HTTP_CORPO" 'a resposta da API tem de continuar disponivel'
+}
+
 harness_executar "$@"

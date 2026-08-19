@@ -60,6 +60,11 @@ _DBX_HTTP_MODO='bearer'
 _DBX_HTTP_TOKEN=''
 _DBX_HTTP_CAMPOS_NOME=''
 
+# Status do cliente que denuncia defeito NOSSO, e nao da rede; e a mensagem que
+# o cliente emitiu, ja redigida. Canais publicos.
+DBX_HTTP_DEFEITO_CLIENTE=''
+DBX_HTTP_DIAGNOSTICO=''
+
 # shellcheck disable=SC2034  # canais publicos, lidos pelo chamador e pela suite
 DBX_HTTP_CODIGO=''
 # shellcheck disable=SC2034
@@ -135,6 +140,10 @@ _dbx_http_interpretar_erro() {
   fi
   dbx_json_descartar http_erro
   dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  # Um servico que ecoe a requisicao no corpo de erro poe credencial no canal
+  # escalar do analisador; o resumo ja foi copiado, e o canal nao precisa reter.
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_RESULTADO=''
   return 0
 }
 
@@ -222,22 +231,60 @@ _dbx_http_executar() {
   while :; do
     : >"$area/resposta"
     : >"$area/cabecalhos"
+    : >"$area/erro_cliente"
+    # A redirecao do stderr fica DENTRO da substituicao: aplicada do lado de
+    # fora, a substituicao ja teria sido expandida com o stderr original e a
+    # mensagem do cliente se perderia. Foi o que aconteceu na primeira versao —
+    # o canal existia e chegava sempre vazio.
     codigo=$(
-      _dbx_http_opcoes | if [[ -n $corpo ]]; then
+      {
+        _dbx_http_opcoes | if [[ -n $corpo ]]; then
         curl -K - -X "$metodo" --data-binary "@$area/requisicao" \
           -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
       else
         curl -K - -X "$metodo" \
           -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
       fi
-    ) 2>/dev/null
+      } 2>"$area/erro_cliente"
+    )
     estado=$?
 
+    # DEFEITO NOSSO NAO PODE CHEGAR AO OPERADOR COMO PROBLEMA DE REDE.
+    #
+    # Antes, qualquer status nao zero do cliente virava `codigo=0` e era
+    # classificado como falha de rede, entao opcao mal formada ou arquivo de
+    # corpo ilegivel — defeitos do PROPRIO PROGRAMA — chegavam ao operador como
+    # "verifique conectividade, DNS, proxy e TLS", mandando investigar a rede
+    # alheia por bug nosso.
+    #
+    # Estes status do cliente sao emitidos ANTES de qualquer tentativa de
+    # conversa com o servidor e nao dependem da rede:
+    #   2  falha de inicializacao, inclusive arquivo de opcoes mal formado
+    #   3  URL mal formada
+    #   26 erro de leitura do arquivo indicado ao corpo
+    #   43 argumento interno invalido
+    # O stderr do cliente deixou de ser descartado: pedir `show-error` e jogar a
+    # mensagem fora era pedir diagnostico para nao le-lo.
+    DBX_HTTP_DEFEITO_CLIENTE=''
     if [[ $estado -ne 0 ]]; then
       # Sem resposta HTTP: codigo zero, e nao um codigo inventado.
       codigo=0
+      case $estado in
+        2 | 3 | 26 | 43) DBX_HTTP_DEFEITO_CLIENTE=$estado ;;
+      esac
     fi
     [[ $codigo =~ ^[0-9]+$ ]] || codigo=0
+
+    DBX_HTTP_DIAGNOSTICO=''
+    if [[ -s $area/erro_cliente ]]; then
+      local bruto=''
+      IFS= read -r -d '' bruto <"$area/erro_cliente"
+      # Redigido antes de publicar: as opcoes que o cliente reclama podem conter
+      # o segredo, e este canal e lido por quem depura.
+      dbx_errors_redigir "$bruto" >/dev/null
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      DBX_HTTP_DIAGNOSTICO=$DBX_ERRORS_REDIGIDO
+    fi
 
     # shellcheck disable=SC2034  # canal publico, ver nota no topo
     DBX_HTTP_CODIGO=$codigo
@@ -266,6 +313,14 @@ _dbx_http_executar() {
     politica=$(dbx_errors_politica_retentativa "$codigo" "$DBX_HTTP_RESUMO_DE_ERRO" "$idempotente")
     # shellcheck disable=SC2034  # canal publico, ver nota no topo
     DBX_HTTP_POLITICA=$politica
+
+    if [[ -n $DBX_HTTP_DEFEITO_CLIENTE ]]; then
+      # Erro de uso do proprio programa: nao e retentavel e nao e da rede.
+      DBX_HTTP_CLASSE='uso_invalido'
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      DBX_HTTP_POLITICA='nenhuma'
+      break
+    fi
 
     case $politica in
       recuo_exponencial | respeitar_retry_after)

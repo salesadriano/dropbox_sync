@@ -24,10 +24,12 @@
 #     que o teste media a si mesmo.
 #
 # RISCO ACEITO E MITIGADO: o substituto precisa honrar o contrato real do
-# `curl`. Se divergir, a suite valida uma ficcao. Mitigacao: a superficie de
-# invocacao e minima e concentrada numa unica funcao, o contrato exigido esta
-# declarado no cabecalho de lib/http.sh, e ha caso de contrato, habilitado por
-# variavel de ambiente, que confere o mesmo comportamento contra o `curl` real.
+# `curl`. Se divergir, a suite valida uma ficcao. Mitigacao, agora existente e
+# executada sempre: os casos "contrato" ao fim deste arquivo exercitam o `curl`
+# REAL contra `127.0.0.1:1`, sem rede, e verificam tanto os status que o cliente
+# produz quanto o fato de que as opcoes que NOS geramos sao aceitas por ele.
+# Antes esta nota afirmava haver um caso habilitado por variavel de ambiente:
+# nao havia nenhum, e a afirmacao fazia quem lia parar de procurar.
 
 # shellcheck disable=SC2016
 # Justificativa: casos entregam script literal a "bash -c" e escrevem o
@@ -310,6 +312,149 @@ teste_nao_deixa_residuo_temporario() {
   PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
   depois=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'dbx-http*' 2>/dev/null | wc -l)
   assert_igual "$antes" "$depois" 'a requisicao nao pode deixar temporario para tras'
+}
+
+# ---------------------------------------------------------------------------
+# QH-02: CASOS DE CONTRATO CONTRA O CLIENTE REAL.
+#
+# O cabecalho deste arquivo prometia "caso de contrato, habilitado por variavel
+# de ambiente, que confere o mesmo comportamento contra o `curl` real". A
+# promessa era falsa: nao havia caso algum. Risco declarado como mitigado sem a
+# mitigacao existir e pior que risco declarado em aberto, porque quem le para de
+# procurar.
+#
+# O que o duplo NAO cobre, medido: ele consome o arquivo de opcoes sem nunca o
+# interpretar. Contra o cliente real, opcoes mal formadas dao status 2 e corpo
+# ilegivel da 26; contra o duplo, os dois davam status 0 e `200`. Um defeito na
+# GERACAO das opcoes atravessaria a suite inteira sem sinal.
+#
+# Estes casos nao usam rede: falam com `127.0.0.1:1`, que recusa conexao de
+# imediato. Por isso rodam SEMPRE, e nao sob variavel de ambiente — mitigacao
+# que so roda quando alguem lembra de liga-la tende a nao rodar.
+# ---------------------------------------------------------------------------
+
+readonly ALVO_QUE_RECUSA='http://127.0.0.1:1/'
+
+_estado_do_cliente_real() {
+  curl --connect-timeout 3 "$@" >"$DBX_TESTES_TMP/w.$$" 2>/dev/null
+  DBX_ESTADO_REAL=$?
+  DBX_SAIDA_W=''
+  [[ -r $DBX_TESTES_TMP/w.$$ ]] && IFS= read -r -d '' DBX_SAIDA_W <"$DBX_TESTES_TMP/w.$$"
+  rm -f "$DBX_TESTES_TMP/w.$$"
+  return 0
+}
+
+teste_contrato_opcoes_de_formulario_sao_aceitas_pelo_cliente_real() {
+  command -v curl >/dev/null 2>&1 || pular 'curl ausente'
+  # Campo com aspas e barra invertida: e o escape gerado por nos que esta sob
+  # teste, e nao a capacidade do cliente de falar com um servidor.
+  # shellcheck disable=SC2034  # consumida por nome (nameref) em _dbx_http_opcoes
+  local -a campos=('grant_type=refresh_token' 'refresh_token=a"b\c d' 'client_id=k')
+  _DBX_HTTP_MODO=formulario
+  _DBX_HTTP_CAMPOS_NOME=campos
+  local arquivo=$DBX_TESTES_TMP/opcoes.$$
+  _dbx_http_opcoes >"$arquivo"
+  _estado_do_cliente_real -K "$arquivo" -o /dev/null -w '%{http_code}' "$ALVO_QUE_RECUSA"
+  rm -f "$arquivo"
+  assert_diferente 2 "$DBX_ESTADO_REAL" 'o cliente real recusou as opcoes que geramos'
+  assert_igual 7 "$DBX_ESTADO_REAL" 'a unica falha esperada e a conexao recusada'
+}
+
+teste_contrato_opcoes_de_token_sao_aceitas_pelo_cliente_real() {
+  command -v curl >/dev/null 2>&1 || pular 'curl ausente'
+  _DBX_HTTP_MODO=bearer
+  _DBX_HTTP_TOKEN='sl.token com espaco e "aspas"'
+  local arquivo=$DBX_TESTES_TMP/opcoes2.$$
+  _dbx_http_opcoes >"$arquivo"
+  _estado_do_cliente_real -K "$arquivo" -o /dev/null -w '%{http_code}' "$ALVO_QUE_RECUSA"
+  rm -f "$arquivo"
+  assert_igual 7 "$DBX_ESTADO_REAL" 'cabecalho de autorizacao gerado foi recusado'
+}
+
+teste_contrato_corpo_ilegivel_produz_status_de_defeito_nosso() {
+  command -v curl >/dev/null 2>&1 || pular 'curl ausente'
+  _estado_do_cliente_real -s --data-binary '@/caminho/que/nao/existe' \
+    -o /dev/null -w '%{http_code}' "$ALVO_QUE_RECUSA"
+  assert_igual 26 "$DBX_ESTADO_REAL" 'contrato do cliente para arquivo de corpo ilegivel'
+  assert_igual '' "$DBX_SAIDA_W" 'sem transferencia nao ha codigo HTTP para escrever'
+}
+
+teste_contrato_opcoes_malformadas_produzem_status_de_defeito_nosso() {
+  command -v curl >/dev/null 2>&1 || pular 'curl ausente'
+  local arquivo=$DBX_TESTES_TMP/ruim.$$
+  printf 'isto-nao-e-uma-opcao-valida\n' >"$arquivo"
+  _estado_do_cliente_real -K "$arquivo" -s -o /dev/null -w '%{http_code}' "$ALVO_QUE_RECUSA"
+  rm -f "$arquivo"
+  assert_igual 2 "$DBX_ESTADO_REAL" 'contrato do cliente para arquivo de opcoes mal formado'
+  assert_igual '' "$DBX_SAIDA_W" 'sem transferencia nao ha codigo HTTP para escrever'
+}
+
+teste_contrato_conexao_recusada_ainda_produz_codigo_zerado() {
+  command -v curl >/dev/null 2>&1 || pular 'curl ausente'
+  _estado_do_cliente_real -s -o /dev/null -w '%{http_code}' "$ALVO_QUE_RECUSA"
+  assert_igual 7 "$DBX_ESTADO_REAL" 'contrato do cliente para conexao recusada'
+  # Falha de REDE ainda escreve `000`; falha NOSSA nao escreve nada. A diferenca
+  # e o que distingue as duas familias sem depender de tabela de status.
+  assert_igual '000' "$DBX_SAIDA_W" 'falha de rede produz codigo zerado, e nao ausencia'
+}
+
+# ---------------------------------------------------------------------------
+# QH-03: defeito nosso nao pode virar diagnostico de rede
+# ---------------------------------------------------------------------------
+
+_duplo_que_falha() { # <status_do_cliente> [mensagem_no_stderr]
+  local status=$1 mensagem=${2:-}
+  local dir
+  dir=$(mktemp -d "$DBX_TESTES_TMP/duploF.XXXXXX")
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'cat >/dev/null 2>&1\n'
+    printf '%s\n' "printf '%s\\n' \"\$(cat <<'EOM'
+$mensagem
+EOM
+)\" >&2"
+    printf 'exit %s\n' "$status"
+  } >"$dir/curl"
+  chmod +x "$dir/curl"
+  printf '%s' "$dir"
+}
+
+teste_defeito_do_cliente_nao_e_classificado_como_falha_de_rede() {
+  local dir
+  dir=$(_duplo_que_falha 26)
+  PATH=$dir:$PATH dbx_http_requisitar POST https://exemplo/api tok '{}' sim
+  local estado=$?
+  assert_igual 26 "$DBX_HTTP_DEFEITO_CLIENTE" 'o status do cliente deve ser preservado'
+  assert_igual 'uso_invalido' "$DBX_HTTP_CLASSE" \
+    'defeito nosso mandaria o operador investigar rede alheia'
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$estado" 'codigo de saida coerente'
+  assert_igual 'nenhuma' "$DBX_HTTP_POLITICA" 'defeito nosso nao e retentavel'
+}
+
+teste_falha_de_rede_continua_sendo_classificada_como_rede() {
+  # Discriminacao no outro sentido: sem isto, a regra poderia classificar tudo
+  # como defeito nosso e o caso acima passaria do mesmo jeito.
+  local dir
+  dir=$(_duplo_que_falha 7)
+  PATH=$dir:$PATH dbx_http_requisitar POST https://exemplo/api tok '{}' sim
+  assert_igual '' "$DBX_HTTP_DEFEITO_CLIENTE" 'falha de conexao nao e defeito nosso'
+  assert_igual 'rede' "$DBX_HTTP_CLASSE" 'falha de conexao deve continuar sendo rede'
+}
+
+teste_mensagem_do_cliente_e_publicada_e_nao_descartada() {
+  local dir
+  dir=$(_duplo_que_falha 2 'curl: option --data-binary: error')
+  PATH=$dir:$PATH dbx_http_requisitar POST https://exemplo/api tok '{}' sim
+  assert_contem 'option --data-binary' "$DBX_HTTP_DIAGNOSTICO" \
+    'pedir show-error e descartar o stderr era pedir diagnostico para nao le-lo'
+}
+
+teste_mensagem_do_cliente_e_redigida_antes_de_publicar() {
+  local dir
+  dir=$(_duplo_que_falha 2 'curl: option header: Authorization: Bearer sl.SEGREDO_NA_MENSAGEM')
+  PATH=$dir:$PATH dbx_http_requisitar POST https://exemplo/api tok '{}' sim
+  assert_segredo_ausente 'sl.SEGREDO_NA_MENSAGEM' "$DBX_HTTP_DIAGNOSTICO" \
+    'o cliente reclama citando a opcao, que carrega o segredo'
 }
 
 harness_executar "$@"

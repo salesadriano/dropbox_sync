@@ -189,6 +189,9 @@ dbx_config_gravar() {
   corpo+=",\"refresh_token\":\"$DBX_JSON_ESCAPADO\""
   dbx_json_escapar_cadeia "$raiz"
   corpo+=",\"raiz_remota\":\"$DBX_JSON_ESCAPADO\""
+  # A cadeia escapada do segredo nao pode sobreviver a montagem do documento.
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
   corpo+='}'
 
   _dbx_config_varrer_orfaos "$diretorio"
@@ -296,5 +299,11 @@ dbx_config_carregar() {
   # ele existe em memoria.
   dbx_json_descartar config
   dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  # O MESMO motivo vale para o canal escalar do analisador, que guarda o ULTIMO
+  # valor lido — e o ultimo valor lido aqui e o refresh token. O raciocinio
+  # acima estava escrito e aplicado a arvore, e nao ao vizinho: e a familia de
+  # gemeos outra vez, num componente aprovado ha varios ciclos.
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_RESULTADO=''
   return 0
 }

@@ -18,7 +18,10 @@
 #     - nunca entra em `DBX_AUTH_MOTIVO`, que e montado a partir do campo
 #       `error` da resposta e passa pela redacao antes de ser publicado;
 #     - por consequencia, nunca chega ao diario de reprovacoes da suite, que
-#       grava em disco o diagnostico dos casos.
+#       grava em disco o diagnostico dos casos;
+#     - nem permanece nos canais do TRANSPORTE apos a troca: `DBX_HTTP_CORPO` e
+#       os canais vizinhos sao limpos ao fim da renovacao. Ver
+#       `_dbx_auth_limpar_transporte`.
 #
 # SEM COORDENACAO ENTRE PROCESSOS, E SEM ESTADO NOVO
 #   A Dropbox nao rotaciona o refresh token: a resposta da troca nao devolve um
@@ -130,6 +133,36 @@ _dbx_auth_interpretar() {
   return $achou
 }
 
+# _dbx_auth_limpar_transporte — apaga os canais do transporte que a renovacao
+# encheu com dado derivado de credencial.
+#
+# QH-01, o canal ADJACENTE. Eu descartava o contexto JSON proprio exatamente
+# para o segredo nao permanecer, e nao fazia o equivalente para `DBX_HTTP_CORPO`
+# — canal publico declarado, que apos renovar com sucesso guarda o access token
+# em claro e, apos falhar contra um servico que ecoe a requisicao, guarda o
+# refresh token e o segredo do aplicativo. O cabecalho afirmava que o refresh
+# "nunca chega ao diario": era verdade para o canal em que pensei e falso para o
+# vizinho. Limpei onde doeu e nao no gemeo, pela sexta vez.
+#
+# Limpo APENAS no caminho de renovacao. Em `dbx_auth_requisitar` o corpo e a
+# resposta que o chamador precisa ler; apaga-lo ali quebraria o componente e
+# seria zelo transformado em defeito.
+_dbx_auth_limpar_transporte() {
+  # shellcheck disable=SC2034  # canais publicos de lib/http, limpos aqui
+  DBX_HTTP_CORPO=''
+  # shellcheck disable=SC2034  # canais publicos de lib/http, limpos aqui
+  DBX_HTTP_RESUMO_DE_ERRO=''
+  # shellcheck disable=SC2034  # canais publicos de lib/http, limpos aqui
+  DBX_HTTP_DIAGNOSTICO=''
+  # O resultado do analisador guarda o ULTIMO valor lido. Hoje o ultimo e
+  # inofensivo por acidente de ordem — `expires_in` no sucesso, `error` na
+  # falha — e depender de ordem de leitura para nao vazar segredo e garantia
+  # que a proxima edicao desfaz sem perceber.
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_RESULTADO=''
+  return 0
+}
+
 # dbx_auth_renovar — troca o refresh token por um access token de curta duracao.
 dbx_auth_renovar() {
   # shellcheck disable=SC2034  # canal publico
@@ -161,6 +194,7 @@ dbx_auth_renovar() {
     _dbx_auth_interpretar "$DBX_HTTP_CORPO" error && erro=$DBX_AUTH_LIDO
     # `invalid_grant` significa refresh revogado ou invalido: terminal. Repetir
     # nao muda o resultado e a cascata ja invalidou todo access derivado.
+    _dbx_auth_limpar_transporte
     if [[ $erro == 'invalid_grant' ]]; then
       _dbx_auth_falhar "$DBX_AUTH_ERRO_AUTENTICACAO" \
         'renovacao recusada: invalid_grant (refresh token invalido ou revogado; autorize de novo)'
@@ -171,11 +205,13 @@ dbx_auth_renovar() {
   fi
 
   _dbx_auth_interpretar "$DBX_HTTP_CORPO" access_token || {
+    _dbx_auth_limpar_transporte
     _dbx_auth_falhar "$DBX_AUTH_ERRO_REMOTO" 'resposta de token sem access_token'
     return $?
   }
   local token=$DBX_AUTH_LIDO
   [[ -n $token ]] || {
+    _dbx_auth_limpar_transporte
     _dbx_auth_falhar "$DBX_AUTH_ERRO_REMOTO" 'access_token vazio na resposta'
     return $?
   }
@@ -187,6 +223,7 @@ dbx_auth_renovar() {
   DBX_AUTH_TOKEN=$token
   DBX_AUTH_EXPIRA_EM=$((SECONDS + validade - DBX_AUTH_MARGEM_SEGUNDOS))
   [[ $DBX_AUTH_EXPIRA_EM -lt 0 ]] && DBX_AUTH_EXPIRA_EM=0
+  _dbx_auth_limpar_transporte
   return 0
 }
 
