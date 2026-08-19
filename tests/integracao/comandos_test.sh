@@ -63,7 +63,8 @@ _rodar() { # <base> <argumentos...>
   DBX_SAIDA=''
   DBX_ERRO=''
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
-    TMPDIR="$DBX_TESTES_TMP" bash "$DBX_EXEC" "$@" >"$base/out" 2>"$base/err"
+    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
+    bash "$DBX_EXEC" "$@" >"$base/out" 2>"$base/err"
   DBX_ESTADO=$?
   [[ -r $base/out ]] && IFS= read -r -d '' DBX_SAIDA <"$base/out"
   [[ -r $base/err ]] && IFS= read -r -d '' DBX_ERRO <"$base/err"
@@ -93,7 +94,11 @@ teste_comando_desconhecido_sai_com_uso_invalido() {
 teste_comando_do_bloco_seguinte_e_recusado_e_nao_silenciosamente_aceito() {
   local base nome
   base=$(_ambiente '{}')
-  for nome in sync config unlink; do
+  # shellcheck disable=SC2043
+  # Justificativa: e um CONJUNTO — o dos comandos ainda fora do bloco — que hoje
+  # tem um membro so. Desfazer o laco esconderia a natureza da lista e obrigaria
+  # a reescreve-lo quando `sync` sair dela.
+  for nome in sync; do
     _rodar "$base" "$nome"
     assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
       "comando fora do bloco deve ser recusado: $nome"
@@ -398,6 +403,301 @@ teste_upload_e_download_nao_montam_cabecalho_por_conta_propria() {
   done
   assert_igual '' "$achados" \
     "comando montando cabecalho fora de lib/http:$achados"
+}
+
+
+# ---------------------------------------------------------------------------
+# config e unlink — os dois comandos que precisam funcionar SEM credencial valida
+# ---------------------------------------------------------------------------
+
+# _ambiente_vazio [corpo_do_token] — como `_ambiente`, mas SEM credencial
+# gravada, que e o estado normal antes do vinculo inicial.
+_ambiente_vazio() {
+  local corpo=${1:-'{"access_token":"sl.t","token_type":"bearer","expires_in":14400,"refresh_token":"RT_gravado_pelo_config","account_id":"dbid:CONTA"}'}
+  local codigo=${2:-200}
+  local base
+  base=$(mktemp -d "$DBX_TESTES_TMP/vinc.XXXXXX")
+  mkdir -p "$base/config/dbx" "$base/bin"
+  chmod 700 "$base/config/dbx"
+  printf '%s' "$corpo" >"$base/corpo"
+  printf '%s' "$codigo" >"$base/codigo"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'base=%s\n' "$base"
+    printf 'printf "%%s\\n" "$*" >>"$base/argv"\n'
+    printf 'cat >>"$base/opcoes" 2>/dev/null\n'
+    printf 'saida=""; escrever=""; anterior=""\n'
+    printf 'for arg in "$@"; do\n'
+    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac\n'
+    printf '  anterior=$arg\n'
+    printf 'done\n'
+    printf '[[ -n $saida ]] && printf "%%s" "$(cat "$base/corpo")" >"$saida"\n'
+    printf '[[ -n $escrever ]] && printf "%%s" "$(cat "$base/codigo")"\n'
+    printf 'exit 0\n'
+  } >"$base/bin/curl"
+  chmod +x "$base/bin/curl"
+  printf '%s' "$base"
+}
+
+# _rodar_com_entrada <base> <entrada> <argumentos...>
+#
+# `config` le os valores da ENTRADA PADRAO justamente para o segredo nao passar
+# por `argv` nem por ambiente, entao exercita-lo exige alimentar essa entrada.
+_rodar_com_entrada() {
+  local base=$1 entrada=$2
+  shift 2
+  DBX_SAIDA=''
+  DBX_ERRO=''
+  printf '%s' "$entrada" >"$base/entrada"
+  env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
+    bash "$DBX_EXEC" "$@" <"$base/entrada" >"$base/out" 2>"$base/err"
+  DBX_ESTADO=$?
+  [[ -r $base/out ]] && IFS= read -r -d '' DBX_SAIDA <"$base/out"
+  [[ -r $base/err ]] && IFS= read -r -d '' DBX_ERRO <"$base/err"
+  return 0
+}
+
+# A massa da entrada vem de `$'...'`, e NAO de substituicao de comando.
+#
+# Custou um ciclo: escrita como `"$(printf 'a\nb\nc\n')"`, a quebra final some,
+# `read` devolve nao zero na ultima linha e o comando recusava entrada valida. O
+# defeito estava nos dois lados — no instrumento, que removeu o byte, e no
+# produto, que confundia o status de `read` com a ausencia de valor. Os dois
+# foram corrigidos, e e por isso que a massa agora nao passa por `$( )`.
+readonly ENTRADA_DE_VINCULO=$'ak1234567890abc\nAS_segredo_do_caso\nCODIGO_DE_UMA_VEZ\n'
+# Sem quebra final DE PROPOSITO: exercita o caminho em que `read` sinaliza fim de
+# entrada com o valor ja atribuido.
+readonly ENTRADA_SEM_QUEBRA_FINAL=$'ak1234567890abc\nAS_segredo_do_caso\nCODIGO_DE_UMA_VEZ'
+
+teste_config_grava_credencial_com_permissao_restrita() {
+  local base arquivo modo conteudo
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" --json config
+  assert_igual 0 "$DBX_ESTADO" "config deve concluir; diagnostico: $DBX_ERRO"
+  arquivo="$base/config/dbx/credencial.json"
+  assert_arquivo_existe "$arquivo" 'RF-01: a credencial e criada'
+  modo=$(stat -c '%a' "$arquivo")
+  assert_igual '600' "$modo" 'RNF-04: permissao restrita desde a criacao'
+  IFS= read -r -d '' conteudo <"$arquivo"
+  assert_contem 'RT_gravado_pelo_config' "$conteudo" 'o refresh token obtido e persistido'
+  assert_contem 'conta=dbid:CONTA' "$DBX_SAIDA" 'a identidade da conta e reportada'
+}
+
+teste_config_aceita_entrada_sem_quebra_de_linha_final() {
+  # O DEFEITO QUE ESTE CASO FIXA. `read` devolve nao zero ao encontrar o fim da
+  # entrada, mesmo tendo atribuido o que leu. Tomar esse status como criterio
+  # fazia o comando recusar com "codigo nao informado" um codigo que estava ali —
+  # e a entrada sem quebra final e a forma normal do que sai de `$( )`, de
+  # documento aqui e de varios geradores.
+  local base
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" "$ENTRADA_SEM_QUEBRA_FINAL" config
+  assert_igual 0 "$DBX_ESTADO" \
+    "entrada sem quebra final e legitima; diagnostico: $DBX_ERRO"
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'a credencial e gravada'
+}
+
+teste_config_pede_autorizacao_offline_e_nao_ecoa_o_segredo() {
+  local base
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config
+  assert_contem 'token_access_type=offline' "$DBX_ERRO" \
+    'a URL oferecida ao operador precisa pedir acesso offline'
+  assert_segredo_ausente 'AS_segredo_do_caso' "$DBX_ERRO" \
+    'o segredo digitado nao pode voltar na saida de erro'
+  assert_segredo_ausente 'AS_segredo_do_caso' "$DBX_SAIDA" \
+    'o segredo digitado nao pode aparecer no registro de resultado'
+}
+
+teste_config_recusa_resposta_sem_refresh_token_e_nao_grava_credencial() {
+  # 200 com access token e SEM refresh: a autorizacao foi concedida sem
+  # `token_access_type=offline`. Gravar isso produziria credencial que funciona
+  # hoje e para em quatro horas, com sintoma longe da causa.
+  local base
+  base=$(_ambiente_vazio '{"access_token":"sl.t","token_type":"bearer","expires_in":14400}')
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config
+  assert_diferente 0 "$DBX_ESTADO" 'resposta sem refresh token nao pode passar por sucesso'
+  assert_contem 'token_access_type=offline' "$DBX_ERRO" \
+    'o diagnostico precisa nomear o parametro que faltou'
+  assert_arquivo_ausente "$base/config/dbx/credencial.json" \
+    'credencial que nasce sem refresh token nao pode ser persistida'
+}
+
+teste_config_nao_expoe_segredo_nem_codigo_na_linha_de_comando() {
+  local base argv
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config
+  argv=''
+  [[ -r $base/argv ]] && IFS= read -r -d '' argv <"$base/argv"
+  assert_segredo_ausente 'AS_segredo_do_caso' "$argv" 'segredo em argv (visivel em /proc)'
+  assert_segredo_ausente 'CODIGO_DE_UMA_VEZ' "$argv" 'codigo de autorizacao em argv'
+}
+
+teste_config_recusa_chave_que_nao_pertence_a_uma_url() {
+  # A chave e colada numa URL que o operador abre no navegador. Uma chave com `&`
+  # acrescentaria parametro a essa URL.
+  local base
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" 'ak&redirect_uri=http://mau
+AS
+CODIGO
+' config
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
+    'chave fora do alfabeto de URL deve ser recusada'
+  assert_arquivo_ausente "$base/config/dbx/credencial.json" 'nada pode ser gravado'
+}
+
+teste_config_nao_sobrescreve_credencial_existente_sem_sinalizador() {
+  # Gravar por cima descarta da nossa vista um refresh token que continua VALIDO
+  # do lado da Dropbox. A recusa e a advertencia sao a defesa.
+  local base conteudo
+  base=$(_ambiente_vazio)
+  printf '%s' '{"versao":1,"app_key":"ak","app_secret":"as","refresh_token":"RT_anterior","raiz_remota":"/"}' \
+    >"$base/config/dbx/credencial.json"
+  chmod 600 "$base/config/dbx/credencial.json"
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" 'deve recusar'
+  assert_contem 'unlink' "$DBX_ERRO" 'o diagnostico precisa dizer como revogar o anterior'
+  IFS= read -r -d '' conteudo <"$base/config/dbx/credencial.json"
+  assert_contem 'RT_anterior' "$conteudo" 'a credencial existente fica intacta'
+}
+
+teste_config_roda_com_credencial_em_permissao_larga_e_info_nao() {
+  # O PAR QUE PROVA O NIVEL DE VERIFICACAO PREVIA, ponta a ponta.
+  #
+  # Sem o nivel, `config` herdaria a recusa por permissao e o operador nao
+  # conseguiria consertar a credencial com a unica ferramenta que sabe grava-la.
+  # Sozinho, o primeiro lado passaria com uma verificacao que nunca recusa nada;
+  # e o segundo lado que impede essa leitura.
+  local base modo
+  base=$(_ambiente_vazio)
+  printf '%s' '{"versao":1,"app_key":"ak","app_secret":"as","refresh_token":"RT_anterior","raiz_remota":"/"}' \
+    >"$base/config/dbx/credencial.json"
+  chmod 644 "$base/config/dbx/credencial.json"
+
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config --substituir
+  assert_igual 0 "$DBX_ESTADO" \
+    "config precisa rodar com credencial em permissao larga; diagnostico: $DBX_ERRO"
+  modo=$(stat -c '%a' "$base/config/dbx/credencial.json")
+  assert_igual '600' "$modo" 'e a regravacao que conserta a permissao'
+
+  chmod 644 "$base/config/dbx/credencial.json"
+  _rodar_com_entrada "$base" '' info /
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" \
+    'RNF-04: comando autenticado continua RECUSADO com credencial em permissao larga'
+}
+
+teste_config_em_simulacao_nao_toca_a_rede_nem_o_disco() {
+  local base
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" '' --dry-run config
+  assert_igual 0 "$DBX_ESTADO" "simulacao deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'simulado=sim' "$DBX_SAIDA" 'RF-15: a simulacao se declara'
+  assert_arquivo_ausente "$base/config/dbx/credencial.json" 'simulacao nao grava'
+  assert_arquivo_ausente "$base/argv" 'simulacao nao chama o cliente de rede'
+}
+
+teste_unlink_sem_terminal_exige_sinalizador_explicito() {
+  # RF-06a: modo automatizado so prossegue com confirmacao explicita. A entrada
+  # aqui nao e terminal, que e exatamente o caso previsto.
+  local base
+  base=$(_ambiente '{}')
+  _rodar "$base" unlink
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
+    'desvinculo sem terminal e sem sinalizador deve ser recusado'
+  assert_contem '--confirmar' "$DBX_ERRO" 'o diagnostico precisa nomear o sinalizador'
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'nada pode ser removido'
+}
+
+teste_unlink_adverte_a_cascata_antes_de_agir() {
+  # RES-12: a revogacao invalida tambem os access tokens derivados, inclusive os
+  # de outras maquinas. Advertencia que chega depois da decisao nao e advertencia.
+  local base
+  base=$(_ambiente '{}')
+  _rodar "$base" unlink --confirmar
+  assert_contem 'cascata' "$DBX_ERRO" 'RF-06a: a advertencia de cascata e obrigatoria'
+}
+
+teste_unlink_revoga_remove_credencial_e_bases() {
+  local base
+  base=$(_ambiente '{}')
+  mkdir -p "$base/estado/dbx"
+  printf '%s' 'base antiga' >"$base/estado/dbx/pareamento-um"
+  _rodar "$base" --json unlink --confirmar
+  assert_igual 0 "$DBX_ESTADO" "unlink deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'revogacao=emitida' "$DBX_SAIDA" 'RF-04: a revogacao remota e emitida'
+  assert_contem 'base_removida=pareamento-um' "$DBX_SAIDA" \
+    'RF-51d: as bases invalidadas sao nomeadas ao operador'
+  assert_arquivo_ausente "$base/config/dbx/credencial.json" \
+    'RF-51c: por padrao o arquivo sai inteiro, app key e app secret inclusive'
+  assert_arquivo_ausente "$base/estado/dbx/pareamento-um" \
+    'RF-51d: base orfa nao pode sobreviver ao desvinculo'
+}
+
+teste_comando_autenticado_apos_unlink_falha_com_erro_de_configuracao() {
+  # RF-51(e) na letra: `3`, e nao erro de rede. E a diferenca importa — `3` manda
+  # reconfigurar, que e o que o operador precisa fazer.
+  local base
+  base=$(_ambiente '{}')
+  _rodar "$base" unlink --confirmar
+  _rodar "$base" info /
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" \
+    'apos o desvinculo, comando autenticado falha por configuracao'
+}
+
+teste_unlink_com_manter_aplicativo_preserva_a_chave_e_ainda_invalida_o_vinculo() {
+  local base conteudo
+  base=$(_ambiente '{}')
+  _rodar "$base" unlink --confirmar --manter-aplicativo
+  assert_igual 0 "$DBX_ESTADO" "unlink deve concluir; diagnostico: $DBX_ERRO"
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'o sinalizador preserva o arquivo'
+  IFS= read -r -d '' conteudo <"$base/config/dbx/credencial.json"
+  assert_contem '"app_key":"ak"' "$conteudo" 'a chave do aplicativo e preservada para religar'
+  assert_segredo_ausente 'rt' "$conteudo" 'o refresh token nao pode sobreviver'
+  _rodar "$base" info /
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" \
+    'RF-51e vale igual no modo que preserva o aplicativo'
+}
+
+teste_unlink_com_revogacao_recusada_limpa_o_local_e_nao_sai_com_zero() {
+  # Sair com zero diria "desvinculado" a quem ficou com um refresh token vivo do
+  # lado da Dropbox; nao limpar diria "nada feito" a quem pediu o desvinculo e
+  # ficou com o segredo em disco. As duas coisas precisam ser ditas.
+  local base
+  base=$(_ambiente '{"error_summary":"invalid_access_token/","error":{".tag":"invalid_access_token"}}' 401)
+  _rodar "$base" --json unlink --confirmar
+  assert_diferente 0 "$DBX_ESTADO" 'revogacao recusada nao pode sair como sucesso'
+  assert_contem 'revogacao=falhou' "$DBX_SAIDA" 'o resultado declara o que nao aconteceu'
+  assert_arquivo_ausente "$base/config/dbx/credencial.json" \
+    'a limpeza local acontece mesmo assim'
+  assert_contem 'pode continuar valido' "$DBX_ERRO" \
+    'o operador precisa saber que o token remoto pode ter sobrevivido'
+}
+
+teste_unlink_nao_apaga_atraves_de_ligacao_simbolica() {
+  # Remocao recursiva e onde um defeito destroi dado do operador. Se o diretorio
+  # de estado for uma ligacao, apagar atraves dela alcancaria arvore que nao e
+  # nossa; apagar a ligacao reportaria remocao que nao houve.
+  local base alvo
+  base=$(_ambiente '{}')
+  alvo=$(mktemp -d "$DBX_TESTES_TMP/alvo.XXXXXX")
+  printf '%s' 'documento do operador' >"$alvo/nao_apagar"
+  mkdir -p "$base/estado"
+  ln -s "$alvo" "$base/estado/dbx"
+  _rodar "$base" unlink --confirmar
+  assert_arquivo_existe "$alvo/nao_apagar" \
+    'o desvinculo nao pode apagar atraves de ligacao simbolica'
+}
+
+teste_unlink_em_simulacao_nao_revoga_nem_remove() {
+  local base
+  base=$(_ambiente '{}')
+  _rodar "$base" --dry-run unlink --confirmar
+  assert_igual 0 "$DBX_ESTADO" "simulacao deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'simulado=sim' "$DBX_SAIDA" 'RF-15: a simulacao se declara'
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'simulacao nao remove'
+  assert_arquivo_ausente "$base/argv" 'simulacao nao chama o cliente de rede'
 }
 
 harness_executar "$@"
