@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# dbx — ponto de entrada unico.
+#
+# Deliberadamente fino: interpreta opcoes globais, aplica a verificacao previa
+# que o comando declarou precisar e despacha. Nenhuma regra de negocio mora
+# aqui.
+set -u
+
+DBX_CLI_RAIZ=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+export DBX_CLI_RAIZ
+
+# shellcheck source=lib/errors.sh
+. "$DBX_CLI_RAIZ/lib/errors.sh"
+# shellcheck source=lib/path.sh
+. "$DBX_CLI_RAIZ/lib/path.sh"
+# shellcheck source=lib/output.sh
+. "$DBX_CLI_RAIZ/lib/output.sh"
+# shellcheck source=lib/cli.sh
+. "$DBX_CLI_RAIZ/lib/cli.sh"
+
+_dbx_falhar() {
+  local classe=$1 texto=$2
+  dbx_output_iniciar
+  [[ $DBX_CLI_ESTRUTURADA == 'sim' ]] && dbx_output_modo estruturada
+  [[ $DBX_CLI_NULO == 'sim' ]] && dbx_output_terminador nulo
+  dbx_output_diagnostico erro "$texto"
+  dbx_output_render_diagnostico >&2
+  exit "$(dbx_errors_codigo_saida "$classe")"
+}
+
+dbx_cli_analisar "$@" || _dbx_falhar uso_invalido "$DBX_CLI_MOTIVO"
+
+case $DBX_CLI_COMANDO in
+  version)
+    printf 'dbx %s\n' "$DBX_CLI_VERSAO"
+    exit 0
+    ;;
+  help)
+    printf 'Uso: dbx [--json] [--null] [--dry-run] <comando> [argumentos]\n\n'
+    printf 'Comandos: upload download list delete info space\n'
+    printf 'Opcoes:   --help --version\n'
+    exit 0
+    ;;
+esac
+
+_dbx_arquivo=$(_dbx_cli_arquivo_do_comando "$DBX_CLI_COMANDO") ||
+  _dbx_falhar uso_invalido "comando sem implementacao: $DBX_CLI_COMANDO"
+[[ -r $_dbx_arquivo ]] ||
+  _dbx_falhar uso_invalido "comando ainda nao implementado: $DBX_CLI_COMANDO"
+
+# shellcheck source=/dev/null
+. "$_dbx_arquivo"
+
+_dbx_requisito=$("dbx_cmd_${DBX_CLI_COMANDO}_requisitos")
+case $_dbx_requisito in
+  nenhum) ;;
+  ambiente | credencial)
+    # shellcheck source=lib/preflight.sh
+    . "$DBX_CLI_RAIZ/lib/preflight.sh"
+    dbx_preflight_verificar ||
+      _dbx_falhar configuracao "$(dbx_preflight_mensagem)"
+    if [[ $_dbx_requisito == 'credencial' ]]; then
+      # shellcheck source=lib/json.sh
+      . "$DBX_CLI_RAIZ/lib/json.sh"
+      # shellcheck source=lib/config.sh
+      . "$DBX_CLI_RAIZ/lib/config.sh"
+      # shellcheck source=lib/http.sh
+      . "$DBX_CLI_RAIZ/lib/http.sh"
+      # shellcheck source=lib/auth.sh
+      . "$DBX_CLI_RAIZ/lib/auth.sh"
+      # shellcheck source=lib/cmd.sh
+      . "$DBX_CLI_RAIZ/lib/cmd.sh"
+      dbx_config_carregar ||
+        _dbx_falhar configuracao "credencial indisponivel: $DBX_CONFIG_MOTIVO"
+    fi
+    ;;
+  *) _dbx_falhar uso_invalido "requisito nao reconhecido: $_dbx_requisito" ;;
+esac
+
+"dbx_cmd_${DBX_CLI_COMANDO}_executar" "${DBX_CLI_ARGS[@]:-}"
