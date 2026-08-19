@@ -108,6 +108,9 @@ teste_recusa_cr_lf_e_crlf_em_qualquer_posicao() {
   local nome seq pos valor
   local -A sequencias=([CR]='\r' [LF]='\n' [CRLF]='\r\n' [LFCR]='\n\r')
   for nome in CR LF CRLF LFCR; do
+    # O vetor guarda FORMATOS com escapes, e o formato e o dado do caso. Usar
+    # '%s' aqui emitiria a sequencia literal em vez do byte que se quer testar.
+    # shellcheck disable=SC2059
     printf -v seq "${sequencias[$nome]}"
     for pos in inicio meio fim; do
       case $pos in
@@ -190,6 +193,7 @@ teste_aceita_nome_de_arquivo_legitimo() {
   _aceita 'texto comum com espacos' 'relatorio de dezembro - versao final.pdf'
   _aceita 'acentuacao e cedilha' 'cotacao de orcamento do servico.txt'
   _aceita 'espacos multiplos' 'a    b'
+  # shellcheck disable=SC2016  # o cifrao e a crase sao o dado do caso, nao expansao
   _aceita 'metacaracteres de shell' 'arquivo $VAR `cmd` "aspas" (1).txt'
   _aceita 'chaves e colchetes' '{"json":"no nome"}.txt'
   _aceita 'dois-pontos, que separa nome de valor' 'as 10:30 - ata.txt'
@@ -261,6 +265,9 @@ teste_aceita_valor_no_teto() {
 # _duplo_registrando — cliente substituto que registra CADA invocacao e repassa
 # o valor SEM sanitizar. Cliente permissivo e o cenario correto aqui: a nossa
 # garantia nao pode depender da bondade do cliente.
+# Todo o corpo emite TEXTO de um script que sera executado depois: os cifroes
+# sao do duplo gerado, nao desta funcao, e expandem na execucao dele.
+# shellcheck disable=SC2016
 _duplo_registrando() {
   local dir
   dir=$(mktemp -d "$DBX_TESTES_TMP/duplo.XXXXXX")
@@ -295,12 +302,19 @@ teste_emissao_recusa_antes_de_invocar_o_cliente() {
   dir=$(_duplo_registrando)
   printf -v perigoso '{"path":"/a\rAuthorization: Bearer outro"}'
   (
+    # O escopo local ao subshell e o objetivo: o duplo so vale dentro do
+    # parenteses, e a suite segue com o PATH real depois dele.
+    # shellcheck disable=SC2030,SC2031
     PATH="$dir:$PATH"
     dbx_http_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
       TOKEN "$perigoso" /dev/null nao >/dev/null 2>&1
   )
   status=$?
-  invocacoes=$(grep -c . "$dir/invocacoes" 2>/dev/null || printf 0)
+  # `grep -c` imprime 0 E sai com 1 quando nao ha correspondencia, entao o
+  # fallback disparava ALEM da saida, produzindo "0\n0". Falhava exatamente no
+  # caso que importa: o de cliente nao invocado. `wc -l` sai 0 e imprime 0.
+  invocacoes=$(wc -l <"$dir/invocacoes" 2>/dev/null || printf 0)
+  invocacoes=${invocacoes// /}
   assert_igual 0 "$invocacoes" \
     'o cliente NAO pode ser invocado com valor de cabecalho inseguro'
   [[ $status -ne 0 ]] ||
@@ -314,11 +328,18 @@ teste_emissao_aceita_valor_legitimo_e_invoca_o_cliente() {
   _emissor
   dir=$(_duplo_registrando)
   (
+    # O escopo local ao subshell e o objetivo: o duplo so vale dentro do
+    # parenteses, e a suite segue com o PATH real depois dele.
+    # shellcheck disable=SC2030,SC2031
     PATH="$dir:$PATH"
     dbx_http_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
       TOKEN '{"path":"/relatorio de dezembro.pdf"}' /dev/null nao >/dev/null 2>&1
   )
-  invocacoes=$(grep -c . "$dir/invocacoes" 2>/dev/null || printf 0)
+  # `grep -c` imprime 0 E sai com 1 quando nao ha correspondencia, entao o
+  # fallback disparava ALEM da saida, produzindo "0\n0". Falhava exatamente no
+  # caso que importa: o de cliente nao invocado. `wc -l` sai 0 e imprime 0.
+  invocacoes=$(wc -l <"$dir/invocacoes" 2>/dev/null || printf 0)
+  invocacoes=${invocacoes// /}
   [[ $invocacoes -ge 1 ]] ||
     _harness_falhar 'valor legitimo nao chegou ao cliente' \
       'recusar nome normal torna a ferramenta inutil'
@@ -334,6 +355,9 @@ teste_a_garantia_nao_depende_do_comportamento_do_cliente() {
   _emissor
   dir=$(_duplo_registrando)
   (
+    # O escopo local ao subshell e o objetivo: o duplo so vale dentro do
+    # parenteses, e a suite segue com o PATH real depois dele.
+    # shellcheck disable=SC2030,SC2031
     PATH="$dir:$PATH"
     dbx_http_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
       TOKEN "$_arg_com_cr" /dev/null nao >/dev/null 2>&1
