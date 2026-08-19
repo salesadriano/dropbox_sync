@@ -177,7 +177,7 @@ readonly DBX_ERRORS_MAXIMO_ENTRADA=16384
 
 DBX_ERRORS_CHAVES_SENSIVEIS=(
   access_token refresh_token client_secret app_secret oauth_token id_token
-  api_key apikey auth authorization proxy_authorization cookie set_cookie
+  api_key apikey app_key auth authorization proxy_authorization cookie set_cookie
   password passwd secret token tokens code
 )
 

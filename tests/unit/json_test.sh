@@ -267,7 +267,7 @@ teste_custo_com_corpus_adversarial() {
   # Corpus denso em delimitadores e escapes, sob tempo limite em processo filho:
   # regressao de custo deve REPROVAR, nao pendurar a suite.
   local saida status
-  saida=$(timeout 60 bash -c '
+  saida=$(timeout 120 bash -c '
     . "$1/lib/errors.sh" || exit 90
     . "$1/lib/json.sh"   || exit 90
     . "$1/tests/support/harness.sh" || exit 90
@@ -275,21 +275,22 @@ teste_custo_com_corpus_adversarial() {
       for ((i=0;i<n;i++)); do [[ $i -gt 0 ]] && s+=","
         s+="{\"n\":\"a\\\\\"b$i\",\"p\":\"/x/y$i\",\"s\":$i}"
       done; s+="]}"; printf "%s" "$s"; }
-    for n in 100 200 400; do
-      c=$(gera "$n"); t0=$(_agora_ms); dbx_json_analisar "$c" >/dev/null; t1=$(_agora_ms)
-      printf "%s " "$((t1 - t0))"
-    done
+    _analisar() { dbx_json_analisar "$1"; }
+    c1=$(gera 100); c4=$(gera 400)
+    printf "%s %s\n" "$(_medir_minimo_ms 5 _analisar "$c1")" "$(_medir_minimo_ms 5 _analisar "$c4")"
   ' _ "$DBX_HARNESS_RAIZ" 2>/dev/null)
   status=$?
-  [[ $status -eq 124 ]] && _harness_falhar 'analise nao terminou em 60s com corpus adversarial'
+  [[ $status -eq 124 ]] && _harness_falhar 'analise nao terminou em 120s com corpus adversarial'
   assert_igual 0 "$status" 'a medicao precisa concluir'
   local -a t
   read -r -a t <<<"$saida"
-  [[ ${#t[@]} -eq 3 ]] || _harness_falhar "medicao invalida: [$saida]"
-  local primeiro=${t[0]} ultimo=${t[2]}
+  [[ ${#t[@]} -eq 2 ]] || _harness_falhar "medicao invalida: [$saida]"
+  # Razao entre MINIMOS: contencao so soma tempo, entao o minimo converge para o
+  # custo real e a razao fica insensivel a carga da maquina.
+  local primeiro=${t[0]} ultimo=${t[1]}
   [[ $primeiro -lt 1 ]] && primeiro=1
   if [[ $ultimo -gt $((primeiro * 12)) ]]; then
-    _harness_falhar "custo super-linear: 100 em ${primeiro}ms, 400 em ${ultimo}ms"
+    _harness_falhar "custo super-linear: 100 entradas em ${primeiro}ms, 400 em ${ultimo}ms"
   fi
 }
 
@@ -431,29 +432,86 @@ teste_teto_de_entrada_e_aplicado() {
 # Invariante de projeto: canal de dado externo nunca passa por `$( )`
 # ---------------------------------------------------------------------------
 
-teste_nenhum_valor_externo_transita_por_substituicao_de_comando() {
-  # Terceira ocorrencia da classe no projeto (D1, C2-01, E2-04). A auditoria
-  # estatica torna a regra verificavel, em vez de depender de disciplina.
-  # A regra vale para canal que possa carregar BYTE ARBITRARIO vindo de fora.
-  # Captura de valor de alfabeto fechado e comprimento limitado — codigo de
-  # saida, nome de classe, resumo hexadecimal — nao perde informacao por
-  # remocao de quebra final, e esta listada como excecao justificada.
-  local arquivo codigo achados
-  local permitidos='dbx_errors_codigo_saida|dbx_errors_classificar|_dbx_errors_classe_da_tag|_dbx_hash_sha256_hex|_dbx_hash_calcular'
-  for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
-    codigo=$(grep -vE '^[[:space:]]*#' "$arquivo")
-    # O padrao anterior exigia o `$(` LOGO APOS o `=`, entao `+=" ... $(...)"`
-    # escapava — e havia uma ocorrencia viva. Uma garantia que so pega a forma
-    # mais obvia da classe da falsa seguranca (E3-04). Agora qualquer
-    # substituicao de comando sobre funcao do projeto e sinalizada, em qualquer
-    # posicao da linha.
-    achados=$(grep -nE '[$]\((_dbx_|dbx_)' <<<"$codigo" |
-      grep -vE "[$]\\((${permitidos})" || true)
-    if [[ -n $achados ]]; then
-      _harness_falhar "captura de canal de dado externo por substituicao de comando em $(basename "$arquivo"): $achados" \
-        'use variavel de resultado: a substituicao de comando remove quebras finais'
-    fi
+# _capturas_de <arquivo...> — comando de cada substituicao de comando.
+#
+# O universo sao TODAS as capturas do texto, e nao apenas as que invocam funcao
+# do projeto. Expansao aritmetica e descartada por nao ser captura.
+_capturas_de() {
+  grep -vhE '^[[:space:]]*#' "$@" |
+    sed -e "s/'[^']*'/ /g" |
+    grep -oE '\$\([^(][^)]*' |
+    sed -e 's/^\$(//' -e 's/^[[:space:]]*//' |
+    awk '{ print $1 }' |
+    sed 's|.*/||' |
+    grep -E '^[a-z_][a-z0-9_-]*$' |
+    sort -u
+}
+
+# _captura_com_alfabeto_fechado <comando> — excecoes JUSTIFICADAS.
+#
+# A pergunta da auditoria nao e "o nome tem prefixo do projeto", e sim "esta
+# captura pode carregar BYTE ARBITRARIO DE FORA?". A versao anterior perguntava
+# a primeira coisa, e por isso cobria o caminho improvavel — dado externo
+# raramente chega por funcao do projeto, que ja o recebeu de algum lugar — e
+# ignorava o principal: `cat`, `head`, `sed`, `curl`. Medido: as tres primeiras
+# davam zero reprovacoes.
+#
+# Aqui so entram capturas de ALFABETO FECHADO e COMPRIMENTO LIMITADO, em que
+# perder quebra de linha final nao pode alterar o valor. Reprovar por engano
+# tambem e defeito: auditoria que acusa captura inocua deixa de ser consultada.
+_captura_com_alfabeto_fechado() {
+  case $1 in
+    dbx_errors_codigo_saida | dbx_errors_classificar | _dbx_errors_classe_da_tag) return 0 ;;
+    dbx_errors_politica_retentativa | dbx_json_tipo) return 0 ;;
+    _dbx_hash_sha256_hex | _dbx_hash_calcular) return 0 ;;
+    sha256sum | shasum | openssl) return 0 ;;
+    stat | wc | umask | id | nproc) return 0 ;;
+    mktemp | cd | pwd) return 0 ;;
+    printf | compgen) return 0 ;;
+    find) return 0 ;;
+  esac
+  return 1
+}
+
+teste_nenhuma_captura_pode_carregar_byte_externo() {
+  local ruim bom comando achados=''
+  # Prova de discriminacao ANTES de varrer, nos DOIS sentidos (RSK-27).
+  for ruim in cat head sed curl readlink awk cut dirname basename; do
+    _captura_com_alfabeto_fechado "$ruim" &&
+      _harness_falhar "'$ruim' pode carregar byte externo e nao pode ser excecao"
   done
+  for bom in stat mktemp printf dbx_errors_codigo_saida; do
+    _captura_com_alfabeto_fechado "$bom" ||
+      _harness_falhar "'$bom' tem alfabeto fechado e seria reprovado por engano"
+  done
+  while IFS= read -r comando; do
+    [[ -n $comando ]] || continue
+    _captura_com_alfabeto_fechado "$comando" && continue
+    achados+=" $comando"
+  done < <(_capturas_de "$DBX_HARNESS_RAIZ"/lib/*.sh)
+  assert_igual '' "$achados" \
+    "captura que pode carregar byte externo por substituicao de comando:$achados"
+}
+
+# A disciplina de limpeza atravessa ARQUIVOS: a auditoria de gemeos compara duas
+# funcoes nomeadas de dois arquivos nomeados, entao disciplina presente num
+# componente e ausente no irmao fica fora do alcance dela. Foi o que ocorreu com
+# o `trap` — existia em lib/hash e nao em lib/http.
+teste_acao_de_trap_nunca_referencia_variavel_local() {
+  local arquivo linha variavel achados=''
+  for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
+    while IFS= read -r linha; do
+      while read -r variavel; do
+        [[ -n $variavel ]] || continue
+        [[ $variavel =~ ^[0-9]+$ ]] && continue
+        if grep -qE "local[^=]*[[:space:]]$variavel([[:space:]=]|$)" "$arquivo"; then
+          achados+=" ${arquivo##*/}:$variavel"
+        fi
+      done < <(grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*' <<<"$linha" | sed 's/^\${\?//')
+    done < <(grep -E "^[[:space:]]*trap[[:space:]]+'" "$arquivo")
+  done
+  assert_igual '' "$achados" \
+    "acao de trap referencia variavel local, cuja expansao sera vazia:$achados"
 }
 
 # ---------------------------------------------------------------------------
@@ -728,6 +786,53 @@ teste_massa_adversarial_nao_e_construida_por_substituicao_de_comando() {
         "use \$'...' ou printf -v: a substituicao remove quebras finais e pode tornar valida uma massa que deveria ser invalida"
     fi
   done
+}
+
+# ---------------------------------------------------------------------------
+# R2-04 — o codificador precisa de casos DIRETOS, e nao so de ida e volta.
+#
+# Mutando o escape da barra invertida, `json` e `composicao` davam zero e so
+# `config` reprovava. O proximo consumidor e `lib/http`, que codifica CORPO DE
+# REQUISICAO: ali nao ha ida e volta local, e um escape quebrado vira requisicao
+# malformada detectavel somente em rede.
+# ---------------------------------------------------------------------------
+
+teste_codificador_escapa_cada_forma_exigida() {
+  dbx_json_escapar_cadeia 'a\b'
+  assert_igual 'a\\b' "$DBX_JSON_ESCAPADO" 'barra invertida'
+  dbx_json_escapar_cadeia 'a"b'
+  assert_igual 'a\"b' "$DBX_JSON_ESCAPADO" 'aspa'
+  dbx_json_escapar_cadeia $'a\tb'
+  assert_igual 'a\tb' "$DBX_JSON_ESCAPADO" 'tabulacao'
+  dbx_json_escapar_cadeia $'a\nb'
+  assert_igual 'a\nb' "$DBX_JSON_ESCAPADO" 'quebra de linha'
+  dbx_json_escapar_cadeia $'a\rb'
+  assert_igual 'a\rb' "$DBX_JSON_ESCAPADO" 'retorno de carro'
+}
+
+teste_codificador_escapa_a_barra_invertida_antes_das_demais() {
+  # A ORDEM e o ponto: escapar a barra depois duplicaria as barras introduzidas
+  # pelos outros escapes, produzindo duas barras onde deveria haver uma.
+  dbx_json_escapar_cadeia $'a\nb'
+  assert_igual 'a\nb' "$DBX_JSON_ESCAPADO" \
+    'quebra de linha vira exatamente uma barra seguida de n'
+  dbx_json_escapar_cadeia $'\\\n'
+  assert_igual '\\\n' "$DBX_JSON_ESCAPADO" \
+    'barra literal seguida de quebra: duas barras e depois o escape da quebra'
+}
+
+teste_codificador_escapa_controle_como_sequencia_unicode() {
+  dbx_json_escapar_cadeia $'a\001b'
+  assert_igual 'a\u0001b' "$DBX_JSON_ESCAPADO"
+  dbx_json_escapar_cadeia $'a\037b'
+  assert_igual 'a\u001fb' "$DBX_JSON_ESCAPADO"
+}
+
+teste_codificador_nao_altera_texto_sem_escape() {
+  local entrada='/pasta/comum com espaco e acentuacao-cafe'
+  dbx_json_escapar_cadeia "$entrada"
+  assert_igual "$entrada" "$DBX_JSON_ESCAPADO" \
+    'texto sem caractere especial nao pode ser alterado'
 }
 
 harness_executar "$@"

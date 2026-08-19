@@ -36,7 +36,15 @@
 [[ -n ${DBX_OUTPUT_CARREGADO:-} ]] && return 0
 DBX_OUTPUT_CARREGADO=1
 
-_dbx_output_diretorio=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+# Resolucao do proprio diretorio SEM utilitario externo. Usar `dirname`
+# aqui criava uma dependencia exercitada ANTES de qualquer verificacao:
+# sem ele o componente carregava com status 0 mas quebrado — dependencias
+# nunca carregadas, constantes de codigo de erro vazias e caminhos de
+# falha devolvendo o status do ultimo comando em vez do classificado.
+# `${BASH_SOURCE[0]%/*}` e expansao do proprio shell (TL-30).
+_dbx_output_diretorio=${BASH_SOURCE[0]%/*}
+[[ $_dbx_output_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_output_diretorio=.
+_dbx_output_diretorio=$(cd -P -- "$_dbx_output_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_output_diretorio/errors.sh"
 # shellcheck source=lib/path.sh

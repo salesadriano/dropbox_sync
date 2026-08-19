@@ -20,8 +20,8 @@ Todos sao agnosticos a linguagem e adaptam a execucao com base nos arquivos do p
 
 Os dois subagents utilitarios abaixo sao obrigatorios para tarefas especificas:
 
-- `documentation-writer`: subagent de documentacao formal configurado com `Claude Haiku 4.5 (copilot)`.
-- `commit-writer`: subagent de geracao e preparo de commits configurado com `Claude Haiku 4.5 (copilot)`.
+- `documentation-writer`: subagent de documentacao formal configurado com `sonnet`.
+- `commit-writer`: subagent de geracao e preparo de commits configurado com `haiku`.
 
 # Protocolo comum obrigatorio
 
@@ -30,8 +30,8 @@ Este protocolo concentra passos transversais que nao devem ser repetidos literal
 1. Todo agent deve carregar este `.claude/agents-protocol/AGENTS.md` como protocolo comum obrigatorio antes de iniciar e, em seguida, ler `.claude/agents-protocol/memoria/MEMORIA-COMPARTILHADA.md` (memoria geral) e `.claude/agents-protocol/memoria/MEMORIA-PROJETO.md` (memoria de projeto), recuperando contexto, decisoes ativas e backlog relevante para a demanda.
 2. Todo agent deve acionar obrigatoriamente `.claude/skills/prompt-logger/` para cada solicitacao recebida, criando ou atualizando o log correspondente em `docs/prompts/` antes ou em conjunto com a execucao principal. Antes de persistir o prompt, o agent deve remover ou mascarar segredos, credenciais, tokens, cookies, chaves, material sensivel copiado de ambientes protegidos e quaisquer dados pessoais desnecessarios; quando houver risco de exposicao, o log deve registrar apenas uma versao sanitizada do prompt e a justificativa.
 3. Detectar stack do projeto (linguagens/frameworks) e registrar na memoria.
-4. Sempre que a tarefa envolver geracao ou atualizacao de documentacao formal, handoffs, reviews tecnicos, changelogs, sync documental ou artefatos Markdown de governanca, delegar a redacao ao subagent `documentation-writer`, que deve operar com `Claude Haiku 4.5 (copilot)`; o agent originador continua responsavel por revisar o conteudo antes do fechamento.
-5. Sempre que a tarefa envolver geracao de mensagem de commit, resumo para commit ou preparo de commit semantico, delegar essa etapa ao subagent `commit-writer`, que deve operar com `Claude Haiku 4.5 (copilot)`; o agent originador continua responsavel por validar o diff, o escopo e a seguranca do commit.
+4. Sempre que a tarefa envolver geracao ou atualizacao de documentacao formal, handoffs, reviews tecnicos, changelogs, sync documental ou artefatos Markdown de governanca, delegar a redacao ao subagent `documentation-writer`, que deve operar com o modelo declarado no proprio arquivo do subagent; o agent originador continua responsavel por revisar o conteudo antes do fechamento.
+5. Sempre que a tarefa envolver geracao de mensagem de commit, resumo para commit ou preparo de commit semantico, delegar essa etapa ao subagent `commit-writer`, que deve operar com o modelo declarado no proprio arquivo do subagent; o agent originador continua responsavel por validar o diff, o escopo e a seguranca do commit.
 6. Executar tarefa respeitando handoff entre agentes.
 7. Atualizar memoria geral e memoria de projeto conforme escopo da decisao, mantendo ambos os artefatos sucintos e orientados a decisao; detalhes extensos devem ficar em `.claude/agents-protocol/memoria/historico/`.
 8. Produzir documentacao em Markdown e incluir diagramas Mermaid.
