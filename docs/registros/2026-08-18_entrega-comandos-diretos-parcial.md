@@ -89,6 +89,29 @@ Consequencia: a recusa de `\n`, `\r` e byte de controle acontece **do nosso lado
 
 Byte UTF-8 cru e byte de controle passam sem escape (confirmado: `X-Arg-D='com\ttab-e-\x01controle'`).
 
+## Assimetria de retentativa entre os canais binarios
+
+Achado da enumeracao do modo de conteudo, antes de existir codigo.
+
+| Disciplina | Envio (le de arquivo) | Recebimento (escreve em descritor) |
+|---|---|---|
+| Reinicio a cada tentativa | rele do inicio — seguro se posicionavel | **impossivel**: bytes emitidos nao voltam |
+| `trap` e residuo | bloco temporario `0600` sob area `0700` | sem temporario no caminho de fluxo |
+| Teto de ocupacao | um bloco (`RF-31`) | nenhum — decisao de emitir e validar |
+| Sincronizacao da validacao | resumo enquanto le | resumo enquanto escreve; `wait $pid`, nunca `wait` solto |
+| Consumidor morto | nao se aplica — a origem somos nos | 23 → 15, **sem comparar resumo** |
+| Guarda de fronteira de linha | nao incide | nao incide — caso ja existe |
+
+**A politica de retentativa de `lib/http` e compartilhada e nao pode ser herdada pelo canal de fluxo.** Ela repete ate tres vezes em falha transitoria, o que e correto para corpo textual e para envio de arquivo posicionavel. No recebimento em fluxo, repetir depois do primeiro byte emitido significa **entregar o inicio do conteudo duas vezes ao consumidor** — corrupcao produzida pela nossa propria politica de confiabilidade, e indistinguivel de conteudo legitimo do lado de fora.
+
+O mesmo vale para o envio a partir da entrada padrao: `stdin` nao e posicionavel, entao reler nao e opcao. O que torna a retentativa possivel ali e o buffer de um bloco — a retentativa e **por parte**, nunca do fluxo inteiro. `RF-09` ja pedia isso, e havia sido lido como detalhe de sessao em partes em vez de **condicao de possibilidade**.
+
+Consequencia de desenho: **a retentativa e propriedade do canal, nao do transporte.** Posicionavel repete; fluxo nao repete depois do primeiro byte.
+
+Se o canal tivesse sido escrito antes da politica, ele herdaria a retentativa do caminho textual sem que nada acusasse — nona ocorrencia da familia de gemeos, com a regra certa aplicada ao gemeo errado.
+
+**Pendencia acrescentada, nao medida:** confirmar que a Dropbox aceita retentativa por parte em `append_v2`.
+
 ## Perguntas em aberto, nao afirmadas
 
 1. Regra de escape da Dropbox para `Dropbox-API-Arg` — depende de fonte externa.
