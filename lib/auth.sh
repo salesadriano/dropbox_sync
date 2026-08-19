@@ -238,19 +238,63 @@ dbx_auth_token() {
 # Renova NO MAXIMO uma vez por requisicao. A garantia contra laco entre renovar
 # e receber `401` de novo e o sinalizador, e nao a esperanca de que a segunda
 # tentativa va dar certo.
-dbx_auth_requisitar() {
-  [[ $# -ge 4 ]] || return "$DBX_AUTH_ERRO_USO"
-  local metodo=$1 url=$2 corpo=$3 idempotente=$4
+# _dbx_auth_com_renovacao <funcao> <metodo> <url> <resto...>
+#
+# GEMEOS: `dbx_auth_requisitar` e `dbx_auth_colecao` chamam funcoes diferentes
+# de lib/http com a MESMA politica de renovacao. Escrever o laco duas vezes
+# faria a proxima correcao na garantia contra laco valer para um lado so — a
+# forma exata das oito ocorrencias anteriores. O laco mora aqui, uma vez.
+#
+# O token entra sempre na TERCEIRA posicao, que e onde as duas funcoes de
+# lib/http o esperam; o restante e repassado sem interpretacao.
+_dbx_auth_com_renovacao() {
+  local funcao=$1 metodo=$2 url=$3
+  shift 3
   local estado
   DBX_AUTH_RENOVOU='nao'
 
   while :; do
     dbx_auth_token || return $?
-    dbx_http_requisitar "$metodo" "$url" "$DBX_AUTH_TOKEN" "$corpo" "$idempotente"
+    "$funcao" "$metodo" "$url" "$DBX_AUTH_TOKEN" "$@"
     estado=$?
     [[ $estado -eq 0 ]] && return 0
     [[ $DBX_HTTP_POLITICA == 'renovar_token_uma_vez' && $DBX_AUTH_RENOVOU == 'nao' ]] || return $estado
     DBX_AUTH_RENOVOU='sim'
     dbx_auth_esquecer
   done
+}
+
+dbx_auth_requisitar() {
+  [[ $# -ge 4 ]] || return "$DBX_AUTH_ERRO_USO"
+  _dbx_auth_com_renovacao dbx_http_requisitar "$1" "$2" "$3" "$4"
+}
+
+# dbx_auth_colecao <metodo> <url> <corpo> <limite>
+#
+# RNF-23: o limite e EXPLICITO e a reducao por `motivo=tamanho` acontece dentro
+# de lib/http. A renovacao de token vale igual, pelo mesmo laco.
+dbx_auth_colecao() {
+  [[ $# -ge 4 ]] || return "$DBX_AUTH_ERRO_USO"
+  _dbx_auth_com_renovacao dbx_http_colecao "$1" "$2" "$3" "$4"
+}
+
+# dbx_auth_conteudo <metodo> <url> <arg_json> <arquivo> <idempotente>
+#
+# Modo de conteudo pelo mesmo envoltorio de renovacao: escrever o laco de novo
+# faria a proxima correcao na garantia contra laco valer para um caminho so.
+dbx_auth_conteudo() {
+  [[ $# -ge 5 ]] || return "$DBX_AUTH_ERRO_USO"
+  _dbx_auth_com_renovacao dbx_http_conteudo "$1" "$2" "$3" "$4" "$5"
+}
+
+# dbx_auth_conteudo_receber <metodo> <url> <arg_json> <destino>
+#
+# A renovacao aqui tem uma restricao que os outros caminhos nao tem: so pode
+# ocorrer se NADA foi emitido ao consumidor. Repetir depois do primeiro byte
+# entregaria o inicio do conteudo duas vezes. A guarda vive em `lib/http`, no
+# laco de retentativa, e vale igualmente para a repeticao por renovacao — que
+# passa pelo mesmo caminho.
+dbx_auth_conteudo_receber() {
+  [[ $# -ge 4 ]] || return "$DBX_AUTH_ERRO_USO"
+  _dbx_auth_com_renovacao dbx_http_conteudo_receber "$1" "$2" "$3" "$4"
 }
