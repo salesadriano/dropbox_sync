@@ -6,7 +6,7 @@
 | Responsavel | Business Analyst |
 | Data | 2026-08-17 |
 | Versao | **v0.8** |
-| Status | 🔴 **Cinco decisoes bloqueantes reabertas pelo `sync`.** `DP-06` resolvida, mas a escolha por sincronizacao bidirecional com propagacao de exclusao reabriu `DP-09` e criou `DP-21` a `DP-24` e `DP-26`. **Nao iniciar `sync` antes de `DP-21` e `DP-22`** — sao as que determinam se a ferramenta pode destruir dado |
+| Status | 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
 >
@@ -44,13 +44,17 @@
 | DP-06 | Conjunto de comandos do MVP | ✅ **Resolvida — reabre estado local** | — |
 | DP-07 | Plataformas e shells suportados | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
 | DP-08 | Dependencias e interpretacao de JSON | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
-| DP-09 | Semantica de sincronizacao e estado local | 🔄 **REABERTA por DP-06** | Desdobrada em DP-21 a DP-24 |
-| DP-21 | Semantica de resolucao de conflito | ✅ **Resolvida — ultimo a escrever vence** | — |
-| DP-22 | Conflito de exclusao contra alteracao | ✅ **Resolvida — honrar a exclusao** | — |
-| DP-23 | Ciclo de vida e localizacao da linha de base | ✅ **Resolvida — `$XDG_STATE_HOME`; corrompida recusa** | — |
+| DP-09 | Semantica de sincronizacao e estado local | 🔄 **REABERTA por DP-06, redefinida por `DP-27`** | O estado deixou de ser exigido pela correcao e passou a ser escolha de desempenho (`DP-27b`) |
+| DP-21 | Semantica de resolucao de conflito | ❌ **Sem objeto por `DP-27`** — nao ha conflito quando um lado manda | — |
+| DP-22 | Conflito de exclusao contra alteracao | ❌ **Sem objeto por `DP-27`** | — |
+| DP-23 | Ciclo de vida e localizacao da linha de base | ✅ **Localizacao mantida (`$XDG_STATE_HOME`); tratamento de corrupcao INVERTIDO por `DP-27b`** — descarta e reconstroi, nao recusa | — |
 | DP-24 | Teto de exclusoes | ✅ **Resolvida — sem teto** | — |
 | DP-25 | `config`, `unlink` e `space` constam do MVP? | ✅ **Resolvida — os tres entram; nove comandos** | — |
 | DP-26 | Reavaliacao de `RSK-24` sob percurso recursivo | ✅ **Resolvida — travessia por descida adotada; aceite NAO mantido** | — |
+| DP-27 | Semantica do `sync`: direcao e autoridade | ✅ **Resolvida — direcional; a origem manda** | — |
+| DP-27a | Como origem e destino sao declarados | ✅ **Resolvida — sinalizadores `--origem` e `--destino`** | — |
+| DP-27b | A linha de base sobrevive a queda da bidirecionalidade? | ✅ **Resolvida — fica, rebaixada a memoria de desempenho** | — |
+| DP-28 | Como o operador declara o sentido do `sync` | ✅ **Resolvida — sinalizador `--enviar` / `--receber`, OBRIGATORIO** | — |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
 | DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |
@@ -360,6 +364,8 @@ Resolve a divergencia de requisito que restava de `DIV-16`: o formato de linha d
 
 **Decisao do solicitante: `upload`, `download`, `list`, `delete`, `info` e `sync`.**
 
+> **⚠️ As tres escolhas abaixo sao as de `DP-06`, e a primeira foi SUPERADA por `DP-27`:** o `sync` e **direcional**, com a origem como autoridade. O registro fica porque explica por que a linha de base foi criada e por que `PRJ-DEC-07` foi revogado.
+
 Os cinco primeiros sao diretos e ja estavam especificados. O **`sync` reabre o que estava fechado**, com tres escolhas explicitas: **bidirecional**, **remocao de orfaos sob opcao explicita** (promove `F-06` do Bloco 2) e **cursor persistente** (aproxima `F-14`).
 
 **Fora do MVP, mantidos no backlog:** `mkdir`, `move`, `copy`, `search`, `share`, `saveurl`, `monitor`, `space`.
@@ -417,6 +423,8 @@ Quatro medidas, todas compativeis com as escolhas e nenhuma re-litigando:
 ### ~~DP-21~~ — Semantica de resolucao de conflito ✅ **RESOLVIDA: ultimo a escrever vence**
 
 Analise original preservada abaixo como registro do custo apresentado.
+
+> **❌ SEM OBJETO por `DP-27`.** A analise abaixo fica registrada porque documenta um custo apresentado e aceito, e porque explica por que `RF-39` proibia carimbo de tempo apenas na deteccao. Sob o `sync` direcional nao ha conflito, e a proibicao passou a ser total.
 
 Em sincronizacao bidirecional, quando **os dois lados mudaram** desde a ultima sincronizacao, alguem tem de decidir. **E aqui que implementacoes de sync perdem dados.**
 
@@ -477,6 +485,55 @@ O cenario: um defeito na travessia local — ponto de montagem nao pronto, permi
 **Pergunta complementar:** em modo interativo, exceder o teto deve **pedir confirmacao** em vez de abortar? Em modo nao assistido, abortar e a unica opcao segura.
 
 > **Observacao do Business Analyst:** a salvaguarda mais valiosa de `RF-41` nao e o teto — e a alinea **(a)**, que torna qualquer erro de travessia fatal para a propagacao de exclusao. O teto protege contra o caso catastrofico; a alinea (a) protege contra o caso **parcial**, que e mais frequente e passa despercebido justamente por parecer plausivel.
+
+---
+
+### DP-27 — semantica do `sync`: direcao, autoridade e declaracao dos lados
+
+**Decisao do solicitante (2026-08-19), na forma em que foi dada:** o `sync` recebe `--origem` e `--destino` como **parametros obrigatorios**, e **o estado dos arquivos na origem e que determina o comportamento**. Um lado e local e o outro remoto, **nunca os dois do mesmo tipo**: origem local implica destino remoto e operacao base de envio; origem remota implica destino local e operacao base de recebimento.
+
+`DP-27a` fixou a **declaracao por sinalizador**. A escolha inicial foi por posicao — primeiro caminho e origem, segundo e destino — e o solicitante a **reviu no mesmo ciclo**, ao ver que a posicao decide o *papel* e nao diz de que *lado* cada caminho esta.
+
+`DP-27b` manteve a linha de base, **rebaixada a memoria auxiliar de desempenho**, sem papel em decisao alguma.
+
+**O que a decisao dissolveu, e por que nao foi preferencia:** a matriz de tres estados de 5.8.2 existia para arbitrar entre dois lados que podiam ambos originar mudanca. Com a origem mandando, `DP-21`, `DP-22`, `RF-39a` e `RF-40a` perdem objeto — nao ha conflito a resolver.
+
+**A consequencia registrada por dever de oficio,** e que nao estava visivel na pergunta: a linha de base tambem era **limitador de exclusao**. Na matriz antiga, exclusao exigia `B` presente, o que dava a garantia estrutural de que **a primeira execucao nunca apagava nada**. No modelo direcional essa garantia deixa de existir — "ausente na origem, presente no destino" e observavel sem historico, e com espelhamento ligado e ordem de exclusao integral. `RF-40`, `RF-41`, `RF-47` e `RF-48` deixam de ser camada redundante e passam a ser a defesa inteira. Registrado tambem como `RSK-35`.
+
+---
+
+### DP-28 — como o operador declara o sentido do `sync`
+
+✅ **Resolvida — sinalizador `--enviar` / `--receber`.**
+
+**Decisao do solicitante (2026-08-19):** o sentido vem de sinalizador explicito, e nao de inferencia sobre os caminhos.
+
+##### A leitura adotada: OBRIGATORIO, e nao opcional no empate
+
+A opcao escolhida admitia duas leituras — sentido obrigatorio em toda invocacao, ou opcional apenas quando a resolucao empatasse. **Adotada a primeira**, e a razao nao e de estilo:
+
+Na leitura opcional, a inferencia continuaria decidindo em todos os casos que **nao empatam** — e e justamente ali que mora o erro perigoso. Considere `--origem /fotos --destino ./fotos` com a intencao de **receber**, num sistema onde `/fotos` existe localmente e `./fotos` ainda nao: **nao ha empate**, a inferencia conclui "origem e local" com toda a confianca, e o `sync` **envia** — sobrescrevendo o remoto com a arvore errada. O sinalizador opcional nunca teria sido pedido, porque nada pareceu ambiguo.
+
+Ou seja: a leitura opcional protege o caso que a ferramenta **sabe** que nao sabe, e deixa aberto o caso em que ela **acha que sabe e esta errada**. So a leitura obrigatoria elimina a classe.
+
+##### O que isso apaga do desenho
+
+Com o sentido declarado, o tipo de cada lado e **consequencia**, e nao apuracao:
+
+| Sinalizador | `--origem` | `--destino` |
+|---|---|---|
+| `--enviar` | local | remoto |
+| `--receber` | remoto | local |
+
+Some, portanto, **toda a maquinaria de inferencia** que `RF-53` previa: a resolucao por existencia no sistema de arquivos, a eliminacao, a recusa por empate e o caso de uso que a recusa fechava. Nao ha ambiguidade a recusar porque nao ha nada a adivinhar.
+
+**Custo aceito, e ele e real:** toda invocacao carrega um sinalizador a mais, inclusive as triviais. E o preco de nao ter uma classe de erro cujo unico sintoma e a arvore errada ja apagada.
+
+##### O que permanece verificavel
+
+- `--enviar` e `--receber` sao **mutuamente exclusivos**; os dois juntos, ou nenhum, e recusa por uso invalido.
+- O sentido apurado e **declarado no relatorio antes de qualquer escrita**, para que a simulacao (`RF-44`) o exponha.
+- O diretorio local continua tendo de existir, mas por outro motivo: nao para decidir tipo, e sim porque nao se percorre o que nao existe.
 
 ---
 
