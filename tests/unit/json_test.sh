@@ -432,31 +432,86 @@ teste_teto_de_entrada_e_aplicado() {
 # Invariante de projeto: canal de dado externo nunca passa por `$( )`
 # ---------------------------------------------------------------------------
 
-teste_nenhum_valor_externo_transita_por_substituicao_de_comando() {
-  # Terceira ocorrencia da classe no projeto (D1, C2-01, E2-04). A auditoria
-  # estatica torna a regra verificavel, em vez de depender de disciplina.
-  # A regra vale para canal que possa carregar BYTE ARBITRARIO vindo de fora.
-  # Captura de valor de alfabeto fechado e comprimento limitado — codigo de
-  # saida, nome de classe, resumo hexadecimal — nao perde informacao por
-  # remocao de quebra final, e esta listada como excecao justificada.
-  local arquivo codigo achados
-  # `dbx_json_tipo` entra pelo mesmo criterio dos demais: devolve uma de seis
-  # palavras fixas do vocabulario de tipos, nunca byte vindo de fora.
-  local permitidos='dbx_errors_codigo_saida|dbx_errors_classificar|_dbx_errors_classe_da_tag|_dbx_hash_sha256_hex|_dbx_hash_calcular|dbx_json_tipo'
-  for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
-    codigo=$(grep -vE '^[[:space:]]*#' "$arquivo")
-    # O padrao anterior exigia o `$(` LOGO APOS o `=`, entao `+=" ... $(...)"`
-    # escapava — e havia uma ocorrencia viva. Uma garantia que so pega a forma
-    # mais obvia da classe da falsa seguranca (E3-04). Agora qualquer
-    # substituicao de comando sobre funcao do projeto e sinalizada, em qualquer
-    # posicao da linha.
-    achados=$(grep -nE '[$]\((_dbx_|dbx_)' <<<"$codigo" |
-      grep -vE "[$]\\((${permitidos})" || true)
-    if [[ -n $achados ]]; then
-      _harness_falhar "captura de canal de dado externo por substituicao de comando em $(basename "$arquivo"): $achados" \
-        'use variavel de resultado: a substituicao de comando remove quebras finais'
-    fi
+# _capturas_de <arquivo...> — comando de cada substituicao de comando.
+#
+# O universo sao TODAS as capturas do texto, e nao apenas as que invocam funcao
+# do projeto. Expansao aritmetica e descartada por nao ser captura.
+_capturas_de() {
+  grep -vhE '^[[:space:]]*#' "$@" |
+    sed -e "s/'[^']*'/ /g" |
+    grep -oE '\$\([^(][^)]*' |
+    sed -e 's/^\$(//' -e 's/^[[:space:]]*//' |
+    awk '{ print $1 }' |
+    sed 's|.*/||' |
+    grep -E '^[a-z_][a-z0-9_-]*$' |
+    sort -u
+}
+
+# _captura_com_alfabeto_fechado <comando> — excecoes JUSTIFICADAS.
+#
+# A pergunta da auditoria nao e "o nome tem prefixo do projeto", e sim "esta
+# captura pode carregar BYTE ARBITRARIO DE FORA?". A versao anterior perguntava
+# a primeira coisa, e por isso cobria o caminho improvavel — dado externo
+# raramente chega por funcao do projeto, que ja o recebeu de algum lugar — e
+# ignorava o principal: `cat`, `head`, `sed`, `curl`. Medido: as tres primeiras
+# davam zero reprovacoes.
+#
+# Aqui so entram capturas de ALFABETO FECHADO e COMPRIMENTO LIMITADO, em que
+# perder quebra de linha final nao pode alterar o valor. Reprovar por engano
+# tambem e defeito: auditoria que acusa captura inocua deixa de ser consultada.
+_captura_com_alfabeto_fechado() {
+  case $1 in
+    dbx_errors_codigo_saida | dbx_errors_classificar | _dbx_errors_classe_da_tag) return 0 ;;
+    dbx_errors_politica_retentativa | dbx_json_tipo) return 0 ;;
+    _dbx_hash_sha256_hex | _dbx_hash_calcular) return 0 ;;
+    sha256sum | shasum | openssl) return 0 ;;
+    stat | wc | umask | id | nproc) return 0 ;;
+    mktemp | cd | pwd) return 0 ;;
+    printf | compgen) return 0 ;;
+    find) return 0 ;;
+  esac
+  return 1
+}
+
+teste_nenhuma_captura_pode_carregar_byte_externo() {
+  local ruim bom comando achados=''
+  # Prova de discriminacao ANTES de varrer, nos DOIS sentidos (RSK-27).
+  for ruim in cat head sed curl readlink awk cut dirname basename; do
+    _captura_com_alfabeto_fechado "$ruim" &&
+      _harness_falhar "'$ruim' pode carregar byte externo e nao pode ser excecao"
   done
+  for bom in stat mktemp printf dbx_errors_codigo_saida; do
+    _captura_com_alfabeto_fechado "$bom" ||
+      _harness_falhar "'$bom' tem alfabeto fechado e seria reprovado por engano"
+  done
+  while IFS= read -r comando; do
+    [[ -n $comando ]] || continue
+    _captura_com_alfabeto_fechado "$comando" && continue
+    achados+=" $comando"
+  done < <(_capturas_de "$DBX_HARNESS_RAIZ"/lib/*.sh)
+  assert_igual '' "$achados" \
+    "captura que pode carregar byte externo por substituicao de comando:$achados"
+}
+
+# A disciplina de limpeza atravessa ARQUIVOS: a auditoria de gemeos compara duas
+# funcoes nomeadas de dois arquivos nomeados, entao disciplina presente num
+# componente e ausente no irmao fica fora do alcance dela. Foi o que ocorreu com
+# o `trap` — existia em lib/hash e nao em lib/http.
+teste_acao_de_trap_nunca_referencia_variavel_local() {
+  local arquivo linha variavel achados=''
+  for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
+    while IFS= read -r linha; do
+      while read -r variavel; do
+        [[ -n $variavel ]] || continue
+        [[ $variavel =~ ^[0-9]+$ ]] && continue
+        if grep -qE "local[^=]*[[:space:]]$variavel([[:space:]=]|$)" "$arquivo"; then
+          achados+=" ${arquivo##*/}:$variavel"
+        fi
+      done < <(grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*' <<<"$linha" | sed 's/^\${\?//')
+    done < <(grep -E "^[[:space:]]*trap[[:space:]]+'" "$arquivo")
+  done
+  assert_igual '' "$achados" \
+    "acao de trap referencia variavel local, cuja expansao sera vazia:$achados"
 }
 
 # ---------------------------------------------------------------------------

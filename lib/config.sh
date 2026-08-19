@@ -157,7 +157,10 @@ dbx_config_gravar() {
   local diretorio temporario corpo
 
   dbx_config_caminho || return $?
-  diretorio=$(dirname -- "$DBX_CONFIG_RESULTADO")
+  # Expansao do proprio shell, e nao captura: `$(dirname ...)` removeria uma
+  # quebra de linha final do caminho, que e a mesma classe de C2-01 — la a raiz
+  # `algo\n` passou a designar o diretorio irmao `algo`.
+  diretorio=${DBX_CONFIG_RESULTADO%/*}
 
   # `umask` restritivo cobre a janela entre criar e ajustar a permissao.
   local mascara_anterior
@@ -186,6 +189,9 @@ dbx_config_gravar() {
   corpo+=",\"refresh_token\":\"$DBX_JSON_ESCAPADO\""
   dbx_json_escapar_cadeia "$raiz"
   corpo+=",\"raiz_remota\":\"$DBX_JSON_ESCAPADO\""
+  # A cadeia escapada do segredo nao pode sobreviver a montagem do documento.
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
   corpo+='}'
 
   _dbx_config_varrer_orfaos "$diretorio"
@@ -246,7 +252,7 @@ dbx_config_carregar() {
   # substituir o arquivo por outro, e nenhum dos dois caminhos olhava para ele
   # (P3-04).
   local modo_diretorio
-  modo_diretorio=$(stat -c '%a' -- "$(dirname -- "$arquivo")" 2>/dev/null) ||
+  modo_diretorio=$(stat -c '%a' -- "${arquivo%/*}" 2>/dev/null) ||
     { _dbx_config_falhar inspecao; return $?; }
   [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
     { _dbx_config_falhar permissao_diretorio; return $?; }
@@ -293,5 +299,11 @@ dbx_config_carregar() {
   # ele existe em memoria.
   dbx_json_descartar config
   dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  # O MESMO motivo vale para o canal escalar do analisador, que guarda o ULTIMO
+  # valor lido — e o ultimo valor lido aqui e o refresh token. O raciocinio
+  # acima estava escrito e aplicado a arvore, e nao ao vizinho: e a familia de
+  # gemeos outra vez, num componente aprovado ha varios ciclos.
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_RESULTADO=''
   return 0
 }

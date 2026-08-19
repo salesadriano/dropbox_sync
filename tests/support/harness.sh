@@ -69,6 +69,62 @@ assert_nao_contem() {
   _harness_falhar "$descricao" "trecho proibido presente: [$agulha]" "texto: [$palheiro]"
 }
 
+# assert_segredo_ausente <segredo> <palheiro> [descricao]
+#
+# Prova que um segredo NAO aparece num texto, sem nunca imprimir o segredo.
+#
+# As assercoes comuns imprimem o valor comparado para diagnosticar, e desde que
+# o diario grava esse diagnostico em disco, `assert_nao_contem <segredo> ...`
+# passou a ser ela propria um vetor: a assercao usada para provar que o segredo
+# nao vaza imprime a agulha exatamente quando falha, ou seja, exatamente quando
+# ha algo a registrar.
+#
+# A mascara e feita por substituicao da agulha LITERAL, nao por redacao. A
+# redacao de `lib/errors.sh` reconhece FORMAS (prefixo `sl.`, chave sensivel
+# com `=` ou `:`) e por construcao nao alcanca um valor cru sem forma
+# reconhecivel — que e justamente o formato de um segredo fabricado num teste.
+# Substituir a agulha garante zero ocorrencias na saida seja qual for a forma.
+#
+# O que fica no lugar do segredo e o que permite diagnosticar: posicao da
+# primeira ocorrencia, comprimento, quantidade de ocorrencias e o texto inteiro
+# com as ocorrencias marcadas. Omitir tambem o contexto produziria mensagem
+# inutil — o defeito equivalente ao vazamento, ja observado no diario.
+#
+# Nota: comprimento e posicao sao informacao sobre o segredo. Em teste, onde o
+# segredo e fabricado e a suite nunca detem credencial real (RNF-14), isso e
+# diagnostico; nao use esta assercao para comparar credencial de producao.
+assert_segredo_ausente() {
+  local agulha=$1 palheiro=$2 descricao=${3:-segredo nao pode aparecer no texto}
+  # Agulha vazia casaria com qualquer texto e faria a assercao reprovar sempre,
+  # ou — pior, se a comparacao fosse invertida — aprovar sempre sem verificar
+  # nada. Recusa explicita em vez de resultado sem significado.
+  [[ -n $agulha ]] ||
+    _harness_falhar "$descricao" 'agulha de tamanho vazio: a assercao seria vacua e foi recusada'
+  [[ $palheiro != *"$agulha"* ]] && return 0
+
+  local prefixo=${palheiro%%"$agulha"*}
+  local mascarado=${palheiro//"$agulha"/[SEGREDO]}
+  # A parada e estrutural, e nao depende da recusa acima ter encerrado o caso:
+  # se a remocao do prefixo nao encurtar `resto`, o laco para. Sem isso, uma
+  # `_harness_falhar` que deixasse de encerrar o caso faria a execucao cair aqui
+  # com agulha vazia e girar para sempre — medido, a suite travava. Falha de
+  # teste tem de virar reprovacao, nunca pendura da execucao.
+  local resto=$palheiro anterior ocorrencias=0
+  while [[ $resto == *"$agulha"* ]]; do
+    anterior=$resto
+    resto=${resto#*"$agulha"}
+    [[ $resto == "$anterior" ]] && break
+    ocorrencias=$((ocorrencias + 1))
+  done
+
+  _harness_falhar "$descricao" \
+    'segredo encontrado no texto; o valor e omitido de proposito' \
+    "posicao: ${#prefixo}" \
+    "comprimento: ${#agulha}" \
+    "ocorrencias: $ocorrencias" \
+    "texto mascarado: [$mascarado]"
+}
+
 # assert_status <esperado> <comando...>
 #
 # A saida e desviada para arquivo, e NAO capturada com `$( )`. Substituicao de
@@ -190,6 +246,13 @@ _harness_registrar_reprovacao() {
   local caso=$1 status=$2 estado_inicial=$3 arquivo_saida=$4 linha
   local diario=${DBX_HARNESS_DIARIO:-}
   [[ -n $diario ]] || return 0
+  # A taxonomia de redacao e carregada aqui se ainda nao estiver: sem ela o
+  # recuo apagaria o diagnostico inteiro, que e o defeito equivalente ao
+  # vazamento — diario ilegivel nao diagnostica nada.
+  if ! declare -F dbx_errors_redigir >/dev/null; then
+    # shellcheck source=lib/errors.sh
+    . "$DBX_HARNESS_RAIZ/lib/errors.sh" 2>/dev/null || return 0
+  fi
   {
     printf '=== reprovacao ===\n'
     printf 'caso: %s\n' "$caso"
@@ -199,7 +262,15 @@ _harness_registrar_reprovacao() {
     printf 'host_no_inicio: %s\n' "$estado_inicial"
     printf 'host_na_falha:  %s\n' "$(_dbx_estado_da_maquina)"
     printf 'diagnostico do caso:\n'
-    while IFS= read -r linha; do printf '  %s\n' "$linha"; done <"$arquivo_saida"
+    # A saida do caso vai para ARQUIVO PERSISTENTE, entao passa pela redacao
+    # antes de ser gravada. Uma assercao que falhe comparando credencial imprime
+    # o valor comparado, e sem isso o diario — instituido para diagnosticar
+    # intermitencia — viraria um deposito de segredo em disco. Verificado: sem a
+    # redacao, um `refresh_token` de teste chegava integro ao arquivo.
+    while IFS= read -r linha; do
+      dbx_errors_redigir "$linha" >/dev/null
+      printf '  %s\n' "$DBX_ERRORS_REDIGIDO"
+    done <"$arquivo_saida"
     printf '\n'
   } >>"$diario" 2>/dev/null
   return 0

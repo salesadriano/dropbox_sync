@@ -490,4 +490,114 @@ teste_nenhum_componente_novo_introduz_estado_persistente() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# QH-01 generalizado: canal publico alheio que recebe dado derivado de
+# credencial tem de ser limpo por quem o encheu.
+#
+# Por que as auditorias existentes nao pegam esta classe: todas comparam FORMA
+# — presenca de construcao, padrao sintatico, especificador. O QH-01 nao tem
+# forma: e a AUSENCIA de uma limpeza sobre um recurso que auditoria nenhuma
+# enumerava. Nao da para procurar o que nao esta escrito sem antes derivar a
+# lista do que deveria estar.
+#
+# Os dois conjuntos sao derivados do artefato, e nao enumerados a mao:
+#   - o que e segredo vem da TABELA DE CHAVES SENSIVEIS de lib/errors.sh, a
+#     mesma que governa a redacao;
+#   - os prefixos de componente vem dos arquivos em lib/;
+#   - os canais publicos alheios vem das referencias `$DBX_<OUTRO>_*` no texto.
+# Mantido a mao so o conjunto de EXCECOES, e cada uma precisa de motivo.
+# ---------------------------------------------------------------------------
+
+_chaves_sensiveis_em_maiuscula() {
+  # Derivadas da tabela real, e nao reescritas aqui: reescrever criaria uma
+  # segunda copia que divergiria em silencio da que governa a redacao.
+  sed -n '/^DBX_ERRORS_CHAVES_SENSIVEIS=(/,/^)/p' "$DBX_HARNESS_RAIZ/lib/errors.sh" |
+    grep -oE '[a-z_]+' | grep -vE '^(DBX|ERRORS|CHAVES|SENSIVEIS)$' |
+    tr '[:lower:]' '[:upper:]' | sort -u
+}
+
+_prefixos_de_componente() {
+  local arquivo nome
+  for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
+    nome=${arquivo##*/}
+    printf '%s\n' "${nome%.sh}" | tr '[:lower:]' '[:upper:]'
+  done
+}
+
+# Excecoes: canais alheios que NAO podem carregar valor derivado de credencial.
+# Cada um precisa de motivo, e o motivo e estrutural, nao "eu olhei e nao vaza".
+_canal_nao_carrega_credencial() {
+  case $1 in
+    # Codigos de saida e constantes de classe: valores fixos da taxonomia.
+    DBX_ERRORS_STATUS_USO | DBX_ERRORS_CLASSES | DBX_ERRORS_CODIGO) return 0 ;;
+    # Metadados de resposta, nunca conteudo: codigo HTTP, classe, politica e
+    # identificador de correlacao emitido pelo servico.
+    DBX_HTTP_CODIGO | DBX_HTTP_CLASSE | DBX_HTTP_POLITICA) return 0 ;;
+    DBX_HTTP_CORRELACAO | DBX_HTTP_DEFEITO_CLIENTE) return 0 ;;
+    DBX_HTTP_ERRO_USO | DBX_HTTP_ERRO_REDE) return 0 ;;
+    # Nome de contexto e motivo de recusa do analisador: vocabulario fechado.
+    DBX_JSON_CONTEXTO_ANTERIOR | DBX_JSON_MOTIVO) return 0 ;;
+    DBX_JSON_MAXIMO_* ) return 0 ;;
+    # Caminho e motivo do componente de configuracao: sistema de arquivos.
+    DBX_CONFIG_RESULTADO | DBX_CONFIG_MOTIVO | DBX_CONFIG_ARQUIVO) return 0 ;;
+    DBX_CONFIG_ERRO_* | DBX_CONFIG_VERSAO | DBX_CONFIG_IDADE_ORFAO) return 0 ;;
+    DBX_PATH_RESULTADO | DBX_HASH_RESULTADO) return 0 ;;
+    # Saida do REDATOR: por construcao ja passou pela redacao. Exigir limpeza
+    # dela seria exigir limpeza do resultado de limpar.
+    DBX_ERRORS_REDIGIDO) return 0 ;;
+  esac
+  return 1
+}
+
+teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
+  local -a sensiveis=() prefixos=()
+  mapfile -t sensiveis < <(_chaves_sensiveis_em_maiuscula)
+  mapfile -t prefixos < <(_prefixos_de_componente)
+  [[ ${#sensiveis[@]} -ge 5 ]] ||
+    _harness_falhar 'tabela de chaves sensiveis nao foi derivada' "obtidas: ${#sensiveis[@]}"
+  [[ ${#prefixos[@]} -ge 5 ]] ||
+    _harness_falhar 'prefixos de componente nao foram derivados'
+
+  local arquivo proprio texto chave var outro
+  local -a faltando=()
+  for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
+    proprio=${arquivo##*/}
+    proprio=$(printf '%s' "${proprio%.sh}" | tr '[:lower:]' '[:upper:]')
+    texto=$(grep -vE '^[[:space:]]*#' "$arquivo")
+
+    # O componente lida com credencial?
+    local lida_com_credencial=nao
+    for chave in "${sensiveis[@]}"; do
+      grep -qE "DBX_[A-Z_]*${chave}" <<<"$texto" && lida_com_credencial=sim && break
+    done
+    [[ $lida_com_credencial == 'sim' ]] || continue
+
+    # Canais publicos ALHEIOS que ele le.
+    while IFS= read -r var; do
+      [[ -n $var ]] || continue
+      outro=${var#DBX_}
+      outro=${outro%%_*}
+      [[ $outro == "$proprio" ]] && continue
+      printf '%s\n' "${prefixos[@]}" | grep -qx "$outro" || continue
+      _canal_nao_carrega_credencial "$var" && continue
+      # A exigencia recai sobre quem PREENCHEU o canal, e nao sobre quem apenas
+      # o le como entrada. Sem esta distincao a regra mandaria lib/auth apagar
+      # `DBX_CONFIG_REFRESH_TOKEN`, que e a credencial de origem e precisa
+      # sobreviver a proxima renovacao — a auditoria transformaria zelo em
+      # defeito. O criterio derivavel: o componente preencheu o canal se invoca
+      # alguma funcao do dono dele.
+      local dono
+      dono=$(printf '%s' "$outro" | tr '[:upper:]' '[:lower:]')
+      grep -qE "(^|[^a-z_])dbx_${dono}_[a-z_]+" <<<"$texto" || continue
+      # Exige atribuicao de limpeza no proprio arquivo.
+      grep -qE "^[[:space:]]*$var=" <<<"$texto" ||
+        faltando+=("${arquivo##*/}: le $var e nao o limpa")
+    done < <(grep -oE '\$\{?DBX_[A-Z_]+' <<<"$texto" | sed -e 's/^\${\?//' | sort -u)
+  done
+
+  [[ ${#faltando[@]} -eq 0 ]] ||
+    _harness_falhar 'canal publico alheio com dado de credencial sem limpeza' "${faltando[@]}"
+  return 0
+}
+
 harness_executar "$@"
