@@ -19,6 +19,27 @@ DBX_CMD_CARREGADO=1
 # Justificativa: canal publico consumido pelos arquivos de `commands/`.
 DBX_CMD_LIDO=''
 
+# SINCRONIZACAO DO RAMO DE VALIDACAO EM FLUXO — medido, nao suposto.
+#
+# A decisao de emitir e validar em paralelo poe o veredito DEPOIS do ultimo
+# byte. O idioma obvio para isso nao serve:
+#
+#   tee >(dbx_hash_conteudo_fluxo_com_tamanho >arquivo) ... ; wait
+#
+# `wait` NAO espera substituicao de processo. Medido duas vezes, de forma
+# independente: o arquivo esta VAZIO logo apos o `wait` e so aparece cerca de
+# 600 ms depois. Processo em segundo plano com `wait $pid` devolve correto de
+# imediato.
+#
+# A consequencia especifica, que e o motivo de isto estar escrito: um download
+# PERFEITO produziria resumo vazio, divergencia falsa e codigo de integridade
+# (11) — de forma intermitente e dependente de carga, ou seja, diagnosticado
+# como corrupcao onde nao ha nenhuma. E o tipo de defeito que o diario de
+# reprovacoes existe para capturar depois, e que sai mais barato nao criar.
+#
+# Conjunto onde incide: TODO caminho que valide conteudo enquanto o emite —
+# `download` agora, e o recebimento recursivo e o `sync` depois.
+
 # dbx_cmd_falhar <classe> <texto> — diagnostico redigido e codigo da taxonomia.
 # Conjunto onde incide: TODO caminho de recusa de TODO comando.
 dbx_cmd_falhar() {
