@@ -193,9 +193,32 @@ _dbx_cmd_escrita_remota() {
   }
 
   local classe=${DBX_HTTP_CLASSE:-erro_remoto}
-  # A Dropbox sinaliza divergencia de `rev` como conflito de conteudo. Mapear
-  # para a classe generica de erro remoto apagaria a unica informacao que a
-  # concorrencia otimista produz.
+  # PERGUNTA EM ABERTO, e ela e o motivo desta linha existir.
+  #
+  # `dbx_errors_classificar` NAO classifica por status: classifica pela TAG do
+  # resumo. Medido:
+  #
+  #   409 + conflict/file/...        -> conflito
+  #   409 + (vazio)                  -> desconhecido
+  #   409 + too_many_write_operations-> limite_taxa
+  #   500 + conflict/y               -> erro_remoto
+  #
+  # Ou seja, a taxonomia e este `case` olham O MESMO SINAL — a tag — e por isso
+  # um cobre o outro quando a tag e `conflict`. Eu havia registrado que a
+  # taxonomia classificava por `409`; era falso, e a correcao muda o cenario que
+  # torna esta linha necessaria.
+  #
+  # O cenario discriminante nao e "recusa sem 409"; e recusa por `rev`
+  # divergente COM 409 e tag DIFERENTE de `conflict` — caso em que sem este
+  # mapeamento a classe sairia `desconhecido` e a concorrencia otimista perderia
+  # a unica informacao que produz.
+  #
+  # A pergunta precisa, para a verificacao contra o servico real: QUAL E A TAG
+  # EXATA que a Dropbox devolve ao recusar escrita por `rev` divergente? Se for
+  # `conflict`, esta linha e redundante e sai. Se for outra, e a unica coisa que
+  # produz a classificacao certa, e ganha caso que a exercita. Nao ha caso hoje
+  # que a discrimine, e inventar um status para a fazer parecer necessaria seria
+  # fabricar contrato.
   case ${DBX_HTTP_RESUMO_DE_ERRO:-} in
     *conflict*) classe='conflito' ;;
   esac
