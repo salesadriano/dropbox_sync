@@ -223,9 +223,9 @@ teste_list_envia_limite_explicito_em_toda_chamada() {
   _rodar "$base" --json list /pasta
   assert_igual 0 "$DBX_ESTADO" "list deve concluir; diagnostico: $DBX_ERRO"
   # RNF-23 e verificavel no artefato: nenhuma chamada de colecao sem `limit`.
-  chamadas=$(grep -c 'list_folder' "$base/argv" || true)
+  chamadas=$(_harness_contar list_folder "$base/argv")
   [[ $chamadas -ge 1 ]] || _harness_falhar 'nenhuma chamada de listagem foi emitida'
-  sem_limite=$(grep -c 'list_folder' "$base/argv")
+  sem_limite=$(_harness_contar list_folder "$base/argv")
   assert_igual "$chamadas" "$sem_limite" 'toda chamada de listagem deve existir'
 }
 
@@ -264,7 +264,7 @@ teste_delete_exige_confirmacao_explicita() {
   _rodar "$base" delete /a.txt
   assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
     'RF-21: exclusao sem confirmacao nao acontece'
-  assert_igual 0 "$(grep -c 'delete_v2' "$base/argv" 2>/dev/null || printf 0)" \
+  assert_igual 0 "$(_harness_contar delete_v2 "$base/argv")" \
     'nenhuma chamada de escrita pode ter sido emitida'
 }
 
@@ -274,7 +274,7 @@ teste_delete_em_simulacao_nao_emite_escrita() {
   _rodar "$base" --json --dry-run delete /a.txt --yes
   assert_igual 0 "$DBX_ESTADO" "RF-15: simulacao conclui com zero; diagnostico: $DBX_ERRO"
   assert_contem 'simulado=sim' "$DBX_SAIDA" 'o plano deve ser impresso'
-  assert_igual 0 "$(grep -c 'delete_v2' "$base/argv" 2>/dev/null || printf 0)" \
+  assert_igual 0 "$(_harness_contar delete_v2 "$base/argv")" \
     'RF-15: nenhuma chamada de escrita e emitida em simulacao'
 }
 
@@ -295,7 +295,7 @@ teste_delete_com_rev_carrega_o_rev_esperado() {
   # RF-49: o corpo tem de portar o `rev` esperado. O corpo vai por arquivo, e o
   # duplo nao o guarda, entao a prova e pela ausencia de recusa mais a presenca
   # do campo no artefato — verificada no proprio comando.
-  enviado=$(grep -c 'parent_rev' "$DBX_HARNESS_RAIZ/commands/delete.sh")
+  enviado=$(_harness_contar parent_rev "$DBX_HARNESS_RAIZ/commands/delete.sh")
   [[ $enviado -ge 1 ]] || _harness_falhar 'RF-49: o comando nao envia parent_rev'
   return 0
 }

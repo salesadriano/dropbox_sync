@@ -177,7 +177,7 @@ teste_concessao_invalida_e_terminal_e_nao_e_retentada() {
   local estado=$?
   assert_igual "$DBX_AUTH_ERRO_AUTENTICACAO" "$estado" 'concessao invalida e erro de autenticacao'
   assert_contem 'invalid_grant' "$DBX_AUTH_MOTIVO" 'o motivo deve identificar a concessao invalida'
-  assert_igual 1 "$(grep -c . "$dir/argv")" 'nao pode haver retentativa de concessao invalida'
+  assert_igual 1 "$(_harness_contar . "$dir/argv")" 'nao pode haver retentativa de concessao invalida'
 }
 
 teste_renovacao_falha_sem_credencial_carregada() {
@@ -225,7 +225,7 @@ teste_token_valido_e_reaproveitado_sem_nova_renovacao() {
   _credencial
   PATH=$dir:$PATH dbx_auth_token
   PATH=$dir:$PATH dbx_auth_token
-  assert_igual 1 "$(grep -c . "$dir/argv")" 'token ainda valido nao pode disparar nova troca'
+  assert_igual 1 "$(_harness_contar . "$dir/argv")" 'token ainda valido nao pode disparar nova troca'
 }
 
 teste_token_expirado_dispara_nova_renovacao() {
@@ -235,7 +235,7 @@ teste_token_expirado_dispara_nova_renovacao() {
   PATH=$dir:$PATH dbx_auth_token
   DBX_AUTH_EXPIRA_EM=0
   PATH=$dir:$PATH dbx_auth_token
-  assert_igual 2 "$(grep -c . "$dir/argv")" 'token expirado tem de ser trocado'
+  assert_igual 2 "$(_harness_contar . "$dir/argv")" 'token expirado tem de ser trocado'
 }
 
 teste_validade_respeita_margem_antes_do_vencimento() {
@@ -286,7 +286,7 @@ teste_token_expirado_no_meio_do_caminho_renova_uma_vez_e_repete() {
   # Uma renovacao e no maximo uma repeticao: sem laco entre renovar e 401.
   assert_igual 'sim' "$DBX_AUTH_RENOVOU" 'deve ter havido renovacao'
   local chamadas
-  chamadas=$(grep -c . "$dir/argv")
+  chamadas=$(_harness_contar . "$dir/argv")
   [[ $chamadas -le 4 ]] || _harness_falhar 'laco entre renovacao e 401' "chamadas: $chamadas"
   return 0
 }
@@ -318,7 +318,9 @@ _duplo_por_url() {
     printf 'dir=%s\n' "$dir"
     printf 'printf "%%s\\n" "$*" >>"$dir/argv"\n'
     printf 'cat >/dev/null 2>&1\n'
-    printf 'if [[ $(grep -c . "$dir/argv") -gt 8 ]]; then exit 7; fi\n'
+    # Texto do duplo gerado, que nao carrega o arcabouco. Sem recuo `|| printf 0`,
+    # a substituicao devolve a contagem e o status nao-zero e descartado.
+    printf 'if [[ $(grep -c . "$dir/argv") -gt 8 ]]; then exit 7; fi\n'  # contagem-direta
     printf 'saida=""; escrever=""; anterior=""; url=""\n'
     printf 'for arg in "$@"; do\n'
     printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac\n'
@@ -347,7 +349,7 @@ teste_renovacao_bem_sucedida_seguida_de_401_nao_entra_em_laco() {
   PATH=$dir:$PATH dbx_auth_requisitar POST https://exemplo/api '{}' sim
   assert_diferente 0 $? 'apos renovar e receber 401 de novo, tem de desistir'
   local chamadas
-  chamadas=$(grep -c . "$dir/argv")
+  chamadas=$(_harness_contar . "$dir/argv")
   # Requisicao, renovacao, requisicao: tres. Mais que isso e laco.
   [[ $chamadas -le 3 ]] ||
     _harness_falhar 'laco entre renovacao e 401' "chamadas ao cliente: $chamadas"

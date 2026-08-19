@@ -631,4 +631,55 @@ teste_canal_de_corpo_nunca_e_alimentado_na_apresentacao() {
   return 0
 }
 
+# Contagem sobre arquivo passa pelo auxiliar do arcabouco.
+#
+# `grep -c` imprime a contagem E sai com 1 quando nao ha correspondencia. A forma
+# `$(grep -c ... || printf 0)` dispara o recuo ALEM da saida ja emitida e produz
+# "0\n0", falhando exatamente quando a contagem deveria ser zero — que e o caso
+# que as assercoes de ausencia existem para verificar. Doze usos da construcao
+# existiam; dois deles verificavam que NENHUMA chamada de escrita fora emitida.
+#
+# O universo deriva do artefato: enumera `grep -c` sobre ARQUIVO em tests/, e a
+# lista mantida a mao e so de excecoes — contagem sobre cadeia, que nao tem o
+# problema, e a implementacao do proprio auxiliar.
+teste_contagem_sobre_arquivo_passa_pelo_auxiliar() {
+  local arquivo linha fora_do_auxiliar=''
+  for arquivo in "$DBX_HARNESS_RAIZ"/tests/unit/*.sh \
+                 "$DBX_HARNESS_RAIZ"/tests/integracao/*.sh; do
+    while IFS= read -r linha; do
+      [[ -n $linha ]] || continue
+      # Excecoes, todas declaradas: contagem sobre cadeia nao le arquivo; o
+      # enumerador precisa citar o padrao que procura; e linha precedida de
+      # `contagem-direta:` traz a razao no proprio ponto de uso.
+      [[ $linha == *'<<<'* ]] && continue
+      [[ $linha == *'grep -n '* ]] && continue
+      [[ $linha == *'contagem-direta'* ]] && continue
+      fora_do_auxiliar+=" ${arquivo##*/}:${linha%%:*}"
+    done < <(grep -n 'grep -c' "$arquivo" 2>/dev/null |
+      grep -vE ':[[:space:]]*#' |
+      grep -vE "contagem-direta" || true)
+  done
+  assert_igual '' "$fora_do_auxiliar" \
+    "contagem sobre arquivo fora do auxiliar _harness_contar:$fora_do_auxiliar"
+}
+
+# Prova de discriminacao: o auxiliar responde 0 nos tres cenarios em que a forma
+# antiga produzia "0\n0" ou falhava, e conta certo quando ha correspondencia.
+teste_auxiliar_de_contagem_discrimina() {
+  local area
+  area=$(mktemp -d "$DBX_TESTES_TMP/contagem.XXXXXX") || return 1
+  printf 'sem correspondencia\n' >"$area/com_conteudo"
+  : >"$area/vazio"
+  printf 'alvo\nalvo\noutra\n' >"$area/com_alvo"
+
+  assert_igual 0 "$(_harness_contar alvo "$area/com_conteudo")" \
+    'arquivo com conteudo e sem correspondencia conta zero'
+  assert_igual 0 "$(_harness_contar alvo "$area/vazio")" \
+    'arquivo vazio conta zero'
+  assert_igual 0 "$(_harness_contar alvo "$area/ausente")" \
+    'arquivo ausente conta zero'
+  assert_igual 2 "$(_harness_contar alvo "$area/com_alvo")" \
+    'duas correspondencias contam duas'
+}
+
 harness_executar "$@"
