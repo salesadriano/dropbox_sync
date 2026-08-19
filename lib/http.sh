@@ -62,6 +62,9 @@ DBX_HTTP_AREA_TEMP=''
 # Modo de autorizacao da chamada corrente e nome do vetor de campos do modo
 # formulario. Internos: nao fazem parte do contrato publico do componente.
 _DBX_HTTP_MODO='bearer'
+# Canal do corpo da chamada corrente. Interno.
+_DBX_HTTP_CANAL='padrao'
+_DBX_HTTP_DESTINO=''
 _DBX_HTTP_ARG=''
 _DBX_HTTP_ARQUIVO_CORPO=''
 _DBX_HTTP_TOKEN=''
@@ -187,7 +190,13 @@ _dbx_http_opcoes() {
     conteudo)
       printf 'header = "Authorization: Bearer %s"\n' "$_DBX_HTTP_TOKEN"
       printf 'header = "Content-Type: application/octet-stream"\n'
-      printf 'header = "Dropbox-API-Arg: %s"\n' "$_DBX_HTTP_ARG"
+      # O valor vai dentro de cadeia entre aspas no arquivo de configuracao: uma
+      # aspa crua ENCERRA a cadeia e o resto do JSON e descartado em silencio.
+      # Medido: `{"path":"/a.txt"}` chegava ao servidor como `{`. Mesmo escape ja
+      # aplicado ao modo formulario — a disciplina existia no gemeo e nao aqui.
+      local _arg_escapado=${_DBX_HTTP_ARG//\\/\\\\}
+      _arg_escapado=${_arg_escapado//\"/\\\"}
+      printf 'header = "Dropbox-API-Arg: %s"\n' "$_arg_escapado"
       ;;
     *)
       printf 'header = "Authorization: Bearer %s"\n' "$_DBX_HTTP_TOKEN"
@@ -262,16 +271,43 @@ dbx_http_conteudo() {
   dbx_http_cabecalho_valido "$arg" || return "$DBX_HTTP_ERRO_USO"
 
   _DBX_HTTP_MODO=conteudo
+  _DBX_HTTP_CANAL=padrao
   _DBX_HTTP_TOKEN=$token
   _DBX_HTTP_ARG=$arg
   _DBX_HTTP_ARQUIVO_CORPO=$arquivo
+  _DBX_HTTP_DESTINO=''
   _dbx_http_executar "$metodo" "$url" '' "$idempotente"
+}
+
+# dbx_http_conteudo_receber <metodo> <url> <token> <arg_json> <destino>
+#
+# Recebimento em fluxo: o corpo vai direto para <destino> — arquivo ou descritor,
+# tipicamente `/dev/stdout` — sem materializar copia intermediaria. Nao ha teto de
+# tamanho, por decisao de emitir e validar em paralelo.
+#
+# NAO e idempotente para efeito de retentativa: o canal e de fluxo, e o laco so
+# repete quando nada foi emitido. Ver a nota no laco.
+dbx_http_conteudo_receber() {
+  [[ $# -ge 5 ]] || return "$DBX_HTTP_ERRO_USO"
+  local metodo=$1 url=$2 token=$3 arg=$4 destino=$5
+  [[ -n $metodo && -n $url && -n $token && -n $destino ]] || return "$DBX_HTTP_ERRO_USO"
+
+  dbx_http_cabecalho_valido "$arg" || return "$DBX_HTTP_ERRO_USO"
+
+  _DBX_HTTP_MODO=conteudo
+  _DBX_HTTP_CANAL=fluxo
+  _DBX_HTTP_TOKEN=$token
+  _DBX_HTTP_ARG=$arg
+  _DBX_HTTP_ARQUIVO_CORPO=''
+  _DBX_HTTP_DESTINO=$destino
+  _dbx_http_executar "$metodo" "$url" '' sim
 }
 
 # dbx_http_requisitar <metodo> <url> <token> <corpo> <idempotente>
 dbx_http_requisitar() {
   [[ $# -ge 5 ]] || return "$DBX_HTTP_ERRO_USO"
   _DBX_HTTP_MODO=bearer
+  _DBX_HTTP_CANAL=padrao
   _DBX_HTTP_TOKEN=$3
   _dbx_http_executar "$1" "$2" "$4" "$5"
 }
@@ -285,6 +321,7 @@ dbx_http_formulario() {
   [[ $# -ge 2 ]] || return "$DBX_HTTP_ERRO_USO"
   [[ -n $1 && -n $2 ]] || return "$DBX_HTTP_ERRO_USO"
   _DBX_HTTP_MODO=formulario
+  _DBX_HTTP_CANAL=padrao
   _DBX_HTTP_CAMPOS_NOME=$2
   # Sem corpo em arquivo: os campos vao pela entrada padrao.
   # Nao idempotente: uma troca de token repetida as cegas nao e desejavel.
@@ -328,7 +365,17 @@ _dbx_http_executar() {
     # o canal existia e chegava sempre vazio.
     codigo=$(
       {
-        _dbx_http_opcoes | if [[ -n $corpo ]]; then
+        _dbx_http_opcoes | if [[ $_DBX_HTTP_CANAL == 'fluxo' ]]; then
+        # `--fail` e o que impede a resposta de ERRO de sair como se fosse o
+        # conteudo do arquivo. Medido: sem ele, um 409 sai pela saida padrao com
+        # status ZERO — um erro que se parece com exito, com nome de arquivo
+        # correto e um JSON dentro. Com ele, zero bytes emitidos e status 22.
+        curl -K - --fail -X "$metodo" \
+          -o "$_DBX_HTTP_DESTINO" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+      elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
+        curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
+          -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+      elif [[ -n $corpo ]]; then
         curl -K - -X "$metodo" --data-binary "@$area/requisicao" \
           -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
       else
@@ -356,7 +403,13 @@ _dbx_http_executar() {
     # O stderr do cliente deixou de ser descartado: pedir `show-error` e jogar a
     # mensagem fora era pedir diagnostico para nao le-lo.
     DBX_HTTP_DEFEITO_CLIENTE=''
-    if [[ $estado -ne 0 ]]; then
+    if [[ $estado -eq 22 ]]; then
+      # `--fail` no canal de fluxo: HOUVE resposta HTTP e o codigo e conhecido; o
+      # cliente apenas se recusou a emitir o corpo de erro como se fosse conteudo.
+      # Tratar como falha de rede mandaria o operador investigar DNS e TLS diante
+      # de um 404 perfeitamente informativo.
+      :
+    elif [[ $estado -ne 0 ]]; then
       # Sem resposta HTTP: codigo zero, e nao um codigo inventado.
       codigo=0
       case $estado in
@@ -415,6 +468,20 @@ _dbx_http_executar() {
     case $politica in
       recuo_exponencial | respeitar_retry_after)
         [[ $tentativa -lt $DBX_HTTP_TENTATIVAS_MAXIMAS ]] || break
+        # RETENTATIVA E PROPRIEDADE DO CANAL, NAO DO TRANSPORTE.
+        #
+        # No canal de fluxo os bytes ja foram entregues ao consumidor e nao
+        # voltam: repetir entregaria o inicio do conteudo duas vezes — corrupcao
+        # produzida pela nossa propria politica de confiabilidade, e
+        # indistinguivel de conteudo legitimo do lado de fora.
+        #
+        # Repetir so e seguro quando NADA foi emitido. Medido contra o cliente
+        # real: sob `--fail`, uma recusa HTTP emite zero bytes (status 22), e
+        # conexao recusada tambem (status 7). Ja o erro de escrita (23) significa
+        # que houve transferencia — e ai nao se repete.
+        if [[ $_DBX_HTTP_CANAL == 'fluxo' && $estado -ne 22 && $estado -ne 7 ]]; then
+          break
+        fi
         _dbx_http_esperar "$tentativa"
         tentativa=$((tentativa + 1))
         continue
@@ -424,6 +491,37 @@ _dbx_http_executar() {
         ;;
     esac
   done
+
+  # DIAGNOSTICO DO CANAL DE FLUXO: reemissao sem fluxo para obter o corpo do erro.
+  #
+  # `--fail` impede o corpo de erro de sair como se fosse conteudo — sem ele um
+  # 409 vira arquivo local com JSON dentro — mas o preco e ficarmos sem o
+  # `error_summary`, e a classificacao cai em `desconhecido` diante de um 404
+  # perfeitamente informativo.
+  #
+  # A reemissao ocorre so no caminho de erro; o caminho feliz nao paga nada.
+  # `--fail-with-body` devolveria o corpo, mas pela saida padrao — resolveria o
+  # diagnostico reintroduzindo exatamente o problema.
+  #
+  # LIMITE DECLARADO: o corpo vem de uma requisicao POSTERIOR. Se o recurso mudou
+  # entre as duas, o diagnostico descreve outro instante. Diagnostico que descreve
+  # outro momento e pior que diagnostico ausente, entao a divergencia fica
+  # registrada em vez de silenciada.
+  if [[ $_DBX_HTTP_CANAL == 'fluxo' && $DBX_HTTP_CLASSE != 'sucesso' && -n $DBX_HTTP_CODIGO && $DBX_HTTP_CODIGO != '0' ]]; then
+    local _canal_original=$_DBX_HTTP_CANAL _destino_original=$_DBX_HTTP_DESTINO
+    local _codigo_observado=$DBX_HTTP_CODIGO
+    _DBX_HTTP_CANAL=padrao
+    _DBX_HTTP_DESTINO=''
+    # Nao idempotente: a reemissao existe para diagnosticar, nunca para repetir a
+    # operacao. Uma retentativa aqui seria uma segunda tentativa disfarcada.
+    _dbx_http_executar "$metodo" "$url" '' nao >/dev/null 2>&1 || true
+    _DBX_HTTP_CANAL=$_canal_original
+    _DBX_HTTP_DESTINO=$_destino_original
+    if [[ $DBX_HTTP_CODIGO != "$_codigo_observado" ]]; then
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      DBX_HTTP_DIAGNOSTICO="diagnostico obtido em reemissao posterior; o codigo mudou de ${_codigo_observado} para ${DBX_HTTP_CODIGO} entre as duas requisicoes"
+    fi
+  fi
 
   [[ $DBX_HTTP_CLASSE == 'sucesso' ]] && return 0
   dbx_errors_codigo_saida "$DBX_HTTP_CLASSE" >/dev/null
