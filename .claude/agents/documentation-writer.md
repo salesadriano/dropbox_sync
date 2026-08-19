@@ -2,7 +2,7 @@
 name: documentation-writer
 description: "Subagent especializado em gerar documentacao formal, handoffs, revisoes tecnicas, sync documental, changelogs e artefatos Markdown com Mermaid. Use quando precisar redigir ou atualizar documentacao de entrega, governanca, QA, arquitetura, UX ou operacao."
 tools: Read, Write, Edit, Glob, Grep
-model: haiku
+model: sonnet
 ---
 
 ## Missao
