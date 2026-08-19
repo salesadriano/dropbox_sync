@@ -63,7 +63,7 @@ case $DBX_CLI_COMANDO in
     ;;
   help)
     printf 'Uso: dbx [--json] [--null] [--dry-run] <comando> [argumentos]\n\n'
-    printf 'Comandos: config unlink upload download list delete info space\n'
+    printf 'Comandos: config unlink sync upload download list delete info space\n'
     printf 'Opcoes:   --help --version\n'
     exit 0
     ;;
