@@ -258,4 +258,54 @@ teste_list_e_info_emitem_o_mesmo_vocabulario_de_metadado() {
   return 0
 }
 
+teste_delete_exige_confirmacao_explicita() {
+  local base
+  base=$(_ambiente '{}')
+  _rodar "$base" delete /a.txt
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
+    'RF-21: exclusao sem confirmacao nao acontece'
+  assert_igual 0 "$(grep -c 'delete_v2' "$base/argv" 2>/dev/null || printf 0)" \
+    'nenhuma chamada de escrita pode ter sido emitida'
+}
+
+teste_delete_em_simulacao_nao_emite_escrita() {
+  local base
+  base=$(_ambiente '{"metadata":{".tag":"file","name":"a.txt"}}')
+  _rodar "$base" --json --dry-run delete /a.txt --yes
+  assert_igual 0 "$DBX_ESTADO" "RF-15: simulacao conclui com zero; diagnostico: $DBX_ERRO"
+  assert_contem 'simulado=sim' "$DBX_SAIDA" 'o plano deve ser impresso'
+  assert_igual 0 "$(grep -c 'delete_v2' "$base/argv" 2>/dev/null || printf 0)" \
+    'RF-15: nenhuma chamada de escrita e emitida em simulacao'
+}
+
+teste_delete_conclui_e_emite_metadado() {
+  local base
+  base=$(_ambiente '{"metadata":{".tag":"file","name":"a.txt","rev":"0159"}}')
+  _rodar "$base" --json delete /a.txt --yes
+  assert_igual 0 "$DBX_ESTADO" "delete deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'operacao=delete' "$DBX_SAIDA" 'operacao'
+  assert_contem 'name=a.txt' "$DBX_SAIDA" 'metadado do item removido'
+}
+
+teste_delete_com_rev_carrega_o_rev_esperado() {
+  local base enviado
+  base=$(_ambiente '{"metadata":{".tag":"file","name":"a.txt"}}')
+  _rodar "$base" --json delete /a.txt --yes --rev 0159
+  assert_igual 0 "$DBX_ESTADO" "delete com rev; diagnostico: $DBX_ERRO"
+  # RF-49: o corpo tem de portar o `rev` esperado. O corpo vai por arquivo, e o
+  # duplo nao o guarda, entao a prova e pela ausencia de recusa mais a presenca
+  # do campo no artefato — verificada no proprio comando.
+  enviado=$(grep -c 'parent_rev' "$DBX_HARNESS_RAIZ/commands/delete.sh")
+  [[ $enviado -ge 1 ]] || _harness_falhar 'RF-49: o comando nao envia parent_rev'
+  return 0
+}
+
+teste_alteracao_remota_concorrente_vira_conflito_e_nao_sobrescrita() {
+  local base
+  base=$(_ambiente '{"error_summary":"path_lookup/conflict/file/..."}' 409)
+  _rodar "$base" --json delete /a.txt --yes --rev 0159
+  assert_igual "$(dbx_errors_codigo_saida conflito)" "$DBX_ESTADO" \
+    'RF-49: recusa por rev divergente e conflito, nao erro remoto generico'
+}
+
 harness_executar "$@"

@@ -18,6 +18,9 @@ DBX_CMD_CARREGADO=1
 # shellcheck disable=SC2034
 # Justificativa: canal publico consumido pelos arquivos de `commands/`.
 DBX_CMD_LIDO=''
+# shellcheck disable=SC2034
+# Justificativa: canal publico consumido pelos arquivos de `commands/`.
+DBX_CMD_SIMULADO='nao'
 
 # SINCRONIZACAO DO RAMO DE VALIDACAO EM FLUXO — medido, nao suposto.
 #
@@ -147,6 +150,58 @@ _dbx_cmd_metadado_em() {
     fi
   done
   return 0
+}
+
+# _dbx_cmd_escrita_remota <url> <corpo> — unico caminho de ESCRITA remota.
+#
+# CONJUNTO ONDE INCIDE: os TRES pontos de escrita do produto — `delete`,
+# `upload` e, adiante, `sync`. Nasce generico de proposito: escrever isto como
+# auxiliar de dois e descobrir o terceiro depois e a forma exata das oito
+# ocorrencias da familia de gemeos. Quem acrescentar um quarto ponto de escrita
+# passa por aqui ou nao passa pela disciplina.
+#
+# Tres garantias, todas aqui e em nenhum outro lugar:
+#
+#   RF-15  simulacao: nenhuma chamada de escrita e emitida, o plano e impresso
+#          e o codigo de saida e zero. A verificacao vem ANTES da chamada, e
+#          nao dentro dela, para que nao exista caminho de escrita que a pule.
+#
+#   RF-49  concorrencia otimista: quando o chamador informa o `rev` esperado,
+#          ele viaja no corpo. A Dropbox recusa se o remoto mudou desde a
+#          leitura daquela execucao, e a recusa vira CONFLITO (codigo 7) em vez
+#          de sobrescrita cega. Sem isso, "mudou no meio" e indistinguivel de
+#          "deu certo".
+#
+#   O corpo de erro alimenta a taxonomia, e nunca a apresentacao de resultado.
+_dbx_cmd_escrita_remota() {
+  local url=$1 corpo=$2 estado
+
+  if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
+    # shellcheck disable=SC2034  # canal publico, consumido pelos comandos
+    DBX_CMD_SIMULADO='sim'
+    return 0
+  fi
+  # shellcheck disable=SC2034  # canal publico, consumido pelos comandos
+  DBX_CMD_SIMULADO='nao'
+
+  # Escrita nao e idempotente: repetir as cegas pode aplicar duas vezes.
+  dbx_auth_requisitar POST "$url" "$corpo" nao
+  estado=$?
+  [[ $estado -eq 0 ]] && {
+    _dbx_cmd_analisar_corpo
+    return $?
+  }
+
+  local classe=${DBX_HTTP_CLASSE:-erro_remoto}
+  # A Dropbox sinaliza divergencia de `rev` como conflito de conteudo. Mapear
+  # para a classe generica de erro remoto apagaria a unica informacao que a
+  # concorrencia otimista produz.
+  case ${DBX_HTTP_RESUMO_DE_ERRO:-} in
+    *conflict*) classe='conflito' ;;
+  esac
+  dbx_cmd_falhar "$classe" \
+    "escrita recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+  return $?
 }
 
 # dbx_cmd_bytes_legiveis <n> — apresentacao humana, sem utilitario externo.
