@@ -230,6 +230,30 @@ dbx_errors_codigo_saida() {
   printf '%s\n' "${DBX_ERRORS_CODIGO[$classe]}"
 }
 
+# dbx_errors_classe_do_codigo <codigo> — a inversa, sobre a MESMA tabela.
+#
+# Existe porque um componente devolve CODIGO e a apresentacao de diagnostico
+# recebe CLASSE: sem a inversa, quem chama um componente e quer reportar a falha
+# pelo canal comum teria de manter um segundo mapa a mao, e dois mapas divergem.
+#
+# SEMPRE IMPRIME UMA CLASSE VALIDA E SEMPRE SAI COM ZERO, inclusive para codigo
+# desconhecido, que vira `desconhecido`. Isso e deliberado: uma consulta que pode
+# falhar empurraria todo chamador para a forma `$(consulta || printf padrao)`,
+# que e exatamente a construcao que ja produziu defeito real neste projeto —
+# quando a consulta emite algo ANTES de falhar, a saida sai concatenada com o
+# padrao e o resultado nao e nem um nem outro.
+dbx_errors_classe_do_codigo() {
+  local codigo=${1:-} classe
+  for classe in "${DBX_ERRORS_CLASSES[@]}"; do
+    if [[ ${DBX_ERRORS_CODIGO[$classe]} == "$codigo" ]]; then
+      printf '%s' "$classe"
+      return 0
+    fi
+  done
+  printf 'desconhecido'
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Classificacao
 # ---------------------------------------------------------------------------
