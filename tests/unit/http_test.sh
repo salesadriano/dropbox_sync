@@ -376,6 +376,10 @@ teste_contrato_corpo_ilegivel_produz_status_de_defeito_nosso() {
   _estado_do_cliente_real -s --data-binary '@/caminho/que/nao/existe' \
     -o /dev/null -w '%{http_code}' "$ALVO_QUE_RECUSA"
   assert_igual 26 "$DBX_ESTADO_REAL" 'contrato do cliente para arquivo de corpo ilegivel'
+  # A saida do `-w` e registrada como FATO MEDIDO, e o componente nao depende
+  # dela: a presenca do `-w` varia dentro de um mesmo codigo de saida conforme a
+  # forma da URL — `http://` da `000` e `http://[::1` da vazio, ambos status 3.
+  # A classificacao usa o status, que e estavel por familia de causa.
   assert_igual '' "$DBX_SAIDA_W" 'sem transferencia nao ha codigo HTTP para escrever'
 }
 

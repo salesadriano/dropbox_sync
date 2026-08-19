@@ -116,6 +116,25 @@ Status do cliente emitidos antes de qualquer conversa com o servidor (2, 3, 26, 
 
 Defeito proprio nesta correcao: a redirecao do stderr aplicada FORA da substituicao de comando nao captura nada, porque a substituicao ja foi expandida com o stderr original. O canal existia e chegava sempre vazio; o caso de teste o apanhou.
 
+#### Por que a classificacao NAO se apoia na presenca do `-w`
+
+Chegou a ser considerado um discriminador mais barato: `curl` so escreveria o `%{http_code}` quando houvesse resposta, entao ausencia de saida denunciaria defeito nosso. **Nao e confiavel — e o motivo so apareceu porque tres partes mediram de forma independente e discordaram.**
+
+URL mal formada nao tem comportamento unico. Medido em `curl 8.18.0`:
+
+| URL | Status | Saida de `-w` |
+|---|---|---|
+| `http://` (sem host) | 3 | `000` |
+| `:::` (esquema invalido) | 3 | `000` |
+| `http://[::1` (colchete nao fechado) | 3 | **vazia** |
+| `htp://x` (esquema desconhecido) | 1 | `000` |
+| URL vazia | 2 | vazia |
+| `http://127.0.0.1:1/` (conexao recusada) | 7 | `000` |
+
+A presenca do `-w` varia **dentro de um mesmo codigo de saida**, conforme a forma da URL. Nenhuma das tres medicoes estava errada: cada uma observou uma forma diferente, e o desacordo era o dado.
+
+Consequencia: a classificacao usa o **status do cliente**, que e estavel por familia de causa, e nao a presenca da saida do `-w`. Os casos de contrato registram o `-w` observado como fato medido, mas o componente nao depende dele.
+
 ## Evidencias
 
 | Verificacao | Resultado |
@@ -133,6 +152,16 @@ Defeito proprio nesta correcao: a redirecao do stderr aplicada FORA da substitui
 | Assercoes do arcabouco | bateria verde | neutralizar qualquer uma das oito assercoes e a primitiva de falha: detectado |
 | Canal publico alheio | apos as correcoes: verde | remover a limpeza de `lib/auth`: duas ocorrencias acusadas |
 | `lib/auth` | 24 casos verdes | seis mutacoes de seguranca e ciclo de vida: todas detectadas |
+
+## Consequencia adotada: regra de disciplina nasce com o conjunto onde incide
+
+As tres ocorrencias de gemeos deste incremento tem forma comum: **o raciocinio estava escrito no proprio arquivo** e aplicado a um dos dois lugares onde incidia. Nao e falta de saber, e falta de percorrer o conjunto. Leitura e sequencial e ancorada no trecho; enumeracao e transversal e ancorada no conjunto, e a segunda nao emerge da primeira por esforco.
+
+A auditoria de canais publicos nao contem **nenhum conhecimento** que os comentarios ja nao tivessem. Contem a lista completa dos lugares. Auditoria funciona por enumerar, nao por saber mais.
+
+Vale simetricamente para a validacao independente: sonda que pergunta *"o segredo escapa?"* se responde por amostra e passa; a pergunta que encontra a classe e *"todo canal que recebeu segredo foi limpo?"*, que so se responde por varredura. Foi por isso que `lib/config` atravessou varios ciclos com duas ocorrencias vivas.
+
+**Regra adotada para o projeto:** toda regra de disciplina escrita em comentario nasce com a pergunta *"qual e o conjunto de lugares onde isto incide, e quem o enumera?"*. Sem resposta, a regra protege o lugar onde foi escrita e nenhum outro.
 
 ## Pendencias
 
