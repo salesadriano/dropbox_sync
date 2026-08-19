@@ -277,3 +277,24 @@ dbx_auth_colecao() {
   [[ $# -ge 4 ]] || return "$DBX_AUTH_ERRO_USO"
   _dbx_auth_com_renovacao dbx_http_colecao "$1" "$2" "$3" "$4"
 }
+
+# dbx_auth_conteudo <metodo> <url> <arg_json> <arquivo> <idempotente>
+#
+# Modo de conteudo pelo mesmo envoltorio de renovacao: escrever o laco de novo
+# faria a proxima correcao na garantia contra laco valer para um caminho so.
+dbx_auth_conteudo() {
+  [[ $# -ge 5 ]] || return "$DBX_AUTH_ERRO_USO"
+  _dbx_auth_com_renovacao dbx_http_conteudo "$1" "$2" "$3" "$4" "$5"
+}
+
+# dbx_auth_conteudo_receber <metodo> <url> <arg_json> <destino>
+#
+# A renovacao aqui tem uma restricao que os outros caminhos nao tem: so pode
+# ocorrer se NADA foi emitido ao consumidor. Repetir depois do primeiro byte
+# entregaria o inicio do conteudo duas vezes. A guarda vive em `lib/http`, no
+# laco de retentativa, e vale igualmente para a repeticao por renovacao — que
+# passa pelo mesmo caminho.
+dbx_auth_conteudo_receber() {
+  [[ $# -ge 4 ]] || return "$DBX_AUTH_ERRO_USO"
+  _dbx_auth_com_renovacao dbx_http_conteudo_receber "$1" "$2" "$3" "$4"
+}

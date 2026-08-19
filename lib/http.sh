@@ -92,6 +92,10 @@ DBX_HTTP_CLASSE=''
 DBX_HTTP_POLITICA=''
 # shellcheck disable=SC2034
 DBX_HTTP_CORRELACAO=''
+# shellcheck disable=SC2034
+# Corpo do cabecalho `Dropbox-API-Result`, que o modo de conteudo usa para
+# devolver metadado quando o corpo da resposta e o proprio arquivo.
+DBX_HTTP_RESULTADO_CABECALHO=''
 
 _dbx_http_limpar() {
   DBX_HTTP_CODIGO=''
@@ -119,6 +123,8 @@ _dbx_http_esperar() {
 _dbx_http_correlacao_de() {
   local arquivo=$1 linha nome valor
   DBX_HTTP_CORRELACAO=''
+  # shellcheck disable=SC2034  # canal publico, ver nota no topo
+  DBX_HTTP_RESULTADO_CABECALHO=''
   [[ -r $arquivo ]] || return 0
   while IFS= read -r linha; do
     linha=${linha%$'\r'}
@@ -127,6 +133,10 @@ _dbx_http_correlacao_de() {
     valor=${linha#*:}
     valor=${valor# }
     case ${nome,,} in
+      dropbox-api-result)
+        # shellcheck disable=SC2034  # canal publico, ver nota no topo
+        DBX_HTTP_RESULTADO_CABECALHO=$valor
+        ;;
       x-dropbox-request-id | x-request-id | x-server-response)
         # shellcheck disable=SC2034  # canal publico, ver nota no topo
         DBX_HTTP_CORRELACAO=$valor

@@ -33,7 +33,11 @@ _ambiente() {
     printf '#!/usr/bin/env bash\n'
     printf 'base=%s\n' "$base"
     printf 'printf "%%s\\n" "$*" >>"$base/argv"\n'
-    printf 'cat >/dev/null 2>&1\n'
+    # O cabecalho NAO viaja em argv: vai pelo arquivo de opcoes na entrada
+    # padrao, justamente para o segredo ficar fora da tabela de processos.
+    # Descartar a entrada aqui tornaria invisivel tudo o que se quer verificar
+    # sobre cabecalhos.
+    printf 'cat >>"$base/opcoes" 2>/dev/null\n'
     printf 'saida=""; escrever=""; anterior=""; url=""\n'
     printf 'for arg in "$@"; do\n'
     printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac\n'
@@ -306,6 +310,94 @@ teste_alteracao_remota_concorrente_vira_conflito_e_nao_sobrescrita() {
   _rodar "$base" --json delete /a.txt --yes --rev 0159
   assert_igual "$(dbx_errors_codigo_saida conflito)" "$DBX_ESTADO" \
     'RF-49: recusa por rev divergente e conflito, nao erro remoto generico'
+}
+
+# --- upload e download: modo de conteudo ponta a ponta ----------------------
+
+teste_upload_envia_arquivo_e_publica_metadado() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","path_display":"/r/a.txt","size":15,"rev":"016","content_hash":"abc"}')
+  origem="$base/local.txt"
+  printf 'conteudo local\n' >"$origem"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'operacao=upload' "$DBX_SAIDA" 'a operacao deve constar da saida'
+  assert_contem 'rev=016' "$DBX_SAIDA" 'o metadado devolvido deve ser publicado'
+}
+
+# RNF-27: o carimbo NAO serve ao upload — serve ao sync, que compara os dois
+# lados. Quem subir sem ele nunca o ganha, porque o servico nao recalcula depois.
+# Por isso o caso vive aqui, e nao no sync.
+teste_upload_define_client_modified_a_partir_do_mtime() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'x\n' >"$origem"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'client_modified' "$(cat "$base/opcoes" 2>/dev/null)" \
+    'RNF-27: o envio precisa carregar client_modified'
+}
+
+# O envio pela entrada padrao exige sessao em partes, que nao existe. Recusar
+# dizendo o que falta e melhor que ler tudo em memoria e exceder sem aviso.
+teste_upload_recusa_entrada_padrao_com_diagnostico() {
+  local base
+  base=$(_ambiente '{}')
+  _rodar "$base" upload - /r/a.txt
+  [[ $DBX_ESTADO -ne 0 ]] ||
+    _harness_falhar 'envio pela entrada padrao nao pode reportar sucesso'
+  assert_contem 'sessao em partes' "$DBX_ERRO" \
+    'o diagnostico deve dizer o que falta, nao apenas recusar'
+}
+
+teste_upload_em_simulacao_nao_invoca_o_cliente() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt"}')
+  origem="$base/local.txt"
+  printf 'x\n' >"$origem"
+  _rodar "$base" --dry-run upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "RF-15: simulacao conclui com zero; diagnostico: $DBX_ERRO"
+  assert_contem 'simulado=sim' "$DBX_SAIDA" 'o plano deve ser impresso'
+  assert_igual 0 "$(_harness_contar files/upload "$base/argv")" \
+    'RF-15: nenhum envio e emitido em simulacao'
+}
+
+teste_download_grava_no_destino_e_relata_integridade() {
+  local base destino
+  base=$(_ambiente 'CONTEUDO-BAIXADO')
+  destino="$base/saida.bin"
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'operacao=download' "$DBX_SAIDA" 'a operacao deve constar da saida'
+  assert_contem 'integridade=' "$DBX_SAIDA" \
+    'o comando deve declarar se a integridade foi conferida'
+  assert_igual 'CONTEUDO-BAIXADO' "$(cat "$destino")" 'o conteudo deve chegar ao destino'
+}
+
+# Sem resumo publicado pelo servico, o comando NAO pode afirmar integridade:
+# reportar verificacao que nao ocorreu e pior que nao verificar.
+teste_download_nao_afirma_integridade_sem_resumo_do_servico() {
+  local base
+  base=$(_ambiente 'CONTEUDO')
+  _rodar "$base" download /r/a.txt "$base/s.bin"
+  assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'integridade=nao_aplicavel' "$DBX_SAIDA" \
+    'sem resumo do servico a verificacao nao pode ser afirmada'
+}
+
+# Gemeos no transporte: os dois usam o modo de conteudo, em direcoes opostas, e
+# nenhum dos dois pode montar o cabecalho por conta propria — a guarda vive em
+# lib/http e vale para ambos.
+teste_upload_e_download_nao_montam_cabecalho_por_conta_propria() {
+  local arquivo achados=''
+  for arquivo in "$DBX_HARNESS_RAIZ"/commands/upload.sh "$DBX_HARNESS_RAIZ"/commands/download.sh; do
+    if grep -qE 'Dropbox-API-Arg|header *=' "$arquivo" 2>/dev/null; then
+      achados+=" ${arquivo##*/}"
+    fi
+  done
+  assert_igual '' "$achados" \
+    "comando montando cabecalho fora de lib/http:$achados"
 }
 
 harness_executar "$@"
