@@ -4,9 +4,9 @@
 |---|---|
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
-| Data | 2026-08-17 |
-| Versao | **v0.8** |
-| Status | 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
+| Data | 2026-08-19 |
+| Versao | **v0.9** |
+| Status | 🔴 **Duas decisoes novas, devolvidas pela implementacao de `RF-31`/`RF-08`: `DP-29` e `DP-30`.** Nenhuma delas bloqueia a validacao da entrega atual; ambas bloqueiam declarar o requisito correspondente **integralmente** atendido. 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
 >
@@ -55,6 +55,8 @@
 | DP-27a | Como origem e destino sao declarados | ✅ **Resolvida — sinalizadores `--origem` e `--destino`** | — |
 | DP-27b | A linha de base sobrevive a queda da bidirecionalidade? | ✅ **Resolvida — fica, rebaixada a memoria de desempenho** | — |
 | DP-28 | Como o operador declara o sentido do `sync` | ✅ **Resolvida — sinalizador `--enviar` / `--receber`, OBRIGATORIO** | — |
+| **DP-29** | **`RF-31`: aceitar o limite do cano anonimo, ou financiar contrato explicito de tamanho?** | 🔴 **Nova na v0.9 — em aberto** | **P1** |
+| **DP-30** | **`RF-08`: "tamanho de parte configuravel" ainda e requisito?** | 🟡 **Nova na v0.9 — em aberto** | **P1** |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
 | DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |
@@ -86,8 +88,10 @@
 | `DP-23` — localizacao da linha de base | Caminho sob `$XDG_STATE_HOME` | Verificavel quando `lib/state` existir |
 | `DP-05`, `DP-06`, `DP-25` | Conjunto de comandos implementados | Verificavel quando os comandos existirem |
 | `DP-10`, `DP-12` | **Nenhuma** — sao informacao que so o solicitante possui | Dependem de propagacao; nao ha alternativa |
+| **`DP-29` — limite de `RF-31`** | **Parcial.** A *decisao* nao tem artefato; o *estado da pendencia associada* tem: onde vive a recomendacao de `set -o pipefail` | ✅ **Verificado por leitura direta em 2026-08-19, antes de reportar:** a recomendacao existe em `lib/transfer.sh` (linha 85) e em `commands/upload.sh` (linhas 42-44), **e `bin/dbx` nao contem nenhuma ocorrencia de `pipefail`** — ou seja, ela **nao** chegou ao texto de ajuda. A pendencia e real, e nao presumida |
+| **`DP-30` — `RF-08` configuravel** | **Sim.** O tamanho de parte no codigo entregue | ✅ **Verificado por leitura direta em 2026-08-19, antes de reportar:** `lib/transfer.sh` linha 126 declara `readonly DBX_TRANSFER_TAMANHO_PARTE=4194304`, **sem nenhum caminho de configuracao**. A lacuna e real, e nao presumida |
 
-**Consequencia pratica:** das pendencias que restam, **nenhuma tem evidencia observavel** — `DP-10` (politica de log) e `DP-12` (volumes de negocio) sao informacao que so existe com o solicitante. Isso significa que, para elas, a verificacao unilateral nao se aplica e a propagacao continua sendo o unico caminho. **Mas tambem significa que nao ha, hoje, nenhuma decisao ja tomada que este documento possa estar deixando de refletir sem perceber.**
+**Consequencia pratica:** entre as pendencias herdadas, `DP-10` (politica de log) e `DP-12` (volumes de negocio) continuam **sem evidencia observavel** — sao informacao que so existe com o solicitante, e para elas a propagacao segue sendo o unico caminho. **Correcao da v0.9:** a frase anterior — *"das pendencias que restam, nenhuma tem evidencia observavel"* — **deixou de ser verdadeira** com `DP-29` e `DP-30`, que tem artefato e **foram verificadas nesta mesma rodada, antes de serem reportadas**, conforme a regra acima. A afirmacao seguinte permanece valida: **nao ha, hoje, nenhuma decisao ja tomada que este documento possa estar deixando de refletir sem perceber.**
 
 ```mermaid
 flowchart TD
@@ -601,6 +605,49 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 
 ---
 
+## Decisoes abertas devolvidas pela implementacao de `RF-31` / `RF-08` (v0.9)
+
+> As duas decisoes abaixo **nao sao correcao de implementacao**. Nas duas, a implementacao fez o que era tecnicamente possivel e **declarou** o que faltava; o que resta e escolha de escopo, e escolha de escopo e do solicitante.
+
+### 🔴 DP-29 — `RF-31`: aceitar o limite do cano anonimo como declarado, ou financiar um contrato explicito de tamanho?
+
+**O fato, medido** (`DIV-18`, `RSK-36`): quando a origem do `upload` e um **cano anonimo** — `tar czf - /dados | dbx upload - /destino.tgz`, que e o exemplo do proprio requisito —, um produtor que **morre no meio** e **indistinguivel de fim de fluxo legitimo**. O cano fecha e o leitor ve EOF nos dois casos; o status de saida do produtor pertence ao shell do operador e nunca chega ao nosso processo. **Medicao:** produtor que escreve 5.000.000 bytes e sai com status `3` faz o comando **publicar os 5.000.000 bytes e sair com codigo `0`**. Com `set -o pipefail` no shell do operador, o encadeamento devolve `3`.
+
+**Nao ha mitigacao dentro do processo.** O Senior Developer procurou e nao encontrou. O que a implementacao **cumpre integralmente** e o mesmo criterio para **falha de leitura** (EIO, truncamento sob leitura), que aborta antes de qualquer `finish`, sem publicar nada e sem residuo.
+
+**Pergunta:** o limite fica **aceito como declarado**, ou o projeto financia um **contrato explicito de tamanho total**?
+
+| Opcao | O que muda | Custo | Consequencia |
+|---|---|---|---|
+| **A — Aceitar como declarado** *(estado atual apos a emenda de `RF-31`)* | Nada no codigo. `RF-31` ja separa a alinea (a), exigida e cumprida, da alinea (b), nao exigida | **Zero de implementacao.** Custo real: **completar a pendencia do texto de ajuda** — a recomendacao de `set -o pipefail` vive hoje so em comentario de codigo e precisa chegar a ajuda do comando, em `bin/dbx` (PR #13 aberto) | Um backup truncado pode ser publicado e reportado como sucesso. A protecao passa a depender do **operador** lembrar de `set -o pipefail`, e a aplicacao **nao tem como verificar** que ele lembrou |
+| **B — Financiar contrato explicito de tamanho** | Opcao nova (por exemplo `--tamanho-total <bytes>`); a aplicacao **recusa publicar** se o total lido divergir do declarado, encerrando com operacao nao concluida | Opcao em `commands/upload.sh`, verificacao em `lib/transfer.sh` **antes do `finish`**, criterio de aceite novo em `RF-31`, casos de teste nos dois sentidos. Pequeno, mas **e mudanca de requisito**, nao correcao | ⚠️ **Cobertura parcial, e o Business Analyst faz questao de registrar isso antes da decisao: so protege quem sabe o tamanho de antemao.** O exemplo canonico do proprio requisito — `tar czf -` — **nao sabe**. Serve para origens de tamanho conhecido (`dd`, arquivo ja dimensionado, exportacao com tamanho previo); **nao** substitui `pipefail` no caso que motivou a divergencia |
+
+**Complemento obrigatorio em qualquer das opcoes:** levar a recomendacao de `set -o pipefail` ao **texto de ajuda** do comando. Enquanto ela viver so em comentario de codigo, ela protege quem le o codigo-fonte — que nao e o operador.
+
+**Recomendacao do Business Analyst (nao e decisao):** **A**, com o complemento obrigatorio acima, e **B apenas se o solicitante tiver caso de uso real com tamanho conhecido a priori**. Comprar **B** esperando que ela cubra `tar | dbx` seria comprar uma protecao que nao protege o caso que a motivou.
+
+**Bloqueia:** nada da entrega atual, que cumpre o que a versao emendada de `RF-31` exige. Bloqueia **declarar `RF-31` integralmente aceito no sentido da redacao original**.
+
+### 🟡 DP-30 — `RF-08`: "tamanho de parte configuravel" ainda e requisito, ou foi otimizacao presumida?
+
+**O fato** (`DIV-19`): `RF-08` pede "tamanho de parte configuravel e nunca superior a 150 MiB por requisicao". A entrega **fixou a parte em 4.194.304 bytes** e declarou a lacuna, com razao tecnica: nesta implementacao a **parte de rede** e a **mesma grandeza** que o **bloco do `content_hash`**, e uma parte diferente do bloco montaria a cadeia de resumos sobre fatias que nao sao blocos, produzindo um `content_hash` **bem formado e errado**. Ganho colateral: enquanto as duas coincidirem, o teto de ocupacao de um bloco exigido por `RF-31` e **consequencia estrutural**, e nao promessa a vigiar.
+
+**Avaliacao do Business Analyst, submetida e nao decidida:** a clausula **nao tem criterio de aceite proprio, nao tem valor de negocio declarado e nao nasceu de nenhuma `DP-*`** — tem as marcas de **otimizacao presumida** pelo autor do requisito, e nao de necessidade do solicitante. Alem disso, `DP-12` (volumes) segue aberta: **nao existe hoje medicao que justifique um valor diferente de 4 MiB.**
+
+**Pergunta:** a clausula permanece como requisito P0, e rebaixada a trabalho futuro condicionado a evidencia, ou e retirada?
+
+| Opcao | Custo | Consequencia |
+|---|---|---|
+| **A — Manter como requisito P0** | Separar `parte de rede` de `bloco de resumo` em `lib/transfer` e `lib/hash`, permitindo parte **multipla** do bloco; casos de teste com parte de 2 e 4 blocos conferindo o `content_hash` contra o vetor oficial | O teto de ocupacao de `RF-31` **deixa de ser consequencia estrutural e vira promessa a vigiar**, com a vigilancia recaindo sobre o QA a cada mudanca. Sem `DP-12`, o valor exposto seria escolhido **sem evidencia** |
+| **B — Rebaixar a trabalho futuro condicionado a evidencia** *(recomendada)* | Zero agora. Reabre automaticamente se `DP-12` trouxer volume, latencia ou janela que justifiquem | `RF-08` perde uma clausula de **requisito P0 aprovado** — por isso a decisao e do solicitante. Operador em rede de alta latencia fica sem alavanca de ajuste ate a reabertura |
+| **C — Retirar definitivamente** | Zero | **Nao recomendada:** fecha a porta sem evidencia, e a reabertura futura custaria o mesmo que **A** mais uma mudanca de contrato |
+
+**Recomendacao do Business Analyst (nao e decisao):** **B**. Os demais criterios de `RF-08` — ordem das chamadas, teto de 150 MiB por requisicao, tamanho final e `content_hash` — **permanecem exigidos e verificados em qualquer das opcoes**.
+
+**Bloqueia:** declarar `RF-08` integralmente atendido.
+
+---
+
 ## P2 — Refinamento
 
 ### DP-13 — Shell interativo
@@ -701,7 +748,9 @@ Duas consequencias vale destacar. **(1)** A camada de compatibilidade GNU/BSD de
 
 > ⚠️ **Correcao conceitual registrada:** versoes anteriores afirmavam que `RF-41(a)` seria a mitigacao compensatoria de `RSK-24`. **Nao e.** `RF-41(a)` dispara diante de **erro** de travessia, e um TOCTOU bem-sucedido **nao gera erro** — a travessia conclui normalmente. Eixos ortogonais: `RF-41(a)` protege contra arvore **incompleta**; `RSK-24` produz arvore **completa e errada**. `RF-41(a)` continua valendo integralmente contra `RSK-29`.
 
-**Pendencias abertas, nenhuma bloqueante e nenhuma com custo crescente:** `DP-10` (politica de log, necessaria na Etapa 4) · `DP-12` (volumes de negocio, calibra dimensionamento).
+**Pendencias abertas, nenhuma bloqueante e nenhuma com custo crescente:** `DP-10` (politica de log, necessaria na Etapa 4) · `DP-12` (volumes de negocio, calibra dimensionamento) · **`DP-29`** (limite de `RF-31` diante de cano anonimo) · **`DP-30`** (`RF-08`, tamanho de parte configuravel).
+
+> 🔴 **`DP-29` e `DP-30`, novas na v0.9, nao bloqueiam a validacao da entrega de `RF-31`/`RF-08`/`RF-09`**, que cumpre o que a versao emendada de `RF-31` exige. **Bloqueiam declarar `RF-31` e `RF-08` integralmente atendidos** no sentido da redacao original. Detalhamento com custo e consequencia de cada opcao na secao "Decisoes abertas devolvidas pela implementacao de `RF-31` / `RF-08`".
 
 > ✅ **`DP-20` esta resolvida** — MIT, titular `Adriano Sales Santos`, verificado por leitura direta do `LICENSE`. A caracterizacao de "unica pendencia com custo crescente", repetida por varias rodadas neste documento, **deixou de ser verdadeira ha varias rodadas** e so nao foi corrigida por falha de propagacao (`RSK-26`). **Nao ha mais nenhuma pendencia com custo crescente no projeto.**
 
@@ -709,7 +758,9 @@ Duas consequencias vale destacar. **(1)** A camada de compatibilidade GNU/BSD de
 
 | ID | Pergunta em uma linha | Bloqueia | Custo de adiar |
 |---|---|---|---|
-| **DP-20** | **Quem e o titular do copyright? Qual licenca?** | `LICENSE` e cabecalhos de copyright | ⚠️ **Crescente.** O placeholder ja esta no historico publico, e formalizar encarece a cada commit e a cada contribuidor |
+| ~~DP-20~~ | ✅ **RESOLVIDA — MIT, `Adriano Sales Santos`.** **Correcao da v0.9: esta linha afirmava "Crescente. O placeholder ja esta no historico publico" e a afirmacao era FALSA** — o `LICENSE` ja estava corrigido e publicado, e o proprio corpo desta secao ja registrava isso desde a rodada anterior. A linha da tabela nao foi propagada junto, quarta manifestacao de `RSK-26`, desta vez **dentro do mesmo documento** | — | — |
+| **DP-29** | **`RF-31`: aceitar o limite do cano anonimo, ou financiar contrato explicito de tamanho?** | Declarar `RF-31` integralmente atendido; texto de ajuda do comando | Medio — enquanto nao decidida, um produtor que morre no meio publica conteudo truncado com codigo `0` e nada na ajuda avisa o operador (`RSK-36`) |
+| **DP-30** | **`RF-08`: "tamanho de parte configuravel" continua sendo requisito?** | Declarar `RF-08` integralmente atendido | Baixo — sem `DP-12` nao ha medicao que justifique valor diferente de 4 MiB |
 | DP-06 | Quais comandos de paridade com o modelo entram no MVP? | Escopo da camada de comandos | Baixo — necessario so na Etapa 4 |
 | DP-10 | Ha exigencia de auditoria, retencao de log ou conformidade regulatoria? | Politica de log | Baixo — necessario so na Etapa 4 |
 | DP-12 | Tamanhos, quantidades, frequencia e numero de hosts? | Calibragem de dimensionamento | Baixo — padroes conservadores servem ate la |
