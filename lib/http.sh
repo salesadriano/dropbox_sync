@@ -359,8 +359,26 @@ _dbx_http_executar() {
   DBX_HTTP_AREA_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/dbx-http.XXXXXXXX") ||
     return "$DBX_HTTP_ERRO_REDE"
   local area=$DBX_HTTP_AREA_TEMP
-  # A limpeza vale tambem para sinal interceptavel: o corpo pode conter dado do
-  # usuario e as opcoes contem o segredo.
+  # ALCANCE REAL DESTA LIMPEZA, medido — e a afirmacao anterior era FALSA.
+  #
+  # O comentario que estava aqui dizia "a limpeza vale tambem para sinal
+  # interceptavel". Nao vale. `trap ... RETURN` dispara APENAS no retorno normal
+  # da funcao. Medido em tres formas:
+  #   f(){ trap "echo X" RETURN; exit 7; }; f      -> nao imprime nada
+  #   f(){ trap "echo X" RETURN; return 0; }; f    -> imprime (controle)
+  #   TERM nao tratado durante a funcao            -> nao imprime, status 143
+  #
+  # O que esta limpeza DE FATO cobre: retorno da funcao, seja com sucesso ou com
+  # erro classificado. O corpo pode conter dado do usuario e as opcoes contem o
+  # segredo, e nesse caminho eles nao sobrevivem a chamada.
+  #
+  # O QUE ELA NAO COBRE, e por que nao e corrigido aqui: `exit` do processo e
+  # sinal, tratado ou nao. Armar `EXIT INT TERM HUP` neste ponto seria pior — o
+  # `trap` e global ao shell e atropelaria o `EXIT` que `dbx_transfer_sessao`
+  # arma para remover a PROPRIA area, trocando um vazamento por uma regressao de
+  # limpeza. O paliativo declarado vive em `_dbx_transfer_interrompida`, que
+  # remove tambem esta area; a correcao estrutural e o componente `lib/tmp`,
+  # dono unico de area temporaria, ja no backlog do projeto.
   trap 'rm -rf -- "$DBX_HTTP_AREA_TEMP"' RETURN
 
   [[ -n $corpo ]] && printf '%s' "$corpo" >"$area/requisicao"

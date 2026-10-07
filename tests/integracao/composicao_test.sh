@@ -511,13 +511,36 @@ teste_nenhum_componente_novo_introduz_estado_persistente() {
 #   - os prefixos de componente vem dos arquivos em lib/;
 #   - os canais publicos alheios vem das referencias `$DBX_<OUTRO>_*` no texto.
 # Mantido a mao so o conjunto de EXCECOES, e cada uma precisa de motivo.
+#
+# CORRECAO DE INSTRUMENTO (ciclo 1 de QA, achado A1). A versao anterior desta
+# auditoria derivava a tabela de chaves com `grep -oE '[a-z_]+'` sobre o bloco
+# INTEIRO, linha de abertura inclusive. Os sublinhados do proprio nome
+# `DBX_ERRORS_CHAVES_SENSIVEIS` viravam a chave `_` isolada, e com ela na tabela
+# o predicado `DBX_[A-Z_]*${chave}` casava com QUALQUER componente.
+#
+# A justificativa escrita ao lado do predicado — "o componente lida com
+# credencial" — ERA FALSA, e nao apenas imprecisa: `lib/path.sh`, `lib/output.sh`
+# e `lib/json.sh` entravam na varredura SO por essa chave. Nenhum deles lida com
+# credencial. Isto fica escrito como correcao de afirmacao falsa, e nao
+# reescrito em silencio, porque a auditoria e usada como garantia.
+#
+# O defeito tornava a auditoria mais ESTRITA, e nao mais frouxa: ela varria mais
+# componentes do que declarava. Nao havia, e nao ha, falso negativo — medido: o
+# conjunto derivado antes e depois da correcao e identico exceto por `_`.
 # ---------------------------------------------------------------------------
 
 _chaves_sensiveis_em_maiuscula() {
   # Derivadas da tabela real, e nao reescritas aqui: reescrever criaria uma
   # segunda copia que divergiria em silencio da que governa a redacao.
+  #
+  # A extracao e restrita ao CORPO do array: a linha de abertura e a de
+  # fechamento sao descartadas antes de extrair. O filtro de `_` isolado fica
+  # como segunda linha, para o caso de uma reescrita futura da tabela voltar a
+  # deixar sublinhado solto no corpo — uma chave que casa com tudo transforma o
+  # predicado em tautologia, que e a forma silenciosa de perder a auditoria.
   sed -n '/^DBX_ERRORS_CHAVES_SENSIVEIS=(/,/^)/p' "$DBX_HARNESS_RAIZ/lib/errors.sh" |
-    grep -oE '[a-z_]+' | grep -vE '^(DBX|ERRORS|CHAVES|SENSIVEIS)$' |
+    grep -vE '^(DBX_ERRORS_CHAVES_SENSIVEIS=\(|\))$' |
+    grep -oE '[a-z_]+' | grep -vE '^_+$' |
     tr '[:lower:]' '[:upper:]' | sort -u
 }
 
@@ -560,6 +583,17 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
   mapfile -t prefixos < <(_prefixos_de_componente)
   [[ ${#sensiveis[@]} -ge 5 ]] ||
     _harness_falhar 'tabela de chaves sensiveis nao foi derivada' "obtidas: ${#sensiveis[@]}"
+  # Guarda contra TAUTOLOGIA, e nao contra vacuidade (A1). Uma chave degenerada
+  # — `_` isolado, ou uma unica letra — faz `DBX_[A-Z_]*${chave}` casar com todo
+  # componente, e a auditoria passa a afirmar "lida com credencial" de quem nao
+  # lida. Auditoria que aprova tudo e auditoria que nao verifica nada, com o
+  # agravante de parecer mais rigorosa.
+  local sensivel
+  for sensivel in "${sensiveis[@]}"; do
+    [[ ${#sensivel} -ge 3 && $sensivel =~ ^[A-Z][A-Z_]*[A-Z]$ ]] ||
+      _harness_falhar 'chave sensivel derivada nao identifica campo algum: o predicado viraria tautologia' \
+        "chave: [$sensivel]"
+  done
   [[ ${#prefixos[@]} -ge 5 ]] ||
     _harness_falhar 'prefixos de componente nao foram derivados'
 
@@ -567,7 +601,12 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
   local -a faltando=()
   for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
     proprio=${arquivo##*/}
-    proprio=$(printf '%s' "${proprio%.sh}" | tr '[:lower:]' '[:upper:]')
+    # Expansao do proprio shell, e nao substituicao de comando: RSK-28 proibe
+    # construir massa por `$(...)`, e a regra nao abre excecao para "aqui e so
+    # troca de caixa". Regra com excecao negociada no ponto de uso deixa de ser
+    # regra. `${x^^}` faz o mesmo sem subshell e sem perder quebra final.
+    proprio=${proprio%.sh}
+    proprio=${proprio^^}
     texto=$(grep -vE '^[[:space:]]*#' "$arquivo")
 
     # O componente lida com credencial?
@@ -591,8 +630,8 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
       # sobreviver a proxima renovacao — a auditoria transformaria zelo em
       # defeito. O criterio derivavel: o componente preencheu o canal se invoca
       # alguma funcao do dono dele.
-      local dono
-      dono=$(printf '%s' "$outro" | tr '[:upper:]' '[:lower:]')
+      # Expansao do proprio shell, pelo mesmo motivo do bloco acima (RSK-28).
+      local dono=${outro,,}
       grep -qE "(^|[^a-z_])dbx_${dono}_[a-z_]+" <<<"$texto" || continue
       # Exige atribuicao de limpeza no proprio arquivo.
       grep -qE "^[[:space:]]*$var=" <<<"$texto" ||
