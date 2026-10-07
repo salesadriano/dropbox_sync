@@ -332,10 +332,10 @@ teste_apagar_a_memoria_nao_muda_o_conjunto_de_operacoes() {
   printf 'dois' >"$base/local/dois.txt"
   _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
   _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
-  plano_com=$(printf '%s\n' "$DBX_SAIDA" | grep '^transferir=' | sort)
+  plano_com=$(grep '^transferir=' <<<"$DBX_SAIDA" | sort)
   rm -rf "$base/estado"
   _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
-  plano_sem=$(printf '%s\n' "$DBX_SAIDA" | grep '^transferir=' | sort)
+  plano_sem=$(grep '^transferir=' <<<"$DBX_SAIDA" | sort)
   assert_igual "$plano_com" "$plano_sem" \
     'memoria apagada nao pode mudar o conjunto de operacoes decididas'
 }
