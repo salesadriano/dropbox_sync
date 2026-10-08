@@ -350,6 +350,18 @@ teste_recebimento_grava_no_local_e_cria_as_pastas_intermediarias() {
   assert_arquivo_existe "$base/local/sub/fundo/a.txt" 'as pastas intermediarias sao criadas'
 }
 
+teste_recebimento_cria_diretorio_de_destino_caso_nao_exista() {
+  local base
+  base=$(_cenario)
+  local destino_novo="$base/local/nova_pasta/subpasta"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' 'ff' 3)" >"$base/listagem"
+  _rodar "$base" --json sync --receber --origem /r --destino "$destino_novo"
+  assert_igual 0 "$DBX_ESTADO" "recebimento com destino novo deve concluir; diagnostico: $DBX_ERRO"
+  assert_arquivo_existe "$destino_novo" 'o diretorio raiz de destino inexistente deve ser criado'
+  assert_sucesso test -d "$destino_novo"
+  assert_arquivo_existe "$destino_novo/a.txt" 'o arquivo deve ser gravado dentro do novo destino'
+}
+
 teste_sync_com_progresso_emite_em_stderr_e_preserva_stdout() {
   local base
   base=$(_cenario)

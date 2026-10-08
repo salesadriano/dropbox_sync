@@ -72,11 +72,32 @@ dbx_cmd_download_executar() {
   fi
 
   # Sem destino, o conteudo vai para a saida padrao. Se o destino informado
-  # for um diretorio existente, o arquivo e salvo com o nome original dentro dele.
+  # for um diretorio (ou terminar com barra), o arquivo e salvo com o nome
+  # original dentro dele, criando o diretorio se necessario. Caso seja um caminho
+  # com subdiretorios inexistentes, as pastas intermediarias sao criadas.
   local alvo=${destino:-/dev/stdout}
-  if [[ -n $destino && -d $destino ]]; then
-    local nome_base=${remoto##*/}
-    alvo="${destino%/}/$nome_base"
+  if [[ -n $destino ]]; then
+    if [[ $destino == */ || -d $destino ]]; then
+      local nome_base=${remoto##*/}
+      local dir_destino=${destino%/}
+      [[ -z $dir_destino ]] && dir_destino='/'
+      if [[ ! -d $dir_destino ]]; then
+        mkdir -p -- "$dir_destino" 2>/dev/null || {
+          dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $dir_destino"
+          return $?
+        }
+      fi
+      alvo="${dir_destino%/}/$nome_base"
+    else
+      local dir_pai=${destino%/*}
+      if [[ $destino == */* && -n $dir_pai && ! -d $dir_pai ]]; then
+        mkdir -p -- "$dir_pai" 2>/dev/null || {
+          dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $dir_pai"
+          return $?
+        }
+      fi
+      alvo=$destino
+    fi
   fi
 
   dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo"

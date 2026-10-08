@@ -949,4 +949,15 @@ teste_download_com_progresso_emite_em_stderr_e_preserva_stdout() {
   assert_nao_contem '[download]' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
 }
 
+teste_download_cria_diretorio_de_destino_caso_nao_exista() {
+  local base
+  base=$(_ambiente 'CONTEUDO-TESTE')
+  local destino="$base/nova_pasta/subpasta/saida.txt"
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download em destino novo deve concluir; diagnostico: $DBX_ERRO"
+  assert_arquivo_existe "$base/nova_pasta/subpasta" 'as pastas intermediarias devem ser criadas'
+  assert_sucesso test -d "$base/nova_pasta/subpasta"
+  assert_igual 'CONTEUDO-TESTE' "$(cat "$destino")" 'o conteudo deve ser gravado'
+}
+
 harness_executar "$@"
