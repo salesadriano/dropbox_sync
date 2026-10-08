@@ -56,16 +56,99 @@ _dbx_falhar() {
 
 dbx_cli_analisar "$@" || _dbx_falhar uso_invalido "$DBX_CLI_MOTIVO"
 
+if [[ ${#DBX_CLI_ARGS[@]} -gt 0 ]]; then
+  for _dbx_arg in "${DBX_CLI_ARGS[@]}"; do
+    if [[ $_dbx_arg == '--help' || $_dbx_arg == '-h' ]]; then
+      DBX_CLI_ARGS=("$DBX_CLI_COMANDO")
+      DBX_CLI_COMANDO='help'
+      break
+    fi
+  done
+fi
+
 case $DBX_CLI_COMANDO in
   version)
     printf 'dbx %s\n' "$DBX_CLI_VERSAO"
     exit 0
     ;;
   help)
-    printf 'Uso: dbx [--json] [--null] [--dry-run] <comando> [argumentos]\n\n'
-    printf 'Comandos: config unlink sync upload download list delete info space\n'
-    printf 'Opcoes:   --help --version\n'
-    exit 0
+    _dbx_subcomando=${DBX_CLI_ARGS[0]:-}
+    case $_dbx_subcomando in
+      upload)
+        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] <origem> <destino>\n\n'
+        printf 'Envia arquivo local ou conteudo da entrada padrao (-) para o caminho remoto.\n\n'
+        printf 'Argumentos:\n'
+        printf '  origem   Caminho de arquivo local ou "-" para entrada padrao (stdin)\n'
+        printf '  destino  Caminho remoto no Dropbox (/pasta/arquivo)\n\n'
+        printf 'Opcoes:\n'
+        printf '  --modo, --mode <add|overwrite>  Modo de escrita (padrao: add)\n'
+        printf '  --rev <rev>                     Revisao esperada para controle de conflito\n\n'
+        printf 'Recomendacao operacional (RSK-36):\n'
+        printf '  Ao enviar pela entrada padrao via encadeamento (pipe):\n'
+        printf '    tar czf - /dados | dbx upload - /destino.tgz\n'
+        printf '  Recomenda-se ativar "set -o pipefail" no shell do operador para garantir que\n'
+        printf '  falhas prematuras do processo produtor sejam detectadas pelo encadeamento.\n'
+        exit 0
+        ;;
+      config)
+        printf 'Uso: dbx config [--trocar-aplicativo] [--trocar-chave]\n\n'
+        printf 'Configura credencial e pareamento com a conta do Dropbox via fluxo OAuth2 offline.\n'
+        exit 0
+        ;;
+      unlink)
+        printf 'Uso: dbx unlink [--confirmar] [--manter-aplicativo]\n\n'
+        printf 'Revoga o vinculo com a conta remota e limpa a credencial local.\n'
+        exit 0
+        ;;
+      sync)
+        printf 'Uso: dbx sync (--enviar | --receber) --origem <dir> --destino <dir> [--espelhar] [--reconhecer-primeira-execucao]\n\n'
+        printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n'
+        exit 0
+        ;;
+      download)
+        printf 'Uso: dbx download <caminho_remoto> [destino_local]\n\n'
+        printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n'
+        exit 0
+        ;;
+      list)
+        printf 'Uso: dbx list [--limite <n>] <caminho_remoto>\n\n'
+        printf 'Lista o conteudo de pasta remota com paginacao automatica.\n'
+        exit 0
+        ;;
+      delete)
+        printf 'Uso: dbx delete [--confirmar] [--rev <rev>] <caminho_remoto>\n\n'
+        printf 'Remove arquivo ou pasta no Dropbox.\n'
+        exit 0
+        ;;
+      info)
+        printf 'Uso: dbx info <caminho_remoto>\n\n'
+        printf 'Exibe metadados de arquivo ou pasta remota.\n'
+        exit 0
+        ;;
+      space)
+        printf 'Uso: dbx space [--humano]\n\n'
+        printf 'Exibe capacidade total e espaco utilizado na conta Dropbox.\n'
+        exit 0
+        ;;
+      *)
+        printf 'Uso: dbx [--json] [--null] [--dry-run] <comando> [argumentos]\n\n'
+        printf 'Comandos:\n'
+        printf '  config    Configura credenciais de acesso via OAuth2\n'
+        printf '  unlink    Revoga credencial e remove estado local\n'
+        printf '  sync      Sincroniza diretorio local e remoto (--enviar ou --receber)\n'
+        printf '  upload    Envia arquivo local ou entrada padrao (-) para o Dropbox\n'
+        printf '  download  Baixa arquivo remoto para caminho local ou stdout\n'
+        printf '  list      Lista conteudo de diretorio remoto\n'
+        printf '  delete    Remove arquivo ou diretorio remoto\n'
+        printf '  info      Exibe metadados de arquivo ou pasta remota\n'
+        printf '  space     Exibe capacidade e uso do espaco da conta\n\n'
+        printf 'Opcoes globais: --help --version --json --null --dry-run\n\n'
+        printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
+        printf 'Recomendacao para upload de fluxo (RSK-36):\n'
+        printf '  Em "dbx upload - <destino>", ative "set -o pipefail" no shell do operador ao usar pipes.\n'
+        exit 0
+        ;;
+    esac
     ;;
 esac
 

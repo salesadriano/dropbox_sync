@@ -83,6 +83,33 @@ teste_versao_nao_exige_ambiente_nem_credencial() {
   assert_contem 'dbx ' "$(cat "$base/out")" 'a versao deve ser impressa'
 }
 
+teste_ajuda_geral_e_especifica_recomenda_pipefail_para_upload_por_fluxo() {
+  local base
+  base=$(mktemp -d "$DBX_TESTES_TMP/ajuda.XXXXXX")
+  mkdir -p "$base/bin"
+
+  # Ajuda geral: sem curl e sem credencial, deve sair com 0 e conter recomendacao de pipefail
+  env -i PATH="$base/bin:/usr/bin:/bin" HOME="$base" bash "$DBX_EXEC" help \
+    >"$base/out_geral" 2>"$base/err_geral"
+  assert_igual 0 $? 'ajuda geral nao pode depender de rede nem credencial'
+  assert_contem 'pipefail' "$(cat "$base/out_geral")" \
+    'ajuda geral deve orientar sobre pipefail para upload de fluxo (RSK-36)'
+
+  # Ajuda especifica do upload via `dbx help upload`
+  env -i PATH="$base/bin:/usr/bin:/bin" HOME="$base" bash "$DBX_EXEC" help upload \
+    >"$base/out_upload" 2>"$base/err_upload"
+  assert_igual 0 $? 'ajuda especifica do upload nao pode exigir credencial'
+  assert_contem 'set -o pipefail' "$(cat "$base/out_upload")" \
+    'ajuda especifica de upload deve conter recomendacao formal de pipefail (RSK-36)'
+
+  # Ajuda do upload invocada como subcomando com --help
+  env -i PATH="$base/bin:/usr/bin:/bin" HOME="$base" bash "$DBX_EXEC" upload --help \
+    >"$base/out_flag" 2>"$base/err_flag"
+  assert_igual 0 $? 'upload --help deve emitir ajuda sem requerer credencial'
+  assert_contem 'set -o pipefail' "$(cat "$base/out_flag")" \
+    'upload --help deve documentar pipefail para fluxo de entrada padrao'
+}
+
 teste_comando_desconhecido_sai_com_uso_invalido() {
   local base
   base=$(_ambiente '{}')
