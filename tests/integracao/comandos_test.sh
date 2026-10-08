@@ -266,6 +266,15 @@ teste_list_envia_limite_explicito_em_toda_chamada() {
   assert_igual "$chamadas" "$sem_limite" 'toda chamada de listagem deve existir'
 }
 
+teste_list_envia_content_type_json() {
+  local base
+  base=$(_ambiente '{"entries":[],"has_more":false}')
+  _rodar "$base" list /pasta
+  assert_igual 0 "$DBX_ESTADO" "list deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'header = "Content-Type: application/json"' "$(cat "$base/opcoes" 2>/dev/null)" \
+    'chamada RPC de listagem exige cabeçalho Content-Type application/json explícito'
+}
+
 teste_list_recusa_limite_fora_do_teto() {
   local base
   base=$(_ambiente '{}')
