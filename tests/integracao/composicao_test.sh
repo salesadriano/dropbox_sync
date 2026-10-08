@@ -379,7 +379,12 @@ teste_gemeos_aplicam_o_mesmo_conjunto_de_guardas_de_metadado() {
   # ao outro passa a reprovar POR CONSTRUCAO, e nao por acaso de o modo novo
   # estar entre os fixados.
   local do_preflight do_config
-  do_preflight=$(_guardas_de_metadado_em dbx_preflight_verificar "$DBX_LIB/preflight.sh")
+  # O gemeo do lado do preflight passou a ser `dbx_preflight_credencial`, que e a
+  # funcao dedicada criada quando o nivel virou parametro. A auditoria segue a
+  # funcao que INSPECIONA, e nao o nome antigo: apontada para a funcao errada ela
+  # extrairia conjunto vazio, e conjunto vazio compara igual a conjunto vazio.
+  # E por isso que a guarda de vacuidade logo abaixo existe.
+  do_preflight=$(_guardas_de_metadado_em dbx_preflight_credencial "$DBX_LIB/preflight.sh")
   do_config=$(_guardas_de_metadado_em dbx_config_carregar "$DBX_LIB/config.sh")
 
   if [[ -z $do_preflight || -z $do_config ]]; then
@@ -506,13 +511,36 @@ teste_nenhum_componente_novo_introduz_estado_persistente() {
 #   - os prefixos de componente vem dos arquivos em lib/;
 #   - os canais publicos alheios vem das referencias `$DBX_<OUTRO>_*` no texto.
 # Mantido a mao so o conjunto de EXCECOES, e cada uma precisa de motivo.
+#
+# CORRECAO DE INSTRUMENTO (ciclo 1 de QA, achado A1). A versao anterior desta
+# auditoria derivava a tabela de chaves com `grep -oE '[a-z_]+'` sobre o bloco
+# INTEIRO, linha de abertura inclusive. Os sublinhados do proprio nome
+# `DBX_ERRORS_CHAVES_SENSIVEIS` viravam a chave `_` isolada, e com ela na tabela
+# o predicado `DBX_[A-Z_]*${chave}` casava com QUALQUER componente.
+#
+# A justificativa escrita ao lado do predicado — "o componente lida com
+# credencial" — ERA FALSA, e nao apenas imprecisa: `lib/path.sh`, `lib/output.sh`
+# e `lib/json.sh` entravam na varredura SO por essa chave. Nenhum deles lida com
+# credencial. Isto fica escrito como correcao de afirmacao falsa, e nao
+# reescrito em silencio, porque a auditoria e usada como garantia.
+#
+# O defeito tornava a auditoria mais ESTRITA, e nao mais frouxa: ela varria mais
+# componentes do que declarava. Nao havia, e nao ha, falso negativo — medido: o
+# conjunto derivado antes e depois da correcao e identico exceto por `_`.
 # ---------------------------------------------------------------------------
 
 _chaves_sensiveis_em_maiuscula() {
   # Derivadas da tabela real, e nao reescritas aqui: reescrever criaria uma
   # segunda copia que divergiria em silencio da que governa a redacao.
+  #
+  # A extracao e restrita ao CORPO do array: a linha de abertura e a de
+  # fechamento sao descartadas antes de extrair. O filtro de `_` isolado fica
+  # como segunda linha, para o caso de uma reescrita futura da tabela voltar a
+  # deixar sublinhado solto no corpo — uma chave que casa com tudo transforma o
+  # predicado em tautologia, que e a forma silenciosa de perder a auditoria.
   sed -n '/^DBX_ERRORS_CHAVES_SENSIVEIS=(/,/^)/p' "$DBX_HARNESS_RAIZ/lib/errors.sh" |
-    grep -oE '[a-z_]+' | grep -vE '^(DBX|ERRORS|CHAVES|SENSIVEIS)$' |
+    grep -vE '^(DBX_ERRORS_CHAVES_SENSIVEIS=\(|\))$' |
+    grep -oE '[a-z_]+' | grep -vE '^_+$' |
     tr '[:lower:]' '[:upper:]' | sort -u
 }
 
@@ -555,6 +583,17 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
   mapfile -t prefixos < <(_prefixos_de_componente)
   [[ ${#sensiveis[@]} -ge 5 ]] ||
     _harness_falhar 'tabela de chaves sensiveis nao foi derivada' "obtidas: ${#sensiveis[@]}"
+  # Guarda contra TAUTOLOGIA, e nao contra vacuidade (A1). Uma chave degenerada
+  # — `_` isolado, ou uma unica letra — faz `DBX_[A-Z_]*${chave}` casar com todo
+  # componente, e a auditoria passa a afirmar "lida com credencial" de quem nao
+  # lida. Auditoria que aprova tudo e auditoria que nao verifica nada, com o
+  # agravante de parecer mais rigorosa.
+  local sensivel
+  for sensivel in "${sensiveis[@]}"; do
+    [[ ${#sensivel} -ge 3 && $sensivel =~ ^[A-Z][A-Z_]*[A-Z]$ ]] ||
+      _harness_falhar 'chave sensivel derivada nao identifica campo algum: o predicado viraria tautologia' \
+        "chave: [$sensivel]"
+  done
   [[ ${#prefixos[@]} -ge 5 ]] ||
     _harness_falhar 'prefixos de componente nao foram derivados'
 
@@ -562,7 +601,12 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
   local -a faltando=()
   for arquivo in "$DBX_HARNESS_RAIZ"/lib/*.sh; do
     proprio=${arquivo##*/}
-    proprio=$(printf '%s' "${proprio%.sh}" | tr '[:lower:]' '[:upper:]')
+    # Expansao do proprio shell, e nao substituicao de comando: RSK-28 proibe
+    # construir massa por `$(...)`, e a regra nao abre excecao para "aqui e so
+    # troca de caixa". Regra com excecao negociada no ponto de uso deixa de ser
+    # regra. `${x^^}` faz o mesmo sem subshell e sem perder quebra final.
+    proprio=${proprio%.sh}
+    proprio=${proprio^^}
     texto=$(grep -vE '^[[:space:]]*#' "$arquivo")
 
     # O componente lida com credencial?
@@ -586,8 +630,8 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
       # sobreviver a proxima renovacao — a auditoria transformaria zelo em
       # defeito. O criterio derivavel: o componente preencheu o canal se invoca
       # alguma funcao do dono dele.
-      local dono
-      dono=$(printf '%s' "$outro" | tr '[:upper:]' '[:lower:]')
+      # Expansao do proprio shell, pelo mesmo motivo do bloco acima (RSK-28).
+      local dono=${outro,,}
       grep -qE "(^|[^a-z_])dbx_${dono}_[a-z_]+" <<<"$texto" || continue
       # Exige atribuicao de limpeza no proprio arquivo.
       grep -qE "^[[:space:]]*$var=" <<<"$texto" ||
@@ -598,6 +642,88 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
   [[ ${#faltando[@]} -eq 0 ]] ||
     _harness_falhar 'canal publico alheio com dado de credencial sem limpeza' "${faltando[@]}"
   return 0
+}
+
+# A guarda de fronteira de linha de lib/output NAO incide sobre canal de corpo
+# do transporte — e nao deve incidir: corpo pode conter byte nulo, que variavel
+# de shell nao carrega e que a apresentacao nao sabe terminar.
+#
+# Declarar isso em comentario e o que ja falhou sete vezes. Aqui e CASO: se
+# algum comando passar um canal de corpo para a apresentacao, reprova. A regra
+# deriva do nome do canal, entao vale tambem para o canal binario que ainda vai
+# existir, sem ninguem precisar lembrar de acrescenta-lo.
+teste_canal_de_corpo_nunca_e_alimentado_na_apresentacao() {
+  local arquivo achados=()
+  for arquivo in "$DBX_HARNESS_RAIZ"/commands/*.sh "$DBX_HARNESS_RAIZ"/lib/cmd.sh; do
+    [[ -e $arquivo ]] || continue
+    while IFS= read -r linha; do
+      [[ -n $linha ]] || continue
+      achados+=("${arquivo##*/}: $linha")
+    done < <(grep -vE '^[[:space:]]*#' "$arquivo" |
+      grep -nE 'dbx_output_(campo|diagnostico)[^#]*DBX_(HTTP|JSON)_CORPO' || true)
+  done
+  [[ ${#achados[@]} -eq 0 ]] ||
+    _harness_falhar 'canal de corpo do transporte alimentado na apresentacao' "${achados[@]}"
+
+  # Prova de discriminacao: o reconhecedor precisa reagir a forma que procura.
+  local amostra='  dbx_output_campo conteudo "$DBX_HTTP_CORPO_ARQUIVO"'
+  grep -qE 'dbx_output_(campo|diagnostico)[^#]*DBX_(HTTP|JSON)_CORPO' <<<"$amostra" ||
+    _harness_falhar 'o reconhecedor nao detecta a forma que deveria proibir'
+  local inocente='  dbx_output_campo total "$total"'
+  grep -qE 'dbx_output_(campo|diagnostico)[^#]*DBX_(HTTP|JSON)_CORPO' <<<"$inocente" &&
+    _harness_falhar 'o reconhecedor acusa forma legitima'
+  return 0
+}
+
+# Contagem sobre arquivo passa pelo auxiliar do arcabouco.
+#
+# `grep -c` imprime a contagem E sai com 1 quando nao ha correspondencia. A forma
+# `$(grep -c ... || printf 0)` dispara o recuo ALEM da saida ja emitida e produz
+# "0\n0", falhando exatamente quando a contagem deveria ser zero — que e o caso
+# que as assercoes de ausencia existem para verificar. Doze usos da construcao
+# existiam; dois deles verificavam que NENHUMA chamada de escrita fora emitida.
+#
+# O universo deriva do artefato: enumera `grep -c` sobre ARQUIVO em tests/, e a
+# lista mantida a mao e so de excecoes — contagem sobre cadeia, que nao tem o
+# problema, e a implementacao do proprio auxiliar.
+teste_contagem_sobre_arquivo_passa_pelo_auxiliar() {
+  local arquivo linha fora_do_auxiliar=''
+  for arquivo in "$DBX_HARNESS_RAIZ"/tests/unit/*.sh \
+                 "$DBX_HARNESS_RAIZ"/tests/integracao/*.sh; do
+    while IFS= read -r linha; do
+      [[ -n $linha ]] || continue
+      # Excecoes, todas declaradas: contagem sobre cadeia nao le arquivo; o
+      # enumerador precisa citar o padrao que procura; e linha precedida de
+      # `contagem-direta:` traz a razao no proprio ponto de uso.
+      [[ $linha == *'<<<'* ]] && continue
+      [[ $linha == *'grep -n '* ]] && continue
+      [[ $linha == *'contagem-direta'* ]] && continue
+      fora_do_auxiliar+=" ${arquivo##*/}:${linha%%:*}"
+    done < <(grep -n 'grep -c' "$arquivo" 2>/dev/null |
+      grep -vE ':[[:space:]]*#' |
+      grep -vE "contagem-direta" || true)
+  done
+  assert_igual '' "$fora_do_auxiliar" \
+    "contagem sobre arquivo fora do auxiliar _harness_contar:$fora_do_auxiliar"
+}
+
+# Prova de discriminacao: o auxiliar responde 0 nos tres cenarios em que a forma
+# antiga produzia "0\n0" ou falhava, e conta certo quando ha correspondencia.
+teste_auxiliar_de_contagem_discrimina() {
+  local area
+  area=$(mktemp -d "$DBX_TESTES_TMP/contagem.XXXXXX") || return 1
+  printf 'sem correspondencia\n' >"$area/com_conteudo"
+  : >"$area/vazio"
+  printf 'alvo\nalvo\noutra\n' >"$area/com_alvo"
+
+  assert_igual 0 "$(_harness_contar alvo "$area/com_conteudo")" \
+    'arquivo com conteudo e sem correspondencia conta zero'
+  assert_igual 0 "$(_harness_contar alvo "$area/vazio")" \
+    'arquivo vazio conta zero'
+  assert_igual 0 "$(_harness_contar alvo "$area/ausente")" \
+    'arquivo ausente conta zero'
+  assert_igual 2 "$(_harness_contar alvo "$area/com_alvo")" \
+    'duas correspondencias contam duas'
 }
 
 harness_executar "$@"

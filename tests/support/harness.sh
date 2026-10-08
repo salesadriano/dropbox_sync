@@ -181,6 +181,24 @@ _dbx_estado_da_maquina() {
     "$processadores" "$memoria" "$carga"
 }
 
+# _harness_contar <padrao> <arquivo> — quantas linhas casam, sempre com status 0.
+#
+# `grep -c` imprime a contagem E sai com 1 quando nao ha correspondencia, entao a
+# forma `$(grep -c ... || printf 0)` dispara o recuo ALEM da saida ja emitida e
+# produz "0\n0". O efeito e invertido: falha exatamente quando a contagem deveria
+# ser zero, que e o caso que as assercoes de ausencia existem para verificar.
+#
+# Arquivo ausente conta zero — mas o chamador que precisa distinguir "nao houve
+# chamada" de "nada rodou" deve verificar a existencia do arquivo separadamente,
+# porque essa distincao nao cabe numa contagem.
+_harness_contar() {
+  local padrao=$1 arquivo=$2 total
+  [[ -f $arquivo ]] || { printf '0'; return 0; }
+  total=$(grep -c -- "$padrao" "$arquivo" 2>/dev/null) || true
+  [[ $total =~ ^[0-9]+$ ]] || total=0
+  printf '%s' "$total"
+}
+
 # _agora_ms — relogio monotonico em milissegundos, para medir custo relativo.
 _agora_ms() {
   if [[ -n ${EPOCHREALTIME:-} ]]; then

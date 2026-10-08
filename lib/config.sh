@@ -143,6 +143,31 @@ dbx_config_caminho() {
   DBX_CONFIG_RESULTADO="$base/dbx/$DBX_CONFIG_ARQUIVO"
 }
 
+# dbx_config_caminho_de_estado — diretorio do estado, em DBX_CONFIG_RESULTADO.
+#
+# NAO E CONFIGURACAO, e por isso nao mora junto da credencial: DP-23 poe a linha
+# de base sob `$XDG_STATE_HOME`, com recuo para `~/.local/state`, porque estado e
+# descartavel e reconstruivel enquanto credencial nao e. Misturar os dois faria
+# um backup de configuracao arrastar estado, e um descarte de estado arrastar
+# credencial.
+#
+# A funcao mora aqui, e nao em quem a usa, por uma razao ja aprendida: `unlink`
+# precisa do caminho para invalidar as bases (RF-51d) e `lib/state` vai precisar
+# do mesmo caminho para cria-las. Duas contas do mesmo caminho divergem, e a
+# divergencia so aparece no dia em que uma delas apaga o lugar errado. Quem
+# escrever `lib/state` chama esta funcao em vez de recalcular.
+dbx_config_caminho_de_estado() {
+  local base=${XDG_STATE_HOME:-}
+  DBX_CONFIG_RESULTADO=''
+  if [[ -z $base ]]; then
+    [[ -n ${HOME:-} && $HOME == /* ]] ||
+      { _dbx_config_falhar ambiente; return $?; }
+    base="$HOME/.local/state"
+  fi
+  [[ $base == /* ]] || { _dbx_config_falhar ambiente; return $?; }
+  DBX_CONFIG_RESULTADO="$base/dbx"
+}
+
 # dbx_config_gravar <app_key> <app_secret> <refresh_token> <raiz_remota>
 #
 # Gravacao atomica: escreve num temporario do MESMO diretorio, com permissao
@@ -224,6 +249,38 @@ dbx_config_gravar() {
   return 0
 }
 
+# _dbx_config_encerrar_analise [motivo] — saida UNICA do bloco de analise.
+#
+# Conjunto onde incide: TODA saida do bloco de analise de `dbx_config_carregar`,
+# de exito ou de falha. Antes havia tres saidas escrevendo a mesma sequencia, e a
+# limpeza do canal escalar do analisador estava em UMA delas — a de exito.
+#
+# O QUE FOI MEDIDO, e o que nao foi. Eu havia escrito aqui que uma falha no
+# quarto campo deixava o refresh token publicado numa variavel global. FUI
+# VERIFICAR E E FALSO: `dbx_json_valor` limpa o proprio resultado quando a
+# consulta falha, e quando ela tem exito o valor publicado e o do campo
+# consultado. Como `refresh_token` e o TERCEIRO campo e `raiz_remota` o quarto,
+# nenhum modo de falha atual deixa o segredo no canal — medidos os tres:
+# campo ausente devolve vazio, tipo numero devolve o numero, tipo nulo devolve
+# vazio.
+#
+# A refatoracao continua justificada, por outro motivo e mais fraco: a
+# propriedade valia POR ORDEM DE CAMPO, e nao por construcao. Bastava acrescentar
+# um quinto campo depois de `raiz_remota`, ou trocar a ordem do laco, para que a
+# falha passasse a ocorrer com o segredo como ultimo valor lido — e nada
+# reprovaria. Com saida unica, a limpeza deixa de depender de onde o campo esta
+# na lista. Ha auditoria estatica que reprova o retorno das saidas multiplas,
+# porque e ela, e nao um caso de dado, que protege esta propriedade.
+_dbx_config_encerrar_analise() {
+  dbx_json_descartar config
+  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_RESULTADO=''
+  [[ -n ${1:-} ]] || return 0
+  _dbx_config_falhar "$1"
+  return $?
+}
+
 # dbx_config_carregar — le e valida a credencial.
 dbx_config_carregar() {
   local arquivo modo dono conteudo campo
@@ -272,17 +329,13 @@ dbx_config_carregar() {
   dbx_json_contexto config || { _dbx_config_falhar contexto; return $?; }
 
   if ! dbx_json_analisar "$conteudo"; then
-    dbx_json_descartar config
-    dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
-    _dbx_config_falhar malformado
+    _dbx_config_encerrar_analise malformado
     return $?
   fi
 
   for campo in app_key app_secret refresh_token raiz_remota; do
     if ! dbx_json_valor "$campo" >/dev/null || [[ $(dbx_json_tipo "$campo") != 'cadeia' ]]; then
-      dbx_json_descartar config
-      dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
-      _dbx_config_falhar incompleto
+      _dbx_config_encerrar_analise incompleto
       return $?
     fi
     # shellcheck disable=SC2034  # canais publicos, ver nota no topo
@@ -294,16 +347,78 @@ dbx_config_carregar() {
     esac
   done
 
+  # CADEIA VAZIA E CAMPO INCOMPLETO, e nao campo presente.
+  #
+  # Descoberto ao implementar `unlink --manter-aplicativo`, que preserva `app
+  # key` e `app secret` e apaga so o refresh token: o resultado passava por
+  # aqui como credencial VALIDA, e a recusa aparecia so em `dbx_auth_renovar`,
+  # como `uso_invalido` (2). RF-51(e) exige `3` — erro de CONFIGURACAO — para o
+  # comando autenticado seguinte, e a diferenca nao e cosmetica: `2` manda
+  # revisar a linha de comando, `3` manda reconfigurar, que e o que o operador
+  # de fato precisa fazer.
+  #
+  # `app_secret` fica de fora da exigencia porque aplicativo sem segredo e
+  # legitimo, e `dbx_auth_renovar` ja o trata como opcional. `raiz_remota`
+  # tambem: vazio e a raiz da conta na representacao da API.
+  if [[ -z $DBX_CONFIG_APP_KEY || -z $DBX_CONFIG_REFRESH_TOKEN ]]; then
+    _dbx_config_encerrar_analise incompleto
+    return $?
+  fi
+
   # O documento e descartado assim que os campos sao extraidos: manter o segredo
   # tambem na arvore do analisador ampliaria sem necessidade a superficie em que
-  # ele existe em memoria.
-  dbx_json_descartar config
-  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
-  # O MESMO motivo vale para o canal escalar do analisador, que guarda o ULTIMO
-  # valor lido — e o ultimo valor lido aqui e o refresh token. O raciocinio
-  # acima estava escrito e aplicado a arvore, e nao ao vizinho: e a familia de
-  # gemeos outra vez, num componente aprovado ha varios ciclos.
-  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
-  DBX_JSON_RESULTADO=''
+  # ele existe em memoria. O mesmo vale para o canal escalar, e por isso as duas
+  # limpezas moram no encerramento unico.
+  _dbx_config_encerrar_analise
   return 0
+}
+
+# dbx_config_remover <modo> — desfaz a persistencia da credencial (RF-51 b, c).
+#
+#   integral    remove o arquivo inteiro, `app key` e `app secret` inclusive.
+#               E o PADRAO por decisao de RF-51(c): os dois sao segredos, e
+#               manter segredo de uma instalacao que se acabou de desvincular
+#               contradiz o proprio verbo.
+#   aplicativo  preserva `app key` e `app secret` e apaga so o refresh token.
+#               So ocorre sob sinalizador explicito, para religar depois sem
+#               voltar ao console do desenvolvedor.
+#
+# O modo `aplicativo` REESCREVE pelo mesmo caminho atomico da gravacao normal, em
+# vez de editar o arquivo no lugar: edicao no lugar teria uma janela em que o
+# arquivo esta pela metade, e a substituicao atomica ja resolve isso desde a
+# primeira versao deste componente.
+dbx_config_remover() {
+  local modo=${1:-integral}
+
+  dbx_config_caminho || return $?
+  local arquivo=$DBX_CONFIG_RESULTADO
+
+  case $modo in
+    integral)
+      # A varredura de orfaos entra aqui tambem: um temporario abandonado
+      # CONTEM O SEGREDO, e remover so o arquivo final deixaria em disco
+      # justamente o que o desvinculo existe para eliminar.
+      _dbx_config_varrer_orfaos "${arquivo%/*}"
+      if [[ -e $arquivo ]] && ! rm -f -- "$arquivo" 2>/dev/null; then
+        _dbx_config_falhar remocao
+        return $?
+      fi
+      _dbx_config_limpar_credencial
+      return 0
+      ;;
+    aplicativo)
+      # Exige credencial ja carregada: sem `app key` em memoria nao ha o que
+      # preservar, e regravar com campo vazio produziria arquivo que este
+      # componente recusa a ler — falha adiante, no lugar errado.
+      [[ -n $DBX_CONFIG_APP_KEY ]] || {
+        _dbx_config_falhar sem_aplicativo
+        return $?
+      }
+      dbx_config_gravar "$DBX_CONFIG_APP_KEY" "$DBX_CONFIG_APP_SECRET" '' \
+        "$DBX_CONFIG_RAIZ_REMOTA" || return $?
+      _dbx_config_limpar_credencial
+      return 0
+      ;;
+    *) return "$DBX_CONFIG_ERRO_USO" ;;
+  esac
 }

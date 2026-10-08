@@ -486,4 +486,106 @@ teste_falha_da_area_temporaria_e_erro_de_configuracao() {
     'falha de area temporaria e problema de ambiente, nao recurso remoto ausente'
 }
 
+# ---------------------------------------------------------------------------
+# API incremental — exigida por lib/transfer para envio em partes (RF-08,
+# RF-31). O algoritmo continua tendo UMA implementacao: `_dbx_hash_calcular`
+# passou a ser um consumidor desta API, e nao um segundo caminho de calculo.
+#
+# Sem esta secao, uma quebra na API incremental nao reprovaria nada, porque
+# nenhum caso existente a exercitava — e uma segunda implementacao do algoritmo
+# so apareceria na comparacao com o servico.
+# ---------------------------------------------------------------------------
+
+# _acumular_por_blocos <caminho> — alimenta a API incremental bloco a bloco a
+# partir de um arquivo, sem usar o laco do proprio componente.
+#
+# O fatiamento e feito aqui de proposito: se o teste chamasse o laco de
+# `_dbx_hash_calcular`, ele verificaria o laco contra si mesmo em vez de
+# verificar a API que lib/transfer vai usar.
+_acumular_por_blocos() {
+  local caminho=$1 area parte lidos
+  area=$(mktemp -d "$DBX_TESTES_TMP/acum.XXXXXX") || return 1
+  parte="$area/parte"
+  dbx_hash_acumular_iniciar
+  exec 3<"$caminho" || return 1
+  while :; do
+    head -c "$DBX_HASH_TAMANHO_BLOCO" <&3 >"$parte" || break
+    lidos=$(wc -c <"$parte")
+    lidos=${lidos//[^0-9]/}
+    [[ $lidos -gt 0 ]] || break
+    dbx_hash_acumular_bloco "$parte" || {
+      exec 3<&-
+      rm -rf "$area"
+      return 1
+    }
+    [[ $lidos -lt $DBX_HASH_TAMANHO_BLOCO ]] && break
+  done
+  exec 3<&-
+  dbx_hash_acumular_encerrar "$parte"
+  local estado=$?
+  rm -rf "$area"
+  return $estado
+}
+
+teste_api_incremental_reproduz_o_calculo_de_uma_passada() {
+  local caminho
+  caminho=$(fixture_criar vazio)
+  assert_sucesso _acumular_por_blocos "$caminho"
+  _acumular_por_blocos "$caminho"
+  assert_igual "$ESPERADO_VAZIO" "$DBX_HASH_RESULTADO" 'conteudo vazio'
+  assert_igual 0 "$DBX_HASH_BYTES" 'contagem do conteudo vazio'
+
+  caminho=$(fixture_criar bloco_mais_um)
+  _acumular_por_blocos "$caminho"
+  assert_igual "$ESPERADO_BLOCO_MAIS_UM" "$DBX_HASH_RESULTADO" 'um bloco e um byte'
+  assert_igual 4194305 "$DBX_HASH_BYTES" 'contagem de um bloco e um byte'
+
+  caminho=$(fixture_criar dois_blocos_resto)
+  _acumular_por_blocos "$caminho"
+  assert_igual "$ESPERADO_DOIS_BLOCOS_RESTO" "$DBX_HASH_RESULTADO" 'dois blocos e resto'
+  assert_igual 8388615 "$DBX_HASH_BYTES" 'contagem de dois blocos e resto'
+}
+
+teste_api_incremental_nao_concatena_resumos_em_hexadecimal() {
+  # Mesma armadilha de PRJ-DEC-08, agora no caminho que lib/transfer usa: o
+  # valor errado e bem formado e so apareceria na comparacao com a API.
+  local caminho
+  caminho=$(fixture_criar bloco_mais_um)
+  _acumular_por_blocos "$caminho"
+  assert_diferente "$ARMADILHA_BLOCO_MAIS_UM" "$DBX_HASH_RESULTADO" \
+    'a cadeia de resumos e concatenada em bytes brutos, nunca em hexadecimal'
+}
+
+teste_calculo_de_uma_passada_passa_pela_api_incremental() {
+  # ESTE E O CASO QUE GUARDA A UNICIDADE DA IMPLEMENTACAO.
+  #
+  # A sonda substitui `dbx_hash_acumular_bloco` por uma versao que nao acumula
+  # nada. Se `_dbx_hash_calcular` ainda tiver um caminho proprio de calculo, o
+  # resultado nao muda e o caso reprova — que e exatamente o que se quer, porque
+  # ai existiriam duas implementacoes do algoritmo e so uma estaria guardada.
+  local caminho valor
+  caminho=$(fixture_criar bloco_mais_um)
+  valor=$(timeout 60 bash -c '
+    . "$1/lib/errors.sh" || exit 90
+    . "$1/lib/hash.sh"   || exit 90
+    dbx_hash_acumular_bloco() { return 0; }
+    dbx_hash_conteudo_arquivo "$2"
+  ' _ "$DBX_HARNESS_RAIZ" "$caminho" 2>/dev/null)
+  assert_igual "$ESPERADO_VAZIO" "$valor" \
+    'neutralizar a acumulacao tem de esvaziar a cadeia tambem no calculo de uma passada'
+}
+
+teste_acumular_bloco_recusa_arquivo_ilegivel() {
+  dbx_hash_acumular_iniciar
+  assert_status "$DBX_HASH_ERRO_ORIGEM" dbx_hash_acumular_bloco "$DBX_TESTES_TMP/nao-existe-$$"
+}
+
+teste_acumular_encerrar_exige_area_de_trabalho_gravavel() {
+  # Sem area de trabalho a cadeia nao pode ser resumida. Devolver um valor
+  # qualquer aqui declararia integridade sobre uma cadeia nao resumida.
+  dbx_hash_acumular_iniciar
+  assert_status "$DBX_HASH_ERRO_RESUMO" \
+    dbx_hash_acumular_encerrar '/caminho/que/nao/existe/nunca/trabalho'
+}
+
 harness_executar "$@"

@@ -474,4 +474,67 @@ teste_biblioteca_carrega_sem_utilitario_externo_algum() {
     'sem utilitario externo no PATH a carga precisa funcionar e as constantes precisam valer'
 }
 
+
+# ---------------------------------------------------------------------------
+# O NIVEL E PARAMETRO — e o par abaixo e o que prova que ele funciona
+#
+# `lib/cli` justifica os tres niveis dizendo que, sem eles, o assistente de
+# configuracao ficaria impossivel de usar exatamente quando e necessario. A regra
+# estava escrita la e nao estava aplicada aqui: esta funcao inspecionava a
+# credencial em qualquer nivel. Ninguem viu porque os seis comandos do bloco
+# anterior declaram `credencial`, e o conjunto onde a distincao incide estava
+# vazio.
+#
+# Os dois casos andam juntos de proposito. Sozinho, o primeiro passaria com uma
+# funcao que nunca reprova nada; sozinho, o segundo passaria com a versao
+# defeituosa. E o par que discrimina.
+# ---------------------------------------------------------------------------
+
+_credencial_em() { # <area> <modo>
+  local area=$1 modo=$2
+  mkdir -p "$area/dbx"
+  chmod 700 "$area/dbx"
+  printf '%s' '{"versao":1,"app_key":"AK","app_secret":"AS","refresh_token":"RT","raiz_remota":"/"}' \
+    >"$area/dbx/credencial.json"
+  chmod "$modo" "$area/dbx/credencial.json"
+}
+
+teste_nivel_ambiente_nao_recusa_por_permissao_de_credencial() {
+  local area
+  area=$(mktemp -d "$DBX_TESTES_TMP/nivel.XXXXXX")
+  _credencial_em "$area" 644
+  XDG_CONFIG_HOME=$area dbx_preflight_verificar ambiente
+  assert_igual 0 $? \
+    'credencial larga nao pode impedir o comando que existe para regrava-la'
+}
+
+teste_nivel_credencial_continua_recusando_permissao_larga() {
+  local area
+  area=$(mktemp -d "$DBX_TESTES_TMP/nivel.XXXXXX")
+  _credencial_em "$area" 644
+  XDG_CONFIG_HOME=$area dbx_preflight_verificar credencial
+  assert_igual "$DBX_PREFLIGHT_ERRO_CONFIGURACAO" $? \
+    'RNF-04 manda RECUSAR, e nao alertar, quando a credencial esta em permissao larga'
+}
+
+teste_omissao_de_nivel_assume_o_mais_estrito() {
+  # Recuo para o nivel fraco transformaria esquecimento de argumento em
+  # afrouxamento silencioso de verificacao de seguranca.
+  local area
+  area=$(mktemp -d "$DBX_TESTES_TMP/nivel.XXXXXX")
+  _credencial_em "$area" 644
+  XDG_CONFIG_HOME=$area dbx_preflight_verificar
+  assert_igual "$DBX_PREFLIGHT_ERRO_CONFIGURACAO" $? \
+    'sem argumento a verificacao precisa valer pelo nivel mais estrito'
+}
+
+teste_nivel_fora_do_vocabulario_e_recusado() {
+  local area
+  area=$(mktemp -d "$DBX_TESTES_TMP/nivel.XXXXXX")
+  _credencial_em "$area" 600
+  XDG_CONFIG_HOME=$area dbx_preflight_verificar quase_credencial
+  assert_igual "$DBX_PREFLIGHT_ERRO_USO" $? \
+    'nivel desconhecido e erro de uso, e nao aprovacao'
+}
+
 harness_executar "$@"

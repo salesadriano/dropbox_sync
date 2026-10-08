@@ -8,6 +8,27 @@
 # comando que precisa dela. O que o preflight verifica sobre a credencial e a
 # permissao do arquivo, quando ele existe (DP-11, RNF-04).
 #
+# O NIVEL E PARAMETRO, E NAO SO VOCABULARIO DA ENTRADA — corrigido ao entrar
+# `config`.
+#
+#   `lib/cli` descreve tres niveis e diz por que eles existem: sem eles, o
+#   assistente de configuracao ficaria impossivel de usar exatamente quando e
+#   necessario, porque a verificacao RECUSA — nao alerta — diante de credencial
+#   fora de `0600`. A regra estava escrita la e NAO estava aplicada aqui: esta
+#   funcao inspecionava a credencial em qualquer nivel, entao o nivel `ambiente`
+#   herdava a recusa que o nivel `credencial` deveria monopolizar.
+#
+#   Ninguem percebeu porque os seis comandos do bloco anterior declaram todos
+#   `credencial` — o conjunto onde a distincao incide estava VAZIO, e regra sem
+#   ocorrencia nao se exerce. `config` e `unlink` sao a primeira e a segunda
+#   ocorrencia, e sao justamente as que precisam rodar com a credencial quebrada:
+#   uma para regravar, outra para remover. Ha caso que planta credencial em
+#   `0644` e exige que `config` passe e que `info` seja recusado — sem o par, a
+#   volta do defeito nao seria vista.
+#
+#   Nada se perde no nivel `ambiente`: `lib/config` reverifica dono e permissao
+#   no momento em que o segredo sai do disco, que e o ponto que importa.
+#
 # Classe de erro para dependencia ausente: `configuracao` (3). A proposta de um
 # codigo dedicado foi rejeitada — o problema era precisao de mensagem, nao
 # escassez de codigos —, e a mensagem de `configuracao` foi reescrita para nao
@@ -84,9 +105,50 @@ dbx_preflight_diretorio_de_configuracao() {
   DBX_PREFLIGHT_DETALHE="$base/dbx"
 }
 
-# dbx_preflight_verificar — verificacao completa do ambiente.
+# dbx_preflight_credencial <diretorio> — inspecao de METADADO da credencial.
+#
+# Conjunto onde incide: exclusivamente o nivel `credencial`. Chamar isto no nivel
+# `ambiente` e o defeito descrito no topo.
+dbx_preflight_credencial() {
+  local diretorio=$1 arquivo modo dono modo_diretorio
+  arquivo="$diretorio/credencial.json"
+
+  # Credencial ausente e o estado normal antes da configuracao inicial.
+  [[ -e $arquivo ]] || return 0
+
+  [[ -f $arquivo ]] ||
+    { _dbx_preflight_falhar credencial 'o caminho da credencial nao e arquivo comum'; return $?; }
+  modo=$(stat -c '%a' "$arquivo" 2>/dev/null) ||
+    { _dbx_preflight_falhar credencial 'nao foi possivel inspecionar a credencial'; return $?; }
+  # Mesma regra do caminho gemeo em lib/config: qualquer modo sem bits para
+  # grupo e outros e aceito, porque recusar 0400 desfaria uma escolha MAIS
+  # restritiva do operador. Manter as duas verificacoes identicas e o que
+  # impede que uma delas vire porta de entrada.
+  [[ $modo =~ ^[4567]00$ ]] ||
+    { _dbx_preflight_falhar credencial "permissao da credencial precisa nao ter bits para grupo e outros, encontrada $modo"; return $?; }
+
+  modo_diretorio=$(stat -c '%a' -- "$diretorio" 2>/dev/null)
+  [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
+    { _dbx_preflight_falhar credencial "permissao do diretorio de configuracao precisa nao ter bits para grupo e outros, encontrada $modo_diretorio"; return $?; }
+  dono=$(stat -c '%u' "$arquivo" 2>/dev/null)
+  [[ $dono == "$EUID" ]] ||
+    { _dbx_preflight_falhar credencial 'a credencial pertence a outro usuario'; return $?; }
+  return 0
+}
+
+# dbx_preflight_verificar [nivel] — verificacao do ambiente no nivel pedido.
+#
+# Sem argumento, assume `credencial`, que e o nivel MAIS ESTRITO. Um recuo para o
+# nivel mais fraco transformaria omissao de argumento em afrouxamento silencioso
+# de verificacao de seguranca.
 dbx_preflight_verificar() {
-  local utilitario area_temporaria diretorio arquivo modo dono
+  local nivel=${1:-credencial}
+  local utilitario area_temporaria diretorio
+
+  case $nivel in
+    ambiente | credencial) ;;
+    *) return "$DBX_PREFLIGHT_ERRO_USO" ;;
+  esac
 
   DBX_PREFLIGHT_MOTIVO=''
   DBX_PREFLIGHT_DETALHE=''
@@ -118,28 +180,9 @@ dbx_preflight_verificar() {
 
   dbx_preflight_diretorio_de_configuracao || return $?
   diretorio=$DBX_PREFLIGHT_DETALHE
-  arquivo="$diretorio/credencial.json"
 
-  # Credencial ausente e o estado normal antes da configuracao inicial.
-  if [[ -e $arquivo ]]; then
-    [[ -f $arquivo ]] ||
-      { _dbx_preflight_falhar credencial 'o caminho da credencial nao e arquivo comum'; return $?; }
-    modo=$(stat -c '%a' "$arquivo" 2>/dev/null) ||
-      { _dbx_preflight_falhar credencial 'nao foi possivel inspecionar a credencial'; return $?; }
-    # Mesma regra do caminho gemeo em lib/config: qualquer modo sem bits para
-    # grupo e outros e aceito, porque recusar 0400 desfaria uma escolha MAIS
-    # restritiva do operador. Manter as duas verificacoes identicas e o que
-    # impede que uma delas vire porta de entrada.
-    [[ $modo =~ ^[4567]00$ ]] ||
-      { _dbx_preflight_falhar credencial "permissao da credencial precisa nao ter bits para grupo e outros, encontrada $modo"; return $?; }
-
-    local modo_diretorio
-    modo_diretorio=$(stat -c '%a' -- "$diretorio" 2>/dev/null)
-    [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
-      { _dbx_preflight_falhar credencial "permissao do diretorio de configuracao precisa nao ter bits para grupo e outros, encontrada $modo_diretorio"; return $?; }
-    dono=$(stat -c '%u' "$arquivo" 2>/dev/null)
-    [[ $dono == "$EUID" ]] ||
-      { _dbx_preflight_falhar credencial 'a credencial pertence a outro usuario'; return $?; }
+  if [[ $nivel == 'credencial' ]]; then
+    dbx_preflight_credencial "$diretorio" || return $?
   fi
 
   DBX_PREFLIGHT_DETALHE=''

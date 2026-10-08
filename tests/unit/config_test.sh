@@ -361,4 +361,187 @@ teste_diretorio_acessivel_a_terceiros_e_recusado() {
   assert_sucesso dbx_config_carregar
 }
 
+
+# ---------------------------------------------------------------------------
+# Cadeia vazia e campo incompleto (RF-51e)
+# ---------------------------------------------------------------------------
+
+teste_refresh_token_vazio_e_credencial_incompleta() {
+  # Descoberto ao implementar `unlink --manter-aplicativo`: o arquivo resultante
+  # passava como credencial VALIDA e a recusa so aparecia em `dbx_auth_renovar`,
+  # como `uso_invalido` (2). RF-51(e) exige `3`, e a diferenca e operacional:
+  # `2` manda revisar a linha de comando, `3` manda reconfigurar.
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' '' '/r'
+  assert_status "$DBX_CONFIG_ERRO_CONFIGURACAO" dbx_config_carregar
+}
+
+teste_app_key_vazia_e_credencial_incompleta() {
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar '' 'AS' 'RT' '/r'
+  assert_status "$DBX_CONFIG_ERRO_CONFIGURACAO" dbx_config_carregar
+}
+
+teste_segredo_opcional_nao_torna_a_credencial_incompleta() {
+  # Aplicativo sem segredo e legitimo, e `dbx_auth_renovar` ja o trata como
+  # opcional. Sem este caso, a regra acima poderia ser endurecida ate proibir
+  # configuracao valida sem que nada reprovasse.
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' '' 'RT' ''
+  assert_sucesso dbx_config_carregar
+}
+
+teste_nenhum_modo_de_falha_deixa_o_refresh_token_num_canal_global() {
+  # ESCOPO: os modos de falha de leitura que existem, e nao um deles.
+  #
+  # HONESTIDADE SOBRE O QUE ESTE CASO PROVA. Ele NAO discrimina a ausencia da
+  # limpeza: medido, nenhum destes modos deixaria o segredo no canal mesmo sem
+  # ela, porque `refresh_token` e o terceiro campo e o quarto sobrescreve o
+  # canal. A propriedade valia POR ORDEM DE CAMPO. Quem protege a propriedade e
+  # a auditoria de saida unica, logo abaixo; este caso e a verificacao de dado
+  # que a acompanha, e vale pelo que verifica: hoje nao vaza.
+  local area corpo
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  for corpo in \
+    '{"versao":1,"app_key":"AK","app_secret":"AS","refresh_token":"RT_segredo_do_caso"}' \
+    '{"versao":1,"app_key":"AK","app_secret":"AS","refresh_token":"RT_segredo_do_caso","raiz_remota":7}' \
+    '{"versao":1,"app_key":"AK","app_secret":"AS","refresh_token":"RT_segredo_do_caso","raiz_remota":null}' \
+    '{"versao":1,"app_key":"","app_secret":"AS","refresh_token":"RT_segredo_do_caso","raiz_remota":"/r"}'; do
+    printf '%s' "$corpo" >"$DBX_CONFIG_RESULTADO"
+    chmod 600 "$DBX_CONFIG_RESULTADO"
+    dbx_config_carregar 2>/dev/null
+    assert_segredo_ausente 'RT_segredo_do_caso' "${DBX_JSON_RESULTADO:-}" \
+      'refresh token nao pode sobreviver no canal do analisador apos falha de leitura'
+    assert_segredo_ausente 'RT_segredo_do_caso' "${DBX_CONFIG_REFRESH_TOKEN:-}" \
+      'refresh token nao pode sobreviver no canal do componente apos falha de leitura'
+  done
+}
+
+_saidas_do_bloco_de_analise() { # <arquivo>
+  # Conta os pontos que devolvem o contexto do analisador. Com saida unica ha
+  # exatamente um, dentro do encerrador; qualquer outro e um caminho novo que
+  # nao passa pela limpeza.
+  _harness_contar 'dbx_json_descartar config' "$1"
+}
+
+teste_o_bloco_de_analise_tem_saida_unica() {
+  # RSK-27: a propriedade acima nao e garantida por dado, e sim por estrutura.
+  # Esta e a auditoria que a garante, e o par de discriminacao esta no caso
+  # seguinte.
+  local saidas
+  saidas=$(_saidas_do_bloco_de_analise "$DBX_HARNESS_RAIZ/lib/config.sh")
+  assert_igual 1 "$saidas" \
+    'o bloco de analise precisa ter uma saida so, para a limpeza nao depender de qual campo falhou'
+}
+
+teste_a_auditoria_de_saida_unica_detecta_caminho_novo() {
+  local amostra saidas
+  amostra=$(mktemp "$DBX_TESTES_TMP/saida.XXXXXX")
+  {
+    printf '%s\n' 'f() {'
+    printf '%s\n' '  dbx_json_descartar config'
+    printf '%s\n' '  if ! algo; then'
+    printf '%s\n' '    dbx_json_descartar config'
+    printf '%s\n' '  fi'
+    printf '%s\n' '}'
+  } >"$amostra"
+  saidas=$(_saidas_do_bloco_de_analise "$amostra")
+  rm -f "$amostra"
+  assert_igual 2 "$saidas" \
+    'saida acrescentada fora do encerrador precisa ser vista pela auditoria'
+}
+
+# ---------------------------------------------------------------------------
+# Remocao (RF-51 b, c)
+# ---------------------------------------------------------------------------
+
+teste_remocao_integral_apaga_o_arquivo() {
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  assert_sucesso dbx_config_remover integral
+  assert_arquivo_ausente "$DBX_CONFIG_RESULTADO" 'a remocao integral apaga o arquivo'
+}
+
+teste_remocao_integral_leva_junto_temporario_orfao() {
+  # O temporario abandonado por interrupcao CONTEM O SEGREDO. Remover so o
+  # arquivo final deixaria em disco exatamente o que o desvinculo elimina.
+  local area diretorio orfao restos
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  diretorio=${DBX_CONFIG_RESULTADO%/*}
+  orfao="$diretorio/.credencial.999999.ABCDEFGH"
+  printf '%s' '{"refresh_token":"RT"}' >"$orfao"
+  dbx_config_remover integral
+  # Sem substituicao de comando na montagem da massa: o vetor recebe a expansao
+  # do proprio shell e a cadeia e montada por `printf -v`.
+  local -a achados=("$diretorio"/.credencial.*)
+  printf -v restos '%s ' "${achados[@]}"
+  assert_nao_contem 'ABCDEFGH' "$restos" 'temporario orfao precisa sair junto'
+}
+
+teste_remocao_de_aplicativo_preserva_a_chave_e_invalida_o_vinculo() {
+  local area conteudo
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK_preservada' 'AS_preservado' 'RT_a_descartar' '/r'
+  dbx_config_carregar
+  assert_sucesso dbx_config_remover aplicativo
+  assert_arquivo_existe "$DBX_CONFIG_RESULTADO" 'o modo aplicativo mantem o arquivo'
+  IFS= read -r -d '' conteudo <"$DBX_CONFIG_RESULTADO"
+  assert_contem 'AK_preservada' "$conteudo" 'a chave do aplicativo e preservada'
+  assert_segredo_ausente 'RT_a_descartar' "$conteudo" \
+    'o refresh token nao pode sobreviver ao desvinculo'
+  # E o ponto de RF-51(e): o que sobra NAO e credencial utilizavel.
+  assert_status "$DBX_CONFIG_ERRO_CONFIGURACAO" dbx_config_carregar
+}
+
+teste_remocao_de_aplicativo_sem_credencial_carregada_e_recusada() {
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  dbx_config_gravar 'AK' 'AS' 'RT' '/r'
+  _dbx_config_limpar_credencial
+  assert_status "$DBX_CONFIG_ERRO_CONFIGURACAO" dbx_config_remover aplicativo
+}
+
+teste_modo_de_remocao_fora_do_vocabulario_e_recusado() {
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  assert_status "$DBX_CONFIG_ERRO_USO" dbx_config_remover quase_integral
+}
+
+# ---------------------------------------------------------------------------
+# Caminho do estado (DP-23) — separado da configuracao de proposito
+# ---------------------------------------------------------------------------
+
+teste_caminho_de_estado_usa_xdg_state_e_nao_o_de_configuracao() {
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  XDG_STATE_HOME="$area/estado" dbx_config_caminho_de_estado
+  assert_igual "$area/estado/dbx" "$DBX_CONFIG_RESULTADO" 'DP-23: estado sob XDG_STATE_HOME'
+  # A separacao e o ponto: descartar estado nao pode arrastar credencial.
+  dbx_config_caminho
+  assert_diferente "$area/estado/dbx" "${DBX_CONFIG_RESULTADO%/*}" \
+    'estado e configuracao nao podem morar no mesmo diretorio'
+}
+
+teste_caminho_de_estado_recusa_base_relativa() {
+  XDG_STATE_HOME='estado/relativo' dbx_config_caminho_de_estado
+  assert_igual "$DBX_CONFIG_ERRO_CONFIGURACAO" $? \
+    'base relativa mudaria o alvo conforme o diretorio corrente'
+}
+
 harness_executar "$@"

@@ -33,11 +33,38 @@
 #   A declaracao vive no historico — artefato que registra a mudanca e que o
 #   revisor le no PR — em vez de num arquivo de excecoes mantido a mao.
 #
-# LIMITACAO CONHECIDA, REGISTRADA EM VEZ DE DISFARCADA
-#   Contagem detecta REMOCAO, nao ESVAZIAMENTO. Trocar o corpo de um caso por
-#   `:` mantem a contagem e mantem a suite verde. Esta guarda reduz o ponto
-#   cego; nao o fecha. Nao conheco proxy derivavel para esvaziamento que nao
-#   volte a ser numero mantido a mao.
+# LIMITACOES CONHECIDAS, REGISTRADAS EM VEZ DE DISFARCADAS
+#
+#   Sao TRES, e nao uma. A versao anterior deste cabecalho declarava so a
+#   primeira; as outras duas foram medidas depois e ficam escritas aqui em vez
+#   de ficarem sabidas por quem por acaso leu o codigo.
+#
+#   1. ESVAZIAMENTO. Contagem detecta REMOCAO, nao esvaziamento. Trocar o corpo
+#      de um caso por `:` mantem a contagem e mantem a suite verde. Nao conheco
+#      proxy derivavel para esvaziamento que nao volte a ser numero mantido a
+#      mao.
+#
+#   2. A GUARDA E POS-COMMIT. O universo de arquivos vem de
+#      `git ls-tree` sobre revisoes — a base de merge e os commits da branch.
+#      Arquivo NAO VERSIONADO esta inteiramente fora dele. Medido: com
+#      `tests/unit/transfer_test.sh` ainda nao commitado, 5 dos seus 22 casos
+#      foram removidos e a guarda saiu 0, sem sequer alterar o total exibido.
+#
+#   3. CASOS AINDA NAO COMMITADOS, mesmo em arquivo versionado, tambem podem ser
+#      removidos livremente, porque a REFERENCIA e o maximo COMMITADO. Medido:
+#      `tests/unit/hash_test.sh` tinha 35 casos no ultimo commit e 40 na arvore
+#      de trabalho; removidos 5, a guarda saiu 0.
+#
+#   O recorte, dito de uma vez: esta guarda protege o que ja entrou no
+#   historico. Ela nao vigia a arvore de trabalho, e nao ha mitigacao inventada
+#   aqui para fingir que vigia — a alternativa (comparar contra o indice ou
+#   contra a arvore) trocaria a referencia estavel do historico por uma
+#   referencia que o proprio autor da remocao acabou de escrever.
+#
+#   Controle positivo, para que estas limitacoes nao sejam lidas como "a guarda
+#   nao funciona": removidos 12 casos de `hash_test.sh`, levando a contagem
+#   abaixo da base commitada, a guarda reprovou com exit 1 e apontou arquivo,
+#   referencia e quantidade. Ela funciona onde enxerga.
 #
 # Uso:  bash scripts/verificar-remocao-de-casos.sh [branch-de-integracao]
 # Saida: 0 nenhuma reducao nao declarada

@@ -86,6 +86,15 @@ readonly DBX_HASH_BACKENDS_ACEITOS='sha256sum shasum openssl'
 DBX_HASH_BACKEND=${DBX_HASH_BACKEND:-}
 DBX_HASH_FORMATO=''
 
+# Canais publicos da API incremental. Consumidos por lib/transfer e pela suite;
+# a analise estatica nao cruza arquivos e os ve como escrita sem leitura.
+# shellcheck disable=SC2034
+# Justificativa: `content_hash` acumulado, lido por lib/transfer.
+DBX_HASH_RESULTADO=''
+# shellcheck disable=SC2034
+# Justificativa: total de bytes acumulados, exigido por RF-31 e lido por lib/transfer.
+DBX_HASH_BYTES=0
+
 # ---------------------------------------------------------------------------
 # Utilitario de resumo
 # ---------------------------------------------------------------------------
@@ -154,14 +163,102 @@ _dbx_hash_anexar_escapes() {
 }
 
 # ---------------------------------------------------------------------------
-# Nucleo do calculo
+# Nucleo do calculo — API INCREMENTAL
+#
+# POR QUE INCREMENTAL, E POR QUE UMA SO IMPLEMENTACAO
+# O envio em partes (lib/transfer, RF-08/RF-31) precisa do resumo de cada bloco
+# no momento em que o bloco esta em maos, porque a entrada padrao nao e
+# posicionavel e reler para calcular depois nao e opcao. A alternativa seria
+# lib/transfer manter o proprio laco de resumo — e ai existiriam DUAS
+# implementacoes do algoritmo, com apenas uma guardada pelos casos de teste. Um
+# desvio entre elas seria bem formado e so apareceria na comparacao com o
+# servico, que e a pior forma de descobrir.
+#
+# Por isso `_dbx_hash_calcular` foi reescrito como CONSUMIDOR desta API: o
+# algoritmo mora aqui, uma vez, e os casos que ja o guardavam continuam
+# guardando-o pelo mesmo caminho que lib/transfer usa. O caso
+# `calculo_de_uma_passada_passa_pela_api_incremental` existe exatamente para
+# reprovar quem reintroduzir o segundo caminho: ele neutraliza a acumulacao e
+# exige que o calculo de uma passada mude de resultado.
+#
+# Conjunto onde a disciplina incide: TODO ponto do produto que precise do
+# `content_hash` — hoje `upload` em requisicao unica, `download` na conferencia
+# e `upload` em sessao; amanha `sync`. Quem enumera nao e uma lista mantida a
+# mao: e a ausencia de qualquer outra chamada a `_dbx_hash_sha256_hex` fora
+# deste arquivo, que a auditoria de funcoes publicas e o proprio caso acima
+# sustentam.
 # ---------------------------------------------------------------------------
+
+# dbx_hash_acumular_iniciar — zera a cadeia de resumos e a contagem de bytes.
+dbx_hash_acumular_iniciar() {
+  dbx_hash_verificar_dependencias || return "$DBX_HASH_ERRO_DEPENDENCIA"
+  DBX_HASH_FORMATO=''
+  DBX_HASH_BYTES=0
+  DBX_HASH_RESULTADO=''
+  return "$DBX_HASH_OK"
+}
+
+# dbx_hash_acumular_bloco <arquivo> — resume UM bloco ja materializado e o
+# acrescenta a cadeia.
+#
+# Recebe ARQUIVO, e nao fluxo, pelo mesmo motivo que o laco de leitura nao usa
+# cano: com arquivo o status do resumo e o do proprio resumo, e o tamanho fica
+# disponivel para a contagem exigida por RF-31. O chamador e quem decide de onde
+# o bloco veio.
+#
+# NAO verifica se o bloco tem o tamanho do bloco do algoritmo. Verificar aqui
+# impediria o unico caso legitimo de bloco curto, que e o ultimo — e o chamador
+# e quem sabe se ha mais entrada.
+dbx_hash_acumular_bloco() {
+  local caminho=${1-} hex tamanho
+  [[ -n $caminho ]] || return "$DBX_HASH_ERRO_USO"
+  [[ -f $caminho && -r $caminho ]] || return "$DBX_HASH_ERRO_ORIGEM"
+
+  tamanho=$(wc -c <"$caminho") || return "$DBX_HASH_ERRO_RESUMO"
+  tamanho=${tamanho//[^0-9]/}
+  [[ -n $tamanho ]] || return "$DBX_HASH_ERRO_RESUMO"
+
+  hex=$(_dbx_hash_sha256_hex <"$caminho") || return "$DBX_HASH_ERRO_RESUMO"
+  _dbx_hash_anexar_escapes "$hex"
+  DBX_HASH_BYTES=$((DBX_HASH_BYTES + tamanho))
+  return "$DBX_HASH_OK"
+}
+
+# dbx_hash_acumular_encerrar <arquivo_de_trabalho> — resume a cadeia e publica o
+# `content_hash` em DBX_HASH_RESULTADO e o total em DBX_HASH_BYTES.
+#
+# A area de trabalho vem do CHAMADOR, e nao e criada aqui, para que continue
+# existindo um unico dono da area temporaria em cada caminho: o calculo de uma
+# passada reaproveita o proprio buffer de bloco, e lib/transfer reaproveita o
+# arquivo de parte depois que ele ja foi enviado. Criar uma segunda area aqui
+# elevaria o teto de ocupacao que RF-31 fixa em um bloco.
+#
+# TETO DE OCUPACAO — LIMITE DECLARADO: a cadeia gravada nesta area tem 32 bytes
+# por bloco, entao a ocupacao de pico e o MAIOR entre um bloco e 32 x N. Para
+# ultrapassar um bloco seriam necessarios 131.072 blocos, ou seja 512 GiB de
+# conteudo. Nao e "sempre um bloco"; e um bloco ate essa marca, e cresce
+# linearmente depois dela. Preferi declarar do que arredondar.
+#
+# O resultado NAO sai por substituicao de comando: canal publico, para que o
+# chamador em lib/ nao precise capturar saida de comando (invariante de projeto).
+dbx_hash_acumular_encerrar() {
+  local trabalho=${1-} final
+  [[ -n $trabalho ]] || return "$DBX_HASH_ERRO_USO"
+
+  DBX_HASH_RESULTADO=''
+  printf '%b' "$DBX_HASH_FORMATO" >"$trabalho" 2>/dev/null ||
+    return "$DBX_HASH_ERRO_RESUMO"
+  final=$(_dbx_hash_sha256_hex <"$trabalho") || return "$DBX_HASH_ERRO_RESUMO"
+  [[ ${#final} -eq 64 ]] || return "$DBX_HASH_ERRO_RESUMO"
+  DBX_HASH_RESULTADO=$final
+  return "$DBX_HASH_OK"
+}
 
 # _dbx_hash_calcular — le a entrada padrao e imprime "<content_hash> <bytes>".
 # Deve ser invocada em subshell (o que a substituicao de comando ja garante),
 # para que o `trap` de limpeza tenha escopo proprio e nao substitua o do chamador.
 _dbx_hash_calcular() {
-  local buffer bloco_hex tamanho total=0 final
+  local buffer tamanho
 
   dbx_hash_verificar_dependencias || return "$DBX_HASH_ERRO_DEPENDENCIA"
 
@@ -179,7 +276,7 @@ _dbx_hash_calcular() {
   trap 'rm -rf "$DBX_HASH_AREA_TEMP"' EXIT INT TERM HUP
   buffer="$DBX_HASH_AREA_TEMP/bloco"
 
-  DBX_HASH_FORMATO=''
+  dbx_hash_acumular_iniciar || return $?
   while :; do
     # Sem cano: o status abaixo e o do proprio leitor.
     head -c "$DBX_HASH_TAMANHO_BLOCO" >"$buffer" || return "$DBX_HASH_ERRO_RESUMO"
@@ -188,19 +285,17 @@ _dbx_hash_calcular() {
     [[ -n $tamanho ]] || return "$DBX_HASH_ERRO_RESUMO"
     [[ $tamanho -eq 0 ]] && break
 
-    bloco_hex=$(_dbx_hash_sha256_hex <"$buffer") || return "$DBX_HASH_ERRO_RESUMO"
-    _dbx_hash_anexar_escapes "$bloco_hex"
-    total=$((total + tamanho))
+    dbx_hash_acumular_bloco "$buffer" || return $?
 
     # Leitura curta so ocorre no fim da entrada.
     [[ $tamanho -lt $DBX_HASH_TAMANHO_BLOCO ]] && break
   done
 
-  printf '%b' "$DBX_HASH_FORMATO" >"$buffer" || return "$DBX_HASH_ERRO_RESUMO"
-  final=$(_dbx_hash_sha256_hex <"$buffer") || return "$DBX_HASH_ERRO_RESUMO"
-  [[ ${#final} -eq 64 ]] || return "$DBX_HASH_ERRO_RESUMO"
+  # O buffer de bloco vira area de trabalho da cadeia: o conteudo do ultimo
+  # bloco ja foi resumido e nao e mais necessario.
+  dbx_hash_acumular_encerrar "$buffer" || return $?
 
-  printf '%s %s\n' "$final" "$total"
+  printf '%s %s\n' "$DBX_HASH_RESULTADO" "$DBX_HASH_BYTES"
 }
 
 # ---------------------------------------------------------------------------
