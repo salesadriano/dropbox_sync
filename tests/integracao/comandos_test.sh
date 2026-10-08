@@ -12,6 +12,7 @@
 # shellcheck source=tests/support/harness.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/../support/harness.sh"
 . "$DBX_HARNESS_RAIZ/lib/errors.sh"
+. "$DBX_HARNESS_RAIZ/lib/hash.sh"
 
 readonly DBX_EXEC="$DBX_HARNESS_RAIZ/bin/dbx"
 
@@ -344,16 +345,185 @@ teste_upload_define_client_modified_a_partir_do_mtime() {
     'RNF-27: o envio precisa carregar client_modified'
 }
 
-# O envio pela entrada padrao exige sessao em partes, que nao existe. Recusar
-# dizendo o que falta e melhor que ler tudo em memoria e exceder sem aviso.
-teste_upload_recusa_entrada_padrao_com_diagnostico() {
+# _ambiente_sessao [corpo_do_finish] — como `_ambiente`, mas com resposta POR
+# ALVO: a sessao em partes emite tres endpoints diferentes e um duplo de resposta
+# unica faria o `start` devolver metadado de arquivo, sem identificador de
+# sessao. O caso passaria a medir o caminho de erro em vez do caminho feliz.
+_ambiente_sessao() {
+  local corpo_finish=${1:-'{"name":"a.bin","path_display":"/r/a.bin","rev":"016","size":9}'}
   local base
-  base=$(_ambiente '{}')
-  _rodar "$base" upload - /r/a.txt
-  [[ $DBX_ESTADO -ne 0 ]] ||
-    _harness_falhar 'envio pela entrada padrao nao pode reportar sucesso'
-  assert_contem 'sessao em partes' "$DBX_ERRO" \
-    'o diagnostico deve dizer o que falta, nao apenas recusar'
+  base=$(mktemp -d "$DBX_TESTES_TMP/sess.XXXXXX")
+  mkdir -p "$base/config/dbx" "$base/bin"
+  printf '%s' '{"versao":1,"app_key":"ak","app_secret":"as","refresh_token":"rt","raiz_remota":"/"}' \
+    >"$base/config/dbx/credencial.json"
+  chmod 700 "$base/config/dbx"
+  chmod 600 "$base/config/dbx/credencial.json"
+  printf '%s' "$corpo_finish" >"$base/corpo_finish"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'base=%s\n' "$base"
+    cat <<'FIM'
+printf '%s\n' "$*" >>"$base/argv"
+conf=$(cat)
+printf '%s\n' "$conf" >>"$base/opcoes"
+saida=''; escrever=''; anterior=''; url=''; corpoarq=''
+for arg in "$@"; do
+  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac
+  case $arg in http*) url=$arg ;; @*) corpoarq=${arg#@} ;; esac
+  anterior=$arg
+done
+bytes='-'
+if [[ -n $corpoarq && -r $corpoarq ]]; then
+  bytes=$(wc -c <"$corpoarq")
+  bytes=${bytes//[^0-9]/}
+fi
+codigo=200
+case $url in
+  *oauth2/token*)
+    corpo='{"access_token":"sl.t","token_type":"bearer","expires_in":14400}'
+    alvo=token
+    ;;
+  *upload_session/start*)
+    corpo='{"session_id":"S-1"}'
+    alvo=start
+    ;;
+  *upload_session/append_v2*)
+    corpo='{}'
+    alvo=append
+    ;;
+  *upload_session/finish*)
+    corpo=$(cat "$base/corpo_finish")
+    alvo=finish
+    ;;
+  *)
+    corpo=$(cat "$base/corpo_finish")
+    alvo=outro
+    ;;
+esac
+printf 'alvo=%s bytes=%s\n' "$alvo" "$bytes" >>"$base/chamadas"
+[[ -n $saida ]] && printf '%s' "$corpo" >"$saida"
+[[ -n $escrever ]] && printf '%s' "$codigo"
+exit 0
+FIM
+  } >"$base/bin/curl"
+  chmod +x "$base/bin/curl"
+  printf '%s' "$base"
+}
+
+# _rodar_com_fluxo <base> <arquivo_de_origem> <argumentos...>
+#
+# NOME PROPRIO, e nao `_rodar_com_entrada`: aquele ja existe mais abaixo, para
+# `config`, e recebe o TEXTO a alimentar em vez do CAMINHO de um arquivo. Como a
+# definicao posterior vence, reaproveitar o nome fazia o caminho ser gravado num
+# arquivo e servido como se fosse o conteudo — o comando lia 41 bytes de um fluxo
+# de 5 MiB e a suite acusava a implementacao. Defeito do INSTRUMENTO, e nao do
+# codigo sob teste.
+_rodar_com_fluxo() {
+  local base=$1 origem=$2
+  shift 2
+  DBX_SAIDA=''
+  DBX_ERRO=''
+  env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
+    bash "$DBX_EXEC" "$@" <"$origem" >"$base/out" 2>"$base/err"
+  DBX_ESTADO=$?
+  [[ -r $base/out ]] && IFS= read -r -d '' DBX_SAIDA <"$base/out"
+  [[ -r $base/err ]] && IFS= read -r -d '' DBX_ERRO <"$base/err"
+  return 0
+}
+
+# SUBSTITUI `teste_upload_recusa_entrada_padrao_com_diagnostico`, que verificava
+# a recusa provisoria de `-`. A recusa deixou de valer: o envio pela entrada
+# padrao passou a existir (RF-31), e manter o caso antigo guardaria uma limitacao
+# em vez de um requisito.
+teste_upload_de_entrada_padrao_percorre_a_sessao_em_partes() {
+  local base entrada
+  base=$(_ambiente_sessao)
+  entrada="$base/fluxo.bin"
+  head -c 5242880 /dev/zero >"$entrada"
+  _rodar_com_fluxo "$base" "$entrada" --json upload - /r/a.bin
+  assert_igual 0 "$DBX_ESTADO" "envio por fluxo deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'operacao=upload' "$DBX_SAIDA" 'a operacao deve constar da saida'
+  assert_contem 'rev=016' "$DBX_SAIDA" 'o metadado do finish deve ser publicado'
+  assert_contem 'bytes_enviados=5242880' "$DBX_SAIDA" \
+    'RF-31: o tamanho corresponde ao total de bytes lidos da entrada padrao'
+  assert_igual 1 "$(_harness_contar 'alvo=start' "$base/chamadas")" 'uma sessao'
+  assert_igual 1 "$(_harness_contar 'alvo=append' "$base/chamadas")" 'um bloco cheio'
+  assert_igual 1 "$(_harness_contar 'alvo=finish' "$base/chamadas")" 'uma conclusao'
+  assert_igual 0 "$(_harness_contar 'files/upload$' "$base/argv")" \
+    'o fluxo nunca pode cair na requisicao unica'
+}
+
+teste_upload_de_entrada_padrao_confere_o_resumo_devolvido_pelo_servico() {
+  local base entrada esperado
+  base=$(_ambiente_sessao)
+  entrada="$base/fluxo.bin"
+  head -c 4194304 /dev/zero >"$entrada"
+  esperado=$(dbx_hash_conteudo_arquivo "$entrada")
+  printf '%s' "{\"name\":\"a.bin\",\"rev\":\"017\",\"content_hash\":\"$esperado\"}" \
+    >"$base/corpo_finish"
+  _rodar_com_fluxo "$base" "$entrada" --json upload - /r/a.bin
+  assert_igual 0 "$DBX_ESTADO" "envio por fluxo deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'integridade=conferida' "$DBX_SAIDA" \
+    'RF-31: o content_hash corresponde ao calculado sobre o fluxo consumido'
+}
+
+teste_upload_de_entrada_padrao_com_resumo_divergente_sai_por_integridade() {
+  local base entrada
+  base=$(_ambiente_sessao '{"name":"a.bin","content_hash":"0000000000000000000000000000000000000000000000000000000000000000"}')
+  entrada="$base/fluxo.bin"
+  head -c 1024 /dev/zero >"$entrada"
+  _rodar_com_fluxo "$base" "$entrada" --json upload - /r/a.bin
+  assert_igual "$(dbx_errors_codigo_saida integridade)" "$DBX_ESTADO" \
+    'resumo divergente nao pode sair como sucesso'
+}
+
+teste_upload_de_entrada_padrao_em_simulacao_nao_emite_chamada() {
+  # RF-15 no ramo novo. O gate vive ANTES da bifurcacao entre requisicao unica e
+  # sessao, para que nao exista caminho de escrita que o pule.
+  local base entrada
+  base=$(_ambiente_sessao)
+  entrada="$base/fluxo.bin"
+  head -c 1024 /dev/zero >"$entrada"
+  _rodar_com_fluxo "$base" "$entrada" --dry-run --json upload - /r/a.bin
+  assert_igual 0 "$DBX_ESTADO" "RF-15: simulacao conclui com zero; diagnostico: $DBX_ERRO"
+  assert_contem 'simulado=sim' "$DBX_SAIDA" 'o plano deve ser impresso'
+  assert_arquivo_ausente "$base/argv" 'RF-15: nenhuma chamada e emitida em simulacao'
+}
+
+teste_upload_de_arquivo_abaixo_do_teto_vai_por_requisicao_unica() {
+  # O par deste caso e o de roteamento acima do teto. Verificados pelo `argv`
+  # registrado, e nao pela ausencia de erro: os dois caminhos concluem bem, e
+  # so o registro distingue qual foi usado.
+  local base origem
+  base=$(_ambiente_sessao)
+  origem="$base/pequeno.bin"
+  head -c 1024 /dev/zero >"$origem"
+  _rodar "$base" --json upload "$origem" /r/a.bin
+  assert_igual 0 "$DBX_ESTADO" "upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" \
+    'RF-08: abaixo do teto o envio continua em requisicao unica'
+  assert_igual 0 "$(_harness_contar 'alvo=start' "$base/chamadas")" \
+    'nenhuma sessao e aberta abaixo do teto'
+}
+
+teste_upload_de_arquivo_acima_do_teto_vai_por_sessao() {
+  # RF-08. O arquivo e esparso: o que se verifica e o ROTEAMENTO POR TAMANHO
+  # MEDIDO, e materializar 150 MiB de conteudo real so encareceria a suite sem
+  # mudar a propriedade observada.
+  local base origem
+  base=$(_ambiente_sessao)
+  origem="$base/grande.bin"
+  dd if=/dev/null of="$origem" bs=1 seek=$((157286400 + 1)) 2>/dev/null ||
+    pular 'nao foi possivel criar arquivo esparso acima do teto'
+  _rodar "$base" --json upload "$origem" /r/a.bin
+  assert_igual 0 "$DBX_ESTADO" "upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_harness_contar 'files/upload$' "$base/argv")" \
+    'RF-08: acima do teto nenhuma requisicao unica pode ser emitida'
+  assert_igual 1 "$(_harness_contar 'alvo=start' "$base/chamadas")" \
+    'RF-08: acima do teto o envio e roteado para a sessao em partes'
+  assert_contem 'bytes_enviados=157286401' "$DBX_SAIDA" \
+    'o total enviado e o tamanho real do arquivo'
 }
 
 teste_upload_em_simulacao_nao_invoca_o_cliente() {

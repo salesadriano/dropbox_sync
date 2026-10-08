@@ -218,4 +218,117 @@ teste_assercao_de_status_reprova_quando_o_codigo_difere() {
   assert_igual 0 $? 'assert_status tem de aprovar com codigo igual'
 }
 
+# ---------------------------------------------------------------------------
+# AUXILIAR REDEFINIDO DENTRO DO MESMO ARQUIVO — defeito de INSTRUMENTO.
+#
+# Custou um ciclo nesta entrega. Um auxiliar novo recebeu o nome de outro que ja
+# existia mais ABAIXO no mesmo arquivo, com contrato diferente: um recebia o
+# CAMINHO de um arquivo de origem, o outro o TEXTO a alimentar. Como a definicao
+# posterior vence, o caminho passou a ser gravado num arquivo e servido como se
+# fosse o conteudo. O comando sob teste leu 41 bytes de um fluxo de 5 MiB e a
+# suite reprovou a IMPLEMENTACAO por um defeito do proprio instrumento.
+#
+# Nada apanhava a classe: o arcabouco so enumera funcoes `teste_`, `shellcheck`
+# nao reclama de redefinicao e a auditoria de colisao de funcao publica olha
+# `lib/`, nao `tests/`. Um instrumento silenciosamente trocado nao produz
+# reprovacao — produz reprovacao NO LUGAR ERRADO, que e pior.
+#
+# O universo deriva do artefato: as proprias definicoes de funcao de cada
+# arquivo de teste. Nao ha lista mantida a mao.
+# ---------------------------------------------------------------------------
+
+# AS TRES FORMAS DE DEFINIR FUNCAO EM `bash`, e por que as tres importam.
+#
+# O reconhecedor anterior via UMA: `nome() {`. As outras duas passavam batido, e
+# ambas redefinem de verdade — MEDIDO, e nao deduzido da gramatica:
+#   f() { echo A; }; f () { echo B; }; f            -> B
+#   f() { echo A; }; function f { echo B; }; f      -> B
+#   function f { echo A; }; f() { echo B; }; f      -> B
+#
+# Uma auditoria que reconhece um terco das formas nao e uma auditoria com
+# lacuna: e uma auditoria que DECLARA garantia e entrega um terco dela. E RSK-27
+# na forma exata — instrumento que certifica propriedade que nao verifica.
+#
+# `function nome ()` — as duas sintaxes juntas — casa SO pelo segundo padrao: o
+# primeiro exige que o nome comece a linha, e ali a linha comeca por `function`.
+# Sem isso a mesma definicao seria contada duas vezes e viraria falso positivo.
+
+# _definicoes_de_funcao_em <arquivo> — nomes definidos no proprio texto, nas
+# tres formas.
+_definicoes_de_funcao_em() {
+  grep -oE '^[[:space:]]*[_a-zA-Z][_a-zA-Z0-9]*[[:space:]]*\(\)' "$1" |
+    sed -E 's/[[:space:]]//g; s/\(\)$//'
+  grep -oE '^[[:space:]]*function[[:space:]]+[_a-zA-Z][_a-zA-Z0-9]*' "$1" |
+    sed -E 's/^[[:space:]]*function[[:space:]]+//'
+}
+
+teste_nenhum_arquivo_de_teste_redefine_uma_funcao_propria() {
+  local arquivo repetidas achados=''
+
+  # PROVA DE DISCRIMINACAO ANTES DE VARRER, POR FORMA (RSK-27): o reconhecedor
+  # precisa acusar cada forma que procura e absolver a forma legitima. Sem os
+  # dois sentidos uma auditoria vazia daria zero reprovacoes e pareceria uma
+  # garantia. Um par para o conjunto das formas nao basta: era exatamente com um
+  # par so que duas das tres formas passavam.
+  local amostra_ruim="$DBX_TESTES_TMP/dup-ruim.$$.sh"
+  local amostra_boa="$DBX_TESTES_TMP/dup-boa.$$.sh"
+  local forma abertura
+  for forma in parenteses parenteses_com_espaco palavra_function; do
+    case $forma in
+      parenteses) abertura='_auxiliar() {' ;;
+      parenteses_com_espaco) abertura='_auxiliar () {' ;;
+      palavra_function) abertura='function _auxiliar {' ;;
+    esac
+    {
+      printf '%s\n  :\n}\n' "$abertura"
+      printf 'teste_um() { :; }\n'
+      printf '%s\n  :\n}\n' "$abertura"
+    } >"$amostra_ruim"
+    repetidas=$(_definicoes_de_funcao_em "$amostra_ruim" | sort | uniq -d)
+    [[ $repetidas == '_auxiliar' ]] ||
+      _harness_falhar "o reconhecedor nao detecta a redefinicao na forma '$forma'" \
+        "abertura: [$abertura]" "obtido: [$repetidas]"
+
+    # A forma MISTA definida uma unica vez nao pode ser contada duas: seria
+    # falso positivo produzido pelo proprio instrumento.
+    {
+      printf '%s\n  :\n}\n' "$abertura"
+      printf 'function _misto () {\n  :\n}\n'
+      printf 'teste_um() { :; }\n'
+    } >"$amostra_boa"
+    repetidas=$(_definicoes_de_funcao_em "$amostra_boa" | sort | uniq -d)
+    [[ -z $repetidas ]] ||
+      _harness_falhar "o reconhecedor acusa arquivo legitimo na forma '$forma': reprovaria por engano" \
+        "obtido: [$repetidas]"
+  done
+
+  # Redefinicao ENTRE formas diferentes — o caso que um reconhecedor por forma
+  # unica jamais veria, e que redefine do mesmo jeito.
+  {
+    printf '_auxiliar() {\n  :\n}\n'
+    printf 'teste_um() { :; }\n'
+    printf 'function _auxiliar {\n  :\n}\n'
+  } >"$amostra_ruim"
+  repetidas=$(_definicoes_de_funcao_em "$amostra_ruim" | sort | uniq -d)
+  [[ $repetidas == '_auxiliar' ]] ||
+    _harness_falhar 'o reconhecedor nao detecta redefinicao que troca de forma' \
+      "obtido: [$repetidas]"
+  rm -f "$amostra_ruim" "$amostra_boa"
+
+  local vistos=0
+  for arquivo in "$DBX_HARNESS_RAIZ"/tests/unit/*_test.sh \
+    "$DBX_HARNESS_RAIZ"/tests/integracao/*_test.sh \
+    "$DBX_HARNESS_RAIZ"/tests/support/*.sh; do
+    [[ -e $arquivo ]] || continue
+    vistos=$((vistos + 1))
+    repetidas=$(_definicoes_de_funcao_em "$arquivo" | sort | uniq -d)
+    [[ -n $repetidas ]] && achados+=" ${arquivo##*/}:${repetidas//$'\n'/,}"
+  done
+  [[ $vistos -ge 5 ]] ||
+    _harness_falhar 'a varredura nao alcancou os arquivos de teste: seria vacua' \
+      "arquivos vistos: $vistos"
+  assert_igual '' "$achados" \
+    "funcao redefinida dentro do mesmo arquivo de teste; a segunda definicao vence em silencio:$achados"
+}
+
 harness_executar "$@"

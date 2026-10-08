@@ -777,11 +777,51 @@ teste_falha_no_meio_de_listagem_paginada_nao_acumula() {
 # Regra adotada: massa adversarial se constroi com `$'...'` ou `printf -v`,
 # nunca com substituicao de comando, que remove quebras finais e converte massa
 # invalida em valida em silencio.
+#
+# UNIVERSO DA REGRA, corrigido no ciclo 1 de QA (achado A6). A varredura cobria
+# `tests/unit` e `tests/support` e deixava `tests/integracao` de fora. O recorte
+# ESCONDIA uma violacao viva: `composicao_test.sh` construia dois valores com
+# `$(printf '%s' ... | tr ...)`. Eram usos legitimos no merito — troca de caixa,
+# nao massa adversarial — mas a regra escrita nao abria excecao para eles, e
+# regra sem o conjunto de lugares onde incide enumerado e a disciplina central
+# que este projeto verifica em toda parte.
+#
+# Escolha entre as duas saidas possiveis: os dois usos MIGRARAM, e a regra
+# continua sem excecao. A alternativa — escrever um criterio de "uso legitimo" —
+# criaria uma segunda regra, mantida a mao, que divergiria da primeira.
+#
+# Nota sobre o mecanismo: `printf -v` nao troca a caixa de uma cadeia, entao a
+# migracao chegou em `${x^^}` / `${x,,}`, que e o mesmo destino — sem
+# substituicao de comando — sem subshell nenhum.
 # ---------------------------------------------------------------------------
 
 teste_massa_adversarial_nao_e_construida_por_substituicao_de_comando() {
   local arquivo codigo achados
-  for arquivo in "$DBX_HARNESS_RAIZ"/tests/unit/*.sh "$DBX_HARNESS_RAIZ"/tests/support/*.sh; do
+
+  # PROVA DE DISCRIMINACAO ANTES DE VARRER (RSK-27): o padrao precisa acusar a
+  # construcao que proibe e absolver a que recomenda. Sem os dois sentidos uma
+  # varredura que nunca casa nada pareceria garantia.
+  # A amostra ruim e montada por CONCATENACAO, de proposito: escrita literal,
+  # ela apareceria no texto deste arquivo e a regra apanharia a propria sonda.
+  # Medido — a primeira versao desta prova reprovou a si mesma. E RSK-28 mais uma
+  # vez: o instrumento de observacao interferindo na propriedade observada.
+  local amostra="$DBX_TESTES_TMP/massa-rsk28.$$.sh"
+  local abre='$(' prog='printf'
+  printf 'valor=%s%s "%%s" "x")\n' "$abre" "$prog" >"$amostra"
+  grep -qE '[$]\(printf' "$amostra" ||
+    _harness_falhar 'o padrao nao detecta a construcao que proibe'
+  printf 'printf -v valor %%s x\n' >"$amostra"
+  printf 'outro=%s\n' "\$'a\\nb'" >>"$amostra"
+  grep -qE '[$]\(printf' "$amostra" &&
+    _harness_falhar 'o padrao acusa a construcao recomendada: reprovaria por engano'
+  rm -f "$amostra"
+
+  local vistos=0
+  for arquivo in "$DBX_HARNESS_RAIZ"/tests/unit/*.sh \
+    "$DBX_HARNESS_RAIZ"/tests/integracao/*.sh \
+    "$DBX_HARNESS_RAIZ"/tests/support/*.sh; do
+    [[ -e $arquivo ]] || continue
+    vistos=$((vistos + 1))
     codigo=$(grep -vE '^[[:space:]]*#' "$arquivo")
     achados=$(grep -nE '[$]\(printf' <<<"$codigo" || true)
     if [[ -n $achados ]]; then
@@ -790,6 +830,12 @@ teste_massa_adversarial_nao_e_construida_por_substituicao_de_comando() {
         "use \$'...' ou printf -v: a substituicao remove quebras finais e pode tornar valida uma massa que deveria ser invalida"
     fi
   done
+  # O universo vem de globs. Glob que nao expande deixaria a varredura vacua e
+  # ela aprovaria sem ler nada — foi o recorte, e nao a regra, que escondeu a
+  # violacao de `tests/integracao`.
+  [[ $vistos -ge 10 ]] ||
+    _harness_falhar 'a varredura nao alcancou os arquivos de teste: seria vacua' \
+      "arquivos vistos: $vistos"
 }
 
 # ---------------------------------------------------------------------------
