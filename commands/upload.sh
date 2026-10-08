@@ -43,10 +43,9 @@
 # que sai com status 3 apos escrever um prefixo faz este comando sair com ZERO;
 # com `pipefail`, o encadeamento devolve 3.
 #
-# PENDENCIA DECLARADA: essa recomendacao vive hoje so em comentario, e o
-# operador nao le comentario. O lugar dela e o texto de ajuda, que mora em
-# `bin/dbx` — arquivo fora do alcance desta entrega por haver revisao aberta
-# sobre ele.
+# PENDENCIA ATENDIDA (RSK-36 / DIV-18 / DP-29): essa recomendacao operacional
+# para encadeamento via entrada padrao (-) foi formalmente incorporada ao texto
+# de ajuda de `bin/dbx` (`dbx help` e `dbx help upload`).
 
 dbx_cmd_upload_requisitos() { printf 'credencial'; }
 
