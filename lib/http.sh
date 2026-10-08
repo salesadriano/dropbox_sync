@@ -162,6 +162,14 @@ _dbx_http_interpretar_erro() {
     if dbx_json_valor error_summary >/dev/null; then
       DBX_HTTP_RESUMO_DE_ERRO=$DBX_JSON_RESULTADO
     fi
+  else
+    local primeira_linha=''
+    IFS= read -r primeira_linha <<<"$corpo"
+    primeira_linha=${primeira_linha//$'\r'/}
+    if [[ -n $primeira_linha ]]; then
+      dbx_errors_redigir "$primeira_linha" >/dev/null
+      DBX_HTTP_RESUMO_DE_ERRO=${DBX_ERRORS_REDIGIDO:0:120}
+    fi
   fi
   dbx_json_descartar http_erro
   dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
@@ -210,6 +218,7 @@ _dbx_http_opcoes() {
       ;;
     *)
       printf 'header = "Authorization: Bearer %s"\n' "$_DBX_HTTP_TOKEN"
+      printf 'header = "Content-Type: application/json"\n'
       ;;
   esac
 }

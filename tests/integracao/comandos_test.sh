@@ -151,6 +151,14 @@ teste_space_legivel_por_humano_sob_sinalizador() {
   assert_contem 'usado_legivel=2 MiB' "$DBX_SAIDA" 'apresentacao legivel'
 }
 
+teste_space_aceita_sinalizador_humano() {
+  local base
+  base=$(_ambiente '{"used":2097152,"allocation":{"allocated":1073741824}}')
+  _rodar "$base" --json space --humano
+  assert_igual 0 "$DBX_ESTADO" "space --humano deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'usado_legivel=2 MiB' "$DBX_SAIDA" 'apresentacao legivel sob --humano'
+}
+
 teste_info_emite_metadado_do_item() {
   local base
   base=$(_ambiente '{".tag":"file","name":"a.txt","path_display":"/a.txt","size":12,"rev":"0159","content_hash":"abc"}')
@@ -266,6 +274,22 @@ teste_list_envia_limite_explicito_em_toda_chamada() {
   assert_igual "$chamadas" "$sem_limite" 'toda chamada de listagem deve existir'
 }
 
+teste_list_envia_content_type_json() {
+  local base
+  base=$(_ambiente '{"entries":[],"has_more":false}')
+  _rodar "$base" list /pasta
+  assert_igual 0 "$DBX_ESTADO" "list deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'header = "Content-Type: application/json"' "$(cat "$base/opcoes" 2>/dev/null)" \
+    'chamada RPC de listagem exige cabeçalho Content-Type application/json explícito'
+}
+
+teste_list_aceita_sinalizadores_em_portugues() {
+  local base
+  base=$(_ambiente '{"entries":[],"has_more":false}')
+  _rodar "$base" list /pasta --limite 50 --recursivo
+  assert_igual 0 "$DBX_ESTADO" "list --limite --recursivo deve concluir; diagnostico: $DBX_ERRO"
+}
+
 teste_list_recusa_limite_fora_do_teto() {
   local base
   base=$(_ambiente '{}')
@@ -322,6 +346,14 @@ teste_delete_conclui_e_emite_metadado() {
   assert_igual 0 "$DBX_ESTADO" "delete deve concluir; diagnostico: $DBX_ERRO"
   assert_contem 'operacao=delete' "$DBX_SAIDA" 'operacao'
   assert_contem 'name=a.txt' "$DBX_SAIDA" 'metadado do item removido'
+}
+
+teste_delete_aceita_sinalizador_confirmar() {
+  local base
+  base=$(_ambiente '{"metadata":{".tag":"file","name":"a.txt"}}')
+  _rodar "$base" --json delete /a.txt --confirmar
+  assert_igual 0 "$DBX_ESTADO" "delete --confirmar deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'operacao=delete' "$DBX_SAIDA" 'operacao sob --confirmar'
 }
 
 teste_delete_com_rev_carrega_o_rev_esperado() {
