@@ -91,7 +91,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       config)
-        printf 'Uso: dbx config [--trocar-aplicativo] [--trocar-chave]\n\n'
+        printf 'Uso: dbx config [--substituir] [--raiz <caminho>]\n\n'
         printf 'Configura credencial e pareamento com a conta do Dropbox via fluxo OAuth2 offline.\n'
         exit 0
         ;;
@@ -111,12 +111,12 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       list)
-        printf 'Uso: dbx list [--limite <n>] <caminho_remoto>\n\n'
+        printf 'Uso: dbx list [--limite <n>] [--recursivo] <caminho_remoto>\n\n'
         printf 'Lista o conteudo de pasta remota com paginacao automatica.\n'
         exit 0
         ;;
       delete)
-        printf 'Uso: dbx delete [--confirmar] [--rev <rev>] <caminho_remoto>\n\n'
+        printf 'Uso: dbx delete [--confirmar | --yes] [--rev <rev>] <caminho_remoto>\n\n'
         printf 'Remove arquivo ou pasta no Dropbox.\n'
         exit 0
         ;;
@@ -126,7 +126,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       space)
-        printf 'Uso: dbx space [--humano]\n\n'
+        printf 'Uso: dbx space [--humano | -H]\n\n'
         printf 'Exibe capacidade total e espaco utilizado na conta Dropbox.\n'
         exit 0
         ;;

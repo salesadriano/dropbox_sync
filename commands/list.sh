@@ -13,8 +13,8 @@ dbx_cmd_list_executar() {
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
-      --recursive | -R) recursivo='true' ;;
-      --limit)
+      --recursivo | --recursive | -R) recursivo='true' ;;
+      --limite | --limit)
         shift
         limite=${1-}
         [[ $limite =~ ^[0-9]+$ && $limite -ge 1 && $limite -le 100 ]] || {

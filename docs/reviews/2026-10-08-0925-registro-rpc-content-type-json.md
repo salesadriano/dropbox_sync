@@ -46,20 +46,27 @@ A investigacao identificou duas causas correlacionadas:
 3. **Testes de Integracao (`tests/integracao/comandos_test.sh`):**
    - Adicionado `teste_list_envia_content_type_json`, assegurando que o comando `dbx list` envie o cabecalho `Content-Type: application/json` nas opcoes passadas ao transporte.
 
+4. **Alinhamento de Sinalizadores em Portugues e Ajuda CLI (Prompt 2):**
+   - `commands/space.sh`: adicionado suporte a `--humano` (alem de `--human | -H`).
+   - `commands/delete.sh`: adicionado suporte a `--confirmar` (alem de `--yes | -y`).
+   - `commands/list.sh`: adicionado suporte a `--limite` e `--recursivo` (alem de `--limit` e `--recursive | -R`).
+   - `bin/dbx`: texto de ajuda alinhado para exibir as opcoes reais de cada comando (`space [--humano | -H]`, `delete [--confirmar | --yes]`, `list [--limite <n>] [--recursivo]`, `config [--substituir] [--raiz <caminho>]`).
+
 ---
 
 ## Evidencias de Validacao
 
 - **TDD:**
-  - Fase vermelha observada nos 2 novos testes unitarios (`http_test.sh`), comprovando a falha antes da correcao.
-  - Fase verde confirmada apos implementacao em `lib/http.sh`.
+  - Fase vermelha observada nos 2 novos testes unitarios (`http_test.sh`) e nos 3 testes integrados de sinalizadores (`comandos_test.sh`).
+  - Fase verde confirmada apos implementacoes em `lib/http.sh`, `commands/space.sh`, `commands/delete.sh` e `commands/list.sh`.
 - **Validacao contra a API Real do Dropbox:**
   - `./bin/dbx list` executado com exito na conta real do usuario, listando 22 pastas remotas com saida estruturada e saida 0.
-  - `./bin/dbx space -H` executado com exito, exibindo uso (24 TiB) e cota (31 TiB) reais da conta com saida 0.
+  - `./bin/dbx space --humano` executado com exito, exibindo uso (22 TiB) e cota (31 TiB) reais da conta com saida 0.
+  - `./bin/dbx space -H` e `./bin/dbx space -h` testados e validados.
 - **Suite de testes completa (`tests/run.sh`):**
-  - 18 arquivos executados, 559 casos aprovados, 0 reprovados, 2 pulados.
+  - 18 arquivos executados, 562 casos aprovados, 0 reprovados, 2 pulados.
 - **Verificacao de contagem de casos (`scripts/verificar-remocao-de-casos.sh`):**
-  - 558 -> 561 casos (+3 casos adicionados, nenhuma reducao).
+  - 558 -> 564 casos (+6 casos adicionados, nenhuma reducao).
 - **Linter (`shellcheck`):**
   - Zero apontamentos em `lib/*.sh commands/*.sh bin/* scripts/*.sh`.
 - **Deteccao de alteracoes externas (`scripts/alteracoes-externas.sh`):**
@@ -70,4 +77,4 @@ A investigacao identificou duas causas correlacionadas:
 ## Parecer do Tech Lead
 
 - **Status:** Aprovado para integracao em `develop`.
-- **Compatibilidade:** Retrocompativel e compativel com o contrato de transporte da API Dropbox v2.
+- **Compatibilidade:** Retrocompativel e compativel com a documentacao e contratos de linha de comando.
