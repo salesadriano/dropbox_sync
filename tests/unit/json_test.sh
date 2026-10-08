@@ -463,6 +463,10 @@ _captura_com_alfabeto_fechado() {
   case $1 in
     dbx_errors_codigo_saida | dbx_errors_classificar | _dbx_errors_classe_da_tag) return 0 ;;
     dbx_errors_politica_retentativa | dbx_json_tipo) return 0 ;;
+    # Devolve a contagem do arranjo, que o proprio analisador mantem: o alfabeto
+    # e de digitos, e nada do documento externo atravessa. Entrou na lista quando
+    # `lib/sync` passou a percorrer paginas de listagem.
+    dbx_json_tamanho_arranjo) return 0 ;;
     _dbx_hash_sha256_hex | _dbx_hash_calcular) return 0 ;;
     sha256sum | shasum | openssl) return 0 ;;
     stat | wc | umask | id | nproc) return 0 ;;
@@ -480,7 +484,7 @@ teste_nenhuma_captura_pode_carregar_byte_externo() {
     _captura_com_alfabeto_fechado "$ruim" &&
       _harness_falhar "'$ruim' pode carregar byte externo e nao pode ser excecao"
   done
-  for bom in stat mktemp printf dbx_errors_codigo_saida; do
+  for bom in stat mktemp printf dbx_errors_codigo_saida dbx_json_tamanho_arranjo; do
     _captura_com_alfabeto_fechado "$bom" ||
       _harness_falhar "'$bom' tem alfabeto fechado e seria reprovado por engano"
   done

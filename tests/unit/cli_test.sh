@@ -14,7 +14,7 @@
 
 teste_comando_conhecido_e_aceito() {
   local nome
-  for nome in upload download list delete info space config unlink; do
+  for nome in upload download list delete info space config unlink sync; do
     dbx_cli_comando_valido "$nome" ||
       _harness_falhar "comando previsto no bloco foi recusado: $nome"
   done
@@ -23,9 +23,10 @@ teste_comando_conhecido_e_aceito() {
 
 teste_comando_desconhecido_e_recusado() {
   local nome
-  # `sync` continua fora: recusado como qualquer nome desconhecido, e nao aceito
-  # para falhar adiante com mensagem de outro assunto.
-  for nome in sync inexistente ''; do
+  # O conjunto fechado ficou completo com `sync`. O que precisa continuar sendo
+  # recusado e o que nunca sera comando — inclusive as formas quase certas, que
+  # sao as que um `case` mal escrito deixaria passar.
+  for nome in inexistente '' 'sync ' ' sync' 'sync;rm'; do
     dbx_cli_comando_valido "$nome" &&
       _harness_falhar "comando fora do bloco foi aceito: [$nome]"
   done

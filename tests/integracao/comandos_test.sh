@@ -94,11 +94,11 @@ teste_comando_desconhecido_sai_com_uso_invalido() {
 teste_comando_do_bloco_seguinte_e_recusado_e_nao_silenciosamente_aceito() {
   local base nome
   base=$(_ambiente '{}')
-  # shellcheck disable=SC2043
-  # Justificativa: e um CONJUNTO — o dos comandos ainda fora do bloco — que hoje
-  # tem um membro so. Desfazer o laco esconderia a natureza da lista e obrigaria
-  # a reescreve-lo quando `sync` sair dela.
-  for nome in sync; do
+  # O conjunto dos comandos fora do bloco ficou VAZIO com a entrada de `sync`, e
+  # o caso passa a exercitar so nomes que nunca serao comandos. O laco fica
+  # porque a pergunta continua a mesma: nome desconhecido e recusado, e nao
+  # aceito para falhar adiante com mensagem de outro assunto.
+  for nome in sincronizar syncc ' sync' 'sync '; do
     _rodar "$base" "$nome"
     assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
       "comando fora do bloco deve ser recusado: $nome"

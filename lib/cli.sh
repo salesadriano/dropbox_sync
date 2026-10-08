@@ -84,12 +84,11 @@ DBX_CLI_MOTIVO=''
 
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
 #
-# Bloco corrente: oito comandos. `sync` fica de fora deliberadamente e e recusado
-# como qualquer outro nome desconhecido, em vez de aceito e falhando adiante.
+# Conjunto FECHADO e agora COMPLETO: os nove comandos de `DP-06` e `DP-25`.
 dbx_cli_comando_valido() {
   case ${1-} in
     upload | download | list | delete | info | space) return 0 ;;
-    config | unlink) return 0 ;;
+    config | unlink | sync) return 0 ;;
     help | version) return 0 ;;
   esac
   return 1
@@ -111,6 +110,7 @@ _dbx_cli_arquivo_do_comando() {
     space) printf '%s' "$raiz/commands/space.sh" ;;
     config) printf '%s' "$raiz/commands/config.sh" ;;
     unlink) printf '%s' "$raiz/commands/unlink.sh" ;;
+    sync) printf '%s' "$raiz/commands/sync.sh" ;;
     *) return 1 ;;
   esac
 }
