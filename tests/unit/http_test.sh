@@ -371,6 +371,24 @@ teste_contrato_opcoes_de_token_sao_aceitas_pelo_cliente_real() {
   assert_igual 7 "$DBX_ESTADO_REAL" 'cabecalho de autorizacao gerado foi recusado'
 }
 
+teste_opcoes_de_bearer_incluem_content_type_json() {
+  _DBX_HTTP_MODO=bearer
+  _DBX_HTTP_TOKEN='token_teste'
+  local opcoes
+  opcoes=$(_dbx_http_opcoes)
+  assert_contem 'header = "Content-Type: application/json"' "$opcoes" \
+    'chamadas rpc exigem cabeçalho Content-Type application/json explícito'
+  assert_contem 'header = "Authorization: Bearer token_teste"' "$opcoes" \
+    'cabeçalho de autorização deve estar presente'
+}
+
+teste_interpretacao_de_erro_nao_json_preserva_mensagem_textual() {
+  local corpo='Error in call to API function "files/list_folder": Expected Content-Type to be application/json'
+  _dbx_http_interpretar_erro "$corpo"
+  assert_contem 'Expected Content-Type to be application/json' "$DBX_HTTP_RESUMO_DE_ERRO" \
+    'erro em texto puro da API deve ser preservado para diagnóstico'
+}
+
 teste_contrato_corpo_ilegivel_produz_status_de_defeito_nosso() {
   command -v curl >/dev/null 2>&1 || pular 'curl ausente'
   _estado_do_cliente_real -s --data-binary '@/caminho/que/nao/existe' \

@@ -68,6 +68,28 @@ teste_opcoes_globais_antes_do_comando() {
   assert_igual '/a' "${DBX_CLI_ARGS[0]}" 'argumento do comando'
 }
 
+teste_opcoes_de_progresso_reconhecidas_globalmente() {
+  dbx_cli_analisar --progresso list /a
+  assert_igual 0 $? 'analise com --progresso'
+  assert_igual 'sim' "$DBX_CLI_PROGRESSO" 'progresso ativado por --progresso'
+
+  dbx_cli_analisar --progress list /a
+  assert_igual 0 $? 'analise com --progress'
+  assert_igual 'sim' "$DBX_CLI_PROGRESSO" 'progresso ativado por --progress'
+
+  dbx_cli_analisar -p list /a
+  assert_igual 0 $? 'analise com -p'
+  assert_igual 'sim' "$DBX_CLI_PROGRESSO" 'progresso ativado por -p'
+
+  dbx_cli_analisar --sem-progresso list /a
+  assert_igual 0 $? 'analise com --sem-progresso'
+  assert_igual 'nao' "$DBX_CLI_PROGRESSO" 'progresso desativado por --sem-progresso'
+
+  dbx_cli_analisar --no-progress list /a
+  assert_igual 0 $? 'analise com --no-progress'
+  assert_igual 'nao' "$DBX_CLI_PROGRESSO" 'progresso desativado por --no-progress'
+}
+
 teste_opcoes_apos_o_comando_pertencem_ao_comando() {
   # `--json` depois do subcomando NAO e opcao global: pertence ao comando, que
   # pode ter opcao de mesmo nome. Sem esta fronteira, o despacho consumiria

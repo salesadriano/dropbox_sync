@@ -12,7 +12,7 @@ dbx_cmd_delete_executar() {
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
-      --yes | -y) confirmado='sim' ;;
+      --confirmar | --yes | -y) confirmado='sim' ;;
       --rev)
         shift
         rev=${1-}

@@ -73,13 +73,14 @@ DBX_CLI_CARREGADO=1
 
 DBX_CLI_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 
-readonly DBX_CLI_VERSAO='1.0.0'
+readonly DBX_CLI_VERSAO='1.1.0'
 
 DBX_CLI_COMANDO=''
 DBX_CLI_ARGS=()
 DBX_CLI_ESTRUTURADA='nao'
 DBX_CLI_NULO='nao'
 DBX_CLI_SIMULACAO='nao'
+DBX_CLI_PROGRESSO='auto'
 DBX_CLI_MOTIVO=''
 
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
@@ -139,6 +140,7 @@ dbx_cli_analisar() {
   DBX_CLI_ESTRUTURADA='nao'
   DBX_CLI_NULO='nao'
   DBX_CLI_SIMULACAO='nao'
+  DBX_CLI_PROGRESSO='auto'
   DBX_CLI_MOTIVO=''
 
   while [[ $# -gt 0 ]]; do
@@ -146,6 +148,8 @@ dbx_cli_analisar() {
       --json) DBX_CLI_ESTRUTURADA='sim' ;;
       --null) DBX_CLI_NULO='sim' ;;
       --dry-run) DBX_CLI_SIMULACAO='sim' ;;
+      --progresso | --progress | -p) DBX_CLI_PROGRESSO='sim' ;;
+      --sem-progresso | --no-progress) DBX_CLI_PROGRESSO='nao' ;;
       --help | -h)
         DBX_CLI_COMANDO='help'
         return 0

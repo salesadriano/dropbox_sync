@@ -13,7 +13,7 @@ dbx_cmd_space_executar() {
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
-      --human | -H) legivel='sim' ;;
+      --humano | --human | -H) legivel='sim' ;;
       *)
         dbx_cmd_falhar uso_invalido "argumento nao reconhecido: $1"
         return $?

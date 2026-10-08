@@ -350,4 +350,39 @@ teste_recebimento_grava_no_local_e_cria_as_pastas_intermediarias() {
   assert_arquivo_existe "$base/local/sub/fundo/a.txt" 'as pastas intermediarias sao criadas'
 }
 
+teste_recebimento_cria_diretorio_de_destino_caso_nao_exista() {
+  local base
+  base=$(_cenario)
+  local destino_novo="$base/local/nova_pasta/subpasta"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' 'ff' 3)" >"$base/listagem"
+  _rodar "$base" --json sync --receber --origem /r --destino "$destino_novo"
+  assert_igual 0 "$DBX_ESTADO" "recebimento com destino novo deve concluir; diagnostico: $DBX_ERRO"
+  assert_arquivo_existe "$destino_novo" 'o diretorio raiz de destino inexistente deve ser criado'
+  assert_sucesso test -d "$destino_novo"
+  assert_arquivo_existe "$destino_novo/a.txt" 'o arquivo deve ser gravado dentro do novo destino'
+}
+
+teste_sync_com_progresso_emite_em_stderr_e_preserva_stdout() {
+  local base
+  base=$(_cenario)
+  printf 'conteudo' >"$base/local/a.txt"
+  _rodar "$base" --progresso sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[sync' "$DBX_ERRO" 'stderr deve conter marcadores de progresso do sync'
+  assert_nao_contem '[sync' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
+}
+
+teste_sync_com_progresso_lista_arquivos_e_resultados_da_analise() {
+  local base
+  base=$(_cenario)
+  printf 'conteudo 1' >"$base/local/arq1.txt"
+  printf 'conteudo 2' >"$base/local/arq2.txt"
+  _rodar "$base" --progresso sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'analisando local (1/2): arq' "$DBX_ERRO" 'deve listar analise de arquivo local'
+  assert_contem 'analise [' "$DBX_ERRO" 'deve listar resultado da analise'
+  assert_contem 'novo (a enviar)' "$DBX_ERRO" 'resultado deve classificar arquivo novo'
+}
+
 harness_executar "$@"
+

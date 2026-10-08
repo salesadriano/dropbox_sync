@@ -38,20 +38,34 @@ _ambiente() {
     # padrao, justamente para o segredo ficar fora da tabela de processos.
     # Descartar a entrada aqui tornaria invisivel tudo o que se quer verificar
     # sobre cabecalhos.
-    printf 'cat >>"$base/opcoes" 2>/dev/null\n'
-    printf 'saida=""; escrever=""; anterior=""; url=""\n'
+    printf 'opcoes=$(cat)\n'
+    printf 'printf "%%s\\n" "$opcoes" >>"$base/opcoes"\n'
+    printf 'saida=""; escrever=""; anterior=""; url=""; fail="nao"\n'
     printf 'for arg in "$@"; do\n'
     printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac\n'
-    printf '  case $arg in http*) url=$arg ;; esac\n'
+    printf '  case $arg in http*) url=$arg ;; --fail) fail="sim" ;; esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
     printf 'if [[ $url == *oauth2/token* ]]; then\n'
     printf '  corpo=%s; codigo=200\n' "'{\"access_token\":\"sl.t\",\"token_type\":\"bearer\",\"expires_in\":14400}'"
+    printf 'elif [[ $url == *get_current_account* ]]; then\n'
+    printf '  corpo=%s; codigo=200\n' "'{\"account_id\":\"dbid:CONTA\"}'"
+    printf 'elif [[ $url == *list_folder* && -f "$base/listagem" ]]; then\n'
+    printf '  corpo=$(cat "$base/listagem"); codigo=200\n'
+    printf 'elif [[ $url == *files/download* && -f "$base/download_corpo" ]]; then\n'
+    printf '  if [[ $opcoes == *relatorio.txt* ]]; then\n'
+    printf '    corpo="conteudo do arquivo baixado"; codigo=200\n'
+    printf '  else\n'
+    printf '    corpo=$(cat "$base/download_corpo"); codigo=$(cat "$base/download_codigo")\n'
+    printf '  fi\n'
     printf 'else\n'
     printf '  corpo=$(cat "$base/corpo"); codigo=$(cat "$base/codigo")\n'
     printf 'fi\n'
-    printf '[[ -n $saida ]] && printf "%%s" "$corpo" >"$saida"\n'
     printf '[[ -n $escrever ]] && printf "%%s" "$codigo"\n'
+    printf 'if [[ $fail == "sim" && $codigo -ge 400 ]]; then\n'
+    printf '  exit 22\n'
+    printf 'fi\n'
+    printf '[[ -n $saida ]] && printf "%%s" "$corpo" >"$saida"\n'
     printf 'exit 0\n'
   } >"$base/bin/curl"
   chmod +x "$base/bin/curl"
@@ -65,7 +79,7 @@ _rodar() { # <base> <argumentos...>
   DBX_ERRO=''
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
     XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
-    bash "$DBX_EXEC" "$@" >"$base/out" 2>"$base/err"
+    bash "$DBX_EXEC" "$@" < /dev/null >"$base/out" 2>"$base/err"
   DBX_ESTADO=$?
   [[ -r $base/out ]] && IFS= read -r -d '' DBX_SAIDA <"$base/out"
   [[ -r $base/err ]] && IFS= read -r -d '' DBX_ERRO <"$base/err"
@@ -149,6 +163,14 @@ teste_space_legivel_por_humano_sob_sinalizador() {
   _rodar "$base" --json space --human
   assert_igual 0 "$DBX_ESTADO" "space --human deve concluir; diagnostico: $DBX_ERRO"
   assert_contem 'usado_legivel=2 MiB' "$DBX_SAIDA" 'apresentacao legivel'
+}
+
+teste_space_aceita_sinalizador_humano() {
+  local base
+  base=$(_ambiente '{"used":2097152,"allocation":{"allocated":1073741824}}')
+  _rodar "$base" --json space --humano
+  assert_igual 0 "$DBX_ESTADO" "space --humano deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'usado_legivel=2 MiB' "$DBX_SAIDA" 'apresentacao legivel sob --humano'
 }
 
 teste_info_emite_metadado_do_item() {
@@ -266,6 +288,22 @@ teste_list_envia_limite_explicito_em_toda_chamada() {
   assert_igual "$chamadas" "$sem_limite" 'toda chamada de listagem deve existir'
 }
 
+teste_list_envia_content_type_json() {
+  local base
+  base=$(_ambiente '{"entries":[],"has_more":false}')
+  _rodar "$base" list /pasta
+  assert_igual 0 "$DBX_ESTADO" "list deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'header = "Content-Type: application/json"' "$(cat "$base/opcoes" 2>/dev/null)" \
+    'chamada RPC de listagem exige cabeçalho Content-Type application/json explícito'
+}
+
+teste_list_aceita_sinalizadores_em_portugues() {
+  local base
+  base=$(_ambiente '{"entries":[],"has_more":false}')
+  _rodar "$base" list /pasta --limite 50 --recursivo
+  assert_igual 0 "$DBX_ESTADO" "list --limite --recursivo deve concluir; diagnostico: $DBX_ERRO"
+}
+
 teste_list_recusa_limite_fora_do_teto() {
   local base
   base=$(_ambiente '{}')
@@ -322,6 +360,14 @@ teste_delete_conclui_e_emite_metadado() {
   assert_igual 0 "$DBX_ESTADO" "delete deve concluir; diagnostico: $DBX_ERRO"
   assert_contem 'operacao=delete' "$DBX_SAIDA" 'operacao'
   assert_contem 'name=a.txt' "$DBX_SAIDA" 'metadado do item removido'
+}
+
+teste_delete_aceita_sinalizador_confirmar() {
+  local base
+  base=$(_ambiente '{"metadata":{".tag":"file","name":"a.txt"}}')
+  _rodar "$base" --json delete /a.txt --confirmar
+  assert_igual 0 "$DBX_ESTADO" "delete --confirmar deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'operacao=delete' "$DBX_SAIDA" 'operacao sob --confirmar'
 }
 
 teste_delete_com_rev_carrega_o_rev_esperado() {
@@ -897,4 +943,116 @@ teste_unlink_em_simulacao_nao_revoga_nem_remove() {
   assert_arquivo_ausente "$base/argv" 'simulacao nao chama o cliente de rede'
 }
 
+teste_upload_com_progresso_emite_em_stderr_e_preserva_stdout() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'conteudo para upload\n' >"$origem"
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[upload]' "$DBX_ERRO" 'stderr deve conter marcadores de progresso'
+  assert_nao_contem '[upload]' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
+}
+
+teste_upload_com_progresso_analisa_arquivo_e_emite_resultado() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'conteudo para upload\n' >"$origem"
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'analisando arquivo local' "$DBX_ERRO" 'deve conter mensagem de analise de arquivo'
+  assert_contem 'resultado da analise:' "$DBX_ERRO" 'deve conter resultado da analise'
+}
+
+teste_download_com_progresso_emite_em_stderr_e_preserva_stdout() {
+  local base
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  _rodar "$base" --progresso download /r/a.txt "$base/baixado.txt"
+  assert_igual 0 "$DBX_ESTADO" "download com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[download]' "$DBX_ERRO" 'stderr deve conter marcadores de progresso'
+  assert_nao_contem '[download]' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
+}
+
+teste_download_cria_diretorio_de_destino_caso_nao_exista() {
+  local base
+  base=$(_ambiente 'CONTEUDO-TESTE')
+  local destino="$base/nova_pasta/subpasta/saida.txt"
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download em destino novo deve concluir; diagnostico: $DBX_ERRO"
+  assert_arquivo_existe "$base/nova_pasta/subpasta" 'as pastas intermediarias devem ser criadas'
+  assert_sucesso test -d "$base/nova_pasta/subpasta"
+  assert_igual 'CONTEUDO-TESTE' "$(cat "$destino")" 'o conteudo deve ser gravado'
+}
+
+teste_upload_dispensa_arquivo_inalterado_e_forca_com_sinalizador() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016","content_hash":"11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"}')
+  origem="$base/local.txt"
+  printf 'conteudo original\n' >"$origem"
+
+  # 1. Primeiro upload: envia normalmente
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "primeiro upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao de upload"
+
+  # 2. Segundo upload com mesmo arquivo inalterado: dispensa o envio
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "segundo upload deve concluir com sucesso; diagnostico: $DBX_ERRO"
+  assert_contem 'status=dispensado' "$DBX_SAIDA" "saida deve reportar status dispensado"
+  assert_contem 'motivo=inalterado' "$DBX_SAIDA" "saida deve reportar motivo inalterado"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" "nao deve emitir nova requisicao de upload"
+
+  # 3. Terceiro upload com --forcar: deve forcar o envio mesmo inalterado
+  _rodar "$base" upload --forcar "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --forcar deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 2 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao forcada de upload"
+
+  # 4. Quarto upload com arquivo modificado: deve detectar alteracao e enviar
+  printf 'conteudo alterado com novo tamanho\n' >"$origem"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com arquivo modificado deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 3 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao apos alteracao"
+}
+
+teste_upload_de_diretorio_transfere_recursivamente() {
+  local base pasta_local
+  base=$(_ambiente '{"entries":[],"has_more":false}')
+  pasta_local="$base/minha_pasta"
+  mkdir -p "$pasta_local"
+  printf 'conteudo 1\n' >"$pasta_local/arq1.txt"
+  printf 'conteudo 2\n' >"$pasta_local/arq2.txt"
+
+  _rodar "$base" upload "$pasta_local" /r/backup
+  assert_igual 0 "$DBX_ESTADO" "upload de pasta deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'operacao=sync' "$DBX_SAIDA" "deve executar sincronizacao de envio"
+  assert_contem 'sentido=enviar' "$DBX_SAIDA" "sentido deve ser envio"
+}
+
+teste_download_de_pasta_transfere_recursivamente() {
+  local base destino
+  base=$(_ambiente '{}')
+  printf '%s' '{"error_summary":"path/not_file/..."}' >"$base/download_corpo"
+  printf '%s' '409' >"$base/download_codigo"
+  printf '%s' '{"entries":[{".tag":"file","name":"relatorio.txt","size":9,"content_hash":"11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"}],"has_more":false}' >"$base/listagem"
+
+  destino="$base/destino_local"
+  _rodar "$base" download /pasta_remota "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download de pasta deve concluir; diagnostico: $DBX_ERRO"
+  assert_sucesso test -d "$destino"
+}
+
+teste_download_pasta_sem_destino_recusa_com_uso_invalido() {
+  local base
+  base=$(_ambiente '{}')
+  printf '%s' '{"error_summary":"path/not_file/..."}' >"$base/download_corpo"
+  printf '%s' '409' >"$base/download_codigo"
+
+  _rodar "$base" download /pasta_remota
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
+    "download de pasta sem destino deve recusar com uso invalido"
+  assert_contem 'pasta' "$DBX_ERRO" "diagnostico deve alertar que o caminho e pasta"
+}
+
 harness_executar "$@"
+
