@@ -55,15 +55,34 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 
 ## Instalação e Configuração
 
-### 1. Clonar o Repositório
+### 1. Instalação no Linux (Recomendado)
+
+#### Opção A: Instalação Rápida via cURL (One-liner)
+Para instalar diretamente no espaço do usuário (`~/.local/bin/dbx` e `~/.local/share/dropbox_sync`):
+```bash
+curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/develop/install.sh | bash
+```
+
+#### Opção B: Instalação a partir do Repositório
 ```bash
 git clone https://github.com/salesadriano/dropbox_sync.git
 cd dropbox_sync
+./install.sh                # Instalação no espaço do usuário (~/.local/bin)
+# ou para todos os usuários do sistema:
+sudo ./install.sh --system   # Instalação global (/usr/local/bin)
 ```
 
-Opcionalmente, crie um link simbólico no seu `PATH`:
+#### Opção C: Instalação a partir do Tarball de Release
+Baixe o arquivo `dropbox_sync-1.1.0-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
 ```bash
-ln -s "$(pwd)/bin/dbx" /usr/local/bin/dbx
+tar -xzf dropbox_sync-1.1.0-linux.tar.gz
+./install.sh
+```
+
+#### Desinstalação
+```bash
+./uninstall.sh            # Remove o executável e bibliotecas (preserva credenciais)
+./uninstall.sh --purge    # Remove executável, bibliotecas e credenciais locais
 ```
 
 ### 2. Autenticação Inicial (`config`)

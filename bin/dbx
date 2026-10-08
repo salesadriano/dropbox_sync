@@ -6,8 +6,15 @@
 # aqui.
 set -u
 
-DBX_CLI_RAIZ=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+_dbx_fonte=${BASH_SOURCE[0]}
+while [[ -L $_dbx_fonte ]]; do
+  _dbx_dir=$(cd -P -- "$(dirname -- "$_dbx_fonte")" && pwd -P)
+  _dbx_fonte=$(readlink "$_dbx_fonte")
+  [[ $_dbx_fonte != /* ]] && _dbx_fonte="$_dbx_dir/$_dbx_fonte"
+done
+DBX_CLI_RAIZ=$(cd -P -- "$(dirname -- "$_dbx_fonte")/.." && pwd -P)
 export DBX_CLI_RAIZ
+unset _dbx_fonte _dbx_dir
 
 # shellcheck source=lib/errors.sh
 . "$DBX_CLI_RAIZ/lib/errors.sh"
