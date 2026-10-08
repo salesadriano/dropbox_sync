@@ -150,11 +150,20 @@ dbx_cmd_upload_executar() {
       ;;
   esac
 
+  local eh_diretorio='nao'
   if [[ $origem != '-' ]]; then
-    [[ -f $origem && -r $origem ]] || {
+    if [[ -d $origem ]]; then
+      eh_diretorio='sim'
+      [[ -r $origem ]] || {
+        dbx_cmd_falhar nao_encontrado "diretorio local ilegivel: $origem"
+        return $?
+      }
+    elif [[ -f $origem && -r $origem ]]; then
+      eh_diretorio='nao'
+    else
       dbx_cmd_falhar nao_encontrado "arquivo local inexistente ou ilegivel: $origem"
       return $?
-    }
+    fi
   fi
 
   local remoto
@@ -163,6 +172,39 @@ dbx_cmd_upload_executar() {
     return $?
   }
   remoto=$DBX_CMD_LIDO
+
+  if [[ $eh_diretorio == 'sim' ]]; then
+    if [[ -n $rev ]]; then
+      dbx_cmd_falhar uso_invalido '--rev nao e suportado para envio de diretorios'
+      return $?
+    fi
+
+    local alvo_remoto=$remoto
+    local nome_base_local=${origem##*/}
+    [[ -z $nome_base_local ]] && nome_base_local=$(basename -- "$origem")
+    if [[ $destino == '/' || $remoto == '/' || -z $remoto ]]; then
+      alvo_remoto="/$nome_base_local"
+    elif [[ $destino == */ ]]; then
+      alvo_remoto="${remoto%/}/$nome_base_local"
+    fi
+
+    if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
+      dbx_cmd_iniciar_saida
+      dbx_output_campo operacao upload
+      dbx_output_campo tipo diretorio
+      dbx_output_campo origem "$origem"
+      dbx_output_campo caminho "$alvo_remoto"
+      dbx_output_campo simulado sim
+      dbx_output_render
+      return 0
+    fi
+
+    dbx_progress_mensagem "[upload] iniciando envio de diretorio: $origem -> $alvo_remoto"
+    # shellcheck source=commands/sync.sh
+    . "${BASH_SOURCE[0]%/*}/sync.sh"
+    dbx_cmd_sync_executar --enviar --origem "$origem" --destino "$alvo_remoto"
+    return $?
+  fi
 
   _dbx_upload_objeto_de_publicacao "$remoto" "$modo" "$rev" "$origem"
 

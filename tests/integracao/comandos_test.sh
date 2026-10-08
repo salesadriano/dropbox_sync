@@ -38,20 +38,34 @@ _ambiente() {
     # padrao, justamente para o segredo ficar fora da tabela de processos.
     # Descartar a entrada aqui tornaria invisivel tudo o que se quer verificar
     # sobre cabecalhos.
-    printf 'cat >>"$base/opcoes" 2>/dev/null\n'
-    printf 'saida=""; escrever=""; anterior=""; url=""\n'
+    printf 'opcoes=$(cat)\n'
+    printf 'printf "%%s\\n" "$opcoes" >>"$base/opcoes"\n'
+    printf 'saida=""; escrever=""; anterior=""; url=""; fail="nao"\n'
     printf 'for arg in "$@"; do\n'
     printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac\n'
-    printf '  case $arg in http*) url=$arg ;; esac\n'
+    printf '  case $arg in http*) url=$arg ;; --fail) fail="sim" ;; esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
     printf 'if [[ $url == *oauth2/token* ]]; then\n'
     printf '  corpo=%s; codigo=200\n' "'{\"access_token\":\"sl.t\",\"token_type\":\"bearer\",\"expires_in\":14400}'"
+    printf 'elif [[ $url == *get_current_account* ]]; then\n'
+    printf '  corpo=%s; codigo=200\n' "'{\"account_id\":\"dbid:CONTA\"}'"
+    printf 'elif [[ $url == *list_folder* && -f "$base/listagem" ]]; then\n'
+    printf '  corpo=$(cat "$base/listagem"); codigo=200\n'
+    printf 'elif [[ $url == *files/download* && -f "$base/download_corpo" ]]; then\n'
+    printf '  if [[ $opcoes == *relatorio.txt* ]]; then\n'
+    printf '    corpo="conteudo do arquivo baixado"; codigo=200\n'
+    printf '  else\n'
+    printf '    corpo=$(cat "$base/download_corpo"); codigo=$(cat "$base/download_codigo")\n'
+    printf '  fi\n'
     printf 'else\n'
     printf '  corpo=$(cat "$base/corpo"); codigo=$(cat "$base/codigo")\n'
     printf 'fi\n'
-    printf '[[ -n $saida ]] && printf "%%s" "$corpo" >"$saida"\n'
     printf '[[ -n $escrever ]] && printf "%%s" "$codigo"\n'
+    printf 'if [[ $fail == "sim" && $codigo -ge 400 ]]; then\n'
+    printf '  exit 22\n'
+    printf 'fi\n'
+    printf '[[ -n $saida ]] && printf "%%s" "$corpo" >"$saida"\n'
     printf 'exit 0\n'
   } >"$base/bin/curl"
   chmod +x "$base/bin/curl"
@@ -990,4 +1004,44 @@ teste_upload_dispensa_arquivo_inalterado_e_forca_com_sinalizador() {
   assert_igual 3 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao apos alteracao"
 }
 
+teste_upload_de_diretorio_transfere_recursivamente() {
+  local base pasta_local
+  base=$(_ambiente '{"entries":[],"has_more":false}')
+  pasta_local="$base/minha_pasta"
+  mkdir -p "$pasta_local"
+  printf 'conteudo 1\n' >"$pasta_local/arq1.txt"
+  printf 'conteudo 2\n' >"$pasta_local/arq2.txt"
+
+  _rodar "$base" upload "$pasta_local" /r/backup
+  assert_igual 0 "$DBX_ESTADO" "upload de pasta deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'operacao=sync' "$DBX_SAIDA" "deve executar sincronizacao de envio"
+  assert_contem 'sentido=enviar' "$DBX_SAIDA" "sentido deve ser envio"
+}
+
+teste_download_de_pasta_transfere_recursivamente() {
+  local base destino
+  base=$(_ambiente '{}')
+  printf '%s' '{"error_summary":"path/not_file/..."}' >"$base/download_corpo"
+  printf '%s' '409' >"$base/download_codigo"
+  printf '%s' '{"entries":[{".tag":"file","name":"relatorio.txt","size":9,"content_hash":"11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"}],"has_more":false}' >"$base/listagem"
+
+  destino="$base/destino_local"
+  _rodar "$base" download /pasta_remota "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download de pasta deve concluir; diagnostico: $DBX_ERRO"
+  assert_sucesso test -d "$destino"
+}
+
+teste_download_pasta_sem_destino_recusa_com_uso_invalido() {
+  local base
+  base=$(_ambiente '{}')
+  printf '%s' '{"error_summary":"path/not_file/..."}' >"$base/download_corpo"
+  printf '%s' '409' >"$base/download_codigo"
+
+  _rodar "$base" download /pasta_remota
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
+    "download de pasta sem destino deve recusar com uso invalido"
+  assert_contem 'pasta' "$DBX_ERRO" "diagnostico deve alertar que o caminho e pasta"
+}
+
 harness_executar "$@"
+
