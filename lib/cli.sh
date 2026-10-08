@@ -73,7 +73,7 @@ DBX_CLI_CARREGADO=1
 
 DBX_CLI_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 
-readonly DBX_CLI_VERSAO='0.1.0'
+readonly DBX_CLI_VERSAO='1.0.0'
 
 DBX_CLI_COMANDO=''
 DBX_CLI_ARGS=()
