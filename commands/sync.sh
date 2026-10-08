@@ -257,6 +257,7 @@ dbx_cmd_sync_executar() {
   # funcoes de lib/sync; a analise estatica nao segue nameref entre arquivos.
   local -A mapa_remoto=()
   dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
+  dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
 
   # RF-41(b): origem vazia com memoria povoada e recusa integral, sem escrita
   # alguma. Uma raiz que ficou vazia por engano — ponto de montagem que nao
@@ -314,6 +315,7 @@ dbx_cmd_sync_executar() {
     local idx_analise=0
     local acao_transferir='a enviar'
     [[ $sentido == 'receber' ]] && acao_transferir='a receber'
+    dbx_progress_mensagem "[sync] analisando diferencas e comparando origem e destino ($total_analisados arquivo(s) no total)..."
 
     for caminho in ${DBX_SYNC_IDENTICOS[@]+"${DBX_SYNC_IDENTICOS[@]}"}; do
       idx_analise=$((idx_analise + 1))
@@ -339,6 +341,7 @@ dbx_cmd_sync_executar() {
         dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> apenas no destino (mantido)"
       fi
     done
+    dbx_progress_mensagem "[sync] resultado da analise: ${#DBX_SYNC_TRANSFERIR[@]} a transferir, ${#DBX_SYNC_APAGAR[@]} a apagar, ${#DBX_SYNC_IDENTICOS[@]} inalterado(s)"
   fi
 
   # RF-41(a): travessia parcial desabilita exclusao NA EXECUCAO INTEIRA, e nao
