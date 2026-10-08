@@ -174,12 +174,19 @@ dbx_cmd_sync_executar() {
   }
   remoto=$DBX_CMD_LIDO
 
-  # O local precisa existir porque nao se percorre o que nao existe — e nao para
-  # decidir tipo, que ja veio do sentido.
-  [[ -d $raiz_local ]] || {
+  # No sentido 'receber', o destino local e criado caso ainda nao exista (se nao for simulacao).
+  # No sentido 'enviar', a origem local deve preexistir para poder ser transferida.
+  if [[ $sentido == 'receber' && ! -d $raiz_local ]]; then
+    if [[ ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
+      mkdir -p -- "$raiz_local" 2>/dev/null || {
+        dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $raiz_local"
+        return $?
+      }
+    fi
+  elif [[ ! -d $raiz_local ]]; then
     dbx_cmd_falhar nao_encontrado "raiz local inexistente ou nao e diretorio: $raiz_local"
     return $?
-  }
+  fi
 
   local conta=''
   _dbx_cmd_sync_conta && conta=$DBX_CMD_SYNC_CONTA
@@ -202,12 +209,18 @@ dbx_cmd_sync_executar() {
   registros_locais="$area/local"
   registros_remotos="$area/remoto"
 
-  dbx_walk_local "$raiz_local" "$registros_locais" || {
-    rm -rf -- "$area"
-    dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
-    return $?
-  }
-  local parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
+  local parcial='nao' motivo_parcial=''
+  if [[ $sentido == 'receber' && ! -d $raiz_local ]]; then
+    # Em simulacao com destino local inexistente, nao ha itens locais
+    : >"$registros_locais"
+  else
+    dbx_walk_local "$raiz_local" "$registros_locais" || {
+      rm -rf -- "$area"
+      dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
+      return $?
+    }
+    parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
+  fi
 
   if ! dbx_sync_enumerar_remoto "$remoto" "$registros_remotos"; then
     local estado_remoto=$?

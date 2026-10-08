@@ -2,7 +2,7 @@
 
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](LICENSE)
 [![ShellCheck](https://img.shields.io/badge/shellcheck-pass-brightgreen.svg)](#qualidade-e-conformidade)
-[![Testes Automatizados](https://img.shields.io/badge/testes-574%20pass-brightgreen.svg)](#testes-e-qualidade)
+[![Testes Automatizados](https://img.shields.io/badge/testes-576%20pass-brightgreen.svg)](#testes-e-qualidade)
 [![Piso de Shell](https://img.shields.io/badge/bash-4.4%2B-informational.svg)](#requisitos)
 
 **`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em ambientes Linux/POSIX.
