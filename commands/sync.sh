@@ -71,19 +71,29 @@ _dbx_cmd_sync_conta() {
 _dbx_cmd_sync_resumo_local() {
   local raiz=$1 relativo=$2 tamanho=$3 mtime=$4
   DBX_CMD_SYNC_RESUMO=''
+  DBX_CMD_SYNC_ORIGEM_RESUMO=''
   if dbx_state_consultar "$relativo" "$tamanho" "$mtime"; then
     DBX_CMD_SYNC_RESUMO=$DBX_STATE_HASH
+    DBX_CMD_SYNC_ORIGEM_RESUMO='em cache (memoria)'
     return 0
   fi
   if dbx_db_consultar_metadado "$raiz/$relativo" "$tamanho" "$mtime"; then
     DBX_CMD_SYNC_RESUMO=$DBX_DB_HASH
     dbx_state_registrar "$relativo" "$DBX_CMD_SYNC_RESUMO" "$tamanho" "$mtime"
+    DBX_CMD_SYNC_ORIGEM_RESUMO='em cache (sqlite)'
     return 0
   fi
-  DBX_CMD_SYNC_RESUMO=$(dbx_hash_conteudo_arquivo "$raiz/$relativo" 2>/dev/null) || return 1
-  [[ -n $DBX_CMD_SYNC_RESUMO ]] || return 1
+  DBX_CMD_SYNC_RESUMO=$(dbx_hash_conteudo_arquivo "$raiz/$relativo" 2>/dev/null) || {
+    DBX_CMD_SYNC_ORIGEM_RESUMO='falha na leitura'
+    return 1
+  }
+  [[ -n $DBX_CMD_SYNC_RESUMO ]] || {
+    DBX_CMD_SYNC_ORIGEM_RESUMO='hash vazio'
+    return 1
+  }
   dbx_state_registrar "$relativo" "$DBX_CMD_SYNC_RESUMO" "$tamanho" "$mtime"
   dbx_db_salvar_metadado "$raiz/$relativo" "$tamanho" "$mtime" "$DBX_CMD_SYNC_RESUMO" || :
+  DBX_CMD_SYNC_ORIGEM_RESUMO='hash calculado'
   return 0
 }
 
@@ -270,6 +280,7 @@ dbx_cmd_sync_executar() {
   # shellcheck disable=SC2034  # ver nota acima: passado por nome a lib/sync
   local -A mapa_local=() mapa_tamanhos_local=() mapa_mtimes_local=()
   local indice falhas_de_resumo=0
+  local total_locais=${#caminhos_locais[@]}
   for indice in "${!caminhos_locais[@]}"; do
     if _dbx_cmd_sync_resumo_local "$raiz_local" "${caminhos_locais[$indice]}" \
       "${tamanhos[$indice]}" "${mtimes[$indice]}"; then
@@ -278,6 +289,7 @@ dbx_cmd_sync_executar() {
       mapa_local["${caminhos_locais[$indice]}"]=$DBX_CMD_SYNC_RESUMO
       mapa_tamanhos_local["${caminhos_locais[$indice]}"]=${tamanhos[$indice]}
       mapa_mtimes_local["${caminhos_locais[$indice]}"]=${mtimes[$indice]}
+      dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-ok}"
     else
       # Arquivo ilegivel e travessia parcial: some da origem sem ter sido
       # apagado, e com espelhamento isso viraria exclusao do par no destino.
@@ -287,6 +299,7 @@ dbx_cmd_sync_executar() {
       # derrubaria o registro do plano inteiro, e justamente na execucao em que
       # ele mais importa.
       motivo_parcial="${motivo_parcial}${motivo_parcial:+; }nao foi possivel calcular o resumo de: ${caminhos_locais[$indice]}"
+      dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-falha na leitura}"
     fi
   done
 
@@ -294,6 +307,38 @@ dbx_cmd_sync_executar() {
     dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
   else
     dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
+  fi
+
+  if dbx_progress_ativo; then
+    local total_analisados=$(( ${#DBX_SYNC_TRANSFERIR[@]} + ${#DBX_SYNC_IDENTICOS[@]} + ${#DBX_SYNC_APAGAR[@]} ))
+    local idx_analise=0
+    local acao_transferir='a enviar'
+    [[ $sentido == 'receber' ]] && acao_transferir='a receber'
+
+    for caminho in ${DBX_SYNC_IDENTICOS[@]+"${DBX_SYNC_IDENTICOS[@]}"}; do
+      idx_analise=$((idx_analise + 1))
+      dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> identico (dispensado)"
+    done
+
+    for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
+      idx_analise=$((idx_analise + 1))
+      local tipo_item='novo'
+      if [[ $sentido == 'enviar' && -n ${mapa_remoto[$caminho]+definido} ]]; then
+        tipo_item='modificado'
+      elif [[ $sentido == 'receber' && -n ${mapa_local[$caminho]+definido} ]]; then
+        tipo_item='modificado'
+      fi
+      dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> $tipo_item ($acao_transferir)"
+    done
+
+    for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+      idx_analise=$((idx_analise + 1))
+      if [[ $espelhar == 'sim' ]]; then
+        dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> ausente na origem (a apagar)"
+      else
+        dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> apenas no destino (mantido)"
+      fi
+    done
   fi
 
   # RF-41(a): travessia parcial desabilita exclusao NA EXECUCAO INTEIRA, e nao
