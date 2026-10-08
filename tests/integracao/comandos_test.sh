@@ -929,4 +929,24 @@ teste_unlink_em_simulacao_nao_revoga_nem_remove() {
   assert_arquivo_ausente "$base/argv" 'simulacao nao chama o cliente de rede'
 }
 
+teste_upload_com_progresso_emite_em_stderr_e_preserva_stdout() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'conteudo para upload\n' >"$origem"
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[upload]' "$DBX_ERRO" 'stderr deve conter marcadores de progresso'
+  assert_nao_contem '[upload]' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
+}
+
+teste_download_com_progresso_emite_em_stderr_e_preserva_stdout() {
+  local base
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  _rodar "$base" --progresso download /r/a.txt "$base/baixado.txt"
+  assert_igual 0 "$DBX_ESTADO" "download com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[download]' "$DBX_ERRO" 'stderr deve conter marcadores de progresso'
+  assert_nao_contem '[download]' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
+}
+
 harness_executar "$@"

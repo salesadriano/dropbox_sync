@@ -15,6 +15,8 @@ export DBX_CLI_RAIZ
 . "$DBX_CLI_RAIZ/lib/path.sh"
 # shellcheck source=lib/output.sh
 . "$DBX_CLI_RAIZ/lib/output.sh"
+# shellcheck source=lib/progress.sh
+. "$DBX_CLI_RAIZ/lib/progress.sh"
 # shellcheck source=lib/cli.sh
 . "$DBX_CLI_RAIZ/lib/cli.sh"
 
@@ -75,14 +77,16 @@ case $DBX_CLI_COMANDO in
     _dbx_subcomando=${DBX_CLI_ARGS[0]:-}
     case $_dbx_subcomando in
       upload)
-        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] <origem> <destino>\n\n'
+        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--progresso] <origem> <destino>\n\n'
         printf 'Envia arquivo local ou conteudo da entrada padrao (-) para o caminho remoto.\n\n'
         printf 'Argumentos:\n'
         printf '  origem   Caminho de arquivo local ou "-" para entrada padrao (stdin)\n'
         printf '  destino  Caminho remoto no Dropbox (/pasta/arquivo)\n\n'
         printf 'Opcoes:\n'
         printf '  --modo, --mode <add|overwrite>  Modo de escrita (padrao: add)\n'
-        printf '  --rev <rev>                     Revisao esperada para controle de conflito\n\n'
+        printf '  --rev <rev>                     Revisao esperada para controle de conflito\n'
+        printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
+        printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
         printf 'Recomendacao operacional (RSK-36):\n'
         printf '  Ao enviar pela entrada padrao via encadeamento (pipe):\n'
         printf '    tar czf - /dados | dbx upload - /destino.tgz\n'
@@ -101,13 +105,19 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       sync)
-        printf 'Uso: dbx sync (--enviar | --receber) --origem <dir> --destino <dir> [--espelhar] [--reconhecer-primeira-execucao]\n\n'
-        printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n'
+        printf 'Uso: dbx sync (--enviar | --receber) --origem <dir> --destino <dir> [--espelhar] [--reconhecer-primeira-execucao] [--progresso]\n\n'
+        printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
+        printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
         exit 0
         ;;
       download)
-        printf 'Uso: dbx download <caminho_remoto> [destino_local]\n\n'
-        printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n'
+        printf 'Uso: dbx download [--progresso] <caminho_remoto> [destino_local]\n\n'
+        printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n\n'
+        printf 'Opcoes:\n'
+        printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
+        printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
         exit 0
         ;;
       list)
@@ -131,7 +141,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       *)
-        printf 'Uso: dbx [--json] [--null] [--dry-run] <comando> [argumentos]\n\n'
+        printf 'Uso: dbx [--json] [--null] [--dry-run] [--progresso] <comando> [argumentos]\n\n'
         printf 'Comandos:\n'
         printf '  config    Configura credenciais de acesso via OAuth2\n'
         printf '  unlink    Revoga credencial e remove estado local\n'
@@ -142,7 +152,7 @@ case $DBX_CLI_COMANDO in
         printf '  delete    Remove arquivo ou diretorio remoto\n'
         printf '  info      Exibe metadados de arquivo ou pasta remota\n'
         printf '  space     Exibe capacidade e uso do espaco da conta\n\n'
-        printf 'Opcoes globais: --help --version --json --null --dry-run\n\n'
+        printf 'Opcoes globais: --help --version --json --null --dry-run --progresso --sem-progresso\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
         printf 'Recomendacao para upload de fluxo (RSK-36):\n'
         printf '  Em "dbx upload - <destino>", ative "set -o pipefail" no shell do operador ao usar pipes.\n'

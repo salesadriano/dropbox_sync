@@ -119,6 +119,8 @@ _dbx_transfer_diretorio=$(cd -P -- "$_dbx_transfer_diretorio" && pwd -P)
 . "$_dbx_transfer_diretorio/errors.sh"
 # shellcheck source=lib/hash.sh
 . "$_dbx_transfer_diretorio/hash.sh"
+# shellcheck source=lib/progress.sh
+. "$_dbx_transfer_diretorio/progress.sh"
 unset _dbx_transfer_diretorio
 
 # Parte de 4 MiB — a MESMA grandeza do bloco do `content_hash`. A igualdade e
@@ -518,7 +520,7 @@ dbx_transfer_sessao() {
 _dbx_transfer_conduzir() {
   local commit=$1
   local bloco="$DBX_TRANSFER_AREA_TEMP/parte"
-  local sessao deslocamento=0 tamanho=0 argumento remoto
+  local sessao deslocamento=0 tamanho=0 argumento remoto parte=1
 
   : >"$bloco" || {
     _dbx_transfer_falhar configuracao 'area temporaria nao gravavel'
@@ -583,7 +585,11 @@ _dbx_transfer_conduzir() {
 
     _dbx_transfer_anexar "$sessao" "$deslocamento" "$tamanho" "$bloco" || return $?
     deslocamento=$((deslocamento + tamanho))
+    dbx_progress_transferencia 'upload' "$deslocamento" 0 "parte $parte enviada"
+    parte=$((parte + 1))
   done
+
+  dbx_progress_mensagem "[upload] concluindo sessao em partes ($((deslocamento + tamanho)) bytes)..."
 
   argumento="{\"cursor\":{\"session_id\":\"$sessao\",\"offset\":$deslocamento},\"commit\":$commit}"
   _dbx_transfer_emitir "$DBX_TRANSFER_URL_CONCLUIR" "$argumento" "$bloco" nao || {

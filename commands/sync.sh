@@ -112,6 +112,14 @@ dbx_cmd_sync_executar() {
         ;;
       --espelhar) espelhar='sim' ;;
       --confirmar) confirmado='sim' ;;
+      --progresso | --progress | -p)
+        # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
+        DBX_CLI_PROGRESSO='sim'
+        ;;
+      --sem-progresso | --no-progress)
+        # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
+        DBX_CLI_PROGRESSO='nao'
+        ;;
       -*)
         dbx_cmd_falhar uso_invalido "opcao nao reconhecida: $1"
         return $?
@@ -315,12 +323,22 @@ dbx_cmd_sync_executar() {
     return 0
   fi
 
+  local total_ops=0
+  [[ ${#DBX_SYNC_TRANSFERIR[@]} -gt 0 ]] && total_ops=$((total_ops + ${#DBX_SYNC_TRANSFERIR[@]}))
+  if [[ $espelhar == 'sim' && ${#DBX_SYNC_APAGAR[@]} -gt 0 ]]; then
+    total_ops=$((total_ops + ${#DBX_SYNC_APAGAR[@]}))
+  fi
+
+  local op_atual=0
   local enviados=0 recebidos=0 apagados=0 falhas=0
   for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
+    op_atual=$((op_atual + 1))
     if [[ $sentido == 'enviar' ]]; then
+      dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
       _dbx_cmd_sync_enviar "$raiz_local" "$remoto" "$caminho" && enviados=$((enviados + 1)) ||
         falhas=$((falhas + 1))
     else
+      dbx_progress_etapa "$op_atual" "$total_ops" 'recebendo' "$caminho"
       _dbx_cmd_sync_receber "$raiz_local" "$remoto" "$caminho" && recebidos=$((recebidos + 1)) ||
         falhas=$((falhas + 1))
     fi
@@ -328,6 +346,8 @@ dbx_cmd_sync_executar() {
 
   if [[ $espelhar == 'sim' ]]; then
     for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+      op_atual=$((op_atual + 1))
+      dbx_progress_etapa "$op_atual" "$total_ops" 'apagando' "$caminho"
       if [[ $sentido == 'enviar' ]]; then
         _dbx_cmd_sync_apagar_remoto "$remoto" "$caminho" && apagados=$((apagados + 1)) ||
           falhas=$((falhas + 1))
@@ -337,6 +357,8 @@ dbx_cmd_sync_executar() {
       fi
     done
   fi
+
+  dbx_progress_mensagem "[sync] sincronizacao concluida: $enviados enviados, $recebidos recebidos, $apagados apagados, ${#DBX_SYNC_IDENTICOS[@]} omitidos"
 
   # A memoria e gravada mesmo com falha parcial: os resumos calculados continuam
   # validos, e joga-los fora so faria a proxima execucao reler tudo.
