@@ -65,7 +65,7 @@ _rodar() { # <base> <argumentos...>
   DBX_ERRO=''
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
     XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
-    bash "$DBX_EXEC" "$@" >"$base/out" 2>"$base/err"
+    bash "$DBX_EXEC" "$@" < /dev/null >"$base/out" 2>"$base/err"
   DBX_ESTADO=$?
   [[ -r $base/out ]] && IFS= read -r -d '' DBX_SAIDA <"$base/out"
   [[ -r $base/err ]] && IFS= read -r -d '' DBX_ERRO <"$base/err"
@@ -958,6 +958,36 @@ teste_download_cria_diretorio_de_destino_caso_nao_exista() {
   assert_arquivo_existe "$base/nova_pasta/subpasta" 'as pastas intermediarias devem ser criadas'
   assert_sucesso test -d "$base/nova_pasta/subpasta"
   assert_igual 'CONTEUDO-TESTE' "$(cat "$destino")" 'o conteudo deve ser gravado'
+}
+
+teste_upload_dispensa_arquivo_inalterado_e_forca_com_sinalizador() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016","content_hash":"11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"}')
+  origem="$base/local.txt"
+  printf 'conteudo original\n' >"$origem"
+
+  # 1. Primeiro upload: envia normalmente
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "primeiro upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao de upload"
+
+  # 2. Segundo upload com mesmo arquivo inalterado: dispensa o envio
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "segundo upload deve concluir com sucesso; diagnostico: $DBX_ERRO"
+  assert_contem 'status=dispensado' "$DBX_SAIDA" "saida deve reportar status dispensado"
+  assert_contem 'motivo=inalterado' "$DBX_SAIDA" "saida deve reportar motivo inalterado"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" "nao deve emitir nova requisicao de upload"
+
+  # 3. Terceiro upload com --forcar: deve forcar o envio mesmo inalterado
+  _rodar "$base" upload --forcar "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --forcar deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 2 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao forcada de upload"
+
+  # 4. Quarto upload com arquivo modificado: deve detectar alteracao e enviar
+  printf 'conteudo alterado com novo tamanho\n' >"$origem"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com arquivo modificado deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 3 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao apos alteracao"
 }
 
 harness_executar "$@"

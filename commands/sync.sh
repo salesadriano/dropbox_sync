@@ -42,6 +42,9 @@ _dbx_cmd_sync_carregar_dependencias() {
   . "$DBX_CLI_RAIZ/lib/state.sh"
   # shellcheck source=lib/sync.sh
   . "$DBX_CLI_RAIZ/lib/sync.sh"
+  # shellcheck source=lib/db.sh
+  . "$DBX_CLI_RAIZ/lib/db.sh"
+  dbx_db_inicializar || :
 }
 
 # _dbx_cmd_sync_conta — identificador da conta corrente, para RF-52.
@@ -72,9 +75,15 @@ _dbx_cmd_sync_resumo_local() {
     DBX_CMD_SYNC_RESUMO=$DBX_STATE_HASH
     return 0
   fi
+  if dbx_db_consultar_metadado "$raiz/$relativo" "$tamanho" "$mtime"; then
+    DBX_CMD_SYNC_RESUMO=$DBX_DB_HASH
+    dbx_state_registrar "$relativo" "$DBX_CMD_SYNC_RESUMO" "$tamanho" "$mtime"
+    return 0
+  fi
   DBX_CMD_SYNC_RESUMO=$(dbx_hash_conteudo_arquivo "$raiz/$relativo" 2>/dev/null) || return 1
   [[ -n $DBX_CMD_SYNC_RESUMO ]] || return 1
   dbx_state_registrar "$relativo" "$DBX_CMD_SYNC_RESUMO" "$tamanho" "$mtime"
+  dbx_db_salvar_metadado "$raiz/$relativo" "$tamanho" "$mtime" "$DBX_CMD_SYNC_RESUMO" || :
   return 0
 }
 
@@ -259,7 +268,7 @@ dbx_cmd_sync_executar() {
   # Resumo de cada arquivo local, com reaproveitamento pela memoria.
   local -a ordem_local=()
   # shellcheck disable=SC2034  # ver nota acima: passado por nome a lib/sync
-  local -A mapa_local=()
+  local -A mapa_local=() mapa_tamanhos_local=() mapa_mtimes_local=()
   local indice falhas_de_resumo=0
   for indice in "${!caminhos_locais[@]}"; do
     if _dbx_cmd_sync_resumo_local "$raiz_local" "${caminhos_locais[$indice]}" \
@@ -267,6 +276,8 @@ dbx_cmd_sync_executar() {
       ordem_local+=("${caminhos_locais[$indice]}")
       # shellcheck disable=SC2034  # lido por referencia de nome em lib/sync
       mapa_local["${caminhos_locais[$indice]}"]=$DBX_CMD_SYNC_RESUMO
+      mapa_tamanhos_local["${caminhos_locais[$indice]}"]=${tamanhos[$indice]}
+      mapa_mtimes_local["${caminhos_locais[$indice]}"]=${mtimes[$indice]}
     else
       # Arquivo ilegivel e travessia parcial: some da origem sem ter sido
       # apagado, e com espelhamento isso viraria exclusao do par no destino.
@@ -350,14 +361,28 @@ dbx_cmd_sync_executar() {
     op_atual=$((op_atual + 1))
     if [[ $sentido == 'enviar' ]]; then
       dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
-      _dbx_cmd_sync_enviar "$raiz_local" "$remoto" "$caminho" && enviados=$((enviados + 1)) ||
+      if _dbx_cmd_sync_enviar "$raiz_local" "$remoto" "$caminho"; then
+        enviados=$((enviados + 1))
+        dbx_db_salvar_operacao "$raiz_local/$caminho" "$remoto/$caminho" "sync" \
+          "${mapa_tamanhos_local[$caminho]:-0}" "${mapa_mtimes_local[$caminho]:-0}" \
+          "${mapa_local[$caminho]:-}" || :
+      else
         falhas=$((falhas + 1))
+      fi
     else
       dbx_progress_etapa "$op_atual" "$total_ops" 'recebendo' "$caminho"
       _dbx_cmd_sync_receber "$raiz_local" "$remoto" "$caminho" && recebidos=$((recebidos + 1)) ||
         falhas=$((falhas + 1))
     fi
   done
+
+  if [[ $sentido == 'enviar' ]]; then
+    for caminho in ${DBX_SYNC_IDENTICOS[@]+"${DBX_SYNC_IDENTICOS[@]}"}; do
+      dbx_db_salvar_operacao "$raiz_local/$caminho" "$remoto/$caminho" "sync" \
+        "${mapa_tamanhos_local[$caminho]:-0}" "${mapa_mtimes_local[$caminho]:-0}" \
+        "${mapa_local[$caminho]:-}" || :
+    done
+  fi
 
   if [[ $espelhar == 'sim' ]]; then
     for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
