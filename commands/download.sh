@@ -21,6 +21,14 @@ dbx_cmd_download_executar() {
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
+      --progresso | --progress | -p)
+        # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
+        DBX_CLI_PROGRESSO='sim'
+        ;;
+      --sem-progresso | --no-progress)
+        # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
+        DBX_CLI_PROGRESSO='nao'
+        ;;
       -*)
         dbx_cmd_falhar uso_invalido "opcao nao reconhecida: $1"
         return $?
@@ -67,12 +75,16 @@ dbx_cmd_download_executar() {
   # saida de erro em ambos os casos, entao nunca se mistura ao conteudo.
   local alvo=${destino:-/dev/stdout}
 
+  dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo"
+
   dbx_auth_conteudo_receber GET \
     'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo" || {
     local classe=${DBX_HTTP_CLASSE:-erro_remoto}
     dbx_cmd_falhar "$classe" "recebimento recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}"
     return $?
   }
+
+  dbx_progress_mensagem "[download] recebimento concluido: $alvo"
 
   # VERIFICACAO DE INTEGRIDADE, e o limite dela.
   #

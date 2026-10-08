@@ -105,6 +105,12 @@ dbx_cmd_upload_executar() {
         shift
         rev=${1-}
         ;;
+      --progresso | --progress | -p)
+        DBX_CLI_PROGRESSO='sim'
+        ;;
+      --sem-progresso | --no-progress)
+        DBX_CLI_PROGRESSO='nao'
+        ;;
       -)
         # `-` e posicional, nao opcao: e a convencao para entrada padrao. Cair no
         # ramo de opcao desconhecida esconderia o caminho que RF-31 exige.
@@ -177,6 +183,8 @@ dbx_cmd_upload_executar() {
   # shellcheck source=lib/transfer.sh
   . "${BASH_SOURCE[0]%/*}/../lib/transfer.sh"
 
+  dbx_progress_mensagem "[upload] iniciando envio: $origem -> $remoto"
+
   local por_sessao='nao'
   if [[ $origem == '-' ]]; then
     # RF-31: o tamanho total e desconhecido no inicio, entao nao ha decisao a
@@ -210,6 +218,7 @@ dbx_cmd_upload_executar() {
       return $?
     }
   else
+    dbx_progress_mensagem "[upload] enviando arquivo via requisicao unica..."
     dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
       "$DBX_UPLOAD_COMMIT" "$origem" nao || {
       local classe=${DBX_HTTP_CLASSE:-erro_remoto}
@@ -217,6 +226,8 @@ dbx_cmd_upload_executar() {
       return $?
     }
   fi
+
+  dbx_progress_mensagem "[upload] envio concluido com sucesso"
 
   _dbx_cmd_analisar_corpo || return $?
 

@@ -350,4 +350,14 @@ teste_recebimento_grava_no_local_e_cria_as_pastas_intermediarias() {
   assert_arquivo_existe "$base/local/sub/fundo/a.txt" 'as pastas intermediarias sao criadas'
 }
 
+teste_sync_com_progresso_emite_em_stderr_e_preserva_stdout() {
+  local base
+  base=$(_cenario)
+  printf 'conteudo' >"$base/local/a.txt"
+  _rodar "$base" --progresso sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[sync' "$DBX_ERRO" 'stderr deve conter marcadores de progresso do sync'
+  assert_nao_contem '[sync' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
+}
+
 harness_executar "$@"
