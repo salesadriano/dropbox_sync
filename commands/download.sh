@@ -111,6 +111,10 @@ dbx_cmd_download_executar() {
         detalhe="o caminho remoto e uma pasta, nao um arquivo (para baixar pastas completas, use: dbx sync --receber --origem $remoto --destino ${destino:-.})"
         classe='uso_invalido'
         ;;
+      *not_found*)
+        detalhe="caminho remoto nao encontrado no Dropbox: $remoto (verifique se o nome esta correto; para baixar pastas completas, use: dbx sync --receber --origem $remoto --destino ${destino:-.})"
+        classe='nao_encontrado'
+        ;;
     esac
     dbx_cmd_falhar "$classe" "recebimento recusado: $detalhe"
     return $?

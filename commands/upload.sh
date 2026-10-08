@@ -93,7 +93,7 @@ _dbx_upload_objeto_de_publicacao() {
 }
 
 dbx_cmd_upload_executar() {
-  local origem='' destino='' modo='add' rev=''
+  local origem='' destino='' modo='add' rev='' forcar='nao'
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
@@ -104,6 +104,9 @@ dbx_cmd_upload_executar() {
       --rev)
         shift
         rev=${1-}
+        ;;
+      --forcar | --force)
+        forcar='sim'
         ;;
       --progresso | --progress | -p)
         DBX_CLI_PROGRESSO='sim'
@@ -182,6 +185,28 @@ dbx_cmd_upload_executar() {
   # a camada de credencial; o envio em partes e propriedade deste comando.
   # shellcheck source=lib/transfer.sh
   . "${BASH_SOURCE[0]%/*}/../lib/transfer.sh"
+  # shellcheck source=lib/db.sh
+  . "${BASH_SOURCE[0]%/*}/../lib/db.sh"
+  dbx_db_inicializar || :
+
+  local tam_local='' mtime_local=''
+  if [[ $origem != '-' ]]; then
+    tam_local=$(stat -c '%s' "$origem" 2>/dev/null)
+    mtime_local=$(stat -c '%Y' "$origem" 2>/dev/null)
+    if [[ $forcar != 'sim' && -n $tam_local && -n $mtime_local ]]; then
+      if ! dbx_db_arquivo_alterado "$origem" "$remoto" "upload" "$tam_local" "$mtime_local"; then
+        dbx_progress_mensagem "[upload] arquivo inalterado desde a ultima operacao: envio dispensado"
+        dbx_cmd_iniciar_saida
+        dbx_output_campo operacao upload
+        dbx_output_campo origem "$origem"
+        dbx_output_campo caminho "$remoto"
+        dbx_output_campo status dispensado
+        dbx_output_campo motivo inalterado
+        dbx_output_render
+        return 0
+      fi
+    fi
+  fi
 
   dbx_progress_mensagem "[upload] iniciando envio: $origem -> $remoto"
 
@@ -244,6 +269,18 @@ dbx_cmd_upload_executar() {
     dbx_output_campo modo_de_envio requisicao_unica
   fi
   _dbx_cmd_metadado_em
+
+  local hash_gravado='' rev_gravado=''
+  _dbx_cmd_campo content_hash && hash_gravado=$DBX_CMD_LIDO
+  _dbx_cmd_campo rev && rev_gravado=$DBX_CMD_LIDO
+  if [[ -z $hash_gravado && -n ${DBX_TRANSFER_HASH:-} ]]; then
+    hash_gravado=$DBX_TRANSFER_HASH
+  fi
+  if [[ $origem != '-' && -n $hash_gravado && -n $tam_local && -n $mtime_local ]]; then
+    dbx_db_salvar_metadado "$origem" "$tam_local" "$mtime_local" "$hash_gravado" || :
+    dbx_db_salvar_operacao "$origem" "$remoto" "upload" "$tam_local" "$mtime_local" "$hash_gravado" "$rev_gravado" || :
+  fi
+
   _dbx_cmd_encerrar_consulta
   dbx_output_render
   return 0
