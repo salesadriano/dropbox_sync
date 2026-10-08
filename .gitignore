@@ -1,2 +1,5 @@
 # Evidencia de execucao da suite, nao artefato do projeto.
 tests/.diagnostico/
+
+# Indice de memoria: derivado das entradas, regenerado por scripts/memoria-index.sh; nunca versionar.
+.github/agents/memoria/INDICE.md
