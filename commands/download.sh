@@ -29,6 +29,9 @@ dbx_cmd_download_executar() {
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
         DBX_CLI_PROGRESSO='nao'
         ;;
+      --forcar | --force)
+        # aceito para paridade operacional
+        ;;
       -*)
         dbx_cmd_falhar uso_invalido "opcao nao reconhecida: $1"
         return $?
@@ -59,9 +62,6 @@ dbx_cmd_download_executar() {
   }
   remoto=$DBX_CMD_LIDO
 
-  dbx_json_escapar_cadeia "$remoto"
-  local argumento="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
-
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
     dbx_cmd_iniciar_saida
     dbx_output_campo operacao download
@@ -71,6 +71,29 @@ dbx_cmd_download_executar() {
     return 0
   fi
 
+  # Se o caminho for a raiz remota (""), trata-se obrigatoriamente de uma pasta.
+  if [[ -z $remoto ]]; then
+    if [[ -z $destino || $destino == '-' ]]; then
+      dbx_cmd_falhar uso_invalido 'o caminho remoto e a raiz da conta (pasta); informe o diretorio local de destino'
+      return $?
+    fi
+    local dir_raiz_local=$destino
+    [[ $dir_raiz_local == */ ]] && dir_raiz_local=${dir_raiz_local%/}
+    [[ -z $dir_raiz_local ]] && dir_raiz_local='/'
+    mkdir -p -- "$dir_raiz_local" 2>/dev/null || {
+      dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $dir_raiz_local"
+      return $?
+    }
+    dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
+    # shellcheck source=commands/sync.sh
+    . "${BASH_SOURCE[0]%/*}/sync.sh"
+    dbx_cmd_sync_executar --receber --origem / --destino "$dir_raiz_local"
+    return $?
+  fi
+
+  dbx_json_escapar_cadeia "$remoto"
+  local argumento="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
+
   # Sem destino, o conteudo vai para a saida padrao. Se o destino informado
   # for um diretorio (ou terminar com barra), o arquivo e salvo com o nome
   # original dentro dele, criando o diretorio se necessario. Caso seja um caminho
@@ -79,6 +102,7 @@ dbx_cmd_download_executar() {
   if [[ -n $destino ]]; then
     if [[ $destino == */ || -d $destino ]]; then
       local nome_base=${remoto##*/}
+      [[ -z $nome_base ]] && nome_base='raiz'
       local dir_destino=${destino%/}
       [[ -z $dir_destino ]] && dir_destino='/'
       if [[ ! -d $dir_destino ]]; then
@@ -87,7 +111,11 @@ dbx_cmd_download_executar() {
           return $?
         }
       fi
-      alvo="${dir_destino%/}/$nome_base"
+      if [[ -d $dir_destino && $(basename -- "$dir_destino") == "$nome_base" ]]; then
+        alvo=$dir_destino
+      else
+        alvo="${dir_destino%/}/$nome_base"
+      fi
     else
       local dir_pai=${destino%/*}
       if [[ $destino == */* && -n $dir_pai && ! -d $dir_pai ]]; then
@@ -108,11 +136,24 @@ dbx_cmd_download_executar() {
     local detalhe=${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}
     case $detalhe in
       *not_file*)
-        detalhe="o caminho remoto e uma pasta, nao um arquivo (para baixar pastas completas, use: dbx sync --receber --origem $remoto --destino ${destino:-.})"
-        classe='uso_invalido'
+        if [[ -z $destino || $destino == '-' ]]; then
+          dbx_cmd_falhar uso_invalido \
+            "o caminho remoto e uma pasta; informe o diretorio local de destino"
+          return $?
+        fi
+        rm -f -- "$alvo" 2>/dev/null || :
+        mkdir -p -- "$alvo" 2>/dev/null || {
+          dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $alvo"
+          return $?
+        }
+        dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
+        # shellcheck source=commands/sync.sh
+        . "${BASH_SOURCE[0]%/*}/sync.sh"
+        dbx_cmd_sync_executar --receber --origem "$remoto" --destino "$alvo"
+        return $?
         ;;
       *not_found*)
-        detalhe="caminho remoto nao encontrado no Dropbox: $remoto (verifique se o nome esta correto; para baixar pastas completas, use: dbx sync --receber --origem $remoto --destino ${destino:-.})"
+        detalhe="caminho remoto nao encontrado no Dropbox: $remoto (verifique se o nome esta correto)"
         classe='nao_encontrado'
         ;;
     esac
