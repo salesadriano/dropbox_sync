@@ -2,7 +2,7 @@
 
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](LICENSE)
 [![ShellCheck](https://img.shields.io/badge/shellcheck-pass-brightgreen.svg)](#qualidade-e-conformidade)
-[![Testes Automatizados](https://img.shields.io/badge/testes-556%20pass-brightgreen.svg)](#testes)
+[![Testes Automatizados](https://img.shields.io/badge/testes-574%20pass-brightgreen.svg)](#testes-e-qualidade)
 [![Piso de Shell](https://img.shields.io/badge/bash-4.4%2B-informational.svg)](#requisitos)
 
 **`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em ambientes Linux/POSIX.
@@ -15,6 +15,10 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 
 - **Zero Dependências Pesadas:** Funciona exclusivamente com `bash` 4.4+ e `cURL` padrão do sistema.
 - **Integridade Ponta a Ponta:** Cálculo e conferência do algoritmo de resumo oficial (`content_hash`) do Dropbox para uploads, downloads e sincronizações.
+- **Progresso de Operações em Tempo Real (`-p` / `--progresso`):**
+  - Acompanhamento visual de status e etapas de transferência em `upload`, `download` e `sync`.
+  - Emissão estrita pelo descritor de erro (`stderr` / `>&2`), preservando a saída padrão (`stdout` / `>&1`) 100% limpa para pipelines e saídas JSON estruturadas.
+  - Ativação explícita (`--progresso`, `--progress`, `-p`), silenciamento forçado (`--sem-progresso`, `--no-progress`) e detecção automática de terminal interativo (`auto`).
 - **Upload em Partes e Streaming (`stdin`):**
   - Transferência por requisição única para arquivos até 150 MiB.
   - Sessão sequencial em partes de 4 MiB para arquivos maiores.
@@ -74,11 +78,13 @@ dbx unlink --confirmar
 ## Guia de Comandos
 
 ### Opções Globais
-As opções globais devem ser informadas antes do comando:
+As opções globais podem ser informadas antes do comando (ou nos comandos operacionais específicos):
 ```bash
-dbx [--json] [--null] [--dry-run] <comando> [argumentos]
+dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] <comando> [argumentos]
 ```
-- `--json`: Formata a saída padrão em objetos JSON.
+- `--progresso`, `--progress`, `-p`: Ativa explicitamente a exibição de progresso em tempo real em `stderr` (útil para scripts e pipelines onde o progresso padrão fica em silêncio).
+- `--sem-progresso`, `--no-progress`: Desativa explicitamente a exibição de progresso (modo silencioso forçado mesmo em terminais interativos).
+- `--json`: Formata a saída padrão em objetos JSON estruturados.
 - `--null`: Utiliza o terminador `\0` (compatível com `xargs -0`).
 - `--dry-run`: Simula a execução sem alterar o estado local ou remoto.
 - `--help`: Exibe a ajuda geral ou específica de comandos.
@@ -90,8 +96,8 @@ dbx [--json] [--null] [--dry-run] <comando> [argumentos]
 Envia arquivos locais ou fluxos da entrada padrão para o Dropbox:
 
 ```bash
-# Upload de arquivo local
-dbx upload ./relatorio.pdf /documentos/relatorio.pdf
+# Upload de arquivo local com progresso em tempo real (-p)
+dbx upload -p ./relatorio.pdf /documentos/relatorio.pdf
 
 # Upload forçando sobrescrita
 dbx upload --modo overwrite ./backup.sql /backups/backup.sql
@@ -108,11 +114,11 @@ tar czf - /dados | dbx upload - /backups/dados.tar.gz
 Baixa um item remoto para um caminho local ou para a saída padrão (`stdout`):
 
 ```bash
-# Download para arquivo local (valida integridade content_hash)
-dbx download /documentos/relatorio.pdf ./relatorio.pdf
+# Download para arquivo local com acompanhamento de progresso (-p)
+dbx download -p /documentos/relatorio.pdf ./relatorio.pdf
 
-# Download para stdout e descompactação em pipe
-dbx download /backups/dados.tar.gz - | tar xzf - -C /restauracao/
+# Download para stdout e descompactação em pipe (progresso emitido em stderr sem corromper o fluxo binário)
+dbx download -p /backups/dados.tar.gz - | tar xzf - -C /restauracao/
 ```
 
 ---
@@ -121,14 +127,14 @@ dbx download /backups/dados.tar.gz - | tar xzf - -C /restauracao/
 Sincroniza uma pasta local com uma pasta remota. A origem é a autoridade absoluta:
 
 ```bash
-# Enviar alterações locais para o Dropbox (origem: local, destino: remoto)
-dbx sync --enviar --origem /meus_dados --destino /pasta_remota
+# Enviar alterações locais com progresso etapa a etapa [X/N]
+dbx sync -p --enviar --origem /meus_dados --destino /pasta_remota
 
-# Receber alterações remotas para o diretório local (origem: remoto, destino: local)
-dbx sync --receber --origem /pasta_remota --destino /meus_dados
+# Receber alterações remotas para o diretório local
+dbx sync -p --receber --origem /pasta_remota --destino /meus_dados
 
 # Sincronização com espelhamento (exclui no destino itens ausentes na origem)
-dbx sync --enviar --origem /dados --destino /backup --espelhar
+dbx sync -p --enviar --origem /dados --destino /backup --espelhar
 ```
 
 ---
@@ -139,6 +145,9 @@ Lista arquivos e pastas remotas com paginação automática:
 ```bash
 # Listagem padrão
 dbx list /documentos
+
+# Listagem recursiva limitada
+dbx list --recursivo --limite 100 /documentos
 
 # Listagem estruturada em JSON
 dbx --json list /documentos
@@ -153,6 +162,7 @@ dbx --null list /documentos
 Remove arquivos ou pastas no Dropbox com proteção contra exclusões acidentais:
 
 ```bash
+# Exclusão com confirmação explícita (--confirmar ou --yes)
 dbx delete --confirmar /documentos/antigo.pdf
 
 # Exclusão condicionada à revisão específica (proteção contra conflito)
@@ -177,7 +187,7 @@ Verifica o uso e a capacidade total de armazenamento da conta:
 # Exibição em bytes
 dbx space
 
-# Exibição legível para humanos
+# Exibição legível para humanos (--humano ou -H)
 dbx space --humano
 ```
 

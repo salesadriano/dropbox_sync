@@ -71,16 +71,27 @@ dbx_cmd_download_executar() {
     return 0
   fi
 
-  # Sem destino, o conteudo vai para a saida padrao. O diagnostico vai para a
-  # saida de erro em ambos os casos, entao nunca se mistura ao conteudo.
+  # Sem destino, o conteudo vai para a saida padrao. Se o destino informado
+  # for um diretorio existente, o arquivo e salvo com o nome original dentro dele.
   local alvo=${destino:-/dev/stdout}
+  if [[ -n $destino && -d $destino ]]; then
+    local nome_base=${remoto##*/}
+    alvo="${destino%/}/$nome_base"
+  fi
 
   dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo"
 
   dbx_auth_conteudo_receber GET \
     'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo" || {
     local classe=${DBX_HTTP_CLASSE:-erro_remoto}
-    dbx_cmd_falhar "$classe" "recebimento recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}"
+    local detalhe=${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}
+    case $detalhe in
+      *not_file*)
+        detalhe="o caminho remoto e uma pasta, nao um arquivo (para baixar pastas completas, use: dbx sync --receber --origem $remoto --destino ${destino:-.})"
+        classe='uso_invalido'
+        ;;
+    esac
+    dbx_cmd_falhar "$classe" "recebimento recusado: $detalhe"
     return $?
   }
 

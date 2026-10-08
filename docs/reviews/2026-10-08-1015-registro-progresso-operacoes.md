@@ -35,11 +35,12 @@ O objetivo foi implementar sinalizadores (`--progresso` / `--progress` / `-p` e 
 | `bin/dbx` | Modificado | Sourcing de `lib/progress.sh` e documentacao de opcoes de progresso na ajuda geral e contextual |
 | `commands/upload.sh` | Modificado | Reconhecimento local de flags e emissao de marcos de inicio, envio e conclusao |
 | `lib/transfer.sh` | Modificado | Emissao de progresso bloco a bloco durante sessoes de upload em partes |
-| `commands/download.sh` | Modificado | Reconhecimento local de flags e emissao de marcos de download em stderr |
+| `commands/download.sh` | Modificado | Reconhecimento local de flags, emissao de marcos de download em stderr, resolucao de destino quando for diretorio e diagnostico acionavel para pastas com sugestao de sync |
 | `commands/sync.sh` | Modificado | Reconhecimento local de flags e marcadores de etapa ordenada `[X/N]` no envio, recebimento e exclusao |
 | `tests/unit/cli_test.sh` | Modificado | Testes unitarios de analise das novas flags globais |
 | `tests/integracao/comandos_test.sh` | Modificado | Testes integrados de upload e download com `--progresso` assegurando stderr preenchido e stdout intacto |
 | `tests/integracao/sync_test.sh` | Modificado | Teste integrado de sync com `--progresso` verificando emissao de etapas em stderr |
+| `README.md` | Modificado | Atualizacao de documentacao, opcoes globais, contagem de testes e exemplos de progresso |
 
 ---
 
