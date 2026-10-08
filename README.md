@@ -2,7 +2,7 @@
 
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](LICENSE)
 [![ShellCheck](https://img.shields.io/badge/shellcheck-pass-brightgreen.svg)](#qualidade-e-conformidade)
-[![Testes Automatizados](https://img.shields.io/badge/testes-576%20pass-brightgreen.svg)](#testes-e-qualidade)
+[![Testes Automatizados](https://img.shields.io/badge/testes-584%20pass-brightgreen.svg)](#testes-e-qualidade)
 [![Piso de Shell](https://img.shields.io/badge/bash-4.4%2B-informational.svg)](#requisitos)
 
 **`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em ambientes Linux/POSIX.
@@ -14,11 +14,18 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 ## Principais Recursos
 
 - **Zero Dependências Pesadas:** Funciona exclusivamente com `bash` 4.4+ e `cURL` padrão do sistema.
+- **Suporte Transparente a Arquivos e Pastas:** `upload` e `download` operam nativamente tanto com arquivos individuais quanto com pastas inteiras recursivamente.
+- **Cache Local Relacional SQLite (`lib/db.sh`):**
+  - Mantém base SQLite em `~/.local/state/dbx/dbx.db` com metadados locais (`tamanho`, `mtime`, `content_hash`) e histórico de operações bem-sucedidas.
+  - Dispensa automaticamente envios redundantes no `upload` quando o arquivo local permanece inalterado para o destino (`status=dispensado`, `motivo=inalterado`), economizando banda e tempo.
+  - Suporte a re-envio forçado via `--forcar` / `--force`.
+  - Motor resiliente híbrido: usa `sqlite3` CLI nativo com fallback automático e transparente para o módulo `sqlite3` do `python3`.
 - **Integridade Ponta a Ponta:** Cálculo e conferência do algoritmo de resumo oficial (`content_hash`) do Dropbox para uploads, downloads e sincronizações.
 - **Progresso de Operações em Tempo Real (`-p` / `--progresso`):**
   - Acompanhamento visual de status e etapas de transferência em `upload`, `download` e `sync`.
   - Emissão estrita pelo descritor de erro (`stderr` / `>&2`), preservando a saída padrão (`stdout` / `>&1`) 100% limpa para pipelines e saídas JSON estruturadas.
   - Ativação explícita (`--progresso`, `--progress`, `-p`), silenciamento forçado (`--sem-progresso`, `--no-progress`) e detecção automática de terminal interativo (`auto`).
+- **Criação Automática de Diretórios:** Em `sync --receber` e `download`, cria automaticamente pastas locais de destino e subdiretórios intermediários que ainda não existam.
 - **Upload em Partes e Streaming (`stdin`):**
   - Transferência por requisição única para arquivos até 150 MiB.
   - Sessão sequencial em partes de 4 MiB para arquivos maiores.
@@ -92,14 +99,23 @@ dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] <comando> [arg
 
 ---
 
-### 1. `upload` — Envio de Arquivos
-Envia arquivos locais ou fluxos da entrada padrão para o Dropbox:
+### 1. `upload` — Envio de Arquivos e Pastas
+Envia arquivos locais, pastas completas ou fluxos da entrada padrão para o Dropbox:
 
 ```bash
 # Upload de arquivo local com progresso em tempo real (-p)
 dbx upload -p ./relatorio.pdf /documentos/relatorio.pdf
 
-# Upload forçando sobrescrita
+# Upload de pasta inteira recursivamente
+dbx upload -p /mnt/h/Bkps/PeOuro /PeOuro
+
+# Upload dispensado automaticamente se o arquivo local estiver inalterado
+dbx upload ./relatorio.pdf /documentos/relatorio.pdf
+
+# Forçar envio mesmo se inalterado no banco local
+dbx upload --forcar ./relatorio.pdf /documentos/relatorio.pdf
+
+# Upload forçando sobrescrita remota
 dbx upload --modo overwrite ./backup.sql /backups/backup.sql
 
 # Upload de fluxo via stdin (-)
@@ -110,12 +126,15 @@ tar czf - /dados | dbx upload - /backups/dados.tar.gz
 
 ---
 
-### 2. `download` — Recebimento de Arquivos
-Baixa um item remoto para um caminho local ou para a saída padrão (`stdout`):
+### 2. `download` — Recebimento de Arquivos e Pastas
+Baixa um arquivo individual ou uma pasta remota inteira para o disco local ou para a saída padrão (`stdout`):
 
 ```bash
-# Download para arquivo local com acompanhamento de progresso (-p)
+# Download de arquivo individual com acompanhamento de progresso (-p)
 dbx download -p /documentos/relatorio.pdf ./relatorio.pdf
+
+# Download de pasta remota inteira recursivamente (cria a pasta de destino automaticamente)
+dbx download -p /PeOuro /mnt/h/Bkps/
 
 # Download para stdout e descompactação em pipe (progresso emitido em stderr sem corromper o fluxo binário)
 dbx download -p /backups/dados.tar.gz - | tar xzf - -C /restauracao/
@@ -130,7 +149,7 @@ Sincroniza uma pasta local com uma pasta remota. A origem é a autoridade absolu
 # Enviar alterações locais com progresso etapa a etapa [X/N]
 dbx sync -p --enviar --origem /meus_dados --destino /pasta_remota
 
-# Receber alterações remotas para o diretório local
+# Receber alterações remotas para o diretório local (cria destino se inexistente)
 dbx sync -p --receber --origem /pasta_remota --destino /meus_dados
 
 # Sincronização com espelhamento (exclui no destino itens ausentes na origem)
@@ -198,7 +217,7 @@ dbx space --humano
 O projeto conta com uma suíte abrangente de testes automatizados com saída **TAP 13**, cobrindo cenários unitários e de integração com dublês de rede e auditorias adversariais:
 
 ```bash
-# Executar a bateria completa de testes
+# Executar a bateria completa de testes (584 casos aprovados)
 bash tests/run.sh < /dev/null
 
 # Executar análise estática (linter)
