@@ -214,6 +214,7 @@ dbx_cmd_sync_executar() {
     # Em simulacao com destino local inexistente, nao ha itens locais
     : >"$registros_locais"
   else
+    dbx_progress_mensagem "[sync] analisando arquivos locais em: $raiz_local"
     dbx_walk_local "$raiz_local" "$registros_locais" || {
       rm -rf -- "$area"
       dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
@@ -222,6 +223,7 @@ dbx_cmd_sync_executar() {
     parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
   fi
 
+  dbx_progress_mensagem "[sync] consultando arquivos remotos em: $remoto"
   if ! dbx_sync_enumerar_remoto "$remoto" "$registros_remotos"; then
     local estado_remoto=$?
     rm -rf -- "$area"
