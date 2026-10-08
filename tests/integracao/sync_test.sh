@@ -372,4 +372,17 @@ teste_sync_com_progresso_emite_em_stderr_e_preserva_stdout() {
   assert_nao_contem '[sync' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
 }
 
+teste_sync_com_progresso_lista_arquivos_e_resultados_da_analise() {
+  local base
+  base=$(_cenario)
+  printf 'conteudo 1' >"$base/local/arq1.txt"
+  printf 'conteudo 2' >"$base/local/arq2.txt"
+  _rodar "$base" --progresso sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'analisando local (1/2): arq' "$DBX_ERRO" 'deve listar analise de arquivo local'
+  assert_contem 'analise [' "$DBX_ERRO" 'deve listar resultado da analise'
+  assert_contem 'novo (a enviar)' "$DBX_ERRO" 'resultado deve classificar arquivo novo'
+}
+
 harness_executar "$@"
+

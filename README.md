@@ -2,7 +2,7 @@
 
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](LICENSE)
 [![ShellCheck](https://img.shields.io/badge/shellcheck-pass-brightgreen.svg)](#qualidade-e-conformidade)
-[![Testes Automatizados](https://img.shields.io/badge/testes-584%20pass-brightgreen.svg)](#testes-e-qualidade)
+[![Testes Automatizados](https://img.shields.io/badge/testes-586%20pass-brightgreen.svg)](#testes-e-qualidade)
 [![Piso de Shell](https://img.shields.io/badge/bash-4.4%2B-informational.svg)](#requisitos)
 
 **`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em ambientes Linux/POSIX.
@@ -89,7 +89,7 @@ As opções globais podem ser informadas antes do comando (ou nos comandos opera
 ```bash
 dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] <comando> [argumentos]
 ```
-- `--progresso`, `--progress`, `-p`: Ativa explicitamente a exibição de progresso em tempo real em `stderr` (útil para scripts e pipelines onde o progresso padrão fica em silêncio).
+- `--progresso`, `--progress`, `-p`: Ativa explicitamente a exibição de progresso em tempo real em `stderr` (útil para scripts e visualização interativa). Durante a análise dos arquivos, lista cada arquivo e o resultado detalhado da análise (status de cache SQLite/memória, hash calculado, idêntico/dispensado, modificado, novo ou ausente na origem).
 - `--sem-progresso`, `--no-progress`: Desativa explicitamente a exibição de progresso (modo silencioso forçado mesmo em terminais interativos).
 - `--json`: Formata a saída padrão em objetos JSON estruturados.
 - `--null`: Utiliza o terminador `\0` (compatível com `xargs -0`).

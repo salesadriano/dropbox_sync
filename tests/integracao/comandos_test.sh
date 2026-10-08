@@ -954,6 +954,17 @@ teste_upload_com_progresso_emite_em_stderr_e_preserva_stdout() {
   assert_nao_contem '[upload]' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
 }
 
+teste_upload_com_progresso_analisa_arquivo_e_emite_resultado() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'conteudo para upload\n' >"$origem"
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'analisando arquivo local' "$DBX_ERRO" 'deve conter mensagem de analise de arquivo'
+  assert_contem 'resultado da analise:' "$DBX_ERRO" 'deve conter resultado da analise'
+}
+
 teste_download_com_progresso_emite_em_stderr_e_preserva_stdout() {
   local base
   base=$(_ambiente '{"name":"a.txt","rev":"016"}')

@@ -236,8 +236,9 @@ dbx_cmd_upload_executar() {
     tam_local=$(stat -c '%s' "$origem" 2>/dev/null)
     mtime_local=$(stat -c '%Y' "$origem" 2>/dev/null)
     if [[ $forcar != 'sim' && -n $tam_local && -n $mtime_local ]]; then
+      dbx_progress_mensagem "[upload] analisando arquivo local: $origem"
       if ! dbx_db_arquivo_alterado "$origem" "$remoto" "upload" "$tam_local" "$mtime_local"; then
-        dbx_progress_mensagem "[upload] arquivo inalterado desde a ultima operacao: envio dispensado"
+        dbx_progress_mensagem "[upload] resultado da analise: $origem -> inalterado (envio dispensado)"
         dbx_cmd_iniciar_saida
         dbx_output_campo operacao upload
         dbx_output_campo origem "$origem"
@@ -247,6 +248,7 @@ dbx_cmd_upload_executar() {
         dbx_output_render
         return 0
       fi
+      dbx_progress_mensagem "[upload] resultado da analise: $origem -> alterado/novo (necessita envio)"
     fi
   fi
 
