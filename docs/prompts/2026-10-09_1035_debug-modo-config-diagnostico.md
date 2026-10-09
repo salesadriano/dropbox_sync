@@ -3,7 +3,7 @@ date: 2026-10-09
 hora: "1035"
 domain: config / cli / diagnostico
 porte: M
-status: em_andamento
+status: concluido
 instancia: prod/root
 registro_de_entrega: "docs/reviews/2026-10-09-1035-registro-debug-modo-config.md"
 ---
@@ -58,3 +58,9 @@ registro_de_entrega: "docs/reviews/2026-10-09-1035-registro-debug-modo-config.md
 > update README.md
 
 **Intenção:** Atualizar o README.md documentando o modo `--debug` e `DBX_DEBUG=1`, subseção de solução de problemas e diagnóstico em ambientes restritos (root/containers com sistema de arquivos somente-leitura ou restrições de permissão/montagem), uso de `XDG_CONFIG_HOME`, consumo único do código de autorização OAuth2, e atualização das contagens de testes (591 casos aprovados).
+
+## Prompt 4 — 2026-10-09 1129
+
+> commit and PRs
+
+**Intenção:** Realizar a entrega formal com commit final, push da branch de feature para o repositório remoto e criação do Pull Request direcionado para `develop`.
