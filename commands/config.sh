@@ -67,17 +67,94 @@ _dbx_cmd_config_perguntar() {
   return 0
 }
 
+# _dbx_cmd_config_diagnosticar [diretorio] [arquivo]
+#
+# Emite diagnostico detalhado do ambiente, diretorio e sistema de arquivos
+# para stderr sob modo de depuracao. NUNCA ecoa segredo nem conteudo da credencial.
+_dbx_cmd_config_diagnosticar() {
+  local dir=${1:-} arq=${2:-}
+  if [[ -z $dir || -z $arq ]]; then
+    dbx_config_caminho || true
+    arq=${DBX_CONFIG_RESULTADO:-}
+    dir=${arq%/*}
+  fi
+
+  printf '[debug] === DIAGNOSTICO OPERACIONAL DE CONFIGURACAO ===\n' >&2
+  printf '[debug] Processo: PID=%s EUID=%s UID=%s USER=%s\n' \
+    "$$" "${EUID:-?}" "${UID:-?}" "${USER:-desconhecido}" >&2
+  printf '[debug] Variaveis: HOME=%s XDG_CONFIG_HOME=%s\n' \
+    "${HOME:-<vazio>}" "${XDG_CONFIG_HOME:-<nao definido>}" >&2
+  printf '[debug] Alvo da credencial: %s\n' "$arq" >&2
+  printf '[debug] Diretorio base: %s\n' "$dir" >&2
+
+  if [[ -e $dir ]]; then
+    if [[ -d $dir ]]; then
+      local modo dono gravavel
+      modo=$(stat -c '%a (%A)' "$dir" 2>/dev/null || echo 'indisponivel')
+      dono=$(stat -c '%u:%g' "$dir" 2>/dev/null || echo 'indisponivel')
+      if [[ -w $dir ]]; then gravavel='sim'; else gravavel='nao'; fi
+      printf '[debug] Diretorio existe: sim (tipo: dir, perm: %s, dono: %s, gravavel: %s)\n' \
+        "$modo" "$dono" "$gravavel" >&2
+    else
+      printf '[debug] Diretorio existe: sim (AVISO: nao e diretorio!)\n' >&2
+    fi
+  else
+    printf '[debug] Diretorio existe: nao\n' >&2
+  fi
+
+  if [[ -e $arq ]]; then
+    local modo_arq dono_arq
+    modo_arq=$(stat -c '%a (%A)' "$arq" 2>/dev/null || echo 'indisponivel')
+    dono_arq=$(stat -c '%u:%g' "$arq" 2>/dev/null || echo 'indisponivel')
+    printf '[debug] Arquivo existe: sim (perm: %s, dono: %s)\n' "$modo_arq" "$dono_arq" >&2
+  else
+    printf '[debug] Arquivo existe: nao\n' >&2
+  fi
+
+  if command -v df >/dev/null 2>&1; then
+    local alvo_df=$dir
+    [[ -d $alvo_df ]] || alvo_df=${dir%/*}
+    [[ -d $alvo_df ]] || alvo_df='/'
+    local df_info df_inodes
+    df_info=$(df -h "$alvo_df" 2>/dev/null | tail -n 1 || true)
+    [[ -n $df_info ]] && printf '[debug] Espaco em disco: %s\n' "$df_info" >&2
+    df_inodes=$(df -i "$alvo_df" 2>/dev/null | tail -n 1 || true)
+    [[ -n $df_inodes ]] && printf '[debug] Inodes livres: %s\n' "$df_inodes" >&2
+  fi
+
+  if command -v mount >/dev/null 2>&1; then
+    local montagem
+    montagem=$(mount 2>/dev/null | grep -E " on (/ |/root |${dir%%/*} )" | head -n 3 || true)
+    [[ -n $montagem ]] && printf '[debug] Montagens relevantes:\n%s\n' "$montagem" >&2
+  fi
+
+  if command -v getenforce >/dev/null 2>&1; then
+    printf '[debug] SELinux: %s\n' "$(getenforce 2>/dev/null || echo 'erro')" >&2
+  fi
+
+  if command -v lsattr >/dev/null 2>&1 && [[ -d $dir ]]; then
+    local attrs
+    attrs=$(lsattr -d "$dir" 2>/dev/null || true)
+    [[ -n $attrs ]] && printf '[debug] Atributos fs: %s\n' "$attrs" >&2
+  fi
+  printf '[debug] ================================================\n' >&2
+  return 0
+}
+
 dbx_cmd_config_executar() {
   # Carregado ANTES da leitura de argumentos: `dbx_cmd_falhar` mora em `lib/cmd`,
   # e recusar uma opcao invalida sem ele daria erro de funcao inexistente no
   # lugar do diagnostico.
   dbx_carregar_camada_de_credencial
 
-  local substituir='nao' raiz='/'
+  local substituir='nao' raiz='/' debug='nao'
+  [[ ${DBX_CLI_DEBUG:-nao} == 'sim' || (-n ${DBX_DEBUG:-} && ${DBX_DEBUG:-} != '0' && ${DBX_DEBUG:-} != 'nao') ]] && debug='sim'
+
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
       --substituir) substituir='sim' ;;
+      --debug) debug='sim' ;;
       --raiz)
         shift
         raiz=${1-}
@@ -102,11 +179,17 @@ dbx_cmd_config_executar() {
   remoto=$DBX_CMD_LIDO
 
   dbx_config_caminho || {
+    [[ $debug == 'sim' ]] && _dbx_cmd_config_diagnosticar '' ''
     dbx_cmd_falhar configuracao \
       "nao foi possivel determinar o caminho da credencial: $DBX_CONFIG_MOTIVO"
     return $?
   }
   local arquivo=$DBX_CONFIG_RESULTADO
+  local diretorio=${arquivo%/*}
+
+  if [[ $debug == 'sim' ]]; then
+    _dbx_cmd_config_diagnosticar "$diretorio" "$arquivo"
+  fi
 
   # SUBSTITUIR CREDENCIAL EXISTENTE EXIGE SINALIZADOR, por seguranca e nao por
   # conveniencia: gravar por cima descarta o refresh token anterior DA NOSSA
@@ -198,7 +281,12 @@ dbx_cmd_config_executar() {
   dbx_config_gravar "$chave" "$segredo" "$DBX_AUTH_REFRESH_TOKEN" "$remoto" || {
     segredo=''
     dbx_auth_esquecer_vinculo
-    dbx_cmd_falhar configuracao "gravacao da credencial falhou: $DBX_CONFIG_MOTIVO"
+    if [[ $debug == 'sim' ]]; then
+      _dbx_cmd_config_diagnosticar "$diretorio" "$arquivo"
+    fi
+    local msg="gravacao da credencial falhou: $DBX_CONFIG_MOTIVO"
+    [[ -n ${DBX_CONFIG_DETALHE:-} ]] && msg+=" ($DBX_CONFIG_DETALHE)"
+    dbx_cmd_falhar configuracao "$msg"
     return $?
   }
   # Os dois segredos deixam de existir neste processo assim que estao em disco.

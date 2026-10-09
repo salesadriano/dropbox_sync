@@ -79,6 +79,7 @@ readonly DBX_CONFIG_VERSAO=1
 # suite, e o analisador nao enxerga o uso porque ele ocorre em outro arquivo.
 DBX_CONFIG_RESULTADO=''
 DBX_CONFIG_MOTIVO=''
+DBX_CONFIG_DETALHE=''
 DBX_CONFIG_APP_KEY=''
 DBX_CONFIG_APP_SECRET=''
 DBX_CONFIG_REFRESH_TOKEN=''
@@ -126,6 +127,7 @@ _dbx_config_varrer_orfaos() {
 
 _dbx_config_falhar() {
   DBX_CONFIG_MOTIVO=$1
+  DBX_CONFIG_DETALHE=${2:-}
   _dbx_config_limpar_credencial
   return "$DBX_CONFIG_ERRO_CONFIGURACAO"
 }
@@ -221,31 +223,38 @@ dbx_config_gravar() {
 
   _dbx_config_varrer_orfaos "$diretorio"
 
-  temporario=$(mktemp "$diretorio/.credencial.$$.XXXXXXXX" 2>/dev/null) || {
+  temporario=''
+  local saida_mktemp
+  if ! saida_mktemp=$(mktemp "$diretorio/.credencial.$$.XXXXXXXX" 2>&1); then
     umask "$mascara_anterior"
-    _dbx_config_falhar gravacao
+    _dbx_config_falhar gravacao "${saida_mktemp:-falha ao criar arquivo temporario}"
     return $?
-  }
+  fi
+  temporario=$saida_mktemp
+
   # A escrita ocorre em subshell com `trap` proprio, para que sinal
   # interceptavel durante a gravacao remova o temporario sem alterar os `trap`
   # do processo chamador. `SIGKILL` continua fora de alcance por definicao, e e
   # a varredura de orfaos que cobre esse caso.
-  if ! (
+  local saida_subshell
+  if ! saida_subshell=$(
     trap 'rm -f -- "$1" 2>/dev/null' EXIT INT TERM HUP
     set -- "$temporario"
     printf '%s\n' "$corpo" >"$1" &&
       chmod 600 -- "$1" &&
       mv -f -- "$1" "$DBX_CONFIG_RESULTADO"
-  ) 2>/dev/null; then
+  ) 2>&1; then
     rm -f -- "$temporario" 2>/dev/null
     umask "$mascara_anterior"
-    _dbx_config_falhar gravacao
+    _dbx_config_falhar gravacao "${saida_subshell:-falha ao gravar ou mover credencial}"
     return $?
   fi
 
   umask "$mascara_anterior"
   # shellcheck disable=SC2034  # canal publico, ver nota no topo
   DBX_CONFIG_MOTIVO=''
+  # shellcheck disable=SC2034  # canal publico, ver nota no topo
+  DBX_CONFIG_DETALHE=''
   return 0
 }
 

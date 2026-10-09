@@ -90,6 +90,12 @@ teste_opcoes_de_progresso_reconhecidas_globalmente() {
   assert_igual 'nao' "$DBX_CLI_PROGRESSO" 'progresso desativado por --no-progress'
 }
 
+teste_opcao_debug_reconhecida_globalmente() {
+  dbx_cli_analisar --debug list /a
+  assert_igual 0 $? 'analise com --debug'
+  assert_igual 'sim' "$DBX_CLI_DEBUG" 'modo de depuracao ativado por --debug'
+}
+
 teste_opcoes_apos_o_comando_pertencem_ao_comando() {
   # `--json` depois do subcomando NAO e opcao global: pertence ao comando, que
   # pode ter opcao de mesmo nome. Sem esta fronteira, o despacho consumiria
