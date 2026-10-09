@@ -89,6 +89,9 @@ tar -xzf dropbox_sync-1.1.0-linux.tar.gz
 O comando interativo orienta a vinculação OAuth2 segura:
 ```bash
 dbx config
+
+# Para diagnosticar o ambiente e investigar falhas de persistência em servidores ou containers:
+dbx config --debug
 ```
 - A ferramenta solicitará a sua **App Key** e **App Secret** da sua aplicação Dropbox.
 - Abra o link gerado no navegador, autorize o aplicativo e cole o código de autorização fornecido.
@@ -106,7 +109,7 @@ dbx unlink --confirmar
 ### Opções Globais
 As opções globais podem ser informadas antes do comando (ou nos comandos operacionais específicos):
 ```bash
-dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] <comando> [argumentos]
+dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] [--debug] <comando> [argumentos]
 ```
 - `--progresso`, `--progress`, `-p`: Ativa explicitamente a exibição de progresso em tempo real em `stderr` (útil para scripts e visualização interativa). Durante a análise dos arquivos, lista cada arquivo e o resultado detalhado da análise (status de cache SQLite/memória, hash calculado, idêntico/dispensado, modificado, novo ou ausente na origem).
 - `--sem-progresso`, `--no-progress`: Desativa explicitamente a exibição de progresso (modo silencioso forçado mesmo em terminais interativos).

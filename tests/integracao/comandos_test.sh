@@ -741,6 +741,36 @@ teste_config_aceita_entrada_sem_quebra_de_linha_final() {
   assert_arquivo_existe "$base/config/dbx/credencial.json" 'a credencial e gravada'
 }
 
+teste_config_aceita_sinalizador_debug_e_emite_diagnostico() {
+  local base
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" --debug config
+  assert_igual 0 "$DBX_ESTADO" "config com --debug global deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[debug]' "$DBX_ERRO" 'diagnostico de depuracao deve ser emitido em stderr'
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'credencial gravada'
+}
+
+teste_config_subcomando_aceita_sinalizador_debug() {
+  local base
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config --debug
+  assert_igual 0 "$DBX_ESTADO" "config com subcomando --debug deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[debug]' "$DBX_ERRO" 'diagnostico de depuracao deve ser emitido em stderr'
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'credencial gravada'
+}
+
+teste_config_debug_emite_detalhe_em_falha_de_gravacao() {
+  local base
+  base=$(_ambiente_vazio)
+  mkdir -p "$base/config/dbx"
+  chmod 500 "$base/config/dbx"
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config --debug
+  chmod 700 "$base/config/dbx"
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" 'deve falhar por configuracao'
+  assert_contem '[debug]' "$DBX_ERRO" 'deve conter relatorio completo de depuracao'
+  assert_contem 'gravacao da credencial falhou: gravacao' "$DBX_ERRO" 'deve conter mensagem de erro com detalhe'
+}
+
 teste_config_pede_autorizacao_offline_e_nao_ecoa_o_segredo() {
   local base
   base=$(_ambiente_vazio)

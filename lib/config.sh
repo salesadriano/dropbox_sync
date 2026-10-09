@@ -79,6 +79,7 @@ readonly DBX_CONFIG_VERSAO=1
 # suite, e o analisador nao enxerga o uso porque ele ocorre em outro arquivo.
 DBX_CONFIG_RESULTADO=''
 DBX_CONFIG_MOTIVO=''
+DBX_CONFIG_DETALHE=''
 DBX_CONFIG_APP_KEY=''
 DBX_CONFIG_APP_SECRET=''
 DBX_CONFIG_REFRESH_TOKEN=''
@@ -126,6 +127,7 @@ _dbx_config_varrer_orfaos() {
 
 _dbx_config_falhar() {
   DBX_CONFIG_MOTIVO=$1
+  DBX_CONFIG_DETALHE=${2:-}
   _dbx_config_limpar_credencial
   return "$DBX_CONFIG_ERRO_CONFIGURACAO"
 }
@@ -221,31 +223,112 @@ dbx_config_gravar() {
 
   _dbx_config_varrer_orfaos "$diretorio"
 
-  temporario=$(mktemp "$diretorio/.credencial.$$.XXXXXXXX" 2>/dev/null) || {
+  temporario=''
+  local saida_mktemp
+  if ! saida_mktemp=$(mktemp "$diretorio/.credencial.$$.XXXXXXXX" 2>&1); then
     umask "$mascara_anterior"
-    _dbx_config_falhar gravacao
+    _dbx_config_falhar gravacao "${saida_mktemp:-falha ao criar arquivo temporario}"
     return $?
-  }
+  fi
+  temporario=$saida_mktemp
+
   # A escrita ocorre em subshell com `trap` proprio, para que sinal
   # interceptavel durante a gravacao remova o temporario sem alterar os `trap`
   # do processo chamador. `SIGKILL` continua fora de alcance por definicao, e e
   # a varredura de orfaos que cobre esse caso.
-  if ! (
+  local saida_subshell
+  if ! saida_subshell=$(
     trap 'rm -f -- "$1" 2>/dev/null' EXIT INT TERM HUP
     set -- "$temporario"
     printf '%s\n' "$corpo" >"$1" &&
       chmod 600 -- "$1" &&
       mv -f -- "$1" "$DBX_CONFIG_RESULTADO"
-  ) 2>/dev/null; then
+  ) 2>&1; then
     rm -f -- "$temporario" 2>/dev/null
     umask "$mascara_anterior"
-    _dbx_config_falhar gravacao
+    _dbx_config_falhar gravacao "${saida_subshell:-falha ao gravar ou mover credencial}"
     return $?
   fi
 
   umask "$mascara_anterior"
   # shellcheck disable=SC2034  # canal publico, ver nota no topo
   DBX_CONFIG_MOTIVO=''
+  # shellcheck disable=SC2034  # canal publico, ver nota no topo
+  DBX_CONFIG_DETALHE=''
+  return 0
+}
+
+# dbx_config_diagnosticar [diretorio] [arquivo]
+#
+# Emite diagnostico detalhado do ambiente, diretorio e sistema de arquivos
+# para stderr sob modo de depuracao. NUNCA ecoa segredo nem conteudo da credencial.
+dbx_config_diagnosticar() {
+  local dir=${1:-} arq=${2:-}
+  if [[ -z $dir || -z $arq ]]; then
+    dbx_config_caminho || true
+    arq=${DBX_CONFIG_RESULTADO:-}
+    dir=${arq%/*}
+  fi
+
+  printf '[debug] === DIAGNOSTICO OPERACIONAL DE CONFIGURACAO ===\n' >&2
+  printf '[debug] Processo: PID=%s EUID=%s UID=%s USER=%s\n' \
+    "$$" "${EUID:-?}" "${UID:-?}" "${USER:-desconhecido}" >&2
+  printf '[debug] Variaveis: HOME=%s XDG_CONFIG_HOME=%s\n' \
+    "${HOME:-<vazio>}" "${XDG_CONFIG_HOME:-<nao definido>}" >&2
+  printf '[debug] Alvo da credencial: %s\n' "$arq" >&2
+  printf '[debug] Diretorio base: %s\n' "$dir" >&2
+
+  if [[ -e $dir ]]; then
+    if [[ -d $dir ]]; then
+      local modo dono gravavel
+      modo=$(stat -c '%a (%A)' "$dir" 2>/dev/null || echo 'indisponivel')
+      dono=$(stat -c '%u:%g' "$dir" 2>/dev/null || echo 'indisponivel')
+      if [[ -w $dir ]]; then gravavel='sim'; else gravavel='nao'; fi
+      printf '[debug] Diretorio existe: sim (tipo: dir, perm: %s, dono: %s, gravavel: %s)\n' \
+        "$modo" "$dono" "$gravavel" >&2
+    else
+      printf '[debug] Diretorio existe: sim (AVISO: nao e diretorio!)\n' >&2
+    fi
+  else
+    printf '[debug] Diretorio existe: nao\n' >&2
+  fi
+
+  if [[ -e $arq ]]; then
+    local modo_arq dono_arq
+    modo_arq=$(stat -c '%a (%A)' "$arq" 2>/dev/null || echo 'indisponivel')
+    dono_arq=$(stat -c '%u:%g' "$arq" 2>/dev/null || echo 'indisponivel')
+    printf '[debug] Arquivo existe: sim (perm: %s, dono: %s)\n' "$modo_arq" "$dono_arq" >&2
+  else
+    printf '[debug] Arquivo existe: nao\n' >&2
+  fi
+
+  if command -v df >/dev/null 2>&1; then
+    local alvo_df=$dir
+    [[ -d $alvo_df ]] || alvo_df=${dir%/*}
+    [[ -d $alvo_df ]] || alvo_df='/'
+    local df_info df_inodes
+    df_info=$(df -h "$alvo_df" 2>/dev/null | tail -n 1 || true)
+    [[ -n $df_info ]] && printf '[debug] Espaco em disco: %s\n' "$df_info" >&2
+    df_inodes=$(df -i "$alvo_df" 2>/dev/null | tail -n 1 || true)
+    [[ -n $df_inodes ]] && printf '[debug] Inodes livres: %s\n' "$df_inodes" >&2
+  fi
+
+  if command -v mount >/dev/null 2>&1; then
+    local montagem
+    montagem=$(mount 2>/dev/null | grep -E " on (/ |/root |${dir%%/*} )" | head -n 3 || true)
+    [[ -n $montagem ]] && printf '[debug] Montagens relevantes:\n%s\n' "$montagem" >&2
+  fi
+
+  if command -v getenforce >/dev/null 2>&1; then
+    printf '[debug] SELinux: %s\n' "$(getenforce 2>/dev/null || echo 'erro')" >&2
+  fi
+
+  if command -v lsattr >/dev/null 2>&1 && [[ -d $dir ]]; then
+    local attrs
+    attrs=$(lsattr -d "$dir" 2>/dev/null || true)
+    [[ -n $attrs ]] && printf '[debug] Atributos fs: %s\n' "$attrs" >&2
+  fi
+  printf '[debug] ================================================\n' >&2
   return 0
 }
 

@@ -73,11 +73,14 @@ dbx_cmd_config_executar() {
   # lugar do diagnostico.
   dbx_carregar_camada_de_credencial
 
-  local substituir='nao' raiz='/'
+  local substituir='nao' raiz='/' debug='nao'
+  [[ ${DBX_CLI_DEBUG:-nao} == 'sim' || (-n ${DBX_DEBUG:-} && ${DBX_DEBUG:-} != '0' && ${DBX_DEBUG:-} != 'nao') ]] && debug='sim'
+
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
       --substituir) substituir='sim' ;;
+      --debug) debug='sim' ;;
       --raiz)
         shift
         raiz=${1-}
@@ -102,11 +105,17 @@ dbx_cmd_config_executar() {
   remoto=$DBX_CMD_LIDO
 
   dbx_config_caminho || {
+    [[ $debug == 'sim' ]] && dbx_config_diagnosticar '' ''
     dbx_cmd_falhar configuracao \
       "nao foi possivel determinar o caminho da credencial: $DBX_CONFIG_MOTIVO"
     return $?
   }
   local arquivo=$DBX_CONFIG_RESULTADO
+  local diretorio=${arquivo%/*}
+
+  if [[ $debug == 'sim' ]]; then
+    dbx_config_diagnosticar "$diretorio" "$arquivo"
+  fi
 
   # SUBSTITUIR CREDENCIAL EXISTENTE EXIGE SINALIZADOR, por seguranca e nao por
   # conveniencia: gravar por cima descarta o refresh token anterior DA NOSSA
@@ -198,7 +207,12 @@ dbx_cmd_config_executar() {
   dbx_config_gravar "$chave" "$segredo" "$DBX_AUTH_REFRESH_TOKEN" "$remoto" || {
     segredo=''
     dbx_auth_esquecer_vinculo
-    dbx_cmd_falhar configuracao "gravacao da credencial falhou: $DBX_CONFIG_MOTIVO"
+    if [[ $debug == 'sim' ]]; then
+      dbx_config_diagnosticar "$diretorio" "$arquivo"
+    fi
+    local msg="gravacao da credencial falhou: $DBX_CONFIG_MOTIVO"
+    [[ -n ${DBX_CONFIG_DETALHE:-} ]] && msg+=" ($DBX_CONFIG_DETALHE)"
+    dbx_cmd_falhar configuracao "$msg"
     return $?
   }
   # Os dois segredos deixam de existir neste processo assim que estao em disco.
