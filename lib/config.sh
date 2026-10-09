@@ -203,7 +203,7 @@ dbx_config_gravar() {
       _dbx_config_falhar diretorio
       return $?
     }
-    chmod 700 -- "$diretorio" 2>/dev/null
+    chmod 700 "$diretorio" 2>/dev/null
   fi
 
   corpo='{'
@@ -241,7 +241,7 @@ dbx_config_gravar() {
     trap 'rm -f -- "$1" 2>/dev/null' EXIT INT TERM HUP
     set -- "$temporario"
     printf '%s\n' "$corpo" >"$1" &&
-      chmod 600 -- "$1" &&
+      chmod 600 "$1" &&
       mv -f -- "$1" "$DBX_CONFIG_RESULTADO"
   ) 2>&1; then
     rm -f -- "$temporario" 2>/dev/null
@@ -306,7 +306,7 @@ dbx_config_carregar() {
   # A permissao e verificada tambem aqui, e nao apenas no preflight: entre um e
   # outro o arquivo pode ter mudado, e a leitura e o ponto em que o segredo
   # efetivamente sai do disco.
-  modo=$(stat -c '%a' -- "$arquivo" 2>/dev/null) ||
+  modo=$(stat -c '%a' -- "$arquivo" 2>/dev/null || stat -f '%Lp' "$arquivo" 2>/dev/null) ||
     { _dbx_config_falhar inspecao; return $?; }
   # Aceita QUALQUER modo sem bits para grupo e outros, e nao apenas 0600: 0400
   # e mais restritiva e recusa-la desfaria a escolha do operador — o mesmo
@@ -318,11 +318,11 @@ dbx_config_carregar() {
   # substituir o arquivo por outro, e nenhum dos dois caminhos olhava para ele
   # (P3-04).
   local modo_diretorio
-  modo_diretorio=$(stat -c '%a' -- "${arquivo%/*}" 2>/dev/null) ||
+  modo_diretorio=$(stat -c '%a' -- "${arquivo%/*}" 2>/dev/null || stat -f '%Lp' "${arquivo%/*}" 2>/dev/null) ||
     { _dbx_config_falhar inspecao; return $?; }
   [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
     { _dbx_config_falhar permissao_diretorio; return $?; }
-  dono=$(stat -c '%u' -- "$arquivo" 2>/dev/null)
+  dono=$(stat -c '%u' -- "$arquivo" 2>/dev/null || stat -f '%u' "$arquivo" 2>/dev/null)
   [[ $dono == "$EUID" ]] || { _dbx_config_falhar dono; return $?; }
 
   IFS= read -r -d '' conteudo <"$arquivo"

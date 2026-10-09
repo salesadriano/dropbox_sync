@@ -121,8 +121,8 @@ _dbx_walk_descer() {
       continue
     fi
 
-    if ! tamanho=$(stat -c '%s' -- "$nome" 2>/dev/null) ||
-      ! mtime=$(stat -c '%Y' -- "$nome" 2>/dev/null); then
+    if ! tamanho=$(stat -c '%s' -- "$nome" 2>/dev/null || stat -f '%z' "$nome" 2>/dev/null) ||
+      ! mtime=$(stat -c '%Y' -- "$nome" 2>/dev/null || stat -f '%m' "$nome" 2>/dev/null); then
       printf 'nao foi possivel inspecionar: %s\n' "$relativo" >&3
       continue
     fi
