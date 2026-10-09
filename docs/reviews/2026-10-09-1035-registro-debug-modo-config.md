@@ -32,6 +32,11 @@ erro: gravacao da credencial falhou: gravacao
    Em ambientes como containers Docker/Kubernetes com `readOnlyRootFilesystem: true`, o diretorio `/root` e montado em modo somente-leitura. Sem um diagnostico detalhado do ambiente, o operador nao tinha visibilidade imediata de qual chamada do SO havia falhado nem do estado das permissoes, montagens e espaco em disco.
 3. **Ausencia de modo de depuracao na interface CLI:**
    O `dbx` nao possuia flag `--debug` nem canal de depuracao no comando `config` para inspecionar permissao, proprietario, montagem, filesystem e caminho resolvido antes e durante a persistencia.
+4. **Causa Raiz Real Revelada pelo Diagnostico em Producao (FreeBSD/UFS):**
+   Com o modo de depuracao ativado em producao, o operador identificou o erro exato do sistema:
+   `chmod: --: No such file or directory`
+   O ambiente de producao roda sob FreeBSD (`ufs, local, soft-updates, journaled soft-updates`).
+   No BSD `chmod` (especificacao POSIX pura), a sintaxe e `chmod [options] mode file ...`. Como as opcoes terminam antes do `mode`, qualquer argumento apos o modo (`600` ou `700`) e tratado como operando de arquivo. O argumento defensivo `--` foi interpretado como o nome literal de um arquivo inexistente, fazendo o `chmod` falhar com status 1 e abortando a subshell antes do `mv -f`. Alem disso, o comando `stat` no FreeBSD utiliza `-f` em vez de `-c` (GNU).
 
 ---
 
@@ -44,7 +49,12 @@ erro: gravacao da credencial falhou: gravacao
    - Declarado o canal publico `DBX_CONFIG_DETALHE=''`.
    - Em `_dbx_config_falhar()`, adicionado suporte ao segundo parametro para reter a mensagem descritiva do erro.
    - Em `dbx_config_gravar()`, capturada a saida de erro de `mktemp` e do subshell de escrita/renomeacao, registrando o erro exato do SO em `DBX_CONFIG_DETALHE`.
-3. **Comando Config (`commands/config.sh`):**
+   - Removido o argumento `--` das chamadas `chmod 700 "$diretorio"` e `chmod 600 "$1"`, garantindo compatibilidade portavel com BSD/FreeBSD e Linux.
+   - Adicionado fallback transparente para BSD `stat -f '%Lp'` e `stat -f '%u'` em `dbx_config_carregar`.
+3. **Preflight e Compatibilidade POSIX/BSD (`lib/preflight.sh`, `lib/walk.sh`):**
+   - Em `lib/preflight.sh`, adicionado fallback para `stat -f` preservando simetria estrita auditada pelo teste de gemeos.
+   - Em `lib/walk.sh`, adicionado fallback para `stat -f '%z'` e `stat -f '%m'` garantindo travessia e obtencao de tamanho e mtime no BSD.
+4. **Comando Config (`commands/config.sh`):**
    - Reconhecimento do argumento `--debug` no subcomando `dbx config --debug`.
    - Integracao com `DBX_CLI_DEBUG` e `DBX_DEBUG`.
    - Implementada a rotina de diagnostico `_dbx_cmd_config_diagnosticar [diretorio] [arquivo]` na camada de comandos (mantendo `lib/` 100% aderente as invariantes de zero dependencias externas e auditorias de captura do preflight/json), emitindo relatorio estruturado em `stderr` com:
