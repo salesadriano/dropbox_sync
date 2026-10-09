@@ -111,3 +111,9 @@ registro_de_entrega: "docs/reviews/2026-10-09-1035-registro-debug-modo-config.md
 > /dev/da0p2 on / (ufs, local, soft-updates, journaled soft-updates)
 
 **Intenção:** Corrigir a causa raiz desvendada pelo modo de depuração: em sistemas FreeBSD/POSIX com `ufs`, `chmod` rejeita `--` após o modo numérico (`chmod: --: No such file or directory`) e `stat` requer sintaxe BSD (`stat -f`) para inspeção de permissões e dono. Corrigir as invocações de `chmod` e fornecer fallback transparente para `stat -f`.
+
+## Prompt 6 — 2026-10-09 1158
+
+> make commit and PR
+
+**Intenção:** Criar branch dedicada (`fix/config-compatibilidade-bsd`) e Pull Request direcionado para `develop` com a correção de compatibilidade FreeBSD/BSD (`chmod` e `stat`), permitindo a conclusão da vinculação do `dbx config` no ambiente de produção.
