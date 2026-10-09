@@ -44,7 +44,10 @@ erro: gravacao da credencial falhou: gravacao
    - Declarado o canal publico `DBX_CONFIG_DETALHE=''`.
    - Em `_dbx_config_falhar()`, adicionado suporte ao segundo parametro para reter a mensagem descritiva do erro.
    - Em `dbx_config_gravar()`, capturada a saida de erro de `mktemp` e do subshell de escrita/renomeacao, registrando o erro exato do SO em `DBX_CONFIG_DETALHE`.
-   - Adicionada a funcao publica `dbx_config_diagnosticar [diretorio] [arquivo]`, que emite relatorio estruturado em `stderr` com:
+3. **Comando Config (`commands/config.sh`):**
+   - Reconhecimento do argumento `--debug` no subcomando `dbx config --debug`.
+   - Integracao com `DBX_CLI_DEBUG` e `DBX_DEBUG`.
+   - Implementada a rotina de diagnostico `_dbx_cmd_config_diagnosticar [diretorio] [arquivo]` na camada de comandos (mantendo `lib/` 100% aderente as invariantes de zero dependencias externas e auditorias de captura do preflight/json), emitindo relatorio estruturado em `stderr` com:
      - PID, EUID, UID e usuario
      - `$HOME` e `$XDG_CONFIG_HOME`
      - Status de existencia, tipo, permissoes (`stat`), dono (`stat`) e gravabilidade (`test -w`) do diretorio e do arquivo
@@ -52,9 +55,6 @@ erro: gravacao da credencial falhou: gravacao
      - Pontos de montagem relevantes e modo (`mount`)
      - Status de SELinux (`getenforce`) e atributos de sistema de arquivos (`lsattr`)
      - **Invariante de seguranca mantida:** nenhum segredo, token ou conteudo de credencial e ecoado nos diagnosticos.
-3. **Comando Config (`commands/config.sh`):**
-   - Reconhecimento do argumento `--debug` no subcomando `dbx config --debug`.
-   - Integracao com `DBX_CLI_DEBUG` e `DBX_DEBUG`.
    - Exibicao de diagnostico inicial e diagnostico completo no caminho de falha.
    - Enriquecimento da mensagem de erro com `$DBX_CONFIG_DETALHE`.
 4. **Ponto de Entrada e Ajuda (`bin/dbx`):**
@@ -62,6 +62,11 @@ erro: gravacao da credencial falhou: gravacao
    - Atualizada a listagem de opcoes globais na ajuda geral.
 5. **Documentacao (`README.md`):**
    - Exemplos documentados com `dbx config --debug` e `--debug` global.
+   - Atualizacao do badge de testes e contagem oficial para 591 aprovados (593 casos no total).
+   - Adicionada subsecao completa de "Diagnostico e Solucao de Problemas em Ambientes Restritos (Root / Containers)", cobrindo:
+     - Diagnostico detalhado com `--debug` e `DBX_DEBUG=1`.
+     - Redirecionamento de configuracao via `export XDG_CONFIG_HOME="/caminho/gravavel/config"` em sistemas de arquivos read-only.
+     - Alerta sobre o consumo unico do codigo OAuth2 pelo Dropbox (necessidade de gerar novo codigo se a etapa de gravacao local falhar).
 6. **Auditoria de Canais Publicos (`tests/integracao/composicao_test.sh`):**
    - Canal `DBX_CONFIG_DETALHE` incluido na lista de canais publicos de configuracao permitidos.
 7. **Suite de Testes:**
@@ -77,7 +82,7 @@ erro: gravacao da credencial falhou: gravacao
   - Fase vermelha (RED) confirmada isoladamente nos testes unitarios e integrados antes da implementacao.
   - Fase verde (GREEN) confirmada em todos os componentes apos os ajustes.
 - **Suite de testes completa (`tests/run.sh`):**
-  - 20 arquivos executados, 588 casos aprovados, 0 reprovados, 2 pulados.
+  - 20 arquivos executados, 591 casos aprovados, 0 reprovados, 2 pulados.
 - **Guarda de remocao de testes (`scripts/verificar-remocao-de-casos.sh`):**
   - 588 -> 593 casos (+5 novos casos, 0 reducoes). Exit 0.
 - **Linter Estatico (`shellcheck`):**

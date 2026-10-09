@@ -52,3 +52,9 @@ registro_de_entrega: "docs/reviews/2026-10-09-1035-registro-debug-modo-config.md
 
 **Classificação de Porte:**
 - **Porte M (Padrão):** Toca opções de linha de comando (CLI flags), tratamento de credenciais e diagnóstico de erro operacional.
+
+## Prompt 3 — 2026-10-09 1113
+
+> update README.md
+
+**Intenção:** Atualizar o README.md documentando o modo `--debug` e `DBX_DEBUG=1`, subseção de solução de problemas e diagnóstico em ambientes restritos (root/containers com sistema de arquivos somente-leitura ou restrições de permissão/montagem), uso de `XDG_CONFIG_HOME`, consumo único do código de autorização OAuth2, e atualização das contagens de testes (591 casos aprovados).

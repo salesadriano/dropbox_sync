@@ -2,7 +2,7 @@
 
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](LICENSE)
 [![ShellCheck](https://img.shields.io/badge/shellcheck-pass-brightgreen.svg)](#qualidade-e-conformidade)
-[![Testes Automatizados](https://img.shields.io/badge/testes-586%20pass-brightgreen.svg)](#testes-e-qualidade)
+[![Testes Automatizados](https://img.shields.io/badge/testes-591%20pass-brightgreen.svg)](#testes-e-qualidade)
 [![Piso de Shell](https://img.shields.io/badge/bash-4.4%2B-informational.svg)](#requisitos)
 
 **`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em ambientes Linux/POSIX.
@@ -92,10 +92,31 @@ dbx config
 
 # Para diagnosticar o ambiente e investigar falhas de persistência em servidores ou containers:
 dbx config --debug
+# ou via variável de ambiente:
+DBX_DEBUG=1 dbx config
 ```
 - A ferramenta solicitará a sua **App Key** e **App Secret** da sua aplicação Dropbox.
 - Abra o link gerado no navegador, autorize o aplicativo e cole o código de autorização fornecido.
-- A credencial é persistida com permissões restritas (`0600`).
+- A credencial é persistida com permissões restritas (`0600`) em `~/.config/dbx/credencial.json` (ou no caminho customizado por `$XDG_CONFIG_HOME`).
+
+#### Diagnóstico e Solução de Problemas em Ambientes Restritos (Root / Containers)
+Em ambientes de produção, containers Docker/Kubernetes ou quando executado como `root`, certas condições do sistema podem impedir a gravação da credencial:
+- **Sistema de arquivos somente-leitura (`read-only`):** Em containers com `readOnlyRootFilesystem: true`, o diretório raiz `/root` não permite criação de arquivos.
+- **Permissões ou volumes compartilhados (ex.: NFS `root_squash`):** Restrições na criação de arquivos com permissões `0600` ou no renomeio atômico de temporários.
+- **Diagnóstico com `--debug`:** Ao invocar `dbx config --debug` (ou com `DBX_DEBUG=1`), a ferramenta emite em `stderr` um relatório completo do ambiente operacional:
+  - Processo (`PID`, `UID`, `EUID`, `USER`) e variáveis (`HOME`, `XDG_CONFIG_HOME`).
+  - Estado e permissões dos diretórios e arquivos alvo (`stat`).
+  - Teste efetivo de escrita no diretório base.
+  - Espaço em disco e inodes livres (`df -h`, `df -i`).
+  - Pontos de montagem relevantes (`mount`) e atributos de sistema de arquivos (`lsattr`).
+  - Mensagem de erro exata emitida pelo sistema operacional caso `mktemp` ou a movimentação falhe.
+  - **Segurança estrita:** Segredos, chaves de aplicação e tokens de autorização **nunca** são emitidos na saída nem nos registros de diagnóstico.
+- **Redefinição do diretório de configuração:** Caso o `$HOME` padrão não seja gravável, aponte `XDG_CONFIG_HOME` para uma área gravável:
+  ```bash
+  export XDG_CONFIG_HOME="/caminho/gravavel/config"
+  dbx config --debug
+  ```
+- **Atenção ao Código de Autorização:** O código OAuth2 gerado no navegador expira rapidamente e **serve apenas uma única vez**. Se a autorização na rede foi concluída com sucesso mas a gravação local falhou, o código já foi consumido pelo Dropbox. Para tentar novamente, abra novamente a URL informada para obter um código novo.
 
 Para desvincular a conta e revogar o token:
 ```bash
@@ -111,6 +132,7 @@ As opções globais podem ser informadas antes do comando (ou nos comandos opera
 ```bash
 dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] [--debug] <comando> [argumentos]
 ```
+- `--debug`: Ativa o modo de depuração operacional com diagnóstico de ambiente e erro detalhado do sistema operacional em `stderr` (equivalente à variável `DBX_DEBUG=1`). Preserva integralmente a confidencialidade de tokens e credenciais.
 - `--progresso`, `--progress`, `-p`: Ativa explicitamente a exibição de progresso em tempo real em `stderr` (útil para scripts e visualização interativa). Durante a análise dos arquivos, lista cada arquivo e o resultado detalhado da análise (status de cache SQLite/memória, hash calculado, idêntico/dispensado, modificado, novo ou ausente na origem).
 - `--sem-progresso`, `--no-progress`: Desativa explicitamente a exibição de progresso (modo silencioso forçado mesmo em terminais interativos).
 - `--json`: Formata a saída padrão em objetos JSON estruturados.
@@ -239,7 +261,7 @@ dbx space --humano
 O projeto conta com uma suíte abrangente de testes automatizados com saída **TAP 13**, cobrindo cenários unitários e de integração com dublês de rede e auditorias adversariais:
 
 ```bash
-# Executar a bateria completa de testes (584 casos aprovados)
+# Executar a bateria completa de testes (591 casos aprovados)
 bash tests/run.sh < /dev/null
 
 # Executar análise estática (linter)
