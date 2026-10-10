@@ -229,6 +229,13 @@ dbx_cmd_sync_executar() {
   registros_remotos="$area/remoto"
 
   local parcial='nao' motivo_parcial=''
+  local -a caminhos_locais=() tamanhos=() mtimes=()
+  # Resumo de cada arquivo local, com reaproveitamento pela memoria.
+  local -a ordem_local=()
+  # shellcheck disable=SC2034  # ver nota acima: passado por nome a lib/sync
+  local -A mapa_local=() mapa_tamanhos_local=() mapa_mtimes_local=()
+  local falhas_de_resumo=0
+
   if [[ $sentido == 'receber' && ! -d $raiz_local ]]; then
     # Em simulacao com destino local inexistente, nao ha itens locais
     : >"$registros_locais"
@@ -240,6 +247,32 @@ dbx_cmd_sync_executar() {
       return $?
     }
     parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
+
+    dbx_walk_ler "$registros_locais" caminhos_locais tamanhos mtimes
+    local indice
+    local total_locais=${#caminhos_locais[@]}
+    for indice in "${!caminhos_locais[@]}"; do
+      if _dbx_cmd_sync_resumo_local "$raiz_local" "${caminhos_locais[$indice]}" \
+        "${tamanhos[$indice]}" "${mtimes[$indice]}"; then
+        ordem_local+=("${caminhos_locais[$indice]}")
+        # shellcheck disable=SC2034  # lido por referencia de nome em lib/sync
+        mapa_local["${caminhos_locais[$indice]}"]=$DBX_CMD_SYNC_RESUMO
+        mapa_tamanhos_local["${caminhos_locais[$indice]}"]=${tamanhos[$indice]}
+        mapa_mtimes_local["${caminhos_locais[$indice]}"]=${mtimes[$indice]}
+        dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-ok}"
+      else
+        # Arquivo ilegivel e travessia parcial: some da origem sem ter sido
+        # apagado, e com espelhamento isso viraria exclusao do par no destino.
+        falhas_de_resumo=$((falhas_de_resumo + 1))
+        parcial='sim'
+        # Mesmo motivo do canal de `lib/walk`: uma linha so. Quebra de linha aqui
+        # derrubaria o registro do plano inteiro, e justamente na execucao em que
+        # ele mais importa.
+        motivo_parcial="${motivo_parcial}${motivo_parcial:+; }nao foi possivel calcular o resumo de: ${caminhos_locais[$indice]}"
+        dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-falha na leitura}"
+      fi
+    done
+    dbx_progress_mensagem "[sync] arquivos locais analisados: ${#ordem_local[@]} arquivo(s)"
   fi
 
   dbx_progress_mensagem "[sync] consultando arquivos remotos em: $remoto"
@@ -250,8 +283,6 @@ dbx_cmd_sync_executar() {
     return "$estado_remoto"
   fi
 
-  local -a caminhos_locais=() tamanhos=() mtimes=()
-  dbx_walk_ler "$registros_locais" caminhos_locais tamanhos mtimes
   local -a ordem_remota=()
   # shellcheck disable=SC2034  # preenchido e lido por referencia de nome nas
   # funcoes de lib/sync; a analise estatica nao segue nameref entre arquivos.
@@ -275,34 +306,6 @@ dbx_cmd_sync_executar() {
       'a origem esta vazia e a memoria registra caminhos de execucao anterior: execucao recusada integralmente'
     return $?
   fi
-
-  # Resumo de cada arquivo local, com reaproveitamento pela memoria.
-  local -a ordem_local=()
-  # shellcheck disable=SC2034  # ver nota acima: passado por nome a lib/sync
-  local -A mapa_local=() mapa_tamanhos_local=() mapa_mtimes_local=()
-  local indice falhas_de_resumo=0
-  local total_locais=${#caminhos_locais[@]}
-  for indice in "${!caminhos_locais[@]}"; do
-    if _dbx_cmd_sync_resumo_local "$raiz_local" "${caminhos_locais[$indice]}" \
-      "${tamanhos[$indice]}" "${mtimes[$indice]}"; then
-      ordem_local+=("${caminhos_locais[$indice]}")
-      # shellcheck disable=SC2034  # lido por referencia de nome em lib/sync
-      mapa_local["${caminhos_locais[$indice]}"]=$DBX_CMD_SYNC_RESUMO
-      mapa_tamanhos_local["${caminhos_locais[$indice]}"]=${tamanhos[$indice]}
-      mapa_mtimes_local["${caminhos_locais[$indice]}"]=${mtimes[$indice]}
-      dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-ok}"
-    else
-      # Arquivo ilegivel e travessia parcial: some da origem sem ter sido
-      # apagado, e com espelhamento isso viraria exclusao do par no destino.
-      falhas_de_resumo=$((falhas_de_resumo + 1))
-      parcial='sim'
-      # Mesmo motivo do canal de `lib/walk`: uma linha so. Quebra de linha aqui
-      # derrubaria o registro do plano inteiro, e justamente na execucao em que
-      # ele mais importa.
-      motivo_parcial="${motivo_parcial}${motivo_parcial:+; }nao foi possivel calcular o resumo de: ${caminhos_locais[$indice]}"
-      dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-falha na leitura}"
-    fi
-  done
 
   if [[ $sentido == 'enviar' ]]; then
     dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
