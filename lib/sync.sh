@@ -34,6 +34,13 @@
 [[ -n ${DBX_SYNC_CARREGADO:-} ]] && return 0
 DBX_SYNC_CARREGADO=1
 
+_dbx_sync_diretorio=${BASH_SOURCE[0]%/*}
+[[ $_dbx_sync_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_sync_diretorio=.
+_dbx_sync_diretorio=$(cd -P -- "$_dbx_sync_diretorio" && pwd -P)
+# shellcheck source=lib/progress.sh
+. "$_dbx_sync_diretorio/progress.sh"
+unset _dbx_sync_diretorio
+
 DBX_SYNC_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 readonly DBX_SYNC_ERRO_USO
 
@@ -80,6 +87,7 @@ dbx_sync_enumerar_remoto() {
   [[ $# -eq 2 ]] || return "$DBX_SYNC_ERRO_USO"
   local raiz=$1 destino=$2
   local corpo url estado quantidade indice tag caminho resumo tamanho
+  local total_remotos=0 pagina=1
 
   : >"$destino"
   dbx_json_escapar_cadeia "$raiz"
@@ -99,6 +107,7 @@ dbx_sync_enumerar_remoto() {
       case ${DBX_HTTP_RESUMO_DE_ERRO:-} in
         *not_found*)
           DBX_SYNC_MOTIVO='raiz remota ainda nao existe: tratada como vazia'
+          dbx_progress_mensagem "[sync] consultando remoto: raiz remota ainda nao existe (tratada como vazia)"
           return 0
           ;;
       esac
@@ -129,6 +138,8 @@ dbx_sync_enumerar_remoto() {
       tamanho=0
       _dbx_cmd_campo entries "$indice" size && tamanho=$DBX_CMD_LIDO
       printf '%s\t%s\t%s\0' "$resumo" "$tamanho" "$caminho" >>"$destino"
+      total_remotos=$((total_remotos + 1))
+      dbx_progress_mensagem "[sync] consultando remoto ($total_remotos): $caminho"
     done
 
     local mais='' cursor=''
@@ -136,6 +147,8 @@ dbx_sync_enumerar_remoto() {
     _dbx_cmd_campo cursor && cursor=$DBX_CMD_LIDO
     [[ $mais == 'true' && -n $cursor ]] || break
     _dbx_cmd_encerrar_consulta
+    pagina=$((pagina + 1))
+    dbx_progress_mensagem "[sync] consultando remoto: obtendo proxima pagina (pagina $pagina)..."
     dbx_json_escapar_cadeia "$cursor"
     corpo="{\"cursor\":\"$DBX_JSON_ESCAPADO\"}"
     # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
