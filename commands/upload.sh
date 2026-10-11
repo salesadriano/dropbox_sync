@@ -287,7 +287,13 @@ dbx_cmd_upload_executar() {
       return $?
     }
   else
-    dbx_progress_mensagem "[upload] enviando arquivo via requisicao unica..."
+    local str_tam=''
+    if [[ -n $tam_local ]]; then
+      dbx_progress_formatar_bytes "$tam_local" str_tam
+      dbx_progress_mensagem "[upload] enviando arquivo ($str_tam) via requisicao unica..."
+    else
+      dbx_progress_mensagem "[upload] enviando arquivo via requisicao unica..."
+    fi
     dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
       "$DBX_UPLOAD_COMMIT" "$origem" nao || {
       local classe=${DBX_HTTP_CLASSE:-erro_remoto}
