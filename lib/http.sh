@@ -36,6 +36,8 @@ _dbx_http_diretorio=$(cd -P -- "$_dbx_http_diretorio" && pwd -P)
 . "$_dbx_http_diretorio/errors.sh"
 # shellcheck source=lib/json.sh
 . "$_dbx_http_diretorio/json.sh"
+# shellcheck source=lib/progress.sh
+. "$_dbx_http_diretorio/progress.sh"
 unset _dbx_http_diretorio
 
 DBX_HTTP_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -192,7 +194,11 @@ _dbx_http_interpretar_erro() {
 # janela de credencial em disco que nenhuma permissao elimina — melhor nao
 # existir a superficie do que protege-la.
 _dbx_http_opcoes() {
-  printf 'silent\n'
+  if [[ $_DBX_HTTP_MODO == 'conteudo' ]] && dbx_progress_ativo; then
+    printf 'progress-bar\n'
+  else
+    printf 'silent\n'
+  fi
   printf 'show-error\n'
   case $_DBX_HTTP_MODO in
     formulario)
@@ -400,28 +406,47 @@ _dbx_http_executar() {
     # fora, a substituicao ja teria sido expandida com o stderr original e a
     # mensagem do cliente se perderia. Foi o que aconteceu na primeira versao —
     # o canal existia e chegava sempre vazio.
-    codigo=$(
-      {
+    if [[ $_DBX_HTTP_MODO == 'conteudo' ]] && dbx_progress_ativo; then
+      codigo=$(
         _dbx_http_opcoes | if [[ $_DBX_HTTP_CANAL == 'fluxo' ]]; then
-        # `--fail` e o que impede a resposta de ERRO de sair como se fosse o
-        # conteudo do arquivo. Medido: sem ele, um 409 sai pela saida padrao com
-        # status ZERO — um erro que se parece com exito, com nome de arquivo
-        # correto e um JSON dentro. Com ele, zero bytes emitidos e status 22.
-        curl -K - --fail -X "$metodo" \
-          -o "$_DBX_HTTP_DESTINO" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-      elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
-        curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
-          -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-      elif [[ -n $corpo ]]; then
-        curl -K - -X "$metodo" --data-binary "@$area/requisicao" \
-          -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-      else
-        curl -K - -X "$metodo" \
-          -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-      fi
-      } 2>"$area/erro_cliente"
-    )
-    estado=$?
+          # `--fail` e o que impede a resposta de ERRO de sair como se fosse o
+          # conteudo do arquivo. Medido: sem ele, um 409 sai pela saida padrao com
+          # status ZERO — um erro que se parece com exito, com nome de arquivo
+          # correto e um JSON dentro. Com ele, zero bytes emitidos e status 22.
+          curl -K - --fail -X "$metodo" \
+            -o "$_DBX_HTTP_DESTINO" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+        elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
+          curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
+            -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+        elif [[ -n $corpo ]]; then
+          curl -K - -X "$metodo" --data-binary "@$area/requisicao" \
+            -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+        else
+          curl -K - -X "$metodo" \
+            -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+        fi 2>&2
+      )
+      estado=$?
+    else
+      codigo=$(
+        {
+          _dbx_http_opcoes | if [[ $_DBX_HTTP_CANAL == 'fluxo' ]]; then
+            curl -K - --fail -X "$metodo" \
+              -o "$_DBX_HTTP_DESTINO" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+          elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
+            curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
+              -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+          elif [[ -n $corpo ]]; then
+            curl -K - -X "$metodo" --data-binary "@$area/requisicao" \
+              -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+          else
+            curl -K - -X "$metodo" \
+              -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+          fi
+        } 2>"$area/erro_cliente"
+      )
+      estado=$?
+    fi
 
     # DEFEITO NOSSO NAO PODE CHEGAR AO OPERADOR COMO PROBLEMA DE REDE.
     #
