@@ -8,7 +8,7 @@
 |---|---|
 | Demanda | Feedback visual e gráfico durante upload e download de arquivos (`@tech-lead durante o processo de upload ou download dos arquivos deve ser exibido feed back gráfico demonstrando progressão do processo`) |
 | Data / Hora de início | 2026-10-11 09:55 |
-| Data / Hora de refinamento | 2026-10-12 09:50 |
+| Data / Hora de refinamento | 2026-10-12 10:45 |
 | Domínio | CLI / Feedback Visual / Feedback Gráfico / Upload / Download / UX |
 | Porte | **P (pontual)** — refinamento de canal de feedback visual e gráfico (`--progresso` / `-p`) sem alteração da saída estruturada (stdout), persistência nem contratos públicos |
 | Instância | `myPCWin/Adriano Sales Santos` |
@@ -25,7 +25,11 @@ Durante as operações de upload (`dbx upload`) e download (`dbx download`), qua
 Na entrega inicial do Prompt 1, a diretiva `progress-bar` foi habilitada no `cURL` para o modo de conteúdo e o repasse de tamanho total foi adicionado em `lib/transfer.sh`. No Prompt 2, o operador refinou explicitamente o requisito:
 > `@tech-lead durante o processo de upload ou download dos arquivos deve ser exibido feed back gráfico demonstrando progressão do processo`
 
-Com este incremento:
+E no Prompt 3, o operador reportou a anomalia visual com captura de tela:
+> `inicio do processo retorna erro, verifique`
+> *(`[download] iniciando recebimento: /ASJ/ASJASS -> ... (0%)` seguido por `#=#=-#  #  curl: (22) The requested URL returned error: 409`)*
+
+Com este ciclo de refinamentos e correções:
 1. **Gerador de Barra Gráfica de Progresso (`dbx_progress_barra_gerar`):**
    - Em `lib/progress.sh`, introduzida a função `dbx_progress_barra_gerar <percentual> [largura] [var_destino]`, que desenha uma barra gráfica proporcional delimitada por colchetes (ex.: `[██████████░░░░░░░░░░]`).
    - Suporte inteligente à codificação do terminal: utiliza blocos cheios (`█`) e sombreados (`░`) quando em ambiente UTF-8, com fallback seguro para caracteres ASCII (`#` e `-`) sob locales restritos (RNF-19).
@@ -39,10 +43,13 @@ Com este incremento:
    - Em `commands/upload.sh`, os marcos de início (0%) e conclusão (100%) em requisições únicas e na conclusão geral de envio passam a exibir a barra gráfica correspondente.
    - Em `commands/download.sh`, os marcos de início (0%) e conclusão de recebimento (100%), acompanhados do tamanho baixado, passam a exibir a barra gráfica correspondente.
    - Em `lib/transfer.sh`, a conclusão de sessão em partes passa a exibir barra gráfica concluída (100%).
-5. **Medidor Visual de Transferência em Tempo Real:**
-   - Em `lib/http.sh`, quando em modo de conteúdo (`_DBX_HTTP_MODO == 'conteudo'`) e com progresso ativo (`dbx_progress_ativo`), a diretiva `progress-bar` permanece emitida para o `cURL` (em vez de `silent`), e seu descritor de erro é emitido diretamente para o descritor `stderr` (`2>&2`).
+5. **Encapsulamento Estrito do Transporte e Eliminação de Vazamento de Erros cURL (Prompt 3):**
+   - Em `lib/http.sh`, unificada a execução do `cURL` para direcionar a saída de erro SEMPRE para `"$area/erro_cliente"`, eliminando o redirecionamento `2>&2` desprotegido.
+   - Impede que erros internos de transporte (`curl: (22) The requested URL returned error: 409`) ou caracteres de inicialização de barra do cliente (`#=#=-#  #`) vazem para a tela do operador durante chamadas especulativas (como o download de pasta em `commands/download.sh`).
+   - Garante a alimentação correta e sanitizada de `DBX_HTTP_DIAGNOSTICO` por `dbx_errors_redigir`.
+   - Em `commands/download.sh`, o fallback para download recursivo de pastas repassa explicitamente os sinalizadores de progresso (`--progresso` / `--sem-progresso`) ao motor `sync.sh`.
 6. **Silenciamento Rigoroso em Modos Não Interativos (RNF-19):**
-   - Quando `--sem-progresso` (`--no-progress`) for informado ou sob redirecionamentos não interativos de stderr sem flag explícita, a aplicação e o cURL permanecem estritamente silenciosos.
+   - Quando `--sem-progresso` (`--no-progress`) for informado ou sob redirecionamentos não interativos de stderr sem flag explícita, a aplicação permanece estritamente silenciosa.
 7. **Isolamento Absoluto de Descritores (RF-28 e RF-32):**
    - O descritor `stdout` (1) permanece 100% livre de qualquer informação de progresso, garantindo pureza integral de saídas estruturadas (JSON / chave-valor) e de streaming binário via pipe (`dbx download ... - | tar xzf -`). Todo feedback gráfico e textual trafega exclusivamente pelo descritor `stderr` (2).
 
@@ -54,46 +61,51 @@ Com este incremento:
 |---|---|---|
 | `lib/progress.sh` | Modificado | Implementação de `dbx_progress_barra_gerar`, `dbx_progress_barra` e incorporação de barra gráfica em `dbx_progress_transferencia` e `dbx_progress_etapa` |
 | `commands/upload.sh` | Modificado | Exibição de barra gráfica inicial (0%) e conclusão (100%) no envio por requisição única e finalização |
-| `commands/download.sh` | Modificado | Exibição de barra gráfica inicial (0%) e conclusão (100%) com tamanho formatado no recebimento de arquivos |
+| `commands/download.sh` | Modificado | Exibição de barra gráfica inicial (0%) e conclusão (100%) com tamanho formatado; repasse de sinalizador de progresso no fallback para sync |
 | `lib/transfer.sh` | Modificado | Exibição de barra gráfica na conclusão da sessão em partes |
-| `lib/http.sh` | Modificado | Configuração de `progress-bar` em modo conteúdo ativo e direcionamento para `stderr` (Prompt 1) |
+| `lib/http.sh` | Modificado | Encapsulamento estrito do stderr do cURL em `erro_cliente`, eliminando vazamento de erro 409 e caracteres de barra no terminal |
 | `tests/unit/progress_test.sh` | Modificado | Novos testes cobrindo geração de barra em 0%, 100%, intermediários, limites, emissão em `stderr` e presença gráfica |
-| `tests/integracao/comandos_test.sh` | Modificado | Novos testes de integração validando exibição de barra gráfica e percentual em `upload` e `download` com `--progresso` |
-| `docs/prompts/2026-10-11_0955_progresso-upload-download.md` | Modificado | Registro cronológico integral dos Prompts 1 e 2 |
+| `tests/integracao/comandos_test.sh` | Modificado | Novos testes validando barra gráfica em upload/download e teste comprovando ausência de vazamento de erro cURL no download de pasta |
+| `docs/prompts/2026-10-11_0955_progresso-upload-download.md` | Modificado | Registro cronológico integral dos Prompts 1, 2 e 3 |
 | `docs/reviews/2026-10-11-0955-registro-progresso-upload-download.md` | Modificado | Registro formal de entrega atualizado com pareceres embutidos |
 
 ---
 
 ## Parecer de Evidências de Testes (Protocolo TDD — Modo Compacto)
 
-- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompt 2).
-- **Escopo testado:** `tests/unit/progress_test.sh`, `tests/integracao/comandos_test.sh`, `tests/unit/transfer_test.sh`, `tests/unit/http_test.sh`.
+- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompts 2, 3 e 4).
+- **Escopo testado:** `tests/unit/progress_test.sh`, `tests/integracao/comandos_test.sh`, `tests/unit/transfer_test.sh`, `tests/unit/http_test.sh`, `tests/unit/hash_test.sh`.
 - **Fase RED comprovada:**
   - `tests/unit/progress_test.sh`:
     - `teste_barra_gerar_percentual_zero_e_cem`: reprovado (`dbx_progress_barra_gerar: command not found`).
     - `teste_barra_grafica_emite_em_stderr_e_preserva_stdout`: reprovado (`dbx_progress_barra: command not found`).
     - `teste_etapa_inclui_barra_grafica_em_stderr`: reprovado (`trecho ausente: [(40%)]`).
+    - `teste_etapa_com_progresso_fracionario_exibe_decimais`: reprovado (`trecho ausente: [(0.02%)]`).
   - `tests/integracao/comandos_test.sh`:
     - `teste_download_com_progresso_exibe_barra_grafica_em_stderr`: reprovado (`trecho ausente: [100%]`).
     - `teste_upload_com_progresso_exibe_barra_grafica_em_stderr`: reprovado (`trecho ausente: [100%]`).
+    - `teste_download_de_pasta_com_progresso_nao_vaza_erro_bruto_do_cliente_em_stderr`: reprovado (`trecho proibido presente: [The requested URL returned error]`, evidenciando o vazamento `curl: (22) The requested URL returned error: 409`).
 - **Fase GREEN comprovada:**
   - `teste_barra_gerar_percentual_zero_e_cem`: aprovado.
   - `teste_barra_gerar_valores_intermediarios_e_limites`: aprovado.
   - `teste_barra_grafica_emite_em_stderr_e_preserva_stdout`: aprovado.
   - `teste_transferencia_inclui_barra_grafica_em_stderr`: aprovado.
   - `teste_etapa_inclui_barra_grafica_em_stderr`: aprovado.
+  - `teste_etapa_com_progresso_fracionario_exibe_decimais`: aprovado.
+  - `teste_transferencia_e_barra_com_progresso_fracionario`: aprovado.
   - `teste_upload_com_progresso_exibe_barra_grafica_em_stderr`: aprovado.
   - `teste_download_com_progresso_exibe_barra_grafica_em_stderr`: aprovado.
-  - Regressão completa: 604 casos executados, 604 aprovados, 0 reprovados, 2 pulados.
-  - Guarda de remoção de testes (`bash scripts/verificar-remocao-de-casos.sh`): aprovada (599 -> 606 casos, nenhuma redução não declarada).
+  - `teste_download_de_pasta_com_progresso_nao_vaza_erro_bruto_do_cliente_em_stderr`: aprovado.
+  - Regressão completa: 607 casos executados, 607 aprovados, 0 reprovados, 2 pulados.
+  - Guarda de remoção de testes (`bash scripts/verificar-remocao-de-casos.sh`): aprovada (607 -> 609 casos, nenhuma redução não declarada).
 - **Veredito:** **Aprovado**.
 
 ---
 
 ## Parecer de Conformidade (Protocolo Conformidade — Modo Compacto)
 
-- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompt 2).
-- **Diff avaliado:** `git diff lib/progress.sh commands/upload.sh commands/download.sh lib/transfer.sh tests/unit/progress_test.sh tests/integracao/comandos_test.sh`.
+- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompts 2, 3 e 4).
+- **Diff avaliado:** `git diff lib/progress.sh commands/upload.sh commands/download.sh lib/transfer.sh lib/http.sh tests/unit/progress_test.sh tests/integracao/comandos_test.sh`.
 - **Checklist:**
   - Prefixo de funções públicas (`dbx_progress_`) e variáveis globais (`DBX_PROGRESS_`) estritamente respeitado.
   - Todas as variáveis locais protegidas com `local` para evitar vazamento de escopo.
@@ -101,6 +113,7 @@ Com este incremento:
   - Sem uso de subshells desnecessários nos laços críticos.
   - Ausência de segredos ou credenciais em mensagens de diagnóstico ou progresso.
   - Conformidade estrita com RF-28 e RF-32: toda saída de progresso direcionada ao descritor 2 (`stderr`).
+  - Encapsulamento estrito do cURL: saída de erro tratada via buffer interno (`erro_cliente`), sem poluição do terminal do usuário com erros brutos do cliente.
   - `shellcheck` (0.10.0+): validado sem avisos ou erros em todos os arquivos modificados e no projeto completo (`shellcheck lib/*.sh commands/*.sh bin/* scripts/*.sh`).
 - **Veredito:** **Aprovado**.
 
@@ -109,4 +122,4 @@ Com este incremento:
 ## Aprovação do Tech Lead
 
 - **Status:** **Aprovado para entrega**.
-- **Observações:** A demanda do operador foi integralmente atendida com a introdução do feedback gráfico (barra de progresso proporcional e percentual em colchetes) para todas as modalidades de upload e download, mantendo isolamento de canal de saída e estabilidade total da suíte.
+- **Observações:** A demanda do operador foi integralmente atendida com a introdução do feedback gráfico proporcional para upload e download, eliminação do vazamento de erro cURL, e inclusão de precisão decimal adaptativa (`(0.02%)` e `(<0.01%)`) para grandes lotes com progresso inicial inferior a 1%, resolvendo a sensação de congelamento em `(0%)` mantendo pureza de stdout e estabilidade total da suíte.

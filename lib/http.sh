@@ -406,8 +406,8 @@ _dbx_http_executar() {
     # fora, a substituicao ja teria sido expandida com o stderr original e a
     # mensagem do cliente se perderia. Foi o que aconteceu na primeira versao —
     # o canal existia e chegava sempre vazio.
-    if [[ $_DBX_HTTP_MODO == 'conteudo' ]] && dbx_progress_ativo; then
-      codigo=$(
+    codigo=$(
+      {
         _dbx_http_opcoes | if [[ $_DBX_HTTP_CANAL == 'fluxo' ]]; then
           # `--fail` e o que impede a resposta de ERRO de sair como se fosse o
           # conteudo do arquivo. Medido: sem ele, um 409 sai pela saida padrao com
@@ -424,29 +424,11 @@ _dbx_http_executar() {
         else
           curl -K - -X "$metodo" \
             -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-        fi 2>&2
-      )
-      estado=$?
-    else
-      codigo=$(
-        {
-          _dbx_http_opcoes | if [[ $_DBX_HTTP_CANAL == 'fluxo' ]]; then
-            curl -K - --fail -X "$metodo" \
-              -o "$_DBX_HTTP_DESTINO" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-          elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
-            curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
-              -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-          elif [[ -n $corpo ]]; then
-            curl -K - -X "$metodo" --data-binary "@$area/requisicao" \
-              -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-          else
-            curl -K - -X "$metodo" \
-              -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
-          fi
-        } 2>"$area/erro_cliente"
-      )
-      estado=$?
-    fi
+        fi
+      } 2>"$area/erro_cliente"
+    )
+    estado=$?
+
 
     # DEFEITO NOSSO NAO PODE CHEGAR AO OPERADOR COMO PROBLEMA DE REDE.
     #

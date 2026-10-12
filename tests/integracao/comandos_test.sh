@@ -63,6 +63,7 @@ _ambiente() {
     printf 'fi\n'
     printf '[[ -n $escrever ]] && printf "%%s" "$codigo"\n'
     printf 'if [[ $fail == "sim" && $codigo -ge 400 ]]; then\n'
+    printf '  printf "curl: (22) The requested URL returned error: %%s\\n" "$codigo" >&2\n'
     printf '  exit 22\n'
     printf 'fi\n'
     printf '[[ -n $saida ]] && printf "%%s" "$corpo" >"$saida"\n'
@@ -1148,6 +1149,23 @@ teste_download_pasta_sem_destino_recusa_com_uso_invalido() {
   assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" \
     "download de pasta sem destino deve recusar com uso invalido"
   assert_contem 'pasta' "$DBX_ERRO" "diagnostico deve alertar que o caminho e pasta"
+}
+
+teste_download_de_pasta_com_progresso_nao_vaza_erro_bruto_do_cliente_em_stderr() {
+  local base destino
+  base=$(_ambiente '{}')
+  printf '%s' '{"error_summary":"path/not_file/..."}' >"$base/download_corpo"
+  printf '%s' '409' >"$base/download_codigo"
+  printf '%s' '{"entries":[{".tag":"file","name":"relatorio.txt","size":9,"content_hash":"11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"}],"has_more":false}' >"$base/listagem"
+
+  destino="$base/destino_local"
+  _rodar "$base" --progresso download /pasta_remota "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download de pasta com progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_nao_contem 'The requested URL returned error' "$DBX_ERRO" \
+    'download de pasta com progresso nao pode vazar erro bruto do cliente em stderr'
+  assert_contem 'o caminho remoto e uma pasta' "$DBX_ERRO" \
+    'mensagem de fallback de pasta deve ser emitida'
+  assert_sucesso test -d "$destino"
 }
 
 harness_executar "$@"
