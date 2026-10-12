@@ -73,13 +73,14 @@ Com este ciclo de refinamentos e correções:
 
 ## Parecer de Evidências de Testes (Protocolo TDD — Modo Compacto)
 
-- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompts 2 e 3).
+- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompts 2, 3 e 4).
 - **Escopo testado:** `tests/unit/progress_test.sh`, `tests/integracao/comandos_test.sh`, `tests/unit/transfer_test.sh`, `tests/unit/http_test.sh`, `tests/unit/hash_test.sh`.
 - **Fase RED comprovada:**
   - `tests/unit/progress_test.sh`:
     - `teste_barra_gerar_percentual_zero_e_cem`: reprovado (`dbx_progress_barra_gerar: command not found`).
     - `teste_barra_grafica_emite_em_stderr_e_preserva_stdout`: reprovado (`dbx_progress_barra: command not found`).
     - `teste_etapa_inclui_barra_grafica_em_stderr`: reprovado (`trecho ausente: [(40%)]`).
+    - `teste_etapa_com_progresso_fracionario_exibe_decimais`: reprovado (`trecho ausente: [(0.02%)]`).
   - `tests/integracao/comandos_test.sh`:
     - `teste_download_com_progresso_exibe_barra_grafica_em_stderr`: reprovado (`trecho ausente: [100%]`).
     - `teste_upload_com_progresso_exibe_barra_grafica_em_stderr`: reprovado (`trecho ausente: [100%]`).
@@ -90,18 +91,20 @@ Com este ciclo de refinamentos e correções:
   - `teste_barra_grafica_emite_em_stderr_e_preserva_stdout`: aprovado.
   - `teste_transferencia_inclui_barra_grafica_em_stderr`: aprovado.
   - `teste_etapa_inclui_barra_grafica_em_stderr`: aprovado.
+  - `teste_etapa_com_progresso_fracionario_exibe_decimais`: aprovado.
+  - `teste_transferencia_e_barra_com_progresso_fracionario`: aprovado.
   - `teste_upload_com_progresso_exibe_barra_grafica_em_stderr`: aprovado.
   - `teste_download_com_progresso_exibe_barra_grafica_em_stderr`: aprovado.
   - `teste_download_de_pasta_com_progresso_nao_vaza_erro_bruto_do_cliente_em_stderr`: aprovado.
-  - Regressão completa: 605 casos executados, 605 aprovados, 0 reprovados, 2 pulados.
-  - Guarda de remoção de testes (`bash scripts/verificar-remocao-de-casos.sh`): aprovada (606 -> 607 casos, nenhuma redução não declarada).
+  - Regressão completa: 607 casos executados, 607 aprovados, 0 reprovados, 2 pulados.
+  - Guarda de remoção de testes (`bash scripts/verificar-remocao-de-casos.sh`): aprovada (607 -> 609 casos, nenhuma redução não declarada).
 - **Veredito:** **Aprovado**.
 
 ---
 
 ## Parecer de Conformidade (Protocolo Conformidade — Modo Compacto)
 
-- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompts 2 e 3).
+- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompts 2, 3 e 4).
 - **Diff avaliado:** `git diff lib/progress.sh commands/upload.sh commands/download.sh lib/transfer.sh lib/http.sh tests/unit/progress_test.sh tests/integracao/comandos_test.sh`.
 - **Checklist:**
   - Prefixo de funções públicas (`dbx_progress_`) e variáveis globais (`DBX_PROGRESS_`) estritamente respeitado.
@@ -119,4 +122,4 @@ Com este ciclo de refinamentos e correções:
 ## Aprovação do Tech Lead
 
 - **Status:** **Aprovado para entrega**.
-- **Observações:** A demanda do operador foi integralmente atendida com a introdução do feedback gráfico (barra de progresso proporcional e percentual em colchetes) para todas as modalidades de upload e download, eliminação completa do vazamento de erro do cURL sob fallback de download de pasta, isolamento estrito de canais de saída e estabilidade total da suíte.
+- **Observações:** A demanda do operador foi integralmente atendida com a introdução do feedback gráfico proporcional para upload e download, eliminação do vazamento de erro cURL, e inclusão de precisão decimal adaptativa (`(0.02%)` e `(<0.01%)`) para grandes lotes com progresso inicial inferior a 1%, resolvendo a sensação de congelamento em `(0%)` mantendo pureza de stdout e estabilidade total da suíte.

@@ -118,6 +118,8 @@ teste_barra_gerar_valores_intermediarios_e_limites() {
 
   assert_igual "$b0" "$b_neg" 'valor negativo deve limitar em 0%'
   assert_igual "$b100" "$b_sup" 'valor acima de 100 deve limitar em 100%'
+  assert_diferente "$b0" "$b50" '50% deve ser diferente de 0%'
+  assert_diferente "$b100" "$b50" '50% deve ser diferente de 100%'
 }
 
 teste_barra_grafica_emite_em_stderr_e_preserva_stdout() {
@@ -166,6 +168,51 @@ teste_etapa_inclui_barra_grafica_em_stderr() {
   assert_igual '' "$saida_out" 'stdout deve permanecer vazio'
   assert_contem '[4/10] recebendo: arquivo.zip' "$saida_err" 'etapa base preservada'
   assert_contem '(40%)' "$saida_err" 'percentual da etapa calculado'
+}
+
+teste_etapa_com_progresso_fracionario_exibe_decimais() {
+  DBX_CLI_PROGRESSO='sim'
+  local arq_out="$DBX_TESTES_TMP/ef_out.$$" arq_err="$DBX_TESTES_TMP/ef_err.$$"
+  local saida_out saida_err
+
+  # 47 de 228418 = 0.02%
+  dbx_progress_etapa 47 228418 'recebendo' 'arquivo.xml' >"$arq_out" 2>"$arq_err"
+  saida_out=$(cat "$arq_out")
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+
+  assert_igual '' "$saida_out" 'stdout deve permanecer vazio'
+  assert_contem '[47/228418] recebendo: arquivo.xml' "$saida_err" 'etapa identificada'
+  assert_contem '(0.02%)' "$saida_err" 'percentual fracionario calculado com 2 casas'
+
+  # 1 de 1000000 = <0.01%
+  dbx_progress_etapa 1 1000000 'recebendo' 'arquivo.xml' >"$arq_out" 2>"$arq_err"
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+  assert_contem '(<0.01%)' "$saida_err" 'percentual menor que 0.01% exibe menor que'
+
+  # 0 de 228418 = 0%
+  dbx_progress_etapa 0 228418 'recebendo' 'arquivo.xml' >"$arq_out" 2>"$arq_err"
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+  assert_contem '(0%)' "$saida_err" 'zero itens preserva 0%'
+}
+
+teste_transferencia_e_barra_com_progresso_fracionario() {
+  # shellcheck disable=SC2034
+  DBX_CLI_PROGRESSO='sim'
+  local arq_out="$DBX_TESTES_TMP/tf_out.$$" arq_err="$DBX_TESTES_TMP/tf_err.$$"
+  local saida_err
+
+  dbx_progress_barra 'upload' 100 1000000 'iniciando' >"$arq_out" 2>"$arq_err"
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+  assert_contem '0.01%' "$saida_err" 'barra com percentual fracionario'
+
+  dbx_progress_transferencia 'upload' 100 1000000 'parte 1' >"$arq_out" 2>"$arq_err"
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+  assert_contem '(0.01%)' "$saida_err" 'transferencia com percentual fracionario'
 }
 
 harness_executar "$@"

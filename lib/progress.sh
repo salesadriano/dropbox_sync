@@ -114,10 +114,21 @@ dbx_progress_barra() {
     dbx_progress_formatar_bytes "$totais" str_totais
     local pct=$(( (atuais * 100) / totais ))
     dbx_progress_barra_gerar "$pct" 20 str_barra
-    if [[ -n $detalhe ]]; then
-      printf '[%s] %s %3d%% %s / %s (%s)\n' "$rotulo" "$str_barra" "$pct" "$str_atuais" "$str_totais" "$detalhe" >&2
+    local str_pct=''
+    if [[ $atuais -gt 0 && $pct -eq 0 ]]; then
+      local centesimos=$(( (atuais * 10000) / totais ))
+      if [[ $centesimos -eq 0 ]]; then
+        str_pct='<0.01%'
+      else
+        str_pct=$(printf '0.%02d%%' "$((centesimos % 100))")
+      fi
     else
-      printf '[%s] %s %3d%% %s / %s\n' "$rotulo" "$str_barra" "$pct" "$str_atuais" "$str_totais" >&2
+      str_pct=$(printf '%3d%%' "$pct")
+    fi
+    if [[ -n $detalhe ]]; then
+      printf '[%s] %s %s %s / %s (%s)\n' "$rotulo" "$str_barra" "$str_pct" "$str_atuais" "$str_totais" "$detalhe" >&2
+    else
+      printf '[%s] %s %s %s / %s\n' "$rotulo" "$str_barra" "$str_pct" "$str_atuais" "$str_totais" >&2
     fi
   else
     if [[ -n $detalhe ]]; then
@@ -135,7 +146,16 @@ dbx_progress_etapa() {
   if [[ $total =~ ^[0-9]+$ && $total -gt 0 ]]; then
     local pct=$(( (atual * 100) / total )) str_barra=''
     dbx_progress_barra_gerar "$pct" 15 str_barra
-    printf '[%d/%d] %s: %s %s (%d%%)\n' "$atual" "$total" "$acao" "$item" "$str_barra" "$pct" >&2
+    if [[ $atual -gt 0 && $pct -eq 0 ]]; then
+      local centesimos=$(( (atual * 10000) / total ))
+      if [[ $centesimos -eq 0 ]]; then
+        printf '[%d/%d] %s: %s %s (<0.01%%)\n' "$atual" "$total" "$acao" "$item" "$str_barra" >&2
+      else
+        printf '[%d/%d] %s: %s %s (0.%02d%%)\n' "$atual" "$total" "$acao" "$item" "$str_barra" "$((centesimos % 100))" >&2
+      fi
+    else
+      printf '[%d/%d] %s: %s %s (%d%%)\n' "$atual" "$total" "$acao" "$item" "$str_barra" "$pct" >&2
+    fi
   else
     printf '[%d/%d] %s: %s\n' "$atual" "$total" "$acao" "$item" >&2
   fi
@@ -152,10 +172,21 @@ dbx_progress_transferencia() {
     dbx_progress_formatar_bytes "$totais" str_totais
     local pct=$(( (atuais * 100) / totais ))
     dbx_progress_barra_gerar "$pct" 20 str_barra
-    if [[ -n $detalhe ]]; then
-      printf '[%s] %s: %s / %s (%d%%) %s\n' "$rotulo" "$detalhe" "$str_atuais" "$str_totais" "$pct" "$str_barra" >&2
+    local str_pct=''
+    if [[ $atuais -gt 0 && $pct -eq 0 ]]; then
+      local centesimos=$(( (atuais * 10000) / totais ))
+      if [[ $centesimos -eq 0 ]]; then
+        str_pct='<0.01%'
+      else
+        str_pct=$(printf '0.%02d%%' "$((centesimos % 100))")
+      fi
     else
-      printf '[%s] %s / %s (%d%%) %s\n' "$rotulo" "$str_atuais" "$str_totais" "$pct" "$str_barra" >&2
+      str_pct="${pct}%"
+    fi
+    if [[ -n $detalhe ]]; then
+      printf '[%s] %s: %s / %s (%s) %s\n' "$rotulo" "$detalhe" "$str_atuais" "$str_totais" "$str_pct" "$str_barra" >&2
+    else
+      printf '[%s] %s / %s (%s) %s\n' "$rotulo" "$str_atuais" "$str_totais" "$str_pct" "$str_barra" >&2
     fi
   else
     if [[ -n $detalhe ]]; then
