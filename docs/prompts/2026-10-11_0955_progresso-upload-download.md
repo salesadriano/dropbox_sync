@@ -88,3 +88,34 @@ registro_de_entrega: "docs/reviews/2026-10-11-0955-registro-progresso-upload-dow
      - Pureza de `stdout` (1) integralmente preservada para JSON, chave-valor e streams binários (RF-28 e RF-32). Todo feedback gráfico é emitido exclusivamente em `stderr` (2).
      - Silenciamento estrito respeitado quando `--sem-progresso` (`--no-progress`) ou ausência de TTY (RNF-19).
      - Testes unitários e de integração validando a geração da barra gráfica, percentuais nos limites (0% e 100%), etapas, isolamento de descritores e paridade operacional.
+
+---
+
+## Prompt 3 (Entrada do Operador — 2026-10-12 10:32)
+
+```
+inicio do processo retorna erro, verifique
+```
+*(acompanhado de captura de terminal exibindo `[download] iniciando recebimento: /ASJ/ASJASS -> /mnt/h/Bkps/ASJ/ASJASS [░░░░░░░░░░░░░░░░░░░░] (0%)` seguido imediatamente por `#=#=-#  #                                           curl: (22) The requested URL returned error: 409`)*
+
+### Análise do Tech Lead
+
+1. **Diagnóstico da Causa Raiz:**
+   - Durante a operação `dbx download -p /ASJ/ASJASS /mnt/h/Bkps/ASJ`, o caminho remoto `/ASJ/ASJASS` é uma pasta (diretório), e não um arquivo individual.
+   - O comando `commands/download.sh` segue a estratégia arquitetural de tentar o download especulativo como arquivo via endpoint `/2/files/download` e, ao receber a recusa HTTP 409 (`error_summary: path/not_file/...`), realizar o fallback automático para recebimento recursivo de pasta (`sync.sh --receber`).
+   - Contudo, na implementação anterior em `lib/http.sh`, quando `_DBX_HTTP_MODO == 'conteudo'` e `dbx_progress_ativo`, a execução do `cURL` havia sido redirecionada com `2>&2` para permitir exibição do medidor nativo de progresso do cURL.
+   - Como consequência desse redirecionamento desprotegido, quando o cURL recebeu o HTTP 409 com `--fail` ativo, ele cuspiu no terminal o erro bruto interno `curl: (22) The requested URL returned error: 409` junto ao fragmento ASCII da barra `#=#=-#  #`.
+   - Adicionalmente, esse redirecionamento direto impedia o preenchimento de `"$area/erro_cliente"`, quebrando a captura estruturada de diagnósticos internos (`DBX_HTTP_DIAGNOSTICO`).
+   - O processo continuou vivo em background indexando os arquivos locais, mas a impressão visual para o operador ficou corrompida por um falso travamento/erro inicial.
+
+2. **Decisão Técnica e Arquitetura:**
+   - Em `lib/http.sh`:
+     - Encapsular rigorosamente a saída de erro do `cURL` direcionando-a sempre para `"$area/erro_cliente"`.
+     - Eliminar qualquer vazamento de erro bruto de cliente (`curl: (22)...`) para o terminal do operador.
+     - Garantir que `"$area/erro_cliente"` seja preenchido e sanitizado por `dbx_errors_redigir` e consumido por `DBX_HTTP_DIAGNOSTICO`.
+   - Em `commands/download.sh`:
+     - Garantir que o repasse de parâmetros para `sync.sh` preserve o sinalizador explícito de progresso (`--progresso` / `--sem-progresso`).
+   - Em `tests/integracao/comandos_test.sh`:
+     - Atualizar o mock do cURL (`_ambiente`) para emitir `curl: (22) The requested URL returned error: ...` sob `--fail` e HTTP >= 400, reproduzindo com fidelidade o cURL real.
+     - Adicionar caso de teste garantindo que download de pasta com `--progresso` realize o fallback para sincronização sem vazar erro bruto do cliente em `stderr`.
+
