@@ -128,7 +128,9 @@ dbx_cmd_download_executar() {
     fi
   fi
 
-  dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo"
+  local str_barra_inicio=''
+  dbx_progress_barra_gerar 0 20 str_barra_inicio
+  dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo $str_barra_inicio (0%)"
 
   dbx_auth_conteudo_receber GET \
     'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo" || {
@@ -161,7 +163,21 @@ dbx_cmd_download_executar() {
     return $?
   }
 
-  dbx_progress_mensagem "[download] recebimento concluido: $alvo"
+  local str_barra_fim='' str_tam_baixado=''
+  dbx_progress_barra_gerar 100 20 str_barra_fim
+  if [[ -f $alvo ]]; then
+    local bytes_baixados
+    bytes_baixados=$(wc -c <"$alvo" 2>/dev/null)
+    bytes_baixados=${bytes_baixados//[^0-9]/}
+    if [[ -n $bytes_baixados ]]; then
+      dbx_progress_formatar_bytes "$bytes_baixados" str_tam_baixado
+    fi
+  fi
+  if [[ -n $str_tam_baixado ]]; then
+    dbx_progress_mensagem "[download] recebimento concluido: $alvo ($str_tam_baixado) $str_barra_fim (100%)"
+  else
+    dbx_progress_mensagem "[download] recebimento concluido: $alvo $str_barra_fim (100%)"
+  fi
 
   # VERIFICACAO DE INTEGRIDADE, e o limite dela.
   #

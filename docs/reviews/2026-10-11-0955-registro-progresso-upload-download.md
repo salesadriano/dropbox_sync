@@ -1,4 +1,4 @@
-# Registro de Entrega — Feedback Visual Durante Upload e Download de Arquivos
+# Registro de Entrega — Feedback Visual e Gráfico Durante Upload e Download de Arquivos
 
 > Registro de entrega formal da demanda (Porte P) conforme regras 40 e 41 do protocolo comum.
 
@@ -6,10 +6,11 @@
 
 | Campo | Valor |
 |---|---|
-| Demanda | Feedback visual durante upload e download de arquivos (`@tech-lead exiba um feed back visual duranteo upload e durante o download dos arquivos`) |
-| Data / Hora | 2026-10-11 09:55 |
-| Domínio | CLI / Feedback Visual / Upload / Download / UX |
-| Porte | **P (pontual)** — refinamento de canal de feedback visual (`--progresso` / `-p`) sem alteração da saída estruturada (stdout), persistência nem contratos públicos |
+| Demanda | Feedback visual e gráfico durante upload e download de arquivos (`@tech-lead durante o processo de upload ou download dos arquivos deve ser exibido feed back gráfico demonstrando progressão do processo`) |
+| Data / Hora de início | 2026-10-11 09:55 |
+| Data / Hora de refinamento | 2026-10-12 09:50 |
+| Domínio | CLI / Feedback Visual / Feedback Gráfico / Upload / Download / UX |
+| Porte | **P (pontual)** — refinamento de canal de feedback visual e gráfico (`--progresso` / `-p`) sem alteração da saída estruturada (stdout), persistência nem contratos públicos |
 | Instância | `myPCWin/Adriano Sales Santos` |
 | Branch de trabalho | `feature/progresso-upload-download` |
 | Branch principal | `develop` |
@@ -19,23 +20,31 @@
 
 ## Contexto e Objetivo
 
-Durante as operações de upload (`dbx upload`) e download (`dbx download`), quando executadas com sinalizador de progresso ativo (`--progresso`, `-p` ou modo padrão automático interativo em TTY), a CLI emitia apenas mensagens estáticas no início e no fim da operação (ex.: `[upload] enviando arquivo via requisicao unica...`, `[download] iniciando recebimento: ...`).
+Durante as operações de upload (`dbx upload`) e download (`dbx download`), quando executadas com sinalizador de progresso ativo (`--progresso`, `-p` ou modo padrão automático interativo em TTY), o operador necessita de acompanhamento visual e gráfico claro e contínuo da progressão do processo.
 
-Durante a transmissão real dos dados pela rede, o utilitário `cURL` mantinha-se com a diretiva `silent` forçada em `lib/http.sh`, e seu descritor de erro (`stderr`) era capturado em arquivo temporário interno (`erro_cliente`). Com isso, durante transferências de arquivos médios e grandes, o operador permanecia sem feedback visual contínuo do progresso, gerando sensação de lentidão ou congelamento do processo.
+Na entrega inicial do Prompt 1, a diretiva `progress-bar` foi habilitada no `cURL` para o modo de conteúdo e o repasse de tamanho total foi adicionado em `lib/transfer.sh`. No Prompt 2, o operador refinou explicitamente o requisito:
+> `@tech-lead durante o processo de upload ou download dos arquivos deve ser exibido feed back gráfico demonstrando progressão do processo`
 
 Com este incremento:
-1. **Medidor Visual de Transferência em Tempo Real:**
-   - Em `lib/http.sh`, quando em modo de conteúdo (`_DBX_HTTP_MODO == 'conteudo'`) e com progresso ativo (`dbx_progress_ativo`), a diretiva `progress-bar` é emitida para o `cURL` (em vez de `silent`), e seu descritor de saída de erro é emitido diretamente para o descritor `stderr` (`2>&2`).
-   - O operador passa a acompanhar em tempo real a evolução percentual e barra de blocos do cURL em seu terminal durante a transmissão dos dados.
-2. **Silenciamento Rigoroso em Modos Não Interativos:**
-   - Quando `--sem-progresso` (`--no-progress`) for informado ou sob redirecionamentos não interativos de stderr sem flag explícita, o cURL permanece estritamente `silent`, evitando poluição de scripts automatizados.
-   - Chamadas RPC (`bearer`) e formulários de autenticação permanecem silenciosos e isolados com captura em `erro_cliente`.
-3. **Detalhamento de Upload por Requisição Única:**
-   - Em `commands/upload.sh`, a mensagem de envio por requisição única passa a informar o tamanho formatado do arquivo local: `[upload] enviando arquivo (<tamanho>) via requisicao unica...`.
-4. **Cálculo de Percentual em Sessões em Partes:**
-   - Em `lib/transfer.sh`, o tamanho total do arquivo local (`DBX_TRANSFER_TAMANHO`) é fornecido a `dbx_progress_transferencia`, exibindo o acumulado, total e percentual concluído a cada bloco (`[upload] parte X enviada: N MiB / T MiB (P%)`), além de formatação humanizada na mensagem de conclusão de sessão.
-5. **Isolamento Absoluto de Descritores (RF-28 e RF-32):**
-   - O descritor `stdout` (1) permanece 100% livre de qualquer informação de progresso, garantindo pureza integral de saídas estruturadas (JSON / chave-valor) e de streaming binário via pipe (`dbx download ... - | tar xzf -`).
+1. **Gerador de Barra Gráfica de Progresso (`dbx_progress_barra_gerar`):**
+   - Em `lib/progress.sh`, introduzida a função `dbx_progress_barra_gerar <percentual> [largura] [var_destino]`, que desenha uma barra gráfica proporcional delimitada por colchetes (ex.: `[██████████░░░░░░░░░░]`).
+   - Suporte inteligente à codificação do terminal: utiliza blocos cheios (`█`) e sombreados (`░`) quando em ambiente UTF-8, com fallback seguro para caracteres ASCII (`#` e `-`) sob locales restritos (RNF-19).
+2. **Função de Barra Gráfica Formatada (`dbx_progress_barra`):**
+   - Em `lib/progress.sh`, `dbx_progress_barra <rotulo> <atuais> <totais> [detalhe]` emite barra gráfica acompanhada do percentual numérico e dos tamanhos formatados (`[upload] [██████████░░░░░░░░░░]  50%  5 MiB / 10 MiB (detalhe)`) exclusivamente em `stderr`.
+3. **Barra Gráfica em Transferências e Etapas:**
+   - Em `lib/progress.sh`:
+     - `dbx_progress_transferencia` passa a incorporar a barra gráfica proporcional junto aos bytes e percentual (`[upload] parte 1 enviada: 4 MiB / 12 MiB (33%) [██████░░░░░░░░░░░░]`), garantindo compatibilidade estrita com asserções existentes e acrescentando representação visual.
+     - `dbx_progress_etapa` passa a calcular percentual e emitir a barra gráfica para lotes e etapas com total conhecido (`[4/10] recebendo: arquivo.zip [██████░░░░░░░░░] (40%)`).
+4. **Feedback Gráfico nos Comandos `upload` e `download`:**
+   - Em `commands/upload.sh`, os marcos de início (0%) e conclusão (100%) em requisições únicas e na conclusão geral de envio passam a exibir a barra gráfica correspondente.
+   - Em `commands/download.sh`, os marcos de início (0%) e conclusão de recebimento (100%), acompanhados do tamanho baixado, passam a exibir a barra gráfica correspondente.
+   - Em `lib/transfer.sh`, a conclusão de sessão em partes passa a exibir barra gráfica concluída (100%).
+5. **Medidor Visual de Transferência em Tempo Real:**
+   - Em `lib/http.sh`, quando em modo de conteúdo (`_DBX_HTTP_MODO == 'conteudo'`) e com progresso ativo (`dbx_progress_ativo`), a diretiva `progress-bar` permanece emitida para o `cURL` (em vez de `silent`), e seu descritor de erro é emitido diretamente para o descritor `stderr` (`2>&2`).
+6. **Silenciamento Rigoroso em Modos Não Interativos (RNF-19):**
+   - Quando `--sem-progresso` (`--no-progress`) for informado ou sob redirecionamentos não interativos de stderr sem flag explícita, a aplicação e o cURL permanecem estritamente silenciosos.
+7. **Isolamento Absoluto de Descritores (RF-28 e RF-32):**
+   - O descritor `stdout` (1) permanece 100% livre de qualquer informação de progresso, garantindo pureza integral de saídas estruturadas (JSON / chave-valor) e de streaming binário via pipe (`dbx download ... - | tar xzf -`). Todo feedback gráfico e textual trafega exclusivamente pelo descritor `stderr` (2).
 
 ---
 
@@ -43,44 +52,56 @@ Com este incremento:
 
 | Arquivo | Natureza | Descrição |
 |---|---|---|
-| `lib/http.sh` | Modificado | Sourcing de `lib/progress.sh`, configuração de `progress-bar` em modo conteúdo ativo e direcionamento da saída visual para `stderr` |
-| `lib/transfer.sh` | Modificado | Repasse do tamanho total para `dbx_progress_transferencia` e formatação amigável de bytes no encerramento da sessão em partes |
-| `commands/upload.sh` | Modificado | Inclusão de tamanho formatado do arquivo no feedback visual de requisição única |
-| `tests/integracao/comandos_test.sh` | Modificado | 4 novos testes unitários e de integração validando ativação de `progress-bar` e silenciamento de `silent` sob controle de flags |
-| `docs/prompts/2026-10-11_0955_progresso-upload-download.md` | Novo | Registro cronológico integral do prompt |
-| `docs/reviews/2026-10-11-0955-registro-progresso-upload-download.md` | Novo | Registro formal de entrega com pareceres embutidos |
+| `lib/progress.sh` | Modificado | Implementação de `dbx_progress_barra_gerar`, `dbx_progress_barra` e incorporação de barra gráfica em `dbx_progress_transferencia` e `dbx_progress_etapa` |
+| `commands/upload.sh` | Modificado | Exibição de barra gráfica inicial (0%) e conclusão (100%) no envio por requisição única e finalização |
+| `commands/download.sh` | Modificado | Exibição de barra gráfica inicial (0%) e conclusão (100%) com tamanho formatado no recebimento de arquivos |
+| `lib/transfer.sh` | Modificado | Exibição de barra gráfica na conclusão da sessão em partes |
+| `lib/http.sh` | Modificado | Configuração de `progress-bar` em modo conteúdo ativo e direcionamento para `stderr` (Prompt 1) |
+| `tests/unit/progress_test.sh` | Modificado | Novos testes cobrindo geração de barra em 0%, 100%, intermediários, limites, emissão em `stderr` e presença gráfica |
+| `tests/integracao/comandos_test.sh` | Modificado | Novos testes de integração validando exibição de barra gráfica e percentual em `upload` e `download` com `--progresso` |
+| `docs/prompts/2026-10-11_0955_progresso-upload-download.md` | Modificado | Registro cronológico integral dos Prompts 1 e 2 |
+| `docs/reviews/2026-10-11-0955-registro-progresso-upload-download.md` | Modificado | Registro formal de entrega atualizado com pareceres embutidos |
 
 ---
 
 ## Parecer de Evidências de Testes (Protocolo TDD — Modo Compacto)
 
-- **Identificação:** Demanda `progresso-upload-download` (Porte P).
-- **Escopo testado:** `tests/integracao/comandos_test.sh`, `tests/unit/transfer_test.sh`, `tests/unit/http_test.sh`, `tests/unit/progress_test.sh`.
+- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompt 2).
+- **Escopo testado:** `tests/unit/progress_test.sh`, `tests/integracao/comandos_test.sh`, `tests/unit/transfer_test.sh`, `tests/unit/http_test.sh`.
 - **Fase RED comprovada:**
-  - `download_com_progresso_configura_progress_bar_no_cliente`: reprovado com falha (`trecho ausente: [progress-bar]`).
-  - `upload_com_progresso_configura_progress_bar_no_cliente`: reprovado com falha (`trecho ausente: [progress-bar]`).
+  - `tests/unit/progress_test.sh`:
+    - `teste_barra_gerar_percentual_zero_e_cem`: reprovado (`dbx_progress_barra_gerar: command not found`).
+    - `teste_barra_grafica_emite_em_stderr_e_preserva_stdout`: reprovado (`dbx_progress_barra: command not found`).
+    - `teste_etapa_inclui_barra_grafica_em_stderr`: reprovado (`trecho ausente: [(40%)]`).
+  - `tests/integracao/comandos_test.sh`:
+    - `teste_download_com_progresso_exibe_barra_grafica_em_stderr`: reprovado (`trecho ausente: [100%]`).
+    - `teste_upload_com_progresso_exibe_barra_grafica_em_stderr`: reprovado (`trecho ausente: [100%]`).
 - **Fase GREEN comprovada:**
-  - `teste_upload_com_progresso_configura_progress_bar_no_cliente`: aprovado.
-  - `teste_upload_sem_progresso_mantem_cliente_silencioso`: aprovado.
-  - `teste_download_com_progresso_configura_progress_bar_no_cliente`: aprovado.
-  - `teste_download_sem_progresso_mantem_cliente_silencioso`: aprovado.
-  - Regressão completa: 597 casos executados, 597 aprovados, 0 reprovados.
-  - Guarda de remoção de testes (`bash scripts/verificar-remocao-de-casos.sh`): aprovada (595 -> 599 casos, nenhuma redução não declarada).
+  - `teste_barra_gerar_percentual_zero_e_cem`: aprovado.
+  - `teste_barra_gerar_valores_intermediarios_e_limites`: aprovado.
+  - `teste_barra_grafica_emite_em_stderr_e_preserva_stdout`: aprovado.
+  - `teste_transferencia_inclui_barra_grafica_em_stderr`: aprovado.
+  - `teste_etapa_inclui_barra_grafica_em_stderr`: aprovado.
+  - `teste_upload_com_progresso_exibe_barra_grafica_em_stderr`: aprovado.
+  - `teste_download_com_progresso_exibe_barra_grafica_em_stderr`: aprovado.
+  - Regressão completa: 604 casos executados, 604 aprovados, 0 reprovados, 2 pulados.
+  - Guarda de remoção de testes (`bash scripts/verificar-remocao-de-casos.sh`): aprovada (599 -> 606 casos, nenhuma redução não declarada).
 - **Veredito:** **Aprovado**.
 
 ---
 
 ## Parecer de Conformidade (Protocolo Conformidade — Modo Compacto)
 
-- **Identificação:** Demanda `progresso-upload-download` (Porte P).
-- **Diff avaliado:** `git diff lib/http.sh lib/transfer.sh commands/upload.sh tests/integracao/comandos_test.sh`.
+- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompt 2).
+- **Diff avaliado:** `git diff lib/progress.sh commands/upload.sh commands/download.sh lib/transfer.sh tests/unit/progress_test.sh tests/integracao/comandos_test.sh`.
 - **Checklist:**
-  - Carregamento idempotente respeitado via `_dbx_http_diretorio` e `lib/progress.sh`.
-  - Nenhuma variável global poluída; variáveis de controle de formatação locais (`str_tam`, `str_total_sessao`).
+  - Prefixo de funções públicas (`dbx_progress_`) e variáveis globais (`DBX_PROGRESS_`) estritamente respeitado.
+  - Todas as variáveis locais protegidas com `local` para evitar vazamento de escopo.
+  - Ausência de comandos externos no cálculo de barras (`bash` arithmetics puros).
   - Sem uso de subshells desnecessários nos laços críticos.
-  - Ausência de segredos ou credenciais em mensagens de diagnóstico.
+  - Ausência de segredos ou credenciais em mensagens de diagnóstico ou progresso.
   - Conformidade estrita com RF-28 e RF-32: toda saída de progresso direcionada ao descritor 2 (`stderr`).
-  - `shellcheck` (0.10.0+): validado sem avisos ou erros em todos os arquivos modificados.
+  - `shellcheck` (0.10.0+): validado sem avisos ou erros em todos os arquivos modificados e no projeto completo (`shellcheck lib/*.sh commands/*.sh bin/* scripts/*.sh`).
 - **Veredito:** **Aprovado**.
 
 ---
@@ -88,4 +109,4 @@ Com este incremento:
 ## Aprovação do Tech Lead
 
 - **Status:** **Aprovado para entrega**.
-- **Observações:** Refinamento pontual de UX na CLI cumprindo integralmente a solicitação do operador sem impacto colateral na automação ou em pipelines que consom a saída estruturada.
+- **Observações:** A demanda do operador foi integralmente atendida com a introdução do feedback gráfico (barra de progresso proporcional e percentual em colchetes) para todas as modalidades de upload e download, mantendo isolamento de canal de saída e estabilidade total da suíte.
