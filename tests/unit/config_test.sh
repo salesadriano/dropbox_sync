@@ -127,6 +127,19 @@ teste_falha_de_gravacao_preserva_o_arquivo_anterior() {
     'gravacao malsucedida nao pode corromper a credencial existente'
 }
 
+teste_falha_de_gravacao_registra_detalhe_operacional() {
+  local area
+  area=$(_area)
+  _com_xdg "$area"
+  mkdir -p "$area/config/dbx"
+  chmod 500 "$area/config/dbx"
+  assert_status "$DBX_CONFIG_ERRO_CONFIGURACAO" \
+    dbx_config_gravar 'AK' 'AS' 'RT' '/raiz' 2>/dev/null
+  chmod 700 "$area/config/dbx"
+  assert_igual 'gravacao' "$DBX_CONFIG_MOTIVO" 'motivo base de falha'
+  assert_diferente '' "${DBX_CONFIG_DETALHE:-}" 'detalhe deve capturar erro do SO'
+}
+
 # ---------------------------------------------------------------------------
 # Leitura e viagem de ida e volta
 # ---------------------------------------------------------------------------

@@ -81,6 +81,7 @@ DBX_CLI_ESTRUTURADA='nao'
 DBX_CLI_NULO='nao'
 DBX_CLI_SIMULACAO='nao'
 DBX_CLI_PROGRESSO='auto'
+DBX_CLI_DEBUG='nao'
 DBX_CLI_MOTIVO=''
 
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
@@ -141,6 +142,8 @@ dbx_cli_analisar() {
   DBX_CLI_NULO='nao'
   DBX_CLI_SIMULACAO='nao'
   DBX_CLI_PROGRESSO='auto'
+  DBX_CLI_DEBUG='nao'
+  [[ -n ${DBX_DEBUG:-} && ${DBX_DEBUG:-} != '0' && ${DBX_DEBUG:-} != 'nao' ]] && DBX_CLI_DEBUG='sim'
   DBX_CLI_MOTIVO=''
 
   while [[ $# -gt 0 ]]; do
@@ -150,6 +153,7 @@ dbx_cli_analisar() {
       --dry-run) DBX_CLI_SIMULACAO='sim' ;;
       --progresso | --progress | -p) DBX_CLI_PROGRESSO='sim' ;;
       --sem-progresso | --no-progress) DBX_CLI_PROGRESSO='nao' ;;
+      --debug) DBX_CLI_DEBUG='sim' ;;
       --help | -h)
         DBX_CLI_COMANDO='help'
         return 0

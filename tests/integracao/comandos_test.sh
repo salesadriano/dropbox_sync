@@ -741,6 +741,36 @@ teste_config_aceita_entrada_sem_quebra_de_linha_final() {
   assert_arquivo_existe "$base/config/dbx/credencial.json" 'a credencial e gravada'
 }
 
+teste_config_aceita_sinalizador_debug_e_emite_diagnostico() {
+  local base
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" --debug config
+  assert_igual 0 "$DBX_ESTADO" "config com --debug global deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[debug]' "$DBX_ERRO" 'diagnostico de depuracao deve ser emitido em stderr'
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'credencial gravada'
+}
+
+teste_config_subcomando_aceita_sinalizador_debug() {
+  local base
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config --debug
+  assert_igual 0 "$DBX_ESTADO" "config com subcomando --debug deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[debug]' "$DBX_ERRO" 'diagnostico de depuracao deve ser emitido em stderr'
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'credencial gravada'
+}
+
+teste_config_debug_emite_detalhe_em_falha_de_gravacao() {
+  local base
+  base=$(_ambiente_vazio)
+  mkdir -p "$base/config/dbx"
+  chmod 500 "$base/config/dbx"
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config --debug
+  chmod 700 "$base/config/dbx"
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" 'deve falhar por configuracao'
+  assert_contem '[debug]' "$DBX_ERRO" 'deve conter relatorio completo de depuracao'
+  assert_contem 'gravacao da credencial falhou: gravacao' "$DBX_ERRO" 'deve conter mensagem de erro com detalhe'
+}
+
 teste_config_pede_autorizacao_offline_e_nao_ecoa_o_segredo() {
   local base
   base=$(_ambiente_vazio)
@@ -972,6 +1002,72 @@ teste_download_com_progresso_emite_em_stderr_e_preserva_stdout() {
   assert_igual 0 "$DBX_ESTADO" "download com --progresso deve concluir; diagnostico: $DBX_ERRO"
   assert_contem '[download]' "$DBX_ERRO" 'stderr deve conter marcadores de progresso'
   assert_nao_contem '[download]' "$DBX_SAIDA" 'stdout nao pode ser contaminado com progresso'
+}
+
+teste_upload_com_progresso_configura_progress_bar_no_cliente() {
+  local base origem opcoes
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'conteudo para upload\n' >"$origem"
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  opcoes=$(cat "$base/opcoes" 2>/dev/null || true)
+  assert_contem 'progress-bar' "$opcoes" 'upload com progresso ativo deve configurar medidor no cliente'
+}
+
+teste_upload_sem_progresso_mantem_cliente_silencioso() {
+  local base origem opcoes
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'conteudo para upload\n' >"$origem"
+  _rodar "$base" --sem-progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload sem progresso deve concluir; diagnostico: $DBX_ERRO"
+  opcoes=$(cat "$base/opcoes" 2>/dev/null || true)
+  assert_nao_contem 'progress-bar' "$opcoes" 'upload sem progresso nao pode configurar medidor no cliente'
+  assert_contem 'silent' "$opcoes" 'upload sem progresso deve manter cliente silencioso'
+}
+
+teste_download_com_progresso_configura_progress_bar_no_cliente() {
+  local base opcoes
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  _rodar "$base" --progresso download /r/a.txt "$base/baixado.txt"
+  assert_igual 0 "$DBX_ESTADO" "download com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  opcoes=$(cat "$base/opcoes" 2>/dev/null || true)
+  assert_contem 'progress-bar' "$opcoes" 'download com progresso ativo deve configurar medidor no cliente'
+}
+
+teste_download_sem_progresso_mantem_cliente_silencioso() {
+  local base opcoes
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  _rodar "$base" --sem-progresso download /r/a.txt "$base/baixado.txt"
+  assert_igual 0 "$DBX_ESTADO" "download sem progresso deve concluir; diagnostico: $DBX_ERRO"
+  opcoes=$(cat "$base/opcoes" 2>/dev/null || true)
+  assert_nao_contem 'progress-bar' "$opcoes" 'download sem progresso nao pode configurar medidor no cliente'
+  assert_contem 'silent' "$opcoes" 'download sem progresso deve manter cliente silencioso'
+}
+
+teste_upload_com_progresso_exibe_barra_grafica_em_stderr() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'conteudo para upload de teste\n' >"$origem"
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[upload]' "$DBX_ERRO" 'stderr deve conter rotulo de upload'
+  assert_contem '100%' "$DBX_ERRO" 'stderr deve indicar conclusao percentual'
+  assert_contem '[' "$DBX_ERRO" 'stderr deve conter delimitador de barra grafica'
+  assert_nao_contem '[upload]' "$DBX_SAIDA" 'stdout deve permanecer livre de progresso'
+}
+
+teste_download_com_progresso_exibe_barra_grafica_em_stderr() {
+  local base
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  _rodar "$base" --progresso download /r/a.txt "$base/baixado.txt"
+  assert_igual 0 "$DBX_ESTADO" "download com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[download]' "$DBX_ERRO" 'stderr deve conter rotulo de download'
+  assert_contem '100%' "$DBX_ERRO" 'stderr deve indicar conclusao percentual'
+  assert_contem '[' "$DBX_ERRO" 'stderr deve conter delimitador de barra grafica'
+  assert_nao_contem '[download]' "$DBX_SAIDA" 'stdout deve permanecer livre de progresso'
 }
 
 teste_download_cria_diretorio_de_destino_caso_nao_exista() {

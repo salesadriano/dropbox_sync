@@ -102,7 +102,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       config)
-        printf 'Uso: dbx config [--substituir] [--raiz <caminho>]\n\n'
+        printf 'Uso: dbx config [--substituir] [--raiz <caminho>] [--debug]\n\n'
         printf 'Configura credencial e pareamento com a conta do Dropbox via fluxo OAuth2 offline.\n'
         exit 0
         ;;
@@ -148,7 +148,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       *)
-        printf 'Uso: dbx [--json] [--null] [--dry-run] [--progresso] <comando> [argumentos]\n\n'
+        printf 'Uso: dbx [--json] [--null] [--dry-run] [--progresso] [--debug] <comando> [argumentos]\n\n'
         printf 'Comandos:\n'
         printf '  config    Configura credenciais de acesso via OAuth2\n'
         printf '  unlink    Revoga credencial e remove estado local\n'
@@ -159,7 +159,7 @@ case $DBX_CLI_COMANDO in
         printf '  delete    Remove arquivo ou diretorio remoto\n'
         printf '  info      Exibe metadados de arquivo ou pasta remota\n'
         printf '  space     Exibe capacidade e uso do espaco da conta\n\n'
-        printf 'Opcoes globais: --help --version --json --null --dry-run --progresso --sem-progresso\n\n'
+        printf 'Opcoes globais: --help --version --json --null --dry-run --progresso --sem-progresso --debug\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
         printf 'Recomendacao para upload de fluxo (RSK-36):\n'
         printf '  Em "dbx upload - <destino>", ative "set -o pipefail" no shell do operador ao usar pipes.\n'

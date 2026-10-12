@@ -567,7 +567,7 @@ _canal_nao_carrega_credencial() {
     DBX_JSON_CONTEXTO_ANTERIOR | DBX_JSON_MOTIVO) return 0 ;;
     DBX_JSON_MAXIMO_* ) return 0 ;;
     # Caminho e motivo do componente de configuracao: sistema de arquivos.
-    DBX_CONFIG_RESULTADO | DBX_CONFIG_MOTIVO | DBX_CONFIG_ARQUIVO) return 0 ;;
+    DBX_CONFIG_RESULTADO | DBX_CONFIG_MOTIVO | DBX_CONFIG_DETALHE | DBX_CONFIG_ARQUIVO) return 0 ;;
     DBX_CONFIG_ERRO_* | DBX_CONFIG_VERSAO | DBX_CONFIG_IDADE_ORFAO) return 0 ;;
     DBX_PATH_RESULTADO | DBX_HASH_RESULTADO) return 0 ;;
     # Saida do REDATOR: por construcao ja passou pela redacao. Exigir limpeza

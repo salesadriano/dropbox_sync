@@ -384,5 +384,37 @@ teste_sync_com_progresso_lista_arquivos_e_resultados_da_analise() {
   assert_contem 'novo (a enviar)' "$DBX_ERRO" 'resultado deve classificar arquivo novo'
 }
 
+teste_sync_com_progresso_exibe_andamento_da_consulta_remota() {
+  local base
+  base=$(_cenario)
+  printf 'conteudo 1' >"$base/local/arq1.txt"
+  printf '{"entries":[%s,%s],"has_more":false}' \
+    "$(_entrada_remota '/r/rem1.txt' 'hash1' 10)" \
+    "$(_entrada_remota '/r/rem2.txt' 'hash2' 20)" \
+    >"$base/listagem"
+  _rodar "$base" --progresso sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'consultando arquivos remotos em: /r' "$DBX_ERRO" 'deve anunciar inicio da consulta remota'
+  assert_contem 'consultando remoto (1): rem1.txt' "$DBX_ERRO" 'deve exibir progresso do primeiro arquivo remoto'
+  assert_contem 'consultando remoto (2): rem2.txt' "$DBX_ERRO" 'deve exibir progresso do segundo arquivo remoto'
+  assert_contem 'arquivos remotos consultados: 2 arquivo(s)' "$DBX_ERRO" 'deve exibir total de arquivos remotos consultados'
+  assert_nao_contem 'consultando remoto' "$DBX_SAIDA" 'stdout nao pode conter mensagens de progresso'
+}
+
+teste_sync_com_progresso_exibe_andamento_da_analise_local() {
+  local base
+  base=$(_cenario)
+  printf 'conteudo 1' >"$base/local/arq1.txt"
+  printf 'conteudo 2' >"$base/local/arq2.txt"
+  _rodar "$base" --progresso sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'analisando arquivos locais em: ' "$DBX_ERRO" 'deve anunciar inicio da analise local'
+  assert_contem 'analisando local (1/2): arq' "$DBX_ERRO" 'deve exibir andamento do primeiro arquivo local'
+  assert_contem 'analisando local (2/2): arq' "$DBX_ERRO" 'deve exibir andamento do segundo arquivo local'
+  assert_contem 'arquivos locais analisados: 2 arquivo(s)' "$DBX_ERRO" 'deve exibir total de arquivos locais analisados'
+  assert_nao_contem 'analisando local' "$DBX_SAIDA" 'stdout nao pode conter mensagens de progresso'
+}
+
 harness_executar "$@"
+
 
