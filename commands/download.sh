@@ -151,7 +151,10 @@ dbx_cmd_download_executar() {
         dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
         # shellcheck source=commands/sync.sh
         . "${BASH_SOURCE[0]%/*}/sync.sh"
-        dbx_cmd_sync_executar --receber --origem "$remoto" --destino "$alvo"
+        local -a args_sync=(--receber --origem "$remoto" --destino "$alvo")
+        [[ ${DBX_CLI_PROGRESSO:-} == 'sim' ]] && args_sync+=(--progresso)
+        [[ ${DBX_CLI_PROGRESSO:-} == 'nao' ]] && args_sync+=(--sem-progresso)
+        dbx_cmd_sync_executar "${args_sync[@]}"
         return $?
         ;;
       *not_found*)
