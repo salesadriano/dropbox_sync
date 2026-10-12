@@ -287,12 +287,13 @@ dbx_cmd_upload_executar() {
       return $?
     }
   else
-    local str_tam=''
+    local str_tam='' str_barra_inicio=''
+    dbx_progress_barra_gerar 0 20 str_barra_inicio
     if [[ -n $tam_local ]]; then
       dbx_progress_formatar_bytes "$tam_local" str_tam
-      dbx_progress_mensagem "[upload] enviando arquivo ($str_tam) via requisicao unica..."
+      dbx_progress_mensagem "[upload] enviando arquivo ($str_tam) via requisicao unica... $str_barra_inicio (0%)"
     else
-      dbx_progress_mensagem "[upload] enviando arquivo via requisicao unica..."
+      dbx_progress_mensagem "[upload] enviando arquivo via requisicao unica... $str_barra_inicio (0%)"
     fi
     dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
       "$DBX_UPLOAD_COMMIT" "$origem" nao || {
@@ -302,7 +303,9 @@ dbx_cmd_upload_executar() {
     }
   fi
 
-  dbx_progress_mensagem "[upload] envio concluido com sucesso"
+  local str_barra_fim=''
+  dbx_progress_barra_gerar 100 20 str_barra_fim
+  dbx_progress_mensagem "[upload] envio concluido com sucesso $str_barra_fim (100%)"
 
   _dbx_cmd_analisar_corpo || return $?
 

@@ -589,9 +589,10 @@ _dbx_transfer_conduzir() {
     parte=$((parte + 1))
   done
 
-  local str_total_sessao=''
+  local str_total_sessao='' str_barra_concluida=''
   dbx_progress_formatar_bytes "$((deslocamento + tamanho))" str_total_sessao
-  dbx_progress_mensagem "[upload] concluindo sessao em partes ($str_total_sessao)..."
+  dbx_progress_barra_gerar 100 20 str_barra_concluida
+  dbx_progress_mensagem "[upload] concluindo sessao em partes ($str_total_sessao)... $str_barra_concluida (100%)"
 
   argumento="{\"cursor\":{\"session_id\":\"$sessao\",\"offset\":$deslocamento},\"commit\":$commit}"
   _dbx_transfer_emitir "$DBX_TRANSFER_URL_CONCLUIR" "$argumento" "$bloco" nao || {

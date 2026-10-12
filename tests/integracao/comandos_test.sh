@@ -1046,6 +1046,30 @@ teste_download_sem_progresso_mantem_cliente_silencioso() {
   assert_contem 'silent' "$opcoes" 'download sem progresso deve manter cliente silencioso'
 }
 
+teste_upload_com_progresso_exibe_barra_grafica_em_stderr() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'conteudo para upload de teste\n' >"$origem"
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[upload]' "$DBX_ERRO" 'stderr deve conter rotulo de upload'
+  assert_contem '100%' "$DBX_ERRO" 'stderr deve indicar conclusao percentual'
+  assert_contem '[' "$DBX_ERRO" 'stderr deve conter delimitador de barra grafica'
+  assert_nao_contem '[upload]' "$DBX_SAIDA" 'stdout deve permanecer livre de progresso'
+}
+
+teste_download_com_progresso_exibe_barra_grafica_em_stderr() {
+  local base
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  _rodar "$base" --progresso download /r/a.txt "$base/baixado.txt"
+  assert_igual 0 "$DBX_ESTADO" "download com --progresso deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '[download]' "$DBX_ERRO" 'stderr deve conter rotulo de download'
+  assert_contem '100%' "$DBX_ERRO" 'stderr deve indicar conclusao percentual'
+  assert_contem '[' "$DBX_ERRO" 'stderr deve conter delimitador de barra grafica'
+  assert_nao_contem '[download]' "$DBX_SAIDA" 'stdout deve permanecer livre de progresso'
+}
+
 teste_download_cria_diretorio_de_destino_caso_nao_exista() {
   local base
   base=$(_ambiente 'CONTEUDO-TESTE')

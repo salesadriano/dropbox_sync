@@ -52,3 +52,39 @@ registro_de_entrega: "docs/reviews/2026-10-11-0955-registro-progresso-upload-dow
    - **Isolamento Estrito de Canais (RF-28 e RF-32):**
      - O descritor `stdout` (1) permanece 100% puro e isolado para saídas estruturadas (JSON / chave-valor) e fluxos binários em pipes (`dbx download ... - | tar xzf -`). Todo feedback visual trafega exclusivamente pelo descritor `stderr` (2).
    - Testes automatizados cobrindo a configuração de `progress-bar` sob `--progresso` e `silent` sob `--sem-progresso`, bem como preservação estrita de `stdout`.
+
+---
+
+## Prompt 2 (Entrada do Operador — 2026-10-12 09:31)
+
+```
+@tech-lead durante o processo de upload ou download dos arquivos deve ser exibido feed back gráfico demonstrando progressão do processo
+```
+
+### Análise do Tech Lead
+
+1. **Intenção Principal:**
+   - O operador refinou a solicitação anterior, explicitando a necessidade de **feedback gráfico** demonstrando a progressão do processo (`feed back gráfico demonstrando progressão do processo`).
+   - Na entrega do Prompt 1, a CLI passou a liberar a barra nativa do `cURL` (`progress-bar`) em chamadas de conteúdo e adicionou percentuais numéricos textuais em mensagens. No entanto, o componente `lib/progress.sh` não possuía gerador de barra gráfica visual própria (`[████████░░░░░░░░]` / `[==========>     ]`), e mensagens de progresso de upload/download de requisição única, envio em partes (`lib/transfer.sh`) e etapas de transferência de diretórios/sync (`dbx_progress_etapa` e `dbx_progress_transferencia`) exibiam apenas marcadores em texto sem barra gráfica renderizada da aplicação.
+
+2. **Decisão Técnica e Arquitetura:**
+   - Em `lib/progress.sh`:
+     - Implementar `dbx_progress_barra_gerar <percentual> [largura] [var_destino]`:
+       - Gera uma barra visual gráfica delimitada por colchetes, calculando proporcionalmente blocos preenchidos e vazios.
+       - Suporta caracteres em bloco (`█` e `░`) em ambientes UTF-8, com fallback gracioso para ASCII (`#` e `-`) quando em ambientes restritos (RNF-19).
+     - Implementar `dbx_progress_barra <rotulo> <atuais> <totais> [detalhe]`:
+       - Emite barra gráfica formatada com percentual, bytes humanos e detalhe opcional para `stderr`.
+     - Refinar `dbx_progress_transferencia <rotulo> <atuais> [totais] [detalhe]`:
+       - Incorporar a barra gráfica gerada (`dbx_progress_barra_gerar`) nas mensagens de transferência em andamento sem romper compatibilidade com os textos existentes.
+     - Refinar `dbx_progress_etapa <atual> <total> <acao> <item>`:
+       - Incorporar barra gráfica proporcional do lote/etapa quando o total for numérico positivo.
+   - Em `commands/upload.sh`:
+     - Incorporar representação gráfica de progresso inicial (`0%`) e conclusão (`100%`) no envio por requisição única.
+   - Em `commands/download.sh`:
+     - Incorporar representação gráfica de progresso inicial (`0%`) e conclusão (`100%`) com tamanho formatado no recebimento de arquivos.
+   - Em `lib/transfer.sh`:
+     - Exibir barra gráfica de 100% na conclusão da sessão em partes.
+   - **Garantias Absolutas:**
+     - Pureza de `stdout` (1) integralmente preservada para JSON, chave-valor e streams binários (RF-28 e RF-32). Todo feedback gráfico é emitido exclusivamente em `stderr` (2).
+     - Silenciamento estrito respeitado quando `--sem-progresso` (`--no-progress`) ou ausência de TTY (RNF-19).
+     - Testes unitários e de integração validando a geração da barra gráfica, percentuais nos limites (0% e 100%), etapas, isolamento de descritores e paridade operacional.
