@@ -215,4 +215,48 @@ teste_transferencia_e_barra_com_progresso_fracionario() {
   assert_contem '(0.01%)' "$saida_err" 'transferencia com percentual fracionario'
 }
 
+teste_etapa_barra_exibe_progresso_do_arquivo_atual_e_percentual_global() {
+  DBX_CLI_PROGRESSO='sim'
+  local arq_out="$DBX_TESTES_TMP/eb_arq_out.$$" arq_err="$DBX_TESTES_TMP/eb_arq_err.$$"
+  local saida_err
+
+  local barra_100='' barra_50='' barra_0=''
+  dbx_progress_barra_gerar 100 15 barra_100
+  dbx_progress_barra_gerar 50 15 barra_50
+  dbx_progress_barra_gerar 0 15 barra_0
+
+  # Barra cheia (100%) por padrao para o arquivo atual, percentual no parentese reflete o processo global (40%)
+  dbx_progress_etapa 4 10 'recebendo' 'arquivo.zip' >"$arq_out" 2>"$arq_err"
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+
+  assert_contem "$barra_100" "$saida_err" 'barra deve exibir progresso do arquivo atual (100% por padrao)'
+  assert_contem '(40%)' "$saida_err" 'percentual entre parenteses deve refletir o processo global'
+
+  # Repasse explicito de percentual do arquivo atual (ex.: 50%)
+  dbx_progress_etapa 4 10 'recebendo' 'arquivo.zip' 50 >"$arq_out" 2>"$arq_err"
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+
+  assert_contem "$barra_50" "$saida_err" 'barra deve exibir 50% do arquivo atual'
+  assert_contem '(40%)' "$saida_err" 'percentual global continua 40%'
+
+  # Repasse explicito de inicio do arquivo atual (0%)
+  dbx_progress_etapa 4 10 'recebendo' 'arquivo.zip' 0 >"$arq_out" 2>"$arq_err"
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+
+  assert_contem "$barra_0" "$saida_err" 'barra deve exibir 0% do arquivo atual'
+  assert_contem '(40%)' "$saida_err" 'percentual global continua 40%'
+
+  # Caso real da captura (17526 de 228418 = 7% global com arquivo atual 100%)
+  dbx_progress_etapa 17526 228418 'recebendo' 'arquivo.xml' >"$arq_out" 2>"$arq_err"
+  saida_err=$(cat "$arq_err")
+  rm -f "$arq_out" "$arq_err"
+
+  assert_contem "$barra_100" "$saida_err" 'barra deve exibir 100% do arquivo atual'
+  assert_contem '(7%)' "$saida_err" 'percentual global continua 7%'
+}
+
 harness_executar "$@"
+
