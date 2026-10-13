@@ -92,19 +92,20 @@ Com este ciclo de refinamentos e correções:
   - `teste_transferencia_inclui_barra_grafica_em_stderr`: aprovado.
   - `teste_etapa_inclui_barra_grafica_em_stderr`: aprovado.
   - `teste_etapa_com_progresso_fracionario_exibe_decimais`: aprovado.
+  - `teste_etapa_barra_exibe_progresso_do_arquivo_atual_e_percentual_global`: aprovado (barra reflete progresso do arquivo atual, enquanto o percentual entre parênteses preserva o progresso global).
   - `teste_transferencia_e_barra_com_progresso_fracionario`: aprovado.
   - `teste_upload_com_progresso_exibe_barra_grafica_em_stderr`: aprovado.
   - `teste_download_com_progresso_exibe_barra_grafica_em_stderr`: aprovado.
   - `teste_download_de_pasta_com_progresso_nao_vaza_erro_bruto_do_cliente_em_stderr`: aprovado.
-  - Regressão completa: 607 casos executados, 607 aprovados, 0 reprovados, 2 pulados.
-  - Guarda de remoção de testes (`bash scripts/verificar-remocao-de-casos.sh`): aprovada (607 -> 609 casos, nenhuma redução não declarada).
+  - Regressão completa: 608 casos executados, 608 aprovados, 0 reprovados, 2 pulados.
+  - Guarda de remoção de testes (`bash scripts/verificar-remocao-de-casos.sh`): aprovada (607 -> 610 casos, nenhuma redução não declarada).
 - **Veredito:** **Aprovado**.
 
 ---
 
 ## Parecer de Conformidade (Protocolo Conformidade — Modo Compacto)
 
-- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompts 2, 3 e 4).
+- **Identificação:** Demanda `progresso-upload-download` (Porte P — Prompts 2, 3, 4 e 5).
 - **Diff avaliado:** `git diff lib/progress.sh commands/upload.sh commands/download.sh lib/transfer.sh lib/http.sh tests/unit/progress_test.sh tests/integracao/comandos_test.sh`.
 - **Checklist:**
   - Prefixo de funções públicas (`dbx_progress_`) e variáveis globais (`DBX_PROGRESS_`) estritamente respeitado.
@@ -114,6 +115,7 @@ Com este ciclo de refinamentos e correções:
   - Ausência de segredos ou credenciais em mensagens de diagnóstico ou progresso.
   - Conformidade estrita com RF-28 e RF-32: toda saída de progresso direcionada ao descritor 2 (`stderr`).
   - Encapsulamento estrito do cURL: saída de erro tratada via buffer interno (`erro_cliente`), sem poluição do terminal do usuário com erros brutos do cliente.
+  - Separação clara de responsabilidades visuais (Prompt 5): a barra gráfica `[...]` exibe o progresso do arquivo/item atual (0% a 100%), enquanto o percentual numérico `(...)` reflete o processo global (`atual/total`).
   - `shellcheck` (0.10.0+): validado sem avisos ou erros em todos os arquivos modificados e no projeto completo (`shellcheck lib/*.sh commands/*.sh bin/* scripts/*.sh`).
 - **Veredito:** **Aprovado**.
 
@@ -122,4 +124,5 @@ Com este ciclo de refinamentos e correções:
 ## Aprovação do Tech Lead
 
 - **Status:** **Aprovado para entrega**.
-- **Observações:** A demanda do operador foi integralmente atendida com a introdução do feedback gráfico proporcional para upload e download, eliminação do vazamento de erro cURL, e inclusão de precisão decimal adaptativa (`(0.02%)` e `(<0.01%)`) para grandes lotes com progresso inicial inferior a 1%, resolvendo a sensação de congelamento em `(0%)` mantendo pureza de stdout e estabilidade total da suíte.
+- **Observações:** A demanda do operador foi integralmente atendida com a introdução do feedback gráfico proporcional para upload e download, eliminação do vazamento de erro cURL, inclusão de precisão decimal adaptativa (`(0.02%)` e `(<0.01%)`) para grandes lotes com progresso inicial inferior a 1%, e a correta dissociação visual (Prompt 5): a barra gráfica passa a exibir o progresso do arquivo atual (evitando a impressão errônea de arquivo incompleto com apenas 7%), enquanto o percentual entre parênteses continua indicando o progresso acumulado de todo o processo. Pureza de stdout e estabilidade total da suíte rigorosamente mantidas.
+
