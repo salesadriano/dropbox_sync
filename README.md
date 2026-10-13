@@ -60,7 +60,7 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 #### Opção A: Instalação Rápida via cURL (One-liner)
 Para instalar diretamente no espaço do usuário (`~/.local/bin/dbx` e `~/.local/share/dropbox_sync`):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/develop/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/master/install.sh | bash
 ```
 
 #### Opção B: Instalação a partir do Repositório
@@ -73,9 +73,9 @@ sudo ./install.sh --system   # Instalação global (/usr/local/bin)
 ```
 
 #### Opção C: Instalação a partir do Tarball de Release
-Baixe o arquivo `dropbox_sync-1.1.0-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
+Baixe o arquivo `dropbox_sync-1.2.0-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
 ```bash
-tar -xzf dropbox_sync-1.1.0-linux.tar.gz
+tar -xzf dropbox_sync-1.2.0-linux.tar.gz
 ./install.sh
 ```
 
@@ -261,7 +261,7 @@ dbx space --humano
 O projeto conta com uma suíte abrangente de testes automatizados com saída **TAP 13**, cobrindo cenários unitários e de integração com dublês de rede e auditorias adversariais:
 
 ```bash
-# Executar a bateria completa de testes (591 casos aprovados)
+# Executar a bateria completa de testes (608 casos aprovados)
 bash tests/run.sh < /dev/null
 
 # Executar análise estática (linter)

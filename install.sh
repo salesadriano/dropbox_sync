@@ -3,22 +3,22 @@
 #
 # Uso:
 #   bash install.sh [opcoes]
-#   curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/develop/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/master/install.sh | bash
 #
 # Opcoes:
 #   --user, -u          Instala no diretorio do usuario (~/.local) [padrao para usuarios normais]
 #   --system, -s        Instala em nivel de sistema (/usr/local) [padrao para root]
 #   --prefix <dir>      Define prefixo customizado de instalacao
 #   --uninstall         Remove uma instalacao existente do dbx
-#   --canal <ref>       Define o branch ou tag a baixar se executado via pipe (padrao: develop)
+#   --canal <ref>       Define o branch ou tag a baixar se executado via pipe (padrao: master)
 #   --help, -h          Exibe esta mensagem de ajuda
 #   --version, -v       Exibe versao do instalador
 #
 set -euo pipefail
 
-VERSAO_INSTALADOR="1.1.0"
+VERSAO_INSTALADOR="1.2.0"
 REPO_URL="https://github.com/salesadriano/dropbox_sync.git"
-CANAL_PADRAO="develop"
+CANAL_PADRAO="master"
 
 # Cores e formatacao
 if [[ -t 1 ]]; then
