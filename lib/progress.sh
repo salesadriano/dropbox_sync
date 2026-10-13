@@ -139,13 +139,27 @@ dbx_progress_barra() {
   fi
 }
 
-# dbx_progress_etapa <atual> <total> <acao> <item> — emite marcador de etapa ordenada com barra grafica.
+# dbx_progress_etapa <atual> <total> <acao> <item> [pct_item] — emite marcador de etapa ordenada com barra grafica.
+# A barra grafica exibe o progresso do arquivo/item atual (0% a 100%).
+# O percentual entre parenteses continua exibindo o progresso do processo global (atual/total).
 dbx_progress_etapa() {
   dbx_progress_ativo || return 0
   local atual=${1:-0} total=${2:-0} acao=${3:-processando} item=${4:-}
+  local pct_item=${5:-}
+
+  if [[ -n $pct_item && $pct_item =~ ^-?[0-9]+$ ]]; then
+    :
+  elif [[ $atual -eq 0 ]]; then
+    pct_item=0
+  else
+    pct_item=100
+  fi
+
+  local str_barra=''
+  dbx_progress_barra_gerar "$pct_item" 15 str_barra
+
   if [[ $total =~ ^[0-9]+$ && $total -gt 0 ]]; then
-    local pct=$(( (atual * 100) / total )) str_barra=''
-    dbx_progress_barra_gerar "$pct" 15 str_barra
+    local pct=$(( (atual * 100) / total ))
     if [[ $atual -gt 0 && $pct -eq 0 ]]; then
       local centesimos=$(( (atual * 10000) / total ))
       if [[ $centesimos -eq 0 ]]; then

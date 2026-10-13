@@ -86,17 +86,18 @@ if [[ $PUBLICAR == "sim" ]]; then
   else
     printf '==> Criando nova Release %s no GitHub...\n' "$TAG"
     gh release create "$TAG" "$ARQUIVO_TAR" "$ARQUIVO_SHA" \
-      --title "Release v${VERSAO} — Suporte a Pastas, Cache SQLite e Progresso" \
+      --title "Release v${VERSAO} — Progresso em Tempo Real, Diagnostico e Branch Master" \
       --notes "## O que ha de novo na v${VERSAO}
 
-- **Suporte transparente a pastas em upload e download:** envio e download recursivo automatico de arvores inteiras.
-- **Cache local SQLite de metadados e operacoes:** aceleracao de analises locais com dispensacao inteligente de arquivos inalterados.
-- **Feedback detalhado em modo progresso (-p):** listagem de arquivos e resultado apurado da analise (em cache, hash calculado, identico, novo, modificado).
-- **Scripts de instalacao e desinstalacao oficiais:** instalador portavel 'install.sh' para Linux.
+- **Progresso grafico em tempo real para upload e download:** barra grafica dinamica no terminal com taxa de transferencia, bytes transferidos e precisao percentual adaptativa.
+- **Feedback de andamento no sync:** acompanhamento interativo do escaneamento local e consulta remota durante a sincronizacao.
+- **Diagnostico e modo debug (--debug):** novo sinalizador 'dbx config --debug' para validacao de integridade do ambiente e persistencia de credenciais.
+- **Compatibilidade expandida:** suporte aprimorado para ambientes BSD, UFS e conteineres restritos.
+- **Roteiros de instalacao oficiais na branch master:** instalador portavel 'install.sh' e documentacao atualizados para consumo estavel da branch 'master'.
 
 ### Instalacao rapida no Linux:
 \`\`\`bash
-curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/develop/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/master/install.sh | bash
 \`\`\`
 "
   fi

@@ -147,4 +147,34 @@ inicio do processo retorna erro, verifique
    - Em `tests/unit/progress_test.sh`:
      - Adicionar cobertura unitária para casos fracionários em `dbx_progress_etapa`, `dbx_progress_barra` e `dbx_progress_transferencia`.
 
+---
+
+## Prompt 5 (Entrada do Operador — 2026-10-13 07:18)
+
+```
+@tech-lead no download e no upload a barra de progresso devem exibir o progresso do arquivo atual e não do processo como um todo, o percentual no parentese continua sendo de todo o procesos, veja a imagem
+```
+*(acompanhado de captura de terminal exibindo `[17526/228418] recebendo: ... [█░░░░░░░░░░░░░░░░] (7%)` até `[17529/228418] ... [█░░░░░░░░░░░░░░░░] (7%)` durante o recebimento do lote massivo)*
+
+### Análise do Tech Lead
+
+1. **Diagnóstico da Causa Raiz:**
+   - Na entrega do Prompt 2, a barra gráfica delimitada por colchetes (`dbx_progress_barra_gerar`) havia sido incorporada a `dbx_progress_etapa` utilizando o percentual global do lote/processo (`pct=$(( (atual * 100) / total ))`).
+   - Quando o operador executou o download do lote com 228.418 arquivos e atingiu a operação 17.526 ($\approx 7,67\%$), o terminal passou a exibir repetidamente `[17526/228418] recebendo: <caminho> [█░░░░░░░░░░░░░░░░] (7%)`.
+   - Consequentemente, tanto a barra gráfica quanto o percentual entre parênteses refletiam exatamente o mesmo dado (7% do lote global).
+   - Ao lado do nome do arquivo individual (`3549-nfe.xml`, `3960-nfe.xml`), a barra gráfica com apenas 1 bloco preenchido (`[█░░░░░░░░░░░░░░░░]`) dava a impressão incorreta de que o arquivo atual só havia sido transferido em 7%, quando na verdade o arquivo individual já estava totalmente transferido (100%) ou em transferência própria.
+   - O requisito estabelece a separação clara de responsabilidades visuais:
+     - **Barra gráfica `[...]`:** deve representar o progresso do **arquivo atual** (0% a 100%).
+     - **Percentual entre parênteses `(...)`:** permanece representando o progresso do **processo como um todo** (global).
+
+2. **Decisão Técnica e Arquitetura:**
+   - Em `lib/progress.sh` (`dbx_progress_etapa`):
+     - Suportar o 5º parâmetro opcional `pct_item`: `dbx_progress_etapa <atual> <total> <acao> <item> [pct_item]`.
+     - Definir que a barra gráfica gerada (`str_barra`) utilize `pct_item`. Se `pct_item` for explicitamente numérico, utiliza o valor fornecido (ex.: 0, 50, 100).
+     - Quando `pct_item` não for informado: caso `atual == 0`, adota 0%; caso `atual > 0`, adota 100% (indicando arquivo processado).
+     - O percentual numérico entre parênteses (`str_pct`) permanece estritamente computado a partir de `atual / total` (`(7%)`, `(40%)`, `(0.02%)`, `(<0.01%)`), preservando o progresso do processo global.
+   - Em `tests/unit/progress_test.sh`:
+     - Adicionar `teste_etapa_barra_exibe_progresso_do_arquivo_atual_e_percentual_global` comprovando que a barra gráfica reflete o arquivo atual (100% por padrão, ou valor explícito) enquanto o percentual entre parênteses preserva o progresso global do lote.
+
+
 
