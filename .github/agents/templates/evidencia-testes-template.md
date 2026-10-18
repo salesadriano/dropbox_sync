@@ -12,7 +12,7 @@ Preenchido pelo agent que produziu a alteracao, conforme `../skills/protocolo-td
 - Data da verificacao:
 - Ciclo de verificacao: 1 | 2 | 3 | escalonado ao Tech Lead
 - Tipo de alteracao: Implementacao nova | Refatoracao | Correcao de defeito | Ajuste pontual
-- Execucao dos gates: local, sem pipeline (suite completa e da pipeline de `main`/`master`, Regra 8)
+- Execucao dos gates: local, sem pipeline (suite completa roda no push para a PR de `main`/`master` e na pipeline, Regra 8)
 - Porte da demanda: P | M | G
 - Modo do parecer: Compacto | Completo
 
@@ -50,16 +50,18 @@ Preenchido pelo agent que produziu a alteracao, conforme `../skills/protocolo-td
 - Arquivos do diff sem enquadramento automatico e definicao do solicitante para cada um (log de prompt): | Nenhum
 - Modulos atingidos diretamente pelo diff:
 - Dependentes diretos incluidos, conforme o mapa:
-- Suite completa executada fora da pipeline?: Nao | Sim, por pedido explicito do solicitante (log de prompt) | Sim, sem pedido (achado Maior)
+- Suite completa executada durante a demanda, fora do push para a PR?: Nao | Sim, por pedido explicito do solicitante (log de prompt) | Sim, sem pedido (achado Maior)
 - Estrutura ou dependencia nova adicionada ao mapa nesta alteracao?: Sim (qual, com origem automatica ou do solicitante) | Nao | Nao aplicavel
 
 | Modulo | Motivo da selecao (direto / dependente de ...) | Comando | Total | Aprovados | Falhos | Duracao |
 |---|---|---|---|---|---|---|
 |  |  |  |  |  |  |  |
 
-## Suite completa na pipeline de main/master (Regra 8)
+## Suite completa no push para a PR e na pipeline de main/master (Regra 8)
 
-Nao roda localmente: e a pipeline que a executa, no PR e no push ou merge para a branch de integracao. Esta secao registra a referencia da execucao, nao uma execucao do agent.
+Roda em dois lugares: localmente, pelo comando oficial, antes de todo push que abre ou atualiza a PR para a branch de integracao (registrada abaixo com contagens literais), e na pipeline, no PR e no push ou merge para essa branch (referenciada abaixo).
+
+- Execucao local no push para a PR: comando, total, aprovados, falhos, duracao, sha do commit testado | Ainda nao houve push para a PR
 
 - Branch de integracao do projeto: `main` | `master`
 - Workflow e job que rodam a suite completa:
@@ -192,7 +194,7 @@ Preencher apenas se houve instabilidade observada.
 | 3 | Cobertura E2E dos criterios BDD contra base real de homologacao | Atendido / Nao atendido |  |
 | 4 | Cenarios negativos de seguranca e acesso executados e aprovados quando houver gatilho | Atendido / Nao atendido / Nao aplicavel |  |
 | 5 | Cenarios de formulario (obrigatorios, valor indevido, feedback visual) executados e aprovados quando houver interface com entrada | Atendido / Nao atendido / Nao aplicavel |  |
-| 6 | Execucao seletiva aprovada nos modulos atingidos e dependentes diretos (suite completa nao e item deste DoD: condiciona o merge, na pipeline) | Atendido / Nao atendido |  |
+| 6 | Execucao seletiva aprovada nos modulos atingidos e dependentes diretos (suite completa nao e item deste DoD: condiciona o merge, no push para a PR e na pipeline) | Atendido / Nao atendido |  |
 | 7 | Parada no primeiro erro configurada no local e na pipeline, com reporte, e execucao seletiva final sem interrupcao (Regra 9) | Atendido / Nao atendido |  |
 
 ## Limitacoes do ambiente

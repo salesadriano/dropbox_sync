@@ -5,13 +5,17 @@
 # Tudo o que divergir dela e acusado: arquivo alterado, criado, apagado, renomeado ou com modo trocado,
 # na arvore de trabalho ou no indice (versao preparada); submodulo com outro commit ou sujo; commit na
 # branch sem a trilha do protocolo (linha `Prompt:` no corpo); commit ou merge com alteracao propria sem
-# trilha que chega a branch principal; historico reescrito. O script so le e acusa: nunca altera a arvore
-# de trabalho, o indice ou o historico; escreve apenas a linha de base e a marca, dentro de `.git/`.
+# trilha que chega a branch principal (no merge, o que difere do merge automatico refeito pelo git,
+# inclusive resolucao de conflito; merge limpo, mesmo com arquivo mudado pelos dois lados, nao conta);
+# historico reescrito. O script so le e acusa: nunca altera a arvore de trabalho, o indice ou o
+# historico; escreve apenas a linha de base e a marca, dentro de `.git/`.
 #
 # Uso (a partir de qualquer diretorio do worktree):
 #   sh scripts/alteracoes-externas.sh --detectar              # acusa divergencias; exit 3 quando houver
 #   sh scripts/alteracoes-externas.sh --inicial               # cria a linha de base do worktree (logo apos cria-lo)
-#   sh scripts/alteracoes-externas.sh --registrar <arq>...    # agent registra os arquivos que ELE alterou
+#   sh scripts/alteracoes-externas.sh --registrar <arq>...    # agent registra os arquivos que ELE alterou;
+#                                                             # diretorio e recusado (exit 2), salvo submodulo
+#                                                             # ou symlink: informar os arquivos
 #   sh scripts/alteracoes-externas.sh --registrar             # avanca a linha de base apos commit do agent
 #   sh scripts/alteracoes-externas.sh --registrar --commits   # incorpora commits acusados, so apos decisao explicita
 #   --principal <branch>  branch principal (padrao: entrada branch-principal ativa da memoria)
@@ -22,14 +26,28 @@
 #   COMMIT <sha> <assunto> (<autor>)
 #   PRINCIPAL <sha> <assunto> (<autor>)
 #   HISTORICO <descricao>
-# Exit: 0 sem divergencia, 3 com divergencia, 1 erro, 2 uso invalido.
+# Exit: 0 sem divergencia, 3 com divergencia, 1 erro (inclusive trava ocupada alem da espera), 2 uso invalido
+# (inclusive diretorio no --registrar).
+#
+# Escrita serializada: --inicial e --registrar tomam uma trava por recurso (arquivo `<arquivo>.trava` ao
+# lado da linha de base e da marca, criado pelo proprio shell com O_EXCL via `set -C` e com o pid do dono
+# dentro; nao se usa `mkdir` porque o mkdir do uutils coreutils nao e atomico sob concorrencia) antes de ler e regravar,
+# para que dois agents no mesmo worktree nao sobrescrevam o registro um do outro. Quem encontra a trava
+# ocupada espera ate ALTERACOES_EXTERNAS_ESPERA segundos (padrao 10) e sai com 1 dizendo quem a tem;
+# trava de processo morto, ou sem pid e com mais de um minuto, e removida e a escrita segue. --detectar
+# so le e nao toma trava. Depois de cada --registrar, rodar --detectar: arquivo registrado que esta igual
+# ao HEAD neste worktree gera aviso, porque o sinal mais comum e --registrar rodado no worktree errado.
 #
 # Limites conhecidos: commit humano com linha `Prompt:` forjada passa como de agent; arquivo ignorado
 # (.gitignore, .git/info/exclude, core.excludesFile) esta fora do escopo; rebase feito pelo proprio agent
 # aparece como HISTORICO (o protocolo integra por merge, regra 47); o checkout principal nao tem linha de
 # base, porque agents nao trabalham nele (regra 46): ali, qualquer diferenca e acusada. Durante um merge
 # em andamento (MERGE_HEAD), o que o git preparou no indice e os caminhos em conflito sao atribuidos ao
-# merge; o agent que integra registra a resolucao e conclui o merge antes de seguir.
+# merge; o agent que integra registra a resolucao e conclui o merge antes de seguir. A alteracao propria
+# de merge com dois pais usa `git show --remerge-diff` (git 2.36 ou superior); em git mais antigo, todo
+# merge sem trilha na principal e acusado. Em merge octopus, que o git nao refaz, vale o diff combinado
+# (`--cc`), que nao ve resolucao que mantem a versao de um dos pais. Entrada de diretorio gravada por
+# versao anterior do script sai da linha de base no proximo --registrar.
 
 set -eu
 
@@ -65,6 +83,8 @@ normalizar() {
   }'
 }
 
+recusa_diretorio() { echo "diretorio nao e aceito no --registrar: informe os arquivos que alterou em $1" >&2; exit 2; }
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --detectar|--inicial|--registrar) modo="${1#--}"; shift ;;
@@ -73,7 +93,11 @@ while [ $# -gt 0 ]; do
     --remoto) remoto="${2:?--remoto exige valor}"; shift 2 ;;
     --*) echo "argumento desconhecido: $1" >&2; exit 2 ;;
     *) [ "$modo" = "registrar" ] || { echo "arquivo so e aceito com --registrar: $1" >&2; exit 2; }
-       n=$(normalizar "$1") || { echo "caminho fora do repositorio: $1" >&2; exit 2; }
+       if ! n=$(normalizar "$1"); then
+         # A raiz do repositorio (".", ".." de um subdiretorio) e diretorio, nao caminho de fora.
+         [ "$(CDPATH='' cd -- "$1" 2>/dev/null && pwd -P)" != "$topo" ] || recusa_diretorio "$1"
+         echo "caminho fora do repositorio: $1" >&2; exit 2
+       fi
        printf '%s\n' "$n" >> "$lista"; shift ;;
   esac
 done
@@ -84,7 +108,30 @@ gcd=$(CDPATH='' cd -- "$(git rev-parse --git-common-dir)" && pwd)
 cd -- "$topo"
 base="$gd/agentes-linha-de-base"          # por worktree
 marca="$gcd/agentes-principal"            # compartilhada entre os worktrees do repositorio
-trap 'rm -f "$lista" "$base.$$" "$marca.$$"' EXIT
+travas=""
+limpar() { rm -f "$lista" "$base.$$" "$marca.$$"; for t in $travas; do rm -f "$t"; done; }
+trap limpar EXIT
+trap 'exit 1' INT TERM HUP
+
+# Trava por recurso: o arquivo $1 e criado com O_EXCL pelo shell (`set -C`), ja com o pid do dono dentro.
+# `mkdir` nao serve: o mkdir do uutils coreutils (Ubuntu 25.10 e posteriores) deixa mais de um processo
+# "criar" o mesmo diretorio sob concorrencia. Espera ate ALTERACOES_EXTERNAS_ESPERA segundos (padrao 10) em
+# passos de 0,2 s; trava de dono morto, ou sem pid legivel e com mais de um minuto, e orfa e e removida.
+trava() {
+  espera=${ALTERACOES_EXTERNAS_ESPERA:-10}; voltas=0
+  until ( set -C; echo $$ > "$1" ) 2>/dev/null; do
+    dono=$(cat "$1" 2>/dev/null || true)
+    case "$dono" in ''|*[!0-9]*) dono="" ;; esac
+    if [ -n "$dono" ] && ! kill -0 "$dono" 2>/dev/null; then rm -f "$1"; continue; fi
+    if [ -z "$dono" ] && [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then rm -f "$1"; continue; fi
+    if [ "$voltas" -ge "$((espera * 5))" ]; then
+      echo "linha de base em uso por outro --registrar ha mais de ${espera}s (trava $1${dono:+, pid $dono}): tente de novo; se o processo nao existir mais, remova o arquivo da trava" >&2
+      exit 1
+    fi
+    sleep 0.2; voltas=$((voltas + 1))
+  done
+  travas="$travas $1"
+}
 
 if [ -z "$principal" ]; then
   entrada=$(grep -l '^status: ativa' .github/agents/memoria/entradas/????-??-??-????-branch-principal.md 2>/dev/null | tail -n 1 || true)
@@ -156,11 +203,26 @@ sem_trilha() {  # commits sem a linha "Prompt:" no corpo
   done
 }
 
+# Alteracao propria de um merge: o que difere do merge automatico refeito (--remerge-diff), o que
+# inclui resolucao de conflito, mesmo a que mantem um dos lados. Octopus nao tem remerge: usa o diff
+# combinado (--cc -p). Arquivo mudado pelos dois pais e mesclado sem conflito nao conta. Falha do git
+# (versao sem --remerge-diff, ou erro em qualquer dos dois caminhos) conta como alteracao, para nunca
+# deixar de acusar.
+merge_com_alteracao_propria() {  # $1: commit; $2: total de ids em rev-list --parents (3 = dois pais)
+  if [ "$2" -eq 3 ]; then
+    d=$(git show --remerge-diff --format= "$1" 2>/dev/null) || d=falha
+  else
+    d=$(git diff-tree --cc -p --no-commit-id "$1" 2>/dev/null) || d=falha
+  fi
+  [ -n "$d" ]
+}
+
 sem_trilha_principal() {  # idem, mas merge sem alteracao propria nao conta
   git rev-list "$@" | while read -r c; do
     git show -s --format=%B "$c" | grep -q '^Prompt: ' && continue
-    if [ "$(git rev-list --parents -n 1 "$c" | wc -w)" -gt 2 ]; then
-      [ -n "$(git diff-tree --cc -r --no-commit-id --name-only "$c")" ] || continue
+    n=$(git rev-list --parents -n 1 "$c" | wc -w)
+    if [ "$n" -gt 2 ]; then
+      merge_com_alteracao_propria "$c" "$n" || continue
     fi
     git show -s --format='%h %s (%an)' "$c"
   done
@@ -233,13 +295,24 @@ case "$modo" in
     ;;
   inicial)
     [ ! -f "$base" ] || { echo "linha de base ja existe em $base; use --registrar" >&2; exit 1; }
+    trava "$base.trava"
     if [ ! -s "$marca" ]; then
+      trava "$marca.trava"
       i=$(inicio_principal); [ -z "$i" ] || printf '%s\n' "$i" | grava "$marca"
     fi
     printf 'HEAD %s\n' "$(cabeca_atual)" | grava "$base"
     ;;
   registrar)
     [ -f "$base" ] || { echo "sem linha de base neste worktree: rodar --inicial primeiro" >&2; exit 1; }
+    # Diretorio (que nao seja submodulo nem symlink) nao tem estado proprio: o agent informa os arquivos.
+    while IFS= read -r p; do
+      [ "$(estado_atual "$p")" != diretorio ] || recusa_diretorio "$p"
+      # Igual ao HEAD aqui: nada a registrar neste worktree; o sinal mais comum e o worktree errado.
+      if [ "$(estado_atual "$p")" = "$(estado_head "$p")" ] && [ "$(estado_indice "$p")" = "$(estado_head "$p")" ]; then
+        echo "aviso: $p esta igual ao HEAD neste worktree e nao entra na linha de base; se a alteracao foi feita em outro worktree, rode --registrar la e --detectar em seguida" >&2
+      fi
+    done < "$lista"
+    trava "$base.trava"
     cabeca=$(sed -n '1s/^HEAD //p' "$base")
     if [ "$commits" -eq 1 ] || [ -z "$(commits_da_branch)" ]; then cabeca=$(cabeca_atual); fi
     {
@@ -248,11 +321,13 @@ case "$modo" in
         entradas | while IFS= read -r l; do grep -qxF -- "${l#* }" "$lista" || printf '%s\n' "$l"; done
         sort -u "$lista" | while IFS= read -r p; do printf '%s;%s %s\n' "$(estado_atual "$p")" "$(estado_indice "$p")" "$p"; done
       } | while IFS= read -r l; do
-        # Entrada igual ao HEAD ja esta comitada: sai da linha de base.
-        e=${l%% *}; [ "${e%%;*}" = "$(estado_head "${l#* }")" ] || printf '%s\n' "$l"
+        # Entrada igual ao HEAD ja esta comitada: sai da linha de base. Entrada de diretorio, gravada
+        # antes da recusa acima, e invalida e tambem sai.
+        e=${l%% *}; [ "${e%%;*}" = diretorio ] || [ "${e%%;*}" = "$(estado_head "${l#* }")" ] || printf '%s\n' "$l"
       done
     } | grava "$base"
     if [ "$commits" -eq 1 ] || [ -z "$(commits_da_principal)" ]; then
+      trava "$marca.trava"
       git rev-parse "$ref_principal" | grava "$marca"
     fi
     ;;

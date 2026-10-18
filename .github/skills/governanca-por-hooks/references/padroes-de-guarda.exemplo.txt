@@ -1,0 +1,26 @@
+# Exemplo de arquivo de padroes para guarda-de-comandos.sh; cada projeto escreve o seu.
+#
+# Formato: uma regra por linha, `padrao<TAB>motivo`. Linhas vazias e linhas que comecam com `#` sao
+# ignoradas. O guarda bloqueia (exit 2) todo comando que contenha o padrao como substring literal, com o
+# motivo na mensagem, salvo quando o comando roda em conteiner (`docker run`, `docker compose`,
+# `docker-compose`, `docker exec`), que e isento por desenho: e o caminho da suite completa quando o
+# solicitante a pede explicitamente.
+#
+# Limite declarado: o casamento e por substring do texto do comando. O guarda NAO le os argumentos e
+# NAO sabe se ha um arquivo de teste ou um `--spec` no comando: `vitest run src/x.spec.ts` e bloqueado
+# tanto quanto `vitest run`. A versao do projeto de origem tinha essa heuristica por stack (arquivo de
+# teste do Vitest, `--spec` do Cypress) e ela nao e agnostica; quem precisar dela escreve o proprio hook.
+# Consequencias praticas: um padrao citado numa string (ex.: `grep "npm run verify" README.md`) bloqueia;
+# um `docker run` citado numa string isenta. Escolha padroes especificos o bastante para que isso nao
+# atrapalhe o trabalho normal.
+#
+# Os exemplos abaixo vem de um projeto Node (Vitest e Cypress); troque pelos comandos que o
+# arquivo de instrucoes do seu projeto proibe em prosa. Cuidado com a suite completa: desde 16/10/2026
+# ela e OBRIGATORIA localmente antes do push que abre ou atualiza a PR para main/master (Regra 8 de
+# protocolo-tdd). Bloquear o comando oficial da suite completa impede esse passo; por isso os padroes
+# abaixo so casam a forma "solta" do runner, e o comando oficial do projeto (um script com nome proprio,
+# ou a execucao em conteiner, isenta por desenho) passa.
+
+npm run verify	nao roda no host; rode em conteiner (ver arquivo de instrucoes do projeto)
+npx vitest run	suite inteira solta; durante a demanda rode so os itens afetados e, no push para a PR, use o comando oficial da suite completa (Regra 8 de protocolo-tdd)
+npx cypress run	suite E2E inteira solta; durante a demanda passe --spec com as specs afetadas e, no push para a PR, use o comando oficial da suite completa

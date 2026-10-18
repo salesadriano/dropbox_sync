@@ -1,0 +1,104 @@
+# EXEMPLO. Este arquivo nao roda como esta: copie-o para `.github/workflows/<nome>.yml` do projeto e
+# troque os placeholders `<...>` pelos valores do projeto. Ele e a versao agnostica do workflow de
+# reexecucao parcial do E2E do projeto de origem desta skill.
+#
+# O que ele faz. O job de E2E da pipeline para na primeira falha (`cypress-fail-fast`, estrategia
+# `run`) e publica, com `specs-nao-executadas.sh`, a linha `reexecutar:` de cada cliente. Este
+# workflow roda SO essas specs, com `--spec`, na mesma cadeia real do E2E, por disparo manual, para
+# confirmar uma correcao sem pagar a suite inteira de novo.
+#
+# O que ele NAO faz. Um verde aqui nao substitui a suite completa da pipeline nem publica nada:
+# a publicacao continua exigindo o run completo da branch de release verde. Por isso e um workflow
+# proprio, e nao um `workflow_dispatch` dentro da pipeline principal: a cadeia de jobs de la fica
+# intacta, e o que escuta a pipeline para publicar nao escuta este.
+#
+# Inputs. `specs` e a lista separada por virgula, relativa ao diretorio de specs (`cypress/e2e/` por
+# padrao), no formato que o Cypress imprime em `Running:`. Com mais de um cliente, um input por
+# cliente (`specs_<cliente>`), e `--clientes` recebe so os clientes que correram, na ordem dos
+# passos: com o primeiro input vazio, a primeira corrida do log e a do segundo cliente, e sem
+# `--clientes` o script a atribuiria ao primeiro.
+name: e2e-parcial
+
+on:
+  workflow_dispatch:
+    inputs:
+      specs:
+        description: 'specs separadas por virgula, relativas a cypress/e2e/ (a linha `reexecutar:` do diagnostico)'
+        required: true
+        type: string
+      # Com mais de um cliente, substitua `specs` por um input por cliente, `required: false`,
+      # e um passo de corrida por cliente, cada um com `if: inputs.specs_<cliente> != ''`.
+
+jobs:
+  e2e-parcial:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # O disparo manual aceita qualquer ref; este workflow so faz sentido sobre a branch de release,
+      # que e o que a pipeline mediu e o que vai para producao.
+      - name: so na branch de release
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/<branch-de-release>" ]; then
+            echo "reexecucao parcial so roda em <branch-de-release>; ref recebida: $REF" >&2
+            exit 1
+          fi
+
+      - name: pelo menos uma spec
+        env:
+          SPECS: ${{ inputs.specs }}
+        run: |
+          if [ -z "$SPECS" ]; then
+            echo "nenhuma spec informada: preencha o input specs" >&2
+            exit 1
+          fi
+
+      # Os passos de preparo e de subida sao os MESMOS do job de E2E da pipeline, verbatim. Mudou la,
+      # muda aqui; um teste do projeto pode prender essa paridade.
+      - name: preparo (dependencias e build dos artefatos servidos)
+        run: <comando de preparo>
+
+      - name: subir a cadeia real (banco + backend + frontend)
+        run: <comando que sobe a cadeia do E2E e espera ficar saudavel>
+
+      # `--spec` recebe os caminhos como o runner os ve; o input traz so o que vem depois do
+      # diretorio de specs. O log vai para `$RUNNER_TEMP/testes.log`, que e o padrao do script.
+      - name: E2E, so as specs indicadas
+        env:
+          SPECS: ${{ inputs.specs }}
+        run: |
+          set -o pipefail
+          ALVOS=$(printf '%s' "$SPECS" | tr ',' '\n' | sed -e 's/^ *//' -e 's/ *$//' -e '/^$/d' -e 's#^#cypress/e2e/#' | paste -sd, -)
+          <comando que roda o Cypress do cliente> --spec "$ALVOS" 2>&1 | tee "$RUNNER_TEMP/testes.log"
+
+      # Com mais de um cliente, o segundo passo usa `tee -a` no mesmo log, e `--clientes` lista so
+      # os que correram, na ordem dos passos.
+      - name: specs que nao rodaram, para a proxima reexecucao parcial
+        if: failure()
+        run: sh .github/skills/e2e-reexecucao-parcial/scripts/specs-nao-executadas.sh --clientes . --workflow e2e-parcial.yml
+
+      - name: diagnostico do E2E (logs da cadeia, sem segredos)
+        if: failure()
+        run: |
+          mkdir -p diagnostico-e2e
+          <comando que grava os logs da cadeia, mascarando segredos> > diagnostico-e2e/cadeia.log
+
+      - name: subir o diagnostico como artefato
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostico-e2e-parcial-${{ github.run_attempt }}
+          path: |
+            diagnostico-e2e/cadeia.log
+            diagnostico-e2e/specs-nao-executadas.txt
+            cypress/screenshots/
+            cypress/videos/
+            !**/.env*
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: derrubar tudo
+        if: always()
+        run: <comando que derruba a cadeia do E2E>

@@ -35,6 +35,25 @@ Use estas skills quando a tarefa principal nao for uma implementacao de framewor
 - [.github/skills/git-commit/](./git-commit/): use para gerar ou revisar commits com convencao semantica (Conventional Commits)
 - [.github/skills/prompt-logger/](./prompt-logger/): skill transversal obrigatoria — registra cada prompt recebido em `docs/prompts/`, um arquivo por demanda, com texto integral sanitizado, porte, intencao e inferencias; plano e resultado ficam no registro de entrega
 
+### Governanca operacional (custo por demanda)
+
+Skills trazidas de um projeto governado pelo pacote em 15/10/2026, que reduzem o contexto carregado por sessao e o custo fixo de cada demanda. `memoria-por-janela`, `entrega-por-porte` e a limpeza de worktrees sao norma do pacote desde 15/10/2026 (regras 1, 7, 40 e 46 e secao *Protocolo por porte* do `AGENTS.md`); as demais sao adotadas por decisao registrada do projeto.
+
+- [.github/skills/instrucoes-do-projeto/](./instrucoes-do-projeto/): use para compactar o arquivo de instrucoes da ferramenta de IA (erratas verbatim para `docs/historico/`, bloco de estado vigente) e prender com `verificar-instrucoes-do-projeto.sh` as frases e caminhos que ele afirma sobre o repositorio
+- [.github/skills/memoria-por-janela/](./memoria-por-janela/): use para dimensionar o bootstrap da memoria (`memoria-index.sh --desde`, janela de 90 dias por padrao) e para declarar `agentes:` sem `todos` fora de decisao de pacote
+- [.github/skills/governanca-por-hooks/](./governanca-por-hooks/): use quando o cliente de IA oferecer hooks ou permissoes versionaveis: resumo de estado no inicio da sessao, guarda de comandos antes de cada shell (detector antes do push; suite completa registrada por `suite-completa.sh` antes do push para a PR de integracao e do `gh pr create`), permissoes para comandos ja autorizados por demanda; secao por cliente em `references/clientes-de-ia.md`
+- [.github/skills/entrega-por-porte/](./entrega-por-porte/): use ao classificar o porte e escolher o formato do registro: criterios objetivos de P, Tech Lead implementa, parecer combinado, QA por amostragem, e o registro curto de um arquivo (`../agents/templates/registro-de-entrega-curto-template.md`) em P e M
+- [.github/skills/superficie-de-contrato/](./superficie-de-contrato/): use para decidir se a entrega exige remedir a superficie do contrato (so quando o diff toca o que a define) e para conferir, com `conferir-copias.sh`, que as copias do numero concordam
+- [.github/skills/e2e-reexecucao-parcial/](./e2e-reexecucao-parcial/): use para o diagnostico do E2E vermelho na pipeline (`specs-nao-executadas.sh`) e para a reexecucao so das specs que falharam ou nao rodaram, por workflow de disparo manual
+- [.github/skills/selecao-de-modelo/](./selecao-de-modelo/): use ao delegar e ao fixar `model:` numa persona: faixa do modelo pela classe da tarefa (`faixa-do-modelo.sh`: economico renderiza, padrao implementa e valida, maximo decide o que e caro errar; so sobe), pacote de transposicao e `avaliar-troca-de-modelo.sh`, que diz se sair da faixa da sessao economiza descontados o pacote e o cache perdido
+- [.github/skills/gitflow/references/limpeza-de-worktrees.md](./gitflow/references/limpeza-de-worktrees.md): referencia da `gitflow` para o fechamento: `scripts/limpar-worktrees.sh` remove os worktrees mesclados e lista os pendentes
+
+#### Decision tree rapido: `instrucoes-do-projeto` vs `documentation-sync` vs `superficie-de-contrato`
+
+1. Mudei o repositorio e preciso saber quais documentos ficaram para tras? `documentation-sync`.
+2. O arquivo de instrucoes da ferramenta de IA cresceu ou afirma algo que o repositorio nao confirma? `instrucoes-do-projeto`.
+3. Um numero de contrato (rotas, endpoints) vive em mais de um arquivo e preciso saber se devo remedi-lo e se as copias concordam? `superficie-de-contrato`.
+
 #### Decision tree rapido: `documentation-sync` vs `review-documentation`
 
 Use `documentation-sync` quando a pergunta principal for: quais documentos existentes precisam ser atualizados depois da mudanca tecnica?
@@ -70,6 +89,7 @@ Regra de prioridade para produto:
 - [.github/skills/tdd-test-design/](./tdd-test-design/): use dentro do ciclo red-green para decidir o que cada teste afirma e em qual seam; cobre seams, mocking apenas em fronteiras de sistema e anti-patterns (teste acoplado a implementacao, teste tautologico, fatiamento horizontal)
 - [.github/skills/protocolo-conformidade/](./protocolo-conformidade/): gate local obrigatorio de conformidade arquitetural e de boas praticas; use APOS implementar e ANTES de qualquer handoff, sobre o diff local, para verificar se o codigo entregue respeita `clean-architecture` e a skill da stack. Achado bloqueante reprova e devolve ao agent originador. Nao depende de pipeline.
 - [.github/skills/testing-strategy/](./testing-strategy/): use para desenhar estrategia/plano de testes quando a demanda for conceitual e nao um protocolo operacional normativo
+- [.github/skills/e2e-reexecucao-parcial/](./e2e-reexecucao-parcial/): use depois de um E2E vermelho na pipeline, para listar o que nao rodou e reexecutar so isso; a Regra 9 (parar no primeiro erro) continua sendo de `protocolo-tdd`
 
 Regra de prioridade para testes:
 

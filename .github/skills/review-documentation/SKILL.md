@@ -49,24 +49,11 @@ YYYY-MM-DD-HHMM-<slug-curto>.md
 
 ### 4. Conteudo minimo por porte
 
-Porte **P** (registro compacto, um unico arquivo):
-- porte e link para o log de prompt;
-- contexto e objetivo em ate tres linhas;
-- arquivos modificados;
-- decisao em uma linha (causa raiz e por que a solucao e unica, conforme dispensa da analise comparativa);
-- parecer de evidencias de testes e parecer de conformidade **embutidos como secoes**, em modo compacto;
-- rollback: se `git revert` bastar, declarar isso em uma linha;
-- aprovacao do QA e do Tech Lead como uma linha cada, com data.
+Porte **P** e **M**: um unico arquivo pelo template `../../agents/templates/registro-de-entrega-curto-template.md` (skill `../entrega-por-porte/`), com oito secoes fixas nesta ordem: pedido e porte; causa ou decisao; arquivos; testes rodados (contagens literais do runner); gates (parecer de `protocolo-tdd` e de `protocolo-conformidade` como linhas da tabela, combinados em P); QA (amostragem em P; validacao independente como secao em M, com os `qa-*` e seus sha256); riscos e rollback; links e aceites. Em P a decisao e uma linha com a causa raiz e por que a solucao e unica; em M entram as abordagens com trade-offs quando a analise comparativa for exigida, o diagrama `mermaid` apenas quando houver fluxo que o texto nao descreva, e os proximos passos quando existirem. Reprovacao de gate ou do QA atualiza o mesmo arquivo; nunca se abre outro.
 
-Porte **M** acrescenta:
-- ADR resumido com decisao, alternativas e trade-offs (quando a analise comparativa for exigida);
-- riscos e impacto;
-- proximos passos, quando existirem;
-- diagrama `mermaid` apenas quando houver fluxo, sequencia ou arquitetura que o texto nao descreva em poucas linhas;
-- pareceres embutidos ou em arquivos proprios referenciados por link.
-
-Porte **G** acrescenta:
-- pareceres em arquivos proprios, referenciados por link;
+Porte **G**:
+- pareceres em arquivos proprios (`evidencia-testes-template.md`, `parecer-conformidade-template.md`), referenciados por link;
+- ADR com decisao, alternativas e trade-offs; riscos e impacto; proximos passos;
 - diagrama `mermaid` obrigatorio;
 - secoes opcionais por tipo de alteracao aplicaveis;
 - referencia a revisao consolidada e a aprovacao final do Tech Lead.

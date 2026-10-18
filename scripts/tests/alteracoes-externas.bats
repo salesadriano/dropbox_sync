@@ -602,3 +602,269 @@ commit_humano() { git commit --quiet -m "$1"; }
   detectar
   [ "$status" -eq 0 ]
 }
+
+# --- merge limpo e diretorio no --registrar (2026-10-08-1159) -----------------
+
+# Monta, num clone separado, um merge sem trilha na principal: dois ramos mudam f.txt (linhas 1 a 10).
+# $1: linha alterada pelo ramo; $2: linha alterada na principal; $3: resolucao do conflito
+# (vazio = merge automatico; "manual" = conteudo novo; "lado" = mantem a versao da principal).
+merge_na_principal() {
+  git clone --quiet "$BATS_TEST_TMPDIR/remoto.git" "$BATS_TEST_TMPDIR/outro" 2>/dev/null
+  (
+    cd "$BATS_TEST_TMPDIR/outro" || exit 1
+    seq 1 10 > f.txt; git add f.txt; commit_agente "feat: f"
+    git checkout --quiet -b ramo
+    sed "s/^$1\$/ramo/" f.txt > f.tmp && mv f.tmp f.txt; git add f.txt; commit_agente "feat: ramo"
+    git checkout --quiet main
+    sed "s/^$2\$/principal/" f.txt > f.tmp && mv f.tmp f.txt; git add f.txt; commit_agente "feat: principal"
+    if [ -z "$3" ]; then
+      git merge --quiet --no-ff -m "Merge pull request #1" ramo
+    else
+      ! git merge --quiet ramo >/dev/null 2>&1
+      case "$3" in
+        manual) seq 1 10 | sed 's/^5$/resolvido/' > f.txt ;;
+        lado) git checkout --quiet --ours f.txt ;;
+      esac
+      git add f.txt; git commit --quiet -m "Merge ramo"
+    fi
+    git push --quiet origin main
+  )
+  git fetch --quiet origin
+}
+
+@test "merge automatico com o mesmo arquivo alterado dos dois lados nao e acusado" {
+  sh "$SCRIPT" --inicial --principal main
+  merge_na_principal 1 10 ""
+  detectar
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "merge com resolucao manual de conflito sem trilha na principal e acusado" {
+  sh "$SCRIPT" --inicial --principal main
+  merge_na_principal 5 5 manual
+  detectar
+  [ "$status" -eq 3 ]
+  [[ "$output" == "PRINCIPAL "*"Merge ramo (Pessoa)" ]]
+}
+
+@test "merge que resolve conflito mantendo um dos lados sem trilha na principal e acusado" {
+  sh "$SCRIPT" --inicial --principal main
+  merge_na_principal 5 5 lado
+  detectar
+  [ "$status" -eq 3 ]
+  [[ "$output" == "PRINCIPAL "*"Merge ramo (Pessoa)" ]]
+}
+
+@test "merge octopus sem trilha: limpo nao e acusado; com alteracao propria e" {
+  sh "$SCRIPT" --inicial --principal main
+  git clone --quiet "$BATS_TEST_TMPDIR/remoto.git" "$BATS_TEST_TMPDIR/outro" 2>/dev/null
+  (
+    cd "$BATS_TEST_TMPDIR/outro"
+    for r in r1 r2; do
+      git checkout --quiet -b "$r" main; echo "$r" > "$r.txt"; git add "$r.txt"; commit_agente "feat: $r"
+    done
+    git checkout --quiet main
+    git merge --quiet --no-ff -m "Octopus limpo" r1 r2 >/dev/null
+    git push --quiet origin main
+  )
+  git fetch --quiet origin
+  detectar
+  [ "$status" -eq 0 ]
+  (
+    cd "$BATS_TEST_TMPDIR/outro"
+    for r in r3 r4; do
+      git checkout --quiet -b "$r" main; echo "$r" > "$r.txt"; git add "$r.txt"; commit_agente "feat: $r"
+    done
+    git checkout --quiet main
+    git merge --quiet --no-ff --no-commit r3 r4 >/dev/null
+    echo maligno >> app.txt; git add app.txt; git commit --quiet -m "Octopus maligno"
+    git push --quiet origin main
+  )
+  git fetch --quiet origin
+  detectar
+  [ "$status" -eq 3 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "$output" == "PRINCIPAL "*"Octopus maligno (Pessoa)" ]]
+}
+
+@test "registrar recusa diretorio com exit 2 e nao altera a linha de base" {
+  sh "$SCRIPT" --inicial --principal main
+  mkdir -p src
+  printf 'x\n' > src/mod.txt
+  printf 'b\n' >> app.txt
+  antes=$(cat "$(git rev-parse --absolute-git-dir)/agentes-linha-de-base")
+  run sh "$SCRIPT" --registrar app.txt src --principal main
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"diretorio"*"src"* ]]
+  [ "$(cat "$(git rev-parse --absolute-git-dir)/agentes-linha-de-base")" = "$antes" ]
+  run sh "$SCRIPT" --registrar src/ --principal main
+  [ "$status" -eq 2 ]
+  sh "$SCRIPT" --registrar app.txt src/mod.txt --principal main
+  detectar
+  [ "$status" -eq 0 ]
+}
+
+@test "registrar aceita symlink para diretorio" {
+  mkdir -p alvo
+  sh "$SCRIPT" --inicial --principal main
+  ln -s alvo atalho
+  sh "$SCRIPT" --registrar atalho --principal main
+  detectar
+  [ "$status" -eq 0 ]
+}
+
+@test "registrar descarta entrada de diretorio legada da linha de base" {
+  sh "$SCRIPT" --inicial --principal main
+  mkdir -p src
+  printf 'x\n' > src/mod.txt
+  sh "$SCRIPT" --registrar src/mod.txt --principal main
+  printf 'diretorio;ausente src\n' >> "$(git rev-parse --absolute-git-dir)/agentes-linha-de-base"
+  git add src/mod.txt; commit_agente "feat: mod"
+  detectar
+  [ "$status" -eq 3 ]
+  [ "$output" = "ARQUIVO src" ]
+  sh "$SCRIPT" --registrar --principal main
+  detectar
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# --- ciclo 2 (ressalvas do QA) ----------------------------------------------
+
+@test "QA-C2-1: falha do git no diff do octopus acusa o merge em vez de deixa-lo passar" {
+  sh "$SCRIPT" --inicial --principal main
+  git clone --quiet "$BATS_TEST_TMPDIR/remoto.git" "$BATS_TEST_TMPDIR/outro" 2>/dev/null
+  (
+    cd "$BATS_TEST_TMPDIR/outro" || exit 1
+    for r in r1 r2; do
+      git checkout --quiet -b "$r" main; echo "$r" > "$r.txt"; git add "$r.txt"; commit_agente "feat: $r"
+    done
+    git checkout --quiet main
+    git merge --quiet --no-ff --no-commit r1 r2 >/dev/null
+    echo maligno >> app.txt; git add app.txt; git commit --quiet -m "Octopus maligno"
+    git push --quiet origin main
+  )
+  git fetch --quiet origin
+  # Stub de fronteira: o git real, salvo `diff-tree --cc`, que falha como um git com defeito.
+  stubs="$BATS_TEST_TMPDIR/stubs"; mkdir -p "$stubs"
+  # shellcheck disable=SC2016 # $1 e $@ sao literais do stub, expandidos quando ele roda
+  printf '#!/bin/sh\n[ "$1" = diff-tree ] && [ "$2" = --cc ] && exit 128\nexec "%s" "$@"\n' "$(command -v git)" > "$stubs/git"
+  chmod +x "$stubs/git"
+  PATH="$stubs:$PATH" run sh "$SCRIPT" --detectar --principal main
+  [ "$status" -eq 3 ]
+  [[ "$output" == "PRINCIPAL "*"Octopus maligno (Pessoa)" ]]
+}
+
+@test "QA-C2-2: registrar da raiz do repositorio recebe a mensagem de diretorio" {
+  sh "$SCRIPT" --inicial --principal main
+  run sh "$SCRIPT" --registrar . --principal main
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"diretorio nao e aceito no --registrar"* ]]
+  mkdir -p src
+  run sh -c 'cd src && sh "$1" --registrar .. --principal main' _ "$SCRIPT"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"diretorio nao e aceito no --registrar"* ]]
+  run sh "$SCRIPT" --registrar ../fora.txt --principal main
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"caminho fora do repositorio"* ]]
+}
+
+# --- trava da linha de base (backlog 2026-10-08-2100) ---------------------------------------------------
+
+registrar() { run sh "$SCRIPT" --registrar --principal main "$@"; }
+BASE_TRAVA=".git/agentes-linha-de-base.trava"
+
+@test "trava: registrar espera a trava de outro processo vivo e segue quando ela e liberada" {
+  sh "$SCRIPT" --inicial --principal main
+  printf 'b\n' > app.txt
+  echo $$ > "$BASE_TRAVA"            # dono vivo (o proprio bats)
+  ( sleep 1; rm -f "$BASE_TRAVA" ) &
+  inicio=$(date +%s)
+  registrar app.txt
+  [ "$status" -eq 0 ]
+  [ $(( $(date +%s) - inicio )) -ge 1 ]
+  grep -q ' app.txt$' .git/agentes-linha-de-base
+  [ ! -e "$BASE_TRAVA" ]
+  wait
+}
+
+@test "trava: dono vivo alem da espera sai com 1, diz o pid e nao remove a trava alheia" {
+  sh "$SCRIPT" --inicial --principal main
+  echo $$ > "$BASE_TRAVA"
+  ALTERACOES_EXTERNAS_ESPERA=1 registrar app.txt
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"linha de base em uso por outro --registrar ha mais de 1s"* ]]
+  [[ "$output" == *"pid $$"* ]]
+  [ -e "$BASE_TRAVA" ]
+  rm -f "$BASE_TRAVA"
+}
+
+@test "trava: trava orfa de processo morto e removida e o registrar segue sem esperar" {
+  sh "$SCRIPT" --inicial --principal main
+  morto=$(sh -c 'echo $$')
+  echo "$morto" > "$BASE_TRAVA"
+  printf 'b\n' > app.txt
+  inicio=$(date +%s)
+  registrar app.txt
+  [ "$status" -eq 0 ]
+  [ $(( $(date +%s) - inicio )) -le 1 ]
+  [ ! -e "$BASE_TRAVA" ]
+}
+
+@test "trava: trava vazia com mais de um minuto e orfa; vazia e recente, espera" {
+  sh "$SCRIPT" --inicial --principal main
+  : > "$BASE_TRAVA"; touch -d '-2 minutes' "$BASE_TRAVA"
+  registrar app.txt
+  [ "$status" -eq 0 ]
+  [ ! -e "$BASE_TRAVA" ]
+  : > "$BASE_TRAVA"
+  ALTERACOES_EXTERNAS_ESPERA=1 registrar app.txt
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"em uso"* ]]
+  rm -f "$BASE_TRAVA"
+}
+
+@test "trava: cinco --registrar em paralelo preservam os cinco registros e o --detectar fica limpo" {
+  sh "$SCRIPT" --inicial --principal main
+  for i in 1 2 3 4 5; do printf '%s\n' "$i" > "f$i.txt"; done
+  for i in 1 2 3 4 5; do sh "$SCRIPT" --registrar --principal main "f$i.txt" & done
+  wait
+  for i in 1 2 3 4 5; do grep -q " f$i.txt\$" .git/agentes-linha-de-base; done
+  detectar
+  [ "$status" -eq 0 ]
+  [ ! -e "$BASE_TRAVA" ]
+}
+
+@test "trava: a trava e liberada ao fim, inclusive no registrar sem arquivos, e a da marca tambem" {
+  sh "$SCRIPT" --inicial --principal main
+  printf 'b\n' > app.txt
+  registrar app.txt
+  [ "$status" -eq 0 ]
+  [ ! -e "$BASE_TRAVA" ]
+  registrar
+  [ "$status" -eq 0 ]
+  [ ! -e "$BASE_TRAVA" ]
+  [ ! -e "$(git rev-parse --git-common-dir)/agentes-principal.trava" ]
+}
+
+@test "trava: --inicial tambem toma a trava e respeita a espera" {
+  echo $$ > "$BASE_TRAVA"
+  ALTERACOES_EXTERNAS_ESPERA=1 run sh "$SCRIPT" --inicial --principal main
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"em uso"* ]]
+  [ ! -f .git/agentes-linha-de-base ]
+  rm -f "$BASE_TRAVA"
+}
+
+@test "registrar de arquivo igual ao HEAD neste worktree avisa (provavel worktree errado) e sai com 0" {
+  sh "$SCRIPT" --inicial --principal main
+  registrar app.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"aviso: app.txt esta igual ao HEAD neste worktree"* ]]
+  [[ "$output" == *"--detectar em seguida"* ]]
+  ! grep -q ' app.txt$' .git/agentes-linha-de-base
+  printf 'b\n' > app.txt
+  registrar app.txt
+  [[ "$output" != *"aviso:"* ]]
+}
