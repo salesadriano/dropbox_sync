@@ -1,0 +1,3 @@
+# Padroes do guarda de comandos do modelo (regra 2 de guarda-de-comandos.sh): `padrao<TAB>motivo`, um por linha.
+# O modelo nao proibe comando em prosa alem do que as regras embutidas ja garantem (detector antes do push,
+# suite completa registrada antes do push para a PR de main). Acrescentar aqui o que vier a ser proibido.

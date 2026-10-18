@@ -1,0 +1,30 @@
+{
+  "enabledPlugins": {
+    "autoresearch@autoresearch": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.github/skills/governanca-por-hooks/scripts/resumo-de-estado.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.github/skills/governanca-por-hooks/scripts/guarda-de-comandos.sh --padroes \"$CLAUDE_PROJECT_DIR\"/scripts/guarda-de-comandos.txt",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

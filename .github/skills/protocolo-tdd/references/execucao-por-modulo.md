@@ -1,4 +1,4 @@
-# Execucao seletiva por modulo no local e suite completa na pipeline de main/master
+# Execucao seletiva por modulo durante a demanda; suite completa local no push para a PR de main/master e na pipeline
 
 Detalhamento da Regra 8 de [`SKILL.md`](../SKILL.md). Abrir ao selecionar os modulos a executar, ao configurar ou conferir o job de suite completa da pipeline, ao tratar falha dessa suite ou ao criar e manter o mapa de modulos.
 
@@ -8,10 +8,11 @@ A suite do projeto e organizada por modulo ou estrutura dependente (dominio, pac
 
 - **Rotina por modulo.** O QA Expert implementa e mantem a rotina: cada modulo tem um identificador estavel (tag, `project`, workspace, diretorio ou grupo, conforme a ferramenta da stack), os caminhos que cobre, um comando de execucao proprio e a lista dos modulos que dependem dele. A separacao em modulos e determinada automaticamente ou definida pelo solicitante, nunca inferida pelo agent (secao `Determinacao dos modulos`). Essa relacao vive em um **mapa de modulos** versionado no projeto (por exemplo `docs/testes/mapa-modulos.md` ou o arquivo de configuracao da ferramenta), mantido pelo QA e atualizado sempre que um modulo e criado, renomeado ou ganha dependencia nova. Estrutura nova com enquadramento definido pelo solicitante, mas ainda sem entrada no mapa, e achado Maior.
 - **Local, durante a implementacao.** O Senior Developer executa, a cada ciclo red-green e no Passo 5, apenas os modulos **atingidos diretamente** pela alteracao (os arquivos do diff) e os **dependentes diretos** deles, conforme o mapa. O parecer registra quais modulos foram selecionados e por que. Selecionar menos do que o mapa indica e achado Maior.
-- **Sem suite completa local.** A suite completa nao e precondicao de commit, de push da branch de trabalho nem de handoff ao QA. O gate local fecha com a execucao seletiva aprovada.
-- **Somente os itens afetados, por qualquer agent.** Toda execucao de testes durante a demanda (ciclo red-green, Passo 5, validacao independente do QA, reexecucao apos correcao ou apos integrar a branch principal) cobre apenas os modulos da selecao. Fora da pipeline, a suite completa so roda com pedido explicito do solicitante para a demanda, registrado no log de prompt e no parecer; inferencia do agent, porte da demanda ou "por garantia" nao contam como pedido. Selecao maior que a indicada pelo mapa, ou suite completa local sem esse pedido, e achado Maior.
-- **Pipeline, em `main` ou `master`.** A **suite completa** (todos os modulos, todas as camadas, contra banco real) roda exclusivamente na pipeline, nos eventos que envolvem a branch de integracao do projeto. Merge com essa execucao vermelha, ausente ou ignorada e achado Bloqueante.
-- **Falha na suite completa.** O conjunto e devolvido ao **Tech Lead**, nao ao QA nem diretamente ao Senior Developer: o merge fica bloqueado; a execucao para no primeiro erro ([interrupcao-no-primeiro-erro.md](interrupcao-no-primeiro-erro.md)) e o registro classifica o modulo que a interrompeu como estando no escopo selecionado (falha de implementacao) ou fora dele (regressao nao prevista pelo mapa), com uma linha nova a cada reexecucao interrompida; o Tech Lead atribui a correcao ao agent dono do modulo e, se a regressao veio de dependencia ausente no mapa, o QA atualiza o mapa no mesmo ciclo. Apos a correcao, a pipeline e reexecutada e precisa ficar verde antes do merge.
+- **Sem suite completa local durante a demanda.** A suite completa nao e precondicao de commit, de push da branch de trabalho que ainda nao tem PR para a branch de integracao, nem de handoff ao QA. O gate local fecha com a execucao seletiva aprovada.
+- **Somente os itens afetados, por qualquer agent.** Toda execucao de testes durante a demanda (ciclo red-green, Passo 5, validacao independente do QA, reexecucao apos correcao ou apos integrar a branch principal) cobre apenas os modulos da selecao. Fora do push para a PR (secao `Suite completa local no push para a PR`) e da pipeline, a suite completa so roda com pedido explicito do solicitante para a demanda, registrado no log de prompt e no parecer; inferencia do agent, porte da demanda ou "por garantia" nao contam como pedido. Selecao maior que a indicada pelo mapa, ou suite completa local fora desses casos, e achado Maior.
+- **Suite completa local no push para a PR.** Antes de todo push que abre ou atualiza a PR para `main` ou `master`, e antes de push ou merge direto nela, quem faz o push roda a suite completa pelo comando oficial do projeto, sobre o estado integrado, com parada no primeiro erro, e registra comando, contagens literais, duracao e commit no registro de entrega. Vermelha, o push espera. Push sem esse registro, ou com ele vermelho, e achado Bloqueante.
+- **Pipeline, em `main` ou `master`.** A **suite completa** (todos os modulos, todas as camadas, contra banco real) roda tambem na pipeline, nos eventos que envolvem a branch de integracao do projeto. Merge so com as duas execucoes verdes; pipeline indisponivel e decidida pelo solicitante no log de prompt. Merge com a execucao da pipeline vermelha, ausente sem essa decisao, ou ignorada e achado Bloqueante.
+- **Falha na suite completa.** Local ou na pipeline, o conjunto e devolvido ao **Tech Lead**, nao ao QA nem diretamente ao Senior Developer: o push ou o merge fica bloqueado; a execucao para no primeiro erro ([interrupcao-no-primeiro-erro.md](interrupcao-no-primeiro-erro.md)) e o registro classifica o modulo que a interrompeu como estando no escopo selecionado (falha de implementacao) ou fora dele (regressao nao prevista pelo mapa), com uma linha nova a cada reexecucao interrompida; o Tech Lead atribui a correcao ao agent dono do modulo e, se a regressao veio de dependencia ausente no mapa, o QA atualiza o mapa no mesmo ciclo. Apos a correcao, a pipeline e reexecutada e precisa ficar verde antes do merge.
 - Modulo selecionado que falha durante a implementacao segue o ciclo normal do gate (Passo 6 e regra 17); a devolucao ao Tech Lead e exclusiva da suite completa da pipeline.
 
 ## Determinacao dos modulos
@@ -71,9 +72,20 @@ Regras de manutencao:
 5. Registrar no parecer a lista, o motivo de cada inclusao (direto ou dependente de qual), o comando por modulo e, para cada arquivo que dependeu de definicao do solicitante, a referencia ao log de prompt.
 6. Falha em modulo selecionado segue o ciclo normal do gate (Passo 6 e regra 17 do `AGENTS.md`); corrigida, a selecao inteira e reexecutada do inicio.
 
+## Suite completa local no push para a PR
+
+O comando oficial da suite completa e um so, definido pelo QA Expert e usado igual no local e na pipeline (o projeto o documenta no arquivo de instrucoes ou no `CONTRIBUTING.md`). Antes de todo push que abre ou atualiza a PR para `main` ou `master`, e antes de push ou merge direto nela, o agent que faz o push:
+
+1. integra a branch principal no worktree da demanda (regra 47) e reexecuta os gates locais sobre o diff integrado;
+2. roda o comando oficial da suite completa, em container quando a stack suportar, com parada no primeiro erro; em projeto com `governanca-por-hooks`, por `sh scripts/suite-completa.sh -- <comando oficial>`, que grava o resultado para o commit e e o que o guarda confere antes de liberar o push e o `gh pr create`;
+3. registra no registro de entrega (ou no parecer de testes, em G) o comando, as contagens literais (total, aprovados, falhos), a duracao e o sha do commit testado;
+4. so entao faz o push. Vermelha, trata a falha como a da pipeline (secao `Tratamento do resultado`) e nao envia.
+
+Push posterior da mesma PR repete os quatro passos. Pushes da branch de trabalho antes de existir PR para a branch de integracao nao exigem a suite completa.
+
 ## Suite completa na pipeline
 
-A suite completa e responsabilidade da pipeline do projeto, nao do ambiente do agent. O QA Expert define o comando que a executa por inteiro; o Senior Developer implementa e mantem o job que o roda; o Tech Lead so libera o merge com o job verde.
+A suite completa roda tambem na pipeline do projeto, com o mesmo comando. O Senior Developer implementa e mantem o job que o roda; o Tech Lead so libera o merge com a execucao local registrada e o job verdes. Pipeline que nao executa por indisponibilidade (runner, cobranca, rede) e levada ao solicitante, que decide no log de prompt se a execucao local registrada basta para o merge daquela PR.
 
 ### Eventos que a disparam
 
@@ -145,7 +157,7 @@ Passo de preparo fora dessa ordem, ou demais step antes da suite, em paralelo a 
 
 O job para no primeiro erro e publica o reporte dele no resumo da execucao, com camadas em passos sequenciais, matriz com `fail-fast: true` e nenhum `continue-on-error` em passo de teste: modelo completo em [interrupcao-no-primeiro-erro.md](interrupcao-no-primeiro-erro.md#pipeline).
 
-Push e PR de branch de trabalho nao disparam a suite completa: ali vale a execucao seletiva local. Projeto sem esse job na pipeline da branch de integracao e achado Maior, com owner e prazo; enquanto ele nao existir, nenhuma execucao global cobre o merge, e isso e declarado no parecer e no registro de entrega.
+Push e PR de branch de trabalho para outra branch que nao a de integracao nao disparam a suite completa na pipeline: ali vale a execucao seletiva local. Projeto sem esse job na pipeline da branch de integracao e achado Maior, com owner e prazo; enquanto ele nao existir, a execucao local do push para a PR e a unica cobertura global do merge, e isso e declarado no parecer e no registro de entrega.
 
 ### Tratamento do resultado
 

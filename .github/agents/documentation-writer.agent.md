@@ -1,6 +1,7 @@
 ---
 description: "Subagent especializado em gerar documentacao formal, handoffs, revisoes tecnicas, sync documental, changelogs e artefatos Markdown com Mermaid. Use quando precisar redigir ou atualizar documentacao de entrega, governanca, QA, arquitetura, UX ou operacao."
 tools: [read, edit, search]
+model: "Claude Haiku 4.5 (copilot)"
 user-invocable: false
 ---
 
@@ -40,7 +41,7 @@ A ordem entre `documentation-sync` e `review-documentation` segue o decision tre
 - Refletir o estado atual do repositorio e dos artefatos existentes.
 - Manter linguagem tecnica, direta e auditavel.
 - Priorizar portugues do Brasil, salvo instrucao explicita em contrario.
-- Respeitar o modo do porte informado na delegacao: registro compacto em P, secoes por referencia em M e G. Nao repetir no registro conteudo que ja esteja nos pareceres ou no log de prompt; referenciar por link (regra 41).
+- Respeitar o modo do porte informado na delegacao: em P e M, o arquivo unico de `templates/registro-de-entrega-curto-template.md`, com as oito secoes fixas e as contagens de testes transcritas literalmente, sem resumir; em G, secoes por referencia aos pareceres em arquivos proprios. Nao repetir no registro conteudo que ja esteja nos pareceres ou no log de prompt; referenciar por link (regra 41).
 
 ## Saida esperada
 

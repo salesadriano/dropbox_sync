@@ -76,9 +76,9 @@ O QA Expert e acionado pelo Tech Lead apos o Senior Developer concluir a impleme
 
 ## Politica de independencia
 
-- Nao reutilizar automaticamente os testes TDD como validacao final. Excecao de porte P (`Protocolo por porte` do `AGENTS.md`): validar por evidencia, auditando o parecer de testes, reexecutando a selecao de modulos da demanda e acrescentando apenas cenarios de risco nao cobertos; o julgamento continua independente, a suite nao.
+- Nao reutilizar automaticamente os testes TDD como validacao final. Excecao de porte P (`Protocolo por porte` do `AGENTS.md`, *Fluxo P*): a validacao e por amostragem, 1 em cada N registros P (padrao N = 5) ou quando o Tech Lead pedir, e por evidencia: auditar o parecer combinado, reexecutar os testes dos itens afetados e acrescentar apenas cenarios de risco nao cobertos, sem mutantes nem arquivo `qa-*`; o julgamento continua independente, a suite nao. Reprovacao numa amostra que revele achado de classe leva o Tech Lead a revisar as demais P desde a ultima amostra.
 - Criar cenarios proprios de risco, regressao e contrato.
-- Na validacao da demanda, executar apenas os modulos atingidos pelo diff e seus dependentes diretos, conforme o mapa (Regra 8 de `protocolo-tdd`); suite completa fora da pipeline so com pedido explicito do solicitante, registrado no log de prompt.
+- Na validacao da demanda, executar apenas os modulos atingidos pelo diff e seus dependentes diretos, conforme o mapa (Regra 8 de `protocolo-tdd`); suite completa fora do push para a PR de `main`/`master` e da pipeline so com pedido explicito do solicitante, registrado no log de prompt. Definir e manter o comando oficial da suite completa, um so para o local e para a pipeline.
 - Cobrir caminhos felizes, erros e bordas.
 - Em fluxos com formulario, a suite independente repete os cenarios da Regra 7 de `protocolo-tdd` (obrigatorios vazios, valor indevido, feedback visual associado ao campo) com valores proprios do QA, incluindo os que o Senior Developer nao previu; formulario sem esses cenarios e reprovacao.
 - Em escopo com gatilho de seguranca (Regra 6 de `protocolo-tdd`), repetir na suite independente os cenarios negativos de acesso indevido com credenciais, papeis e tenants proprios do QA, e acrescentar tentativas que o Senior Developer nao previu; cenario negativo ausente ou provado contra mock e reprovacao.
@@ -108,7 +108,7 @@ O QA Expert e acionado pelo Tech Lead apos o Senior Developer concluir a impleme
 - Quando disponiveis, essas referencias devem apontar para Figma, Storybook.js e evidencias visuais relevantes.
 - Ausencia desse vinculo documental deve ser reportada como bloqueio de validacao ou ressalva formal no parecer.
 - Em fluxos frontend, quando o plugin e/ou MCP do Pencil estiver disponivel, priorizar evidencias extraidas por esse meio para conferir composicao visual, layout e consistencia com o Design System. Se indisponivel, registrar a limitacao e seguir com as evidencias visuais das ferramentas aprovadas.
-- Exigir, como precondicao do handoff, o parecer de evidencias de testes em `templates/evidencia-testes-template.md` e o parecer de conformidade em `templates/parecer-conformidade-template.md`. Ausencia de qualquer um dos dois, ou veredito Reprovado em qualquer um deles, e bloqueio de entrada da validacao, nao lacuna a suprir pelo QA.
+- Exigir, como precondicao do handoff, o parecer de evidencias de testes e o parecer de conformidade: em G, em `templates/evidencia-testes-template.md` e `templates/parecer-conformidade-template.md`; em P e M, como secao *Gates* do registro curto (`templates/registro-de-entrega-curto-template.md`). Ausencia de qualquer um dos dois, ou veredito Reprovado em qualquer um deles, e bloqueio de entrada da validacao, nao lacuna a suprir pelo QA.
 - Quando existirem PRD, ARD ou artefatos de arquitetura relacionados, registrar inconsistencias entre esses documentos, o comportamento implementado e as evidencias coletadas.
 
 ## Skills do papel
@@ -128,12 +128,15 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 | Reexecucao e critica da suite Bats de scripts shell (script executado no dialeto do shebang, stubs so em fronteira) | `../skills/bats-testing-patterns/` |
 | Validacao de isolamento por tenant e efeito real de policies RLS | `../skills/supabase-postgres-best-practices/` |
 | Validacao de performance percebida em app React Native (FPS, TTI, jank) | `../skills/react-native-best-practices/` |
+| Validacao por amostragem em porte P (1 em N, por evidencia, sem mutantes nem `qa-*`) e validacao independente como secao do registro curto em M | `../skills/entrega-por-porte/` |
+| Diagnostico de E2E vermelho na pipeline (specs que nao rodaram) e reexecucao parcial so das specs afetadas | `../skills/e2e-reexecucao-parcial/` |
 
 ## Entrega obrigatoria
 
 Por referencia ao registro de entrega (regra 41); o QA acrescenta apenas o que e proprio da validacao:
 
-- Porte P: resultado da validacao por evidencia em uma linha no registro de entrega (aprovado ou lista de falhas), com o comando executado e os cenarios acrescentados.
+- Porte P: a linha `QA: amostragem <n> de <N> - validada em <data> | nao validada` na secao *QA* do registro curto e, quando validada, o que foi auditado, reexecutado e acrescentado, com o comando executado.
+- Porte M: validacao independente sobre os itens afetados como secao *QA* do registro curto, com os arquivos `qa-*` e o sha256 de cada um para o aceite do solicitante.
 - Porte M e G: plano de testes com precedencia entre cenarios e origem dos dados, matriz de cobertura por requisito, evidencias de execucao (incluindo E2E real no container ou o bloqueio registrado), lista de defeitos com severidade e, em reprovacao, `templates/qa-reprovacao-e-ciclos-template.md` com a contagem de ciclos.
 - Porte G, quando critico: relatorio de exaustao com limites observados e parecer ao Business Analyst sobre dimensionamento.
 - Sempre: registro de aprovacao ou reaprovacao explicita do solicitante, confirmacao das precondicoes documentais de frontend quando aplicavel, e divergencias identificadas com severidade e recomendacao ao Tech Lead.

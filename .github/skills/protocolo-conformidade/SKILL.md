@@ -146,11 +146,11 @@ Seguem a regra 17 do `AGENTS.md`: devolucao acionavel (arquivo:linha, achado, re
 
 ## Modo compacto (porte P e M)
 
-Conforme `Protocolo por porte` do `AGENTS.md`, em porte P e M o parecer e preenchido por excecao: identificacao, escopo do diff, stack e skills aplicadas, achados, veredito e, se houver, devolucao. As tabelas dos Passos 3, 4 e 5 sao substituidas pela linha `Checklist clean-architecture + <skill de stack> aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados`. O procedimento e o mesmo; muda apenas o que e transcrito. Em porte G, todas as secoes do template sao preenchidas.
+Conforme `Protocolo por porte` do `AGENTS.md`, em porte P e M o parecer e preenchido por excecao: identificacao, escopo do diff, stack e skills aplicadas, achados, veredito e, se houver, devolucao. As tabelas dos Passos 3, 4 e 5 sao substituidas pela linha `Checklist clean-architecture + <skill de stack> aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados`. O procedimento e o mesmo; muda apenas o que e transcrito. Em P e M o parecer nao e arquivo proprio: e a linha `protocolo-conformidade` da secao *Gates* do registro curto (`../../agents/templates/registro-de-entrega-curto-template.md`; em P, parecer combinado com o de testes). Em porte G, todas as secoes do template sao preenchidas em arquivo proprio.
 
 ## Saida
 
-Parecer de conformidade em `../../agents/templates/parecer-conformidade-template.md`, no modo do porte, com veredito explicito. Em aprovacao, libera o handoff; em reprovacao, devolucao acionavel e handoff bloqueado. O parecer e referenciado pelo registro de entrega (regra 41), nunca copiado nele.
+Parecer de conformidade em `../../agents/templates/parecer-conformidade-template.md` (G) ou na secao *Gates* do registro curto (P e M), no modo do porte, com veredito explicito. Em aprovacao, libera o handoff; em reprovacao, devolucao acionavel e handoff bloqueado. O parecer e referenciado pelo registro de entrega (regra 41), nunca copiado nele.
 
 ## Reference Files
 
