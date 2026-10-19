@@ -376,11 +376,13 @@ _dbx_state_conteudo_memoria() {
 
 # dbx_state_gravar <conta> <origem> <destino> [travessia_completa]
 #
-# Com `sim` no quarto argumento, so as entradas visitadas nesta execucao sao
-# gravadas: arquivo apagado na origem sai da memoria (RF-38(b)). Sem ele, o
-# mapa carregado mais os novos — travessia parcial nao pode descartar hashes de
-# ramos nao visitados. Falha de gravacao NAO e falha da execucao; diretorio
-# alheio devolve o codigo de `permissao` para quem quiser avisar.
+# Com `sim` no quarto argumento (travessia completa), so as entradas visitadas
+# nesta execucao sao gravadas: arquivo apagado na origem sai da memoria
+# (RF-38(b)). Com travessia parcial, NADA e gravado (RF-38(b) emendado, RF-41(f)):
+# quem chama nao deve invocar esta funcao nesse caso. O unico chamador passa
+# sempre `sim`; o ramo sem `sim` (mapa carregado mais os novos) e legado, sem
+# chamador, e nao e o contrato. Falha de gravacao NAO e falha da execucao;
+# diretorio alheio devolve o codigo de `permissao` para quem quiser avisar.
 dbx_state_gravar() {
   [[ $# -eq 3 || $# -eq 4 ]] || return "$DBX_STATE_ERRO_USO"
   local conta=$1 origem=$2 destino=$3 arquivo estado

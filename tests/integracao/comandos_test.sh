@@ -1424,6 +1424,20 @@ teste_upload_dispensa_quando_o_hash_remoto_e_igual_ao_local() {
   assert_igual 0 "$(_harness_contar 'files/upload' "$base/argv")" 'nenhuma chamada de envio'
 }
 
+teste_upload_nomeia_classe_e_motivo_quando_a_resposta_da_consulta_e_ilegivel() {
+  # O-5: a leitura do `get_metadata` nao perde o motivo; o envio segue.
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo original'
+  _metadado "$base" 200 '{"name":'
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "o envio segue; diagnostico: $DBX_ERRO"
+  assert_contem 'classe=erro_remoto' "$DBX_ERRO" 'classe nomeada no progresso'
+  assert_contem 'resposta nao interpretavel' "$DBX_ERRO" 'motivo nomeado no progresso'
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" 'a falha da leitura leva ao envio'
+}
+
 teste_upload_envia_quando_o_hash_remoto_difere() {
   # TC-SKP-02 (RF-60(b)): no modo `add`, o comportamento atual de colisao.
   local base origem

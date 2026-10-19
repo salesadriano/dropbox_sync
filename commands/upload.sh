@@ -205,7 +205,8 @@ dbx_cmd_upload_executar() {
   if [[ $forcar != 'sim' && $origem != '-' && -z $rev ]]; then
     dbx_progress_mensagem "[upload] analisando arquivo local: $origem (consultando o destino remoto)"
     if ! _dbx_cmd_upload_hash_remoto "$remoto"; then
-      dbx_progress_mensagem "[upload] resultado da analise: $origem -> sem arquivo comparavel no destino (necessita envio)"
+      dbx_errors_redigir "${DBX_CMD_FALHA_MOTIVO:-sem detalhe}" >/dev/null
+      dbx_progress_mensagem "[upload] resultado da analise: $origem -> sem arquivo comparavel no destino (necessita envio; classe=${DBX_CMD_FALHA_CLASSE:-desconhecido}; motivo=$DBX_ERRORS_REDIGIDO)"
     else
       local hash_local=''
       if [[ -n $chave ]] && dbx_state_upload_consultar "$chave" "$identidade_antes"; then
@@ -305,28 +306,34 @@ dbx_cmd_upload_executar() {
 # `content_hash` bem formado, publicado em DBX_CMD_UPLOAD_HASH_REMOTO. Qualquer
 # outra coisa — `not_found`, pasta, falha de rede, resposta ilegivel — e status
 # 1, e o chamador envia: a falha da consulta nunca dispensa o envio e nao aborta
-# o comando (RF-60(d)). Nada e emitido na saida, nem diagnostico.
+# o comando (RF-60(d)). Nada e emitido aqui; o motivo vai em DBX_CMD_FALHA_CLASSE
+# e DBX_CMD_FALHA_MOTIVO (O-5) e o chamador o inclui no progresso. A leitura do
+# JSON e de `dbx_cmd_ler_corpo_silencioso`, em `lib/cmd`.
 DBX_CMD_UPLOAD_HASH_REMOTO=''
 _dbx_cmd_upload_hash_remoto() {
-  local remoto=$1 tipo='' hash=''
+  local remoto=$1
   DBX_CMD_UPLOAD_HASH_REMOTO=''
+  DBX_CMD_FALHA_CLASSE=''
+  DBX_CMD_FALHA_MOTIVO=''
   dbx_json_escapar_cadeia "$remoto"
   dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/get_metadata' \
-    "{\"path\":\"$DBX_JSON_ESCAPADO\"}" sim >/dev/null 2>&1 || return 1
-  dbx_json_contexto upload_metadado || return 1
-  if dbx_json_analisar "$DBX_HTTP_CORPO" 2>/dev/null; then
-    dbx_json_valor '.tag' >/dev/null 2>&1 && tipo=$DBX_JSON_RESULTADO
-    dbx_json_valor content_hash >/dev/null 2>&1 && hash=$DBX_JSON_RESULTADO
+    "{\"path\":\"$DBX_JSON_ESCAPADO\"}" sim >/dev/null 2>&1 || {
+    DBX_CMD_FALHA_CLASSE=${DBX_HTTP_CLASSE:-erro_remoto}
+    DBX_CMD_FALHA_MOTIVO="consulta recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+    return 1
+  }
+  dbx_cmd_ler_corpo_silencioso .tag content_hash || return 1
+  if [[ ${DBX_CMD_CAMPOS[0]} != 'file' ]]; then
+    DBX_CMD_FALHA_CLASSE='erro_remoto'
+    DBX_CMD_FALHA_MOTIVO='o destino nao e um arquivo comparavel'
+    return 1
   fi
-  dbx_json_descartar upload_metadado
-  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
-  # shellcheck disable=SC2034  # canais publicos alheios, limpos aqui
-  DBX_JSON_RESULTADO=''
-  # shellcheck disable=SC2034
-  DBX_HTTP_CORPO=''
-  [[ $tipo == 'file' ]] || return 1
-  dbx_hash_formato_valido "$hash" || return 1
-  DBX_CMD_UPLOAD_HASH_REMOTO=$hash
+  if ! dbx_hash_formato_valido "${DBX_CMD_CAMPOS[1]}"; then
+    DBX_CMD_FALHA_CLASSE='erro_remoto'
+    DBX_CMD_FALHA_MOTIVO='content_hash ausente ou malformado na resposta'
+    return 1
+  fi
+  DBX_CMD_UPLOAD_HASH_REMOTO=${DBX_CMD_CAMPOS[1]}
   return 0
 }
 
