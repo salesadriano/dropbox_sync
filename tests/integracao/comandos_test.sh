@@ -1964,5 +1964,99 @@ teste_ajuste_de_rede_invalido_e_recusado_antes_de_qualquer_chamada() {
   done
 }
 
+# ---------------------------------------------------------------------------
+# RF-64 — aliases em ingles de `unlink` e `config` (TC-ALI-02, TC-ALI-03)
+# ---------------------------------------------------------------------------
+
+teste_unlink_yes_tem_o_mesmo_efeito_de_confirmar() {
+  # TC-ALI-02: mesmo estado final do nome em portugues.
+  local base
+  base=$(_ambiente '{}')
+  mkdir -p "$base/estado/dbx"
+  printf '%s' 'base antiga' >"$base/estado/dbx/pareamento-um"
+  _rodar "$base" --json unlink --yes
+  assert_igual 0 "$DBX_ESTADO" "unlink --yes deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'revogacao=emitida' "$DBX_SAIDA" 'a revogacao remota e emitida'
+  assert_arquivo_ausente "$base/config/dbx/credencial.json" 'a credencial sai inteira'
+  assert_arquivo_ausente "$base/estado/dbx/pareamento-um" 'e as bases tambem'
+}
+
+teste_unlink_keep_app_preserva_a_chave_como_manter_aplicativo() {
+  # TC-ALI-02, RF-51(c): `--keep-app` preserva `app key` e `app secret`.
+  local base conteudo
+  base=$(_ambiente '{}')
+  _rodar "$base" unlink --yes --keep-app
+  assert_igual 0 "$DBX_ESTADO" "unlink deve concluir; diagnostico: $DBX_ERRO"
+  IFS= read -r -d '' conteudo <"$base/config/dbx/credencial.json"
+  assert_contem '"app_key":"ak"' "$conteudo" 'a chave do aplicativo e preservada'
+  assert_contem '"app_secret":"as"' "$conteudo" 'e o segredo do aplicativo tambem'
+  assert_segredo_ausente 'rt' "$conteudo" 'o refresh token nao sobrevive'
+  base=$(_ambiente '{}')
+  _rodar "$base" unlink --confirmar --keep-app
+  assert_igual 0 "$DBX_ESTADO" "misturado com o portugues tambem vale; diagnostico: $DBX_ERRO"
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'o arquivo e preservado'
+}
+
+teste_unlink_sem_yes_continua_recusado_sem_terminal() {
+  # RF-06a: o alias nao muda a recusa sem sinalizador.
+  local base
+  base=$(_ambiente '{}')
+  _rodar "$base" unlink --keep-app
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" 'sem --yes, recusado'
+  assert_contem '--confirmar' "$DBX_ERRO" 'pela falta de confirmacao, e nao por opcao desconhecida'
+  assert_arquivo_existe "$base/config/dbx/credencial.json" 'nada removido'
+}
+
+teste_config_root_tem_o_mesmo_efeito_de_raiz() {
+  # TC-ALI-03: mesmo efeito e mesmas recusas.
+  local base pt en
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" '' --json --dry-run config --raiz /pasta
+  pt="$DBX_ESTADO|$DBX_SAIDA"
+  _rodar_com_entrada "$base" '' --json --dry-run config --root /pasta
+  en="$DBX_ESTADO|$DBX_SAIDA"
+  assert_contem 'raiz_remota=/pasta' "$pt" 'a referencia usa a raiz dada'
+  assert_igual "$pt" "$en" '--root: mesma saida que --raiz'
+  _rodar_com_entrada "$base" '' --dry-run config --raiz '/../x'
+  pt=$DBX_ESTADO
+  _rodar_com_entrada "$base" '' --dry-run config --root '/../x'
+  assert_diferente 0 "$pt" 'a raiz invalida e recusada em portugues'
+  assert_igual "$pt" "$DBX_ESTADO" '--root: mesma recusa que --raiz'
+  _rodar_com_entrada "$base" '' --json --dry-run config --raiz /x --root /y
+  assert_contem 'raiz_remota=/y' "$DBX_SAIDA" 'RF-64(e): o ultimo valor vale'
+}
+
+teste_config_replace_substitui_como_substituir() {
+  # TC-ALI-03: `--replace` libera a troca, e sem ele a recusa continua.
+  local base conteudo
+  base=$(_ambiente_vazio)
+  printf '%s' '{"versao":1,"app_key":"ak","app_secret":"as","refresh_token":"RT_anterior","raiz_remota":"/"}' \
+    >"$base/config/dbx/credencial.json"
+  chmod 600 "$base/config/dbx/credencial.json"
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config --root /
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" 'sem --replace, recusa'
+  _rodar_com_entrada "$base" "$ENTRADA_DE_VINCULO" config --replace
+  assert_igual 0 "$DBX_ESTADO" "--replace substitui; diagnostico: $DBX_ERRO"
+  assert_contem 'NAO foi revogado' "$DBX_ERRO" 'com a mesma advertencia de --substituir'
+  IFS= read -r -d '' conteudo <"$base/config/dbx/credencial.json"
+  assert_contem 'RT_gravado_pelo_config' "$conteudo" 'a credencial nova foi gravada'
+}
+
+teste_ajuda_de_unlink_e_config_lista_os_dois_nomes() {
+  # RF-64(c).
+  local base nome uso
+  base=$(_ambiente_vazio)
+  _rodar_com_entrada "$base" '' help unlink
+  uso=${DBX_SAIDA%%$'\n'*}
+  for nome in --confirmar --yes --manter-aplicativo --keep-app; do
+    assert_contem "$nome" "$uso" "o Uso: do unlink lista $nome"
+  done
+  _rodar_com_entrada "$base" '' help config
+  uso=${DBX_SAIDA%%$'\n'*}
+  for nome in --substituir --replace --raiz --root; do
+    assert_contem "$nome" "$uso" "o Uso: do config lista $nome"
+  done
+}
+
 harness_executar "$@"
 

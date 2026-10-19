@@ -78,8 +78,8 @@ dbx_cmd_unlink_executar() {
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
-      --confirmar) confirmado='sim' ;;
-      --manter-aplicativo) modo='aplicativo' ;;
+      --confirmar | --yes) confirmado='sim' ;;
+      --manter-aplicativo | --keep-app) modo='aplicativo' ;;
       -*)
         dbx_cmd_falhar uso_invalido "opcao nao reconhecida: $1"
         return $?
@@ -113,7 +113,7 @@ dbx_cmd_unlink_executar() {
   if [[ $confirmado != 'sim' ]]; then
     if [[ ! -t 0 ]]; then
       dbx_cmd_falhar uso_invalido \
-        'desvinculo sem terminal exige o sinalizador explicito --confirmar'
+        'desvinculo sem terminal exige o sinalizador explicito --confirmar (ou --yes)'
       return $?
     fi
     local resposta=''

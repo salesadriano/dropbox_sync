@@ -82,15 +82,40 @@ dbx_sync_relativo() {
   [[ -n $DBX_SYNC_LIDO ]]
 }
 
+# Localidade da comparacao sem caixa (RF-54(e)). O nome so e lido do ambiente
+# para a suite simular a ausencia sem depender da maquina (TC-CX-05); fora do
+# alfabeto de nome de localidade, vale o padrao.
+DBX_SYNC_LOCALIDADE=${DBX_SYNC_LOCALIDADE:-C.UTF-8}
+[[ $DBX_SYNC_LOCALIDADE =~ ^[A-Za-z0-9_.@-]+$ ]] || DBX_SYNC_LOCALIDADE=C.UTF-8
+readonly DBX_SYNC_LOCALIDADE
+
 # _dbx_sync_chave <caminho> — chave de comparacao em DBX_SYNC_CHAVE (RF-54).
 #
 # A Dropbox nao diferencia caixa, entao dois caminhos que so diferem nela sao o
-# MESMO arquivo. A conversao roda sob localidade UTF-8 quando ela existe: sob
-# `C`, `${x,,}` so converte ASCII e um `É` local nao casaria com o `é` remoto.
-# Sem a localidade, o recuo e a conversao ASCII, e a atribuicao nao emite aviso.
+# MESMO arquivo. Sob `C`, `${x,,}` so converte ASCII e um `É` local nao casaria
+# com o `é` remoto; por isso a conversao roda sob a localidade UTF-8.
+#
+# A localidade e fixada SO aqui, em `LC_ALL` local a funcao (DIV-32): `LC_ALL`
+# tem precedencia sobre o que o operador exportou (inclusive `LC_ALL=C`), e o
+# escopo local a desfaz no retorno, para nenhuma medida em bytes (`${#x}`,
+# fatiamento) do resto do processo passar a contar caracteres. Sem a
+# localidade, a atribuicao falha em silencio e a conversao fica no ASCII.
 _dbx_sync_chave() {
-  { local LC_ALL=C.UTF-8; } 2>/dev/null
+  { local LC_ALL=$DBX_SYNC_LOCALIDADE; } 2>/dev/null
   DBX_SYNC_CHAVE=${1,,}
+}
+
+# dbx_sync_localidade_disponivel — 0 quando a comparacao sem caixa vale fora do
+# ASCII; senao 1, com o aviso de RF-54(f) em DBX_SYNC_MOTIVO.
+#
+# Pergunta a propria comparacao, e nao `locale -a`: o que importa e a conversao
+# funcionar, e assim nao ha utilitario nem captura a mais.
+dbx_sync_localidade_disponivel() {
+  _dbx_sync_chave $'\xc3\x89'
+  [[ $DBX_SYNC_CHAVE == $'\xc3\xa9' ]] && return 0
+  # shellcheck disable=SC2034  # canal publico, lido por commands/sync
+  DBX_SYNC_MOTIVO="localidade $DBX_SYNC_LOCALIDADE ausente: a comparacao sem caixa de caminhos vale so no ASCII (nomes que so diferem na caixa de letras acentuadas contam como distintos)"
+  return 1
 }
 
 # dbx_sync_colisao_de_caixa <nome_do_vetor> — 1 quando dois caminhos do vetor

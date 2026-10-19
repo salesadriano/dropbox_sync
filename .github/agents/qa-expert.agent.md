@@ -117,8 +117,8 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 
 | Situacao | Skill |
 |---|---|
-| Criterios de acessibilidade em fluxos frontend | `../skills/accessibility-review/` |
-| Requisitos formais de conformidade WCAG | `../skills/accessibility-compliance/` |
+| Criterios de acessibilidade em fluxos frontend | nao incluida neste repositorio; fonte: `ai_team` |
+| Requisitos formais de conformidade WCAG | nao incluida neste repositorio; fonte: `ai_team` |
 | Diagramas de planos de validacao e cobertura | `../skills/mermaid-generator/` |
 | Inspecao de hardening web (headers, cookies, secrets, CSP) | `../skills/security-best-practices/` |
 | Validacao de endpoints (authn/authz, rate limiting, schema) | `../skills/api-security-best-practices/` |
@@ -126,8 +126,8 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 | Conferencia do parecer de conformidade recebido como precondicao do handoff | `../skills/protocolo-conformidade/` |
 | Critica da qualidade dos testes entregues (seams, mocks indevidos, testes tautologicos) | `../skills/tdd-test-design/` |
 | Reexecucao e critica da suite Bats de scripts shell (script executado no dialeto do shebang, stubs so em fronteira) | `../skills/bats-testing-patterns/` |
-| Validacao de isolamento por tenant e efeito real de policies RLS | `../skills/supabase-postgres-best-practices/` |
-| Validacao de performance percebida em app React Native (FPS, TTI, jank) | `../skills/react-native-best-practices/` |
+| Validacao de isolamento por tenant e efeito real de policies RLS | nao incluida neste repositorio; fonte: `ai_team` |
+| Validacao de performance percebida em app React Native (FPS, TTI, jank) | nao incluida neste repositorio; fonte: `ai_team` |
 | Validacao por amostragem em porte P (1 em N, por evidencia, sem mutantes nem `qa-*`) e validacao independente como secao do registro curto em M | `../skills/entrega-por-porte/` |
 | Diagnostico de E2E vermelho na pipeline (specs que nao rodaram) e reexecucao parcial so das specs afetadas | `../skills/e2e-reexecucao-parcial/` |
 

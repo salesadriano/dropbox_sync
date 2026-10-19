@@ -43,13 +43,13 @@ Use estes exemplos para redigir achados acionaveis e calibrar severidade. Todo a
 ### Consulta sem indice em caminho quente
 
 - **Achado:** nova consulta filtra por coluna sem indice em tabela grande, dentro de um endpoint de listagem.
-- **Regra:** `supabase-postgres-best-practices / query-missing-indexes`.
+- **Regra:** skill de dados Postgres/Supabase (`query-missing-indexes`; nao incluida neste repositorio; fonte: `ai_team`).
 - **Correcao:** criar o indice na migration da propria entrega e validar o plano com `EXPLAIN ANALYZE`.
 
 ### RLS ausente em tabela multi-tenant
 
 - **Achado:** a nova tabela guarda dado por tenant e nao habilitou Row Level Security.
-- **Regra:** `supabase-postgres-best-practices / security-rls-basics`.
+- **Regra:** skill de dados Postgres/Supabase (`security-rls-basics`; nao incluida neste repositorio; fonte: `ai_team`).
 - **Correcao:** habilitar RLS, escrever a policy de isolamento e cobrir com teste que prove que um tenant nao le a linha do outro.
 
 ### Escapando o escaping do framework
@@ -87,7 +87,7 @@ Use estes exemplos para redigir achados acionaveis e calibrar severidade. Todo a
 ### N+1 introduzido
 
 - **Achado:** a listagem carrega os itens de cada pedido dentro do laco.
-- **Regra:** `supabase-postgres-best-practices / data-n-plus-one`, ou a regra equivalente da skill da stack.
+- **Regra:** skill de dados Postgres/Supabase (`data-n-plus-one`; nao incluida neste repositorio; fonte: `ai_team`), ou a regra equivalente da skill da stack.
 - **Correcao:** carregar em lote com join, `IN` ou eager loading.
 
 ## Menores

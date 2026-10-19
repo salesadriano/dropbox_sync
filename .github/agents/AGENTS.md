@@ -66,7 +66,7 @@ Este protocolo concentra passos transversais que nao devem ser repetidos literal
 34. Decisoes sobre agents, skills, workflow, governanca, templates e regras transversais sao entradas com `escopo: pacote`; quando alteram uma decisao consolidada, levam `substitui: DEC-STR-nn`. Nao ha reflexo em outro arquivo: o escopo no frontmatter e a referencia cruzada.
 35. Decisoes sobre escopo, arquitetura, implementacao, validacao, riscos e aceite de uma demanda concreta sao entradas com `escopo: projeto`, uma entrada por decisao, com `ref:` apontando para o registro de entrega que a detalha.
 36. Quando o solicitante pedir explicitamente persistencia em ambos os escopos para qualquer decisao, gravar duas entradas, uma por escopo, cada uma com `ref:` para a outra.
-37. Ao consultar qualquer skill em `../skills/`, ler primeiro o `SKILL.md` correspondente e abrir `references/`, `rules/` ou o indice interno da skill apenas no trecho especifico necessario. Nunca carregar o diretorio inteiro de uma skill: `nestjs-best-practices`, `laravel-best-practices` e `vercel-react-best-practices` mantem arquivos internos de 94 KB a 163 KB, `fastify-best-practices` mantem 19 arquivos em `rules/`, `supabase-postgres-best-practices` mantem 33 arquivos em `references/` e `react-native-best-practices` mantem 31 arquivos em `references/` mais imagens de profiling. A leitura integral esgota contexto sem ganho operacional. Em `react-native-best-practices`, usar `POWER.md` como indice de selecao; em `supabase-postgres-best-practices`, usar a tabela de prefixos do `SKILL.md`; em `fastify-best-practices`, usar a ordem de leitura recomendada no `SKILL.md`.
+37. Ao consultar qualquer skill em `../skills/`, ler primeiro o `SKILL.md` correspondente e abrir `references/`, `rules/` ou o indice interno da skill apenas no trecho especifico necessario. Nunca carregar o diretorio inteiro de uma skill: skills de stacks nao usadas (nao incluidas neste repositorio; fonte: `ai_team`) mantem arquivos internos de ate 163 KB. A leitura integral esgota contexto sem ganho operacional.
 38. Os arquivos de persona nao devem repetir regras ja definidas neste protocolo comum. Toda regra transversal vale para todos os agents a partir deste arquivo; cada persona registra apenas arquetipo, ownerships, gates, skills do proprio papel e contrato de saida.
 39. Cada regra do pacote deve ser declarada uma unica vez na camada que a possui: protocolo transversal neste `AGENTS.md`, estado e decisoes ativas nas memorias, formato e completude documental nos `templates/` e nas skills, e especializacao por papel no arquivo da persona.
 40. Toda demanda recebe, na entrada, um **porte** registrado no log de prompt e no registro de entrega: **P (pontual)**, **M (padrao)** ou **G (estrutural)**. E no minimo **M** quando tocar contrato publico, schema ou persistencia, autenticacao, autorizacao, segredos ou dados sensiveis, UI ou interacao, fronteira arquitetural, ou quando o defeito for de alta criticidade. E **G** quando alterar arquitetura, System Design, Design System, integracao externa ou regra transversal do pacote. E **P** apenas quando nenhum gatilho de M ou G se aplicar e a alteracao for localizada: diff de ate 50 linhas de codigo (producao e teste), sem tocar pipeline, arquivo de congelamento de versoes ou dependencia, e sem defeito de alta criticidade; criterios completos e fluxo proprio em `../skills/entrega-por-porte/references/fluxo-p.md`. O porte define o modo de cada artefato conforme a secao `Protocolo por porte`. Na duvida, o porte sobe. O Tech Lead pode reclassificar a qualquer momento; subir nunca exige justificativa, descer exige justificativa registrada no log de prompt.
@@ -228,23 +228,7 @@ Apos detectar a stack, cada agent deve consultar a skill correspondente ao frame
 
 | Stack detectada | Skill de referencia |
 |---|---|
-| Python / Django | `../skills/django-expert/`, `../skills/django-patterns/`, `../skills/django-tdd/` |
-| Python / FastAPI | `../skills/fastapi-expert/`, `../skills/fastapi-templates/`, `../skills/fastapi-async-patterns/` |
-| Python generico | `../skills/python-best-practices/` |
-| Node.js / Fastify | `../skills/fastify-best-practices/` |
-| Node.js / NestJS | `../skills/nestjs-best-practices/` |
-| Node.js generico | `../skills/nodejs-best-practices/` |
-| PHP / Laravel | `../skills/laravel-best-practices/` |
-| PHP generico | `../skills/php-best-practices/` |
-| .NET / C# | `../skills/dotnet-clean-architecture/` + `../skills/clean-architecture/` |
-| React / Next.js | `../skills/vercel-react-best-practices/` |
-| React generico | `../skills/frontend-react-best-practices/` |
-| React Native / Expo | `../skills/react-native-best-practices/` |
-| Cloudflare Workers | `../skills/workers-best-practices/` |
-| Postgres / Supabase (qualquer stack) | `../skills/supabase-postgres-best-practices/` |
-| Autenticacao (any) | `../skills/better-auth-best-practices/` |
-| Better Auth / multi-tenancy, times, RBAC | `../skills/better-auth-organization/` |
-| Better Auth / MFA, TOTP, 2FA | `../skills/better-auth-two-factor/` |
+| Django, FastAPI, Python, Node.js (Fastify/NestJS), PHP/Laravel, .NET, React/Next.js, React Native, Cloudflare Workers, Postgres/Supabase, Better Auth | nao incluidas neste repositorio; fonte: `ai_team` |
 | Shell script (POSIX sh ou Bash) | `../skills/shellcheck-configuration/` + `../skills/bats-testing-patterns/` |
 | Desenvolvimento, refatoracao ou correcao de codigo | `../skills/protocolo-tdd/` + `../skills/tdd-test-design/` |
 | Verificacao de conformidade do codigo entregue (gate local, pre-handoff) | `../skills/protocolo-conformidade/` |

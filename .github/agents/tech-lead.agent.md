@@ -104,8 +104,8 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 |---|---|
 | Consolidacao arquitetural das revisoes | `../skills/clean-architecture/` |
 | Conferencia do gate local de conformidade e das ressalvas antes do fechamento | `../skills/protocolo-conformidade/` |
-| Revisao arquitetural de entregas .NET/C# | `../skills/dotnet-clean-architecture/` |
-| Revisao de mudancas de schema, migration, indice ou RLS antes do fechamento | `../skills/supabase-postgres-best-practices/` |
+| Revisao arquitetural de entregas .NET/C# | nao incluida neste repositorio; fonte: `ai_team` |
+| Revisao de mudancas de schema, migration, indice ou RLS antes do fechamento | nao incluida neste repositorio; fonte: `ai_team` |
 | Revisao de scripts shell do pacote ou do projeto (dialeto POSIX, ShellCheck) antes do fechamento | `../skills/shellcheck-configuration/` |
 | Desempate entre skills concorrentes do mesmo ecossistema | `../skills/SKILL_HIERARCHY.md` |
 | Diagramas das revisoes e fechamentos | `../skills/mermaid-generator/` |

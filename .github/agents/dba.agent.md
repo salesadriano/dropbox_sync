@@ -79,10 +79,10 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 
 | Situacao | Skill |
 |---|---|
-| Schema, migrations, tipos de coluna, indices, constraints e particionamento | `../skills/supabase-postgres-best-practices/` |
-| Policies RLS, isolamento por tenant e privilegios | `../skills/supabase-postgres-best-practices/` + `../skills/api-security-best-practices/` |
-| Query lenta, EXPLAIN, lock, deadlock, pooling, bloat e vacuum | `../skills/supabase-postgres-best-practices/` |
-| Multi-tenancy e RBAC quando a stack usa Better Auth | `../skills/better-auth-organization/` |
+| Schema, migrations, tipos de coluna, indices, constraints e particionamento | nao incluida neste repositorio; fonte: `ai_team` |
+| Policies RLS, isolamento por tenant e privilegios | nao incluida neste repositorio; fonte: `ai_team` + `../skills/api-security-best-practices/` |
+| Query lenta, EXPLAIN, lock, deadlock, pooling, bloat e vacuum | nao incluida neste repositorio; fonte: `ai_team` |
+| Multi-tenancy e RBAC quando a stack usa Better Auth | nao incluida neste repositorio; fonte: `ai_team` |
 | Seguranca, controle de acesso e protecao de dados | `../skills/security-best-practices/` |
 | Endpoints de acesso a dados | `../skills/api-security-best-practices/` |
 | ERDs e diagramas de fluxo de dados | `../skills/mermaid-generator/` |

@@ -26,7 +26,7 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 | Registro tecnico da entrega, evidencias, rollback e commit exigido (obrigatoria em alteracao de codigo) | `../skills/review-documentation/` |
 | Impacto documental apos a mudanca: quais documentos existentes precisam ser atualizados | `../skills/documentation-sync/` |
 | Diagramas exigidos pelos templates e pelo item 8 do protocolo comum | `../skills/mermaid-generator/` |
-| Consolidacao de artefatos de interface em documento de Design System | `../skills/design-md/` |
+| Consolidacao de artefatos de interface em documento de Design System | nao incluida neste repositorio; fonte: `ai_team` |
 | Redacao de PRD | `../skills/prd-generator/` |
 | Redacao de historias de usuario e criterios de aceite | `../skills/user-story-writing/` |
 | Especificacao de caso de uso como primeiro passo de escopo | `../skills/use-case-specification/` |

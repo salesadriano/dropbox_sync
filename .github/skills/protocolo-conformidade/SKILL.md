@@ -68,9 +68,9 @@ Regras de selecao:
 
 1. `clean-architecture` aplica-se **sempre**, em qualquer stack, como fonte das regras de dependencia, fronteira e coesao.
 2. Adicionar a skill de stack mais especifica para os arquivos alterados (uma por ecossistema, nunca duas concorrentes).
-3. Adicionar `supabase-postgres-best-practices` quando o diff tocar schema, migration, indice, policy RLS, funcao de banco ou SQL.
+3. Quando o diff tocar schema, migration, indice, policy RLS, funcao de banco ou SQL, aplicar a skill de dados da stack (Postgres/Supabase: nao incluida neste repositorio; fonte: `ai_team`).
 4. Adicionar `security-best-practices` e `api-security-best-practices` quando o diff tocar autenticacao, autorizacao, segredos, dados sensiveis, sessao, CORS/CSP ou exposicao de endpoint.
-5. Adicionar `dotnet-clean-architecture` quando a stack for .NET/C#.
+5. Skills de stack .NET/C# e demais stacks nao usadas: nao incluida neste repositorio; fonte: `ai_team`.
 6. Ler apenas o `SKILL.md` de cada skill selecionada e, dentro dela, apenas a regra especifica necessaria (item 37 do `AGENTS.md`). Nunca carregar diretorio inteiro.
 
 Registrar no parecer quais skills foram aplicadas e por que.

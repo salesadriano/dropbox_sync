@@ -59,8 +59,8 @@
 # O ACCESS TOKEN VIVE SO EM MEMORIA
 #   Em variavel de shell do processo corrente, nunca em disco. Ao terminar o
 #   processo ele desaparece, o que e o comportamento desejado para credencial de
-#   curta duracao e mantem a unica escrita persistente do projeto sendo o
-#   arquivo de credencial.
+#   curta duracao e mantem o arquivo de credencial como o unico lugar em disco
+#   com segredo (a memoria de hash de `lib/state` nao guarda segredo).
 
 [[ -n ${DBX_AUTH_CARREGADO:-} ]] && return 0
 DBX_AUTH_CARREGADO=1

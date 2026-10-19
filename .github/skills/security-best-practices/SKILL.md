@@ -242,7 +242,7 @@ For API authentication, authorization, token rotation, quotas, throttling, and D
 
 ### Related skills
 - [api-security-best-practices](../api-security-best-practices/SKILL.md)
-- [best-practices](../best-practices/SKILL.md)
+- `best-practices`: nao incluida neste repositorio; fonte: `ai_team`
 
 ### Tags
 `#security` `#OWASP` `#HTTPS` `#CORS` `#XSS` `#SQL-injection` `#CSRF` `#infrastructure`

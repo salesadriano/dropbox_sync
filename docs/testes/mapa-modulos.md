@@ -24,7 +24,7 @@ Conferido por `grep -l 'lib/\*.sh' tests/unit/*.sh tests/integracao/*.sh`: apena
 
 ## Regra 2: testes `qa_*`
 
-Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os cinco de uma vez; para um so, use o filtro proprio da tabela. O filtro `state` casa tambem `qa_state_p3` (substring), o que e desejado: diff em `lib/state.sh` seleciona os dois.
+Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os seis de uma vez; para um so, use o filtro proprio da tabela. O filtro `state` casa tambem `qa_state_p3` (substring), o que e desejado: diff em `lib/state.sh` seleciona os dois.
 
 | Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
 |---|---|---|---|
@@ -32,6 +32,7 @@ Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os cinco de
 | `tests/unit/qa_rede_p2_test.sh` (P2) | `qa_rede` | carrega `lib/errors`, `json`, `http`, `auth`, `hash`, `transfer` (e `progress` por eles); copia e executa `tests/run.sh` e `tests/support/harness.sh` | `lib/http.sh`, `lib/transfer.sh`, `lib/json.sh`, `lib/auth.sh`, `lib/hash.sh`, `lib/errors.sh`, `lib/progress.sh`, `tests/run.sh`, `tests/support/harness.sh` |
 | `tests/integracao/qa_robustez_rede_p2_test.sh` (P2) | `qa_robustez` | `bin/dbx` (download, upload, sync, space); carrega `lib/errors.sh`, `lib/hash.sh` | `bin/dbx`, `commands/download.sh`, `commands/sync.sh`, `commands/upload.sh`, `lib/http.sh`, `lib/cmd.sh`, `lib/transfer.sh`, `lib/output.sh`, `lib/auth.sh`, `lib/config.sh`, `lib/errors.sh`, `lib/hash.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/state.sh` |
 | `tests/integracao/qa_cache_unico_p3_test.sh` (fase 3) | `qa_cache_unico` | `bin/dbx` (sync nos dois sentidos, upload); carrega `lib/errors.sh`, `lib/hash.sh`; audita o texto de `install.sh`, `README.md`, `bin/`, `lib/`, `commands/` | `bin/dbx`, `commands/sync.sh`, `commands/upload.sh`, `lib/state.sh`, `lib/hash.sh`, `lib/walk.sh`, `lib/path.sh`, `lib/sync.sh`, `lib/auth.sh`, `lib/config.sh`, `lib/http.sh`, `lib/errors.sh`, `lib/transfer.sh`, `lib/cmd.sh`, `install.sh`, `README.md` |
+| `tests/integracao/qa_docs_aliases_p4_test.sh` (fase 4) | `qa_docs_aliases` | `bin/dbx` (sync nos dois sentidos, unlink, config, upload, help); carrega `lib/errors.sh`, `lib/hash.sh`; em processo isolado carrega `lib/errors`, `progress`, `json`, `sync`, `preflight`; audita o texto de `README.md`, `lib/`, `commands/`, `bin/dbx`, `install.sh` e `docs/arquitetura/system-design.md` | `bin/dbx`, `commands/sync.sh`, `commands/unlink.sh`, `commands/config.sh`, `commands/upload.sh`, `lib/sync.sh`, `lib/preflight.sh`, `lib/json.sh`, `lib/output.sh`, `lib/http.sh`, `lib/auth.sh`, `lib/config.sh`, `lib/state.sh`, `lib/hash.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/cmd.sh`, `lib/errors.sh`, `lib/progress.sh`, `install.sh`, `README.md`, `docs/arquitetura/system-design.md` |
 | `tests/unit/qa_state_p3_test.sh` (fase 3) | `qa_state` | carrega `lib/errors`, `json`, `config`, `state` (e `hash` por ele), `http`, `auth` | `lib/state.sh`, `lib/hash.sh`, `lib/config.sh`, `lib/json.sh`, `lib/http.sh`, `lib/auth.sh`, `lib/errors.sh`, `lib/progress.sh` |
 
 ## Regra 3: `scripts/tests/*.bats`
@@ -83,15 +84,15 @@ Nenhum comando tem teste unitario: todos sao exercitados por `bin/dbx` em testes
 | Modulo | Carrega | Teste direto | Transitivo (executa `bin/dbx <cmd>`) |
 |---|---|---|---|
 | `bin/dbx` | errors, path, output, progress, cli; sob demanda json, config, http, auth, cmd, preflight; **chama** `dbx_http_validar_ambiente` | `comandos` (`DBX_EXEC`) | `sync`, `qa_` |
-| `commands/config.sh` | | | `comandos` |
+| `commands/config.sh` | | | `comandos`, `qa_docs_aliases` |
 | `commands/delete.sh` | | `comandos` (le o fonte) | `comandos` |
 | `commands/download.sh` | | | `comandos`, `qa_integridade`, `qa_robustez` |
 | `commands/info.sh` | | | `comandos` |
 | `commands/list.sh` | | | `comandos` |
 | `commands/space.sh` | | | `comandos` |
-| `commands/unlink.sh` | | | `comandos` |
+| `commands/unlink.sh` | | | `comandos`, `qa_docs_aliases` |
 | `commands/upload.sh` | transfer, state; **chama** path (`dbx_path_local_canonico`) e hash (`dbx_hash_identidade`) | | `comandos`, `qa_` |
-| `commands/sync.sh` | walk, state, sync, transfer; **chama** path (`dbx_path_local_canonico`); **le canais de** http (`DBX_HTTP_REQUISICOES`, `DBX_HTTP_RESUMO_DO_SERVICO`, `DBX_HTTP_CODIGO`, `DBX_HTTP_CLASSE`, `DBX_HTTP_TRATADOR_EXTERNO`) | `sync` (le o fonte) | `sync`, `qa_robustez` |
+| `commands/sync.sh` | walk, state, sync, transfer; **chama** path (`dbx_path_local_canonico`); **le canais de** http (`DBX_HTTP_REQUISICOES`, `DBX_HTTP_RESUMO_DO_SERVICO`, `DBX_HTTP_CODIGO`, `DBX_HTTP_CLASSE`, `DBX_HTTP_TRATADOR_EXTERNO`) | `sync` (le o fonte) | `sync`, `qa_robustez`, `qa_cache_unico`, `qa_docs_aliases` |
 
 ## Como usar
 

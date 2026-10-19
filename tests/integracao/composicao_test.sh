@@ -729,4 +729,30 @@ teste_auxiliar_de_contagem_discrimina() {
     'duas correspondencias contam duas'
 }
 
+# ---------------------------------------------------------------------------
+# TC-DOC-01 (RNF-34): nenhum texto lido pelo operador ou pelo mantenedor
+# afirma o contrario do que o codigo faz. Cada busca fixa uma contradicao ja
+# encontrada (P5.1); a busca textual ampla fica na revisao.
+# ---------------------------------------------------------------------------
+
+teste_documentacao_nao_contradiz_o_estado_persistente_nem_as_dependencias() {
+  local raiz=$DBX_HARNESS_RAIZ achados readme
+  IFS= read -r -d '' readme <"$raiz/README.md" || :
+  # (a) Existe memoria persistente em `lib/state` (RF-38, RF-61): `lib/http` nao
+  # persiste nada, mas nao pode dizer que nao ha estado local.
+  achados=$(grep -n -i 'nao ha estado local' "$raiz/lib/http.sh" || true)
+  assert_igual '' "$achados" "RNF-34(a): lib/http nega a memoria de lib/state: $achados"
+  # (b) RNF-02: a unica dependencia externa e o cURL, alem do bash e da base.
+  achados=$(grep -n -i -E 'sem depend[eê]ncias externas al[eé]m de|exclusivamente com `bash`' \
+    "$raiz/README.md" || true)
+  assert_igual '' "$achados" "RNF-34(b): README ignora os utilitarios da base: $achados"
+  assert_contem 'única dependência externa' "$readme" 'RNF-34(b): o README diz qual e a dependencia'
+  # (d) Nenhuma verificacao previa confere a versao do cURL.
+  achados=$(grep -n -E 'cURL`? *[0-9]+\.[0-9]+' "$raiz/README.md" || true)
+  assert_igual '' "$achados" "RNF-34(d): versao minima do cURL sem verificacao: $achados"
+  # (e) PRJ-DEC-07 foi revogada para o sync na v0.8.
+  achados=$(grep -n 'PRJ-DEC-07' "$raiz/lib/output.sh" || true)
+  assert_igual '' "$achados" "RNF-34(e): lib/output cita decisao revogada: $achados"
+}
+
 harness_executar "$@"

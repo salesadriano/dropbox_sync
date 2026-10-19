@@ -29,7 +29,7 @@ _sem() {
   # `timeout` e os utilitarios usados pela propria sonda precisam existir no
   # PATH reduzido, senao a sonda mede a si mesma em vez do componente.
   for alvo in bash curl sha256sum shasum openssl timeout env head wc mktemp stat \
-    readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od; do
+    readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od tail df; do
     for faltante in "${ausentes[@]}"; do
       [[ $alvo == "$faltante" ]] && continue 2
     done
@@ -614,6 +614,47 @@ teste_canal_de_hash_do_envio_por_sessao_tem_nome_unico() {
   local achados
   achados=$(_codigo_do_produto | xargs grep -nE 'DBX_TRANSFER_HASH([^_A-Z]|$)' || true)
   assert_igual '' "$achados" "canal inexistente referenciado: $achados"
+}
+
+# ---------------------------------------------------------------------------
+# TC-DOC-01 (RNF-34(c), RNF-02): o README e o preflight nomeiam os mesmos
+# utilitarios. O preflight e quem diz ao operador o que falta; um README que
+# lista outra coisa manda instalar o que nao e preciso e omite o que e.
+# ---------------------------------------------------------------------------
+
+# _utilitarios_do_readme — nomes entre crases da linha "Utilitarios" da secao
+# "Requisitos do Sistema", um por linha, ordenados.
+_utilitarios_do_readme() {
+  local linha
+  linha=$(grep -m1 -E '^- \*\*Utilit' "$DBX_HARNESS_RAIZ/README.md") || return 0
+  grep -oE '`[a-z0-9]+`' <<<"$linha" | tr -d '`' | sort -u
+}
+
+teste_lista_de_utilitarios_do_readme_e_a_do_preflight() {
+  # O `cURL` tem linha propria ("Rede"); a familia de resumo SHA-256 e verificada
+  # em conjunto por `lib/hash`, entao entra pelos tres nomes que ele aceita.
+  local esperado obtido
+  esperado=$({
+    tr ' ' '\n' <<<"$DBX_PREFLIGHT_UTILITARIOS"
+    printf '%s\n' sha256sum shasum openssl
+  } | grep -vx -e curl -e '' | sort -u)
+  obtido=$(_utilitarios_do_readme)
+  assert_diferente '' "$obtido" 'o README precisa trazer a linha de utilitarios'
+  assert_igual "$esperado" "$obtido" 'README e preflight listam os mesmos utilitarios'
+}
+
+teste_preflight_exige_os_utilitarios_do_diagnostico_do_config() {
+  # `commands/config.sh` invoca `df` e `tail` no diagnostico de `--debug`; a
+  # auditoria de comandos externos so varre `lib/`, entao o par e fixado aqui.
+  local utilitario
+  for utilitario in df tail; do
+    grep -qE "(^|[|(;&[:space:]])${utilitario}[[:space:]]" "$DBX_HARNESS_RAIZ/commands/config.sh" ||
+      _harness_falhar "commands/config.sh nao invoca mais $utilitario: revise este caso"
+    case " $DBX_PREFLIGHT_UTILITARIOS " in
+      *" $utilitario "*) ;;
+      *) _harness_falhar "commands/config.sh invoca $utilitario e o preflight nao o exige" ;;
+    esac
+  done
 }
 
 harness_executar "$@"

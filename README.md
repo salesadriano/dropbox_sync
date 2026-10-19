@@ -2,18 +2,18 @@
 
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](LICENSE)
 [![ShellCheck](https://img.shields.io/badge/shellcheck-pass-brightgreen.svg)](#qualidade-e-conformidade)
-[![Testes Automatizados](https://img.shields.io/badge/testes-591%20pass-brightgreen.svg)](#testes-e-qualidade)
+[![Testes Automatizados](https://img.shields.io/badge/testes-TAP%2013-brightgreen.svg)](#testes-e-qualidade)
 [![Piso de Shell](https://img.shields.io/badge/bash-4.4%2B-informational.svg)](#requisitos)
 
 **`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em ambientes Linux/POSIX.
 
-Projetada com arquitetura modular e aderência estrita a contratos de rede e integridade, a ferramenta opera sem dependências externas além de `bash` e `cURL` — dispensando interpretadores de linguagens de alto nível e analisadores de JSON externos (`jq`).
+Projetada com arquitetura modular e aderência estrita a contratos de rede e integridade, a ferramenta tem o `cURL` como **única dependência externa**, além do `bash` 4.4+ e dos utilitários da instalação base listados em [Requisitos do Sistema](#requisitos-do-sistema) — dispensando interpretadores de linguagens de alto nível e analisadores de JSON externos (`jq`).
 
 ---
 
 ## Principais Recursos
 
-- **Zero Dependências Pesadas:** Funciona exclusivamente com `bash` 4.4+ e `cURL` padrão do sistema.
+- **Zero Dependências Pesadas:** A única dependência externa é o `cURL` padrão do sistema; o resto é `bash` 4.4+ e utilitários da instalação base, conferidos pela verificação prévia de cada comando.
 - **Suporte Transparente a Arquivos e Pastas:** `upload` e `download` operam nativamente tanto com arquivos individuais quanto com pastas inteiras recursivamente.
 - **Cache Local Único de `content_hash` (`lib/state.sh`), sem dependência adicional:**
   - Guarda em `~/.local/state/dbx/` (diretório `0700`, arquivos `0600`) o `content_hash` já calculado de cada arquivo, para não reler o que não mudou: `memoria-*` para o `sync` e `upload-*` para o `upload` de arquivo.
@@ -48,8 +48,9 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 
 - **Sistema Operacional:** Linux (POSIX compatível).
 - **Interpretador:** GNU Bash 4.4 ou superior.
-- **Rede:** `cURL` 7.68+ com suporte a HTTPS e TLS 1.2+.
-- **Utilitários do Coreutils:** `sha256sum` (ou `shasum`), `head`, `tail`, `wc`, `cat`, `rm`, `mkdir`, `chmod`.
+- **Rede:** `cURL` com suporte a HTTPS e TLS 1.2+ (única dependência externa).
+- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df` e um utilitário de resumo SHA-256: `sha256sum`, `shasum` ou `openssl`.
+- **Opcionais, só no diagnóstico de `dbx config --debug`:** `mount`, `grep`, `getenforce` e `lsattr`; na falta deles, a linha correspondente do relatório é omitida.
 
 ---
 
@@ -118,9 +119,12 @@ Em ambientes de produção, containers Docker/Kubernetes ou quando executado com
   ```
 - **Atenção ao Código de Autorização:** O código OAuth2 gerado no navegador expira rapidamente e **serve apenas uma única vez**. Se a autorização na rede foi concluída com sucesso mas a gravação local falhou, o código já foi consumido pelo Dropbox. Para tentar novamente, abra novamente a URL informada para obter um código novo.
 
+Opções do `config` (o alias em inglês tem o mesmo efeito): `--substituir` / `--replace` troca uma credencial existente (o refresh token anterior **não** é revogado; prefira `dbx unlink` antes); `--raiz` / `--root <caminho>` define a raiz remota gravada na credencial (padrão `/`).
+
 Para desvincular a conta e revogar o token:
 ```bash
-dbx unlink --confirmar
+dbx unlink --confirmar          # ou: dbx unlink --yes
+dbx unlink --yes --keep-app     # preserva app key e app secret (--manter-aplicativo)
 ```
 
 ---
@@ -218,11 +222,31 @@ dbx sync -p --receber --origem /pasta_remota --destino /meus_dados
 
 # Sincronização com espelhamento (exclui no destino itens ausentes na origem)
 dbx sync -p --enviar --origem /dados --destino /backup --espelhar
+
+# Os mesmos comandos com os nomes em inglês (estilo rsync/git), que podem ser misturados aos em português
+dbx sync -p --push --source /dados --dest /backup --mirror
+dbx sync --pull --origem /pasta_remota --dest /meus_dados
 ```
 
-> **Origem vazia com `--espelhar`:** se a origem está vazia (`--enviar`: a raiz local não tem nenhum arquivo; `--receber`: a listagem remota está vazia) e há algo a apagar no destino, a execução é **recusada inteira, antes de qualquer escrita**, haja ou não memória do par — é o caso de uma montagem que não subiu. Só `--permitir-origem-vazia` libera; `--confirmar` não basta. Com `--dry-run`, o plano anuncia `recusaria=origem vazia`, não lista exclusões e sai com `0`. Origem vazia sem nada a apagar no destino segue normalmente.
+Cada opção do `sync` tem um nome em português e um alias em inglês, com o mesmo efeito e as mesmas recusas:
+
+| Português | Inglês | Efeito |
+|---|---|---|
+| `--origem <dir>` | `--source <dir>` | Lado que manda (obrigatório) |
+| `--destino <dir>` | `--dest <dir>` | Lado que recebe (obrigatório) |
+| `--enviar` | `--push` | Origem local, destino remoto |
+| `--receber` | `--pull` | Origem remota, destino local |
+| `--espelhar` | `--mirror` | Apaga no destino o que não existe na origem |
+| `--confirmar` | `--yes` | Reconhece a primeira execução com espelhamento |
+| `--permitir-origem-vazia` | `--allow-empty-source` | Permite espelhar uma origem vazia |
+
+Repetir uma opção, ainda que pelos dois nomes, segue a mesma regra: opção com valor vale o último valor dado (`--origem a --source b` usa `b`); opção sem valor é idempotente; um segundo sentido (`--enviar --push`, `--push --pull`) é recusado como uso inválido.
+
+> **Origem vazia com `--espelhar`:** se a origem está vazia (`--enviar`: a raiz local não tem nenhum arquivo; `--receber`: a listagem remota está vazia) e há algo a apagar no destino, a execução é **recusada inteira, antes de qualquer escrita**, haja ou não memória do par — é o caso de uma montagem que não subiu. Nos dois sentidos o plano sai antes, com `recusada=origem vazia`, e o código de saída é `14`. Só `--permitir-origem-vazia` (`--allow-empty-source`) libera; `--confirmar` (`--yes`) não basta. Com `--dry-run`, o plano anuncia `recusaria=origem vazia`, não lista exclusões e sai com `0`. Origem vazia sem nada a apagar no destino, ou sem `--espelhar`, é uma operação vazia que sai com `0`; uma raiz local inexistente continua recusada.
 >
-> **Primeira execução com `--espelhar`:** sobre um par de raízes ainda não visto, o `sync` exige `--dry-run` antes ou `--confirmar`. **Se a identificação da conta falhar** (`users/get_current_account`), o `sync` segue sem memória auxiliar e, com `--espelhar`, as **exclusões ficam desabilitadas naquela execução**, nos dois sentidos: envios e recebimentos acontecem, o motivo sai no relatório (`exclusao_desabilitada=conta nao identificada` na saída estruturada) e o código de saída é diferente de `0`. O `--confirmar` **não** reabilita as exclusões — sem a memória, nada protegeria o destino de uma origem que ficou vazia por engano.
+> **Primeira execução com `--espelhar`:** sobre um par de raízes ainda não visto, o `sync` exige `--dry-run` antes ou `--confirmar`. **Se a identificação da conta falhar** (`users/get_current_account`), o `sync` segue sem memória auxiliar e, com `--espelhar`, as **exclusões ficam desabilitadas naquela execução**, nos dois sentidos: envios e recebimentos acontecem, o motivo sai no relatório (`exclusao_desabilitada=conta nao identificada` na saída estruturada) e o código de saída é diferente de `0`. O `--confirmar` **não** reabilita as exclusões — sem a memória não há linha de base, e uma origem que ficou parcial por engano apagaria o que faltou nela.
+>
+> **Caixa e localidade:** a Dropbox não diferencia caixa, e o `sync` também não: `Foto.JPG` e `foto.jpg` são o mesmo arquivo. Para letras acentuadas (`É`/`é`), a comparação usa a localidade `C.UTF-8`, fixada só dentro dela, mesmo com `LC_ALL=C` no ambiente. Se a localidade não existir no sistema, a comparação vale só no ASCII e o `sync` avisa uma vez em `stderr`, sem recusar a execução.
 
 ---
 

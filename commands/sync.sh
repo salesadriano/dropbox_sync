@@ -196,33 +196,35 @@ dbx_cmd_sync_executar() {
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
-      --origem)
+      # RF-64: o alias em ingles e a MESMA opcao, com o mesmo efeito, as mesmas
+      # recusas e a mesma regra de repeticao (RF-64(e)).
+      --origem | --source)
         shift
         origem=${1-}
         tem_origem='sim'
         ;;
-      --destino)
+      --destino | --dest)
         shift
         destino=${1-}
         tem_destino='sim'
         ;;
-      --enviar)
+      --enviar | --push)
         [[ -z $sentido ]] || {
           dbx_cmd_falhar uso_invalido '--enviar e --receber sao mutuamente exclusivos'
           return $?
         }
         sentido='enviar'
         ;;
-      --receber)
+      --receber | --pull)
         [[ -z $sentido ]] || {
           dbx_cmd_falhar uso_invalido '--enviar e --receber sao mutuamente exclusivos'
           return $?
         }
         sentido='receber'
         ;;
-      --espelhar) espelhar='sim' ;;
-      --confirmar) confirmado='sim' ;;
-      --permitir-origem-vazia) permitir_origem_vazia='sim' ;;
+      --espelhar | --mirror) espelhar='sim' ;;
+      --confirmar | --yes) confirmado='sim' ;;
+      --permitir-origem-vazia | --allow-empty-source) permitir_origem_vazia='sim' ;;
       --progresso | --progress | -p)
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
         DBX_CLI_PROGRESSO='sim'
@@ -244,18 +246,27 @@ dbx_cmd_sync_executar() {
   done
 
   [[ $tem_origem == 'sim' && -n $origem ]] || {
-    dbx_cmd_falhar uso_invalido '--origem e obrigatorio'
+    dbx_cmd_falhar uso_invalido '--origem (--source) e obrigatorio'
     return $?
   }
   [[ $tem_destino == 'sim' && -n $destino ]] || {
-    dbx_cmd_falhar uso_invalido '--destino e obrigatorio'
+    dbx_cmd_falhar uso_invalido '--destino (--dest) e obrigatorio'
     return $?
   }
   [[ -n $sentido ]] || {
     dbx_cmd_falhar uso_invalido \
-      'informe o sentido: --enviar (origem local para destino remoto) ou --receber (origem remota para destino local)'
+      'informe o sentido: --enviar ou --push (origem local para destino remoto), --receber ou --pull (origem remota para destino local)'
     return $?
   }
+
+  # RF-54(f)(g): sem a localidade da comparacao, `É` e `é` viram caminhos
+  # distintos. O operador e avisado uma vez, so no `sync` (o unico comando que
+  # compara sem caixa), e a execucao segue: o aviso nao muda codigo nem stdout.
+  if ! dbx_sync_localidade_disponivel; then
+    dbx_cmd_iniciar_saida
+    dbx_output_diagnostico aviso "$DBX_SYNC_MOTIVO"
+    dbx_output_render_diagnostico >&2
+  fi
 
   # RF-45: fluxo nao tem arvore. A recusa nomeia qual sinalizador trazia o valor.
   local lado
@@ -428,27 +439,15 @@ dbx_cmd_sync_executar() {
   dbx_sync_ler_revs "$revs_remotos" mapa_revs
   dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
 
-  # RF-41(b): origem vazia com memoria povoada e recusa integral, sem escrita
-  # alguma. Uma raiz que ficou vazia por engano — ponto de montagem que nao
-  # subiu, disco trocado — e indistinguivel de uma raiz esvaziada de proposito, e
-  # com espelhamento a segunda leitura apaga o destino inteiro.
+  # RF-41(b): origem vazia — no `--enviar`, raiz local sem arquivo; no
+  # `--receber`, listagem remota sem arquivo. Uma raiz que ficou vazia por
+  # engano (ponto de montagem que nao subiu) e indistinguivel de uma esvaziada
+  # de proposito.
   local vazia='nao'
   if [[ $sentido == 'enviar' ]]; then
     [[ ${#caminhos_locais[@]} -eq 0 ]] && vazia='sim'
   else
     [[ ${#ordem_remota[@]} -eq 0 ]] && vazia='sim'
-  fi
-  # Em simulacao, as duas guardas de origem vazia anunciam a recusa no plano em
-  # vez de sair com erro (RF-44); ver a guarda sem memoria, abaixo.
-  local recusaria=''
-  if [[ $vazia == 'sim' && ${#DBX_STATE_ENTRADA[@]} -gt 0 && $permitir_origem_vazia != 'sim' &&
-    ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
-    recusaria='origem vazia'
-  elif [[ $vazia == 'sim' && ${#DBX_STATE_ENTRADA[@]} -gt 0 && $permitir_origem_vazia != 'sim' ]]; then
-    _dbx_cmd_sync_encerrar_area
-    dbx_cmd_falhar nao_concluida \
-      'a origem esta vazia e a memoria registra caminhos de execucao anterior: execucao recusada integralmente (use --permitir-origem-vazia se a origem foi esvaziada de proposito)'
-    return $?
   fi
 
   if [[ $sentido == 'enviar' ]]; then
@@ -457,26 +456,22 @@ dbx_cmd_sync_executar() {
     dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
   fi
 
-  # RF-41(b) emendado (ciclo 4, memoria `2026-10-18-2243-guarda-origem-vazia`):
-  # a guarda acima depende da memoria, e a memoria pode faltar, estar
-  # descartada, ilegivel ou ter sido regravada vazia — cada uma dessas brechas
-  # ja apagou o destino num caso de teste (QA-P3-01, 05, 06, 07). Esta guarda
-  # NAO depende de memoria: com espelhamento, origem vazia e algo a apagar no
-  # destino e recusa integral, antes de qualquer escrita. So
-  # `--permitir-origem-vazia` libera; `--confirmar` reconhece a primeira
+  # RF-41(b) com O-1 (memorias `2026-10-18-2243-guarda-origem-vazia` e
+  # `2026-10-19-0829-aliases-poda-e-comentarios`): com espelhamento, origem vazia
+  # e algo a apagar no destino e recusa integral, nos dois sentidos, sem
+  # depender da memoria — que pode faltar, estar descartada ou ilegivel. Sem
+  # `--espelhar` nada seria apagado e a origem vazia e operacao vazia (DIV-30).
+  # So `--permitir-origem-vazia` libera; `--confirmar` reconhece a primeira
   # execucao (RF-48), nao uma origem vazia.
   #
   # A recusa sai DEPOIS do plano e ANTES de qualquer escrita (RF-41(d)): o plano
-  # registra a recusa (`recusada=origem vazia`) e os motivos de exclusao
-  # desabilitada, sem listar exclusao alguma, e a execucao para ali. Em
-  # SIMULACAO (RF-44, sai com 0) o plano anuncia `recusaria` e nao lista
-  # exclusao: a previa mostra o que a execucao real faria.
-  local recusa_origem_vazia='nao' a_apagar_recusado=0
-  if [[ -n $recusaria || ($espelhar == 'sim' && $vazia == 'sim' && ${#DBX_SYNC_APAGAR[@]} -gt 0 &&
-    $permitir_origem_vazia != 'sim') ]]; then
+  # registra `recusada=origem vazia`, sem listar exclusao, e a execucao para ali.
+  # Em SIMULACAO (RF-44, sai com 0) o plano anuncia `recusaria`.
+  local recusa_origem_vazia='nao' a_apagar_recusado=0 recusaria=''
+  if [[ $espelhar == 'sim' && $vazia == 'sim' && ${#DBX_SYNC_APAGAR[@]} -gt 0 &&
+    $permitir_origem_vazia != 'sim' ]]; then
     recusa_origem_vazia='sim'
     a_apagar_recusado=${#DBX_SYNC_APAGAR[@]}
-    recusaria=''
     [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && recusaria='origem vazia'
     DBX_SYNC_APAGAR=()
   fi
@@ -519,12 +514,11 @@ dbx_cmd_sync_executar() {
   # apenas no ramo que falhou. Um ramo invisivel produz exatamente a mesma
   # observacao que um ramo apagado, e nao ha como distinguir depois.
   #
-  # RF-52(a) com RF-41 (DIV-28 revista no ciclo 2): sem identidade de conta nao
-  # ha memoria, e sem memoria a recusa de RF-41(b) — origem vazia com memoria
-  # povoada — nunca dispara. Uma rotina com `--confirmar` e a origem vazia por
-  # engano apagaria o destino inteiro. A exclusao fica desabilitada com a MESMA
-  # semantica da travessia parcial, nos dois sentidos, e `--confirmar` NAO a
-  # reabilita: ele reconhece a primeira execucao (RF-48), nao substitui a
+  # RF-52(a) com RF-41(e) (DIV-28): sem identidade de conta nao ha memoria nem
+  # linha de base. A origem vazia ja e recusada acima; esta guarda cobre a
+  # origem PARCIAL (nao vazia) sem base. A exclusao fica desabilitada com a
+  # MESMA semantica da travessia parcial, nos dois sentidos, e `--confirmar` NAO
+  # a reabilita: ele reconhece a primeira execucao (RF-48), nao substitui a
   # memoria que falta.
   local exclusao_desabilitada='nao' motivo_exclusao=''
   if [[ $espelhar == 'sim' && $parcial == 'sim' ]]; then
@@ -533,10 +527,9 @@ dbx_cmd_sync_executar() {
   if [[ $espelhar == 'sim' && -z $conta ]]; then
     motivo_exclusao="${motivo_exclusao}${motivo_exclusao:+; }conta nao identificada"
   fi
-  # QA-P3-01 (decisao do Tech Lead): memoria que existia e foi descartada na
-  # carga deixa o par "visto" sem linha de base — a recusa de RF-41(b) nao atua.
-  # Mesma semantica: exclusao desabilitada nesta execucao; a memoria e regravada
-  # em v2 no fim, e a execucao seguinte volta ao normal.
+  # RF-41(f): memoria que existia e foi descartada na carga deixa o par "visto"
+  # sem linha de base. Mesma semantica: exclusao desabilitada nesta execucao; a
+  # memoria e regravada em v2 no fim, e a execucao seguinte volta ao normal.
   local memoria_descartada=${DBX_STATE_DESCARTADA:-nao}
   if [[ $espelhar == 'sim' && $memoria_descartada == 'sim' ]]; then
     motivo_exclusao="${motivo_exclusao}${motivo_exclusao:+; }memoria descartada"
@@ -592,7 +585,7 @@ dbx_cmd_sync_executar() {
   if [[ $recusa_origem_vazia == 'sim' && ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
     _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar nao_concluida \
-      "a origem esta vazia e o espelhamento apagaria $a_apagar_recusado item(ns) no destino: execucao recusada integralmente (se a origem foi esvaziada de proposito, use --permitir-origem-vazia; --confirmar nao basta)"
+      "a origem esta vazia e o espelhamento apagaria $a_apagar_recusado item(ns) no destino: execucao recusada integralmente (se a origem foi esvaziada de proposito, use --permitir-origem-vazia ou --allow-empty-source; --confirmar ou --yes nao basta)"
     return $?
   fi
 
