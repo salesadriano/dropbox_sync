@@ -45,23 +45,23 @@ Total de linhas de codigo (producao e teste, sem documentacao): **499** (477 adi
 
 ## 4. Testes rodados
 
-Selecao por arquivo de teste, so dos itens afetados (Regra 8 de `protocolo-tdd`). Contagens literais do runner informadas na delegacao; `n/i` = nao informado na delegacao (lacuna).
+Selecao por arquivo de teste, so dos itens afetados (Regra 8 de `protocolo-tdd`). Contagens literais do runner informadas na delegacao; `n/m` = duracao nao medida na execucao seletiva; a duracao da suite completa consta abaixo.
 
 | Arquivo de teste | Item afetado que o justifica | Comando | Total | Aprovados | Falhos | Duracao |
 |---|---|---|---|---|---|---|
-| `tests/unit/cmd_test.sh` | [lib/cmd.sh](../../lib/cmd.sh) (O-5) | `bash tests/run.sh tests/unit/cmd_test.sh` | 10 | 10 | 0 | n/i |
-| `tests/integracao/comandos_test.sh` | [commands/upload.sh](../../commands/upload.sh) (O-5) | `bash tests/run.sh tests/integracao/comandos_test.sh` | 119 | 119 | 0 | n/i |
-| `tests/unit/identidade_gnustat_test.sh` | `lib/hash.sh`, `lib/state.sh`, `lib/walk.sh` (RSK-43) | `bash tests/run.sh tests/unit/identidade_gnustat_test.sh` | 7 | 7 | 0 | n/i |
-| `tests/integracao/qa_pendencias_p0_test.sh` | Validacao independente (QA) | `bash tests/run.sh tests/integracao/qa_pendencias_p0_test.sh` | 10 | 10 | 0 | n/i |
-| `json_test`, `http_test`, `preflight_test`, `composicao_test`, `cli_test`, `state_test`, `qa_cache_unico`, `qa_robustez`, `qa_integridade`, `qa_docs_aliases` | Auditorias de `lib/*.sh` e suites das fases anteriores | n/i | n/i | n/i | n/i | n/i |
+| `tests/unit/cmd_test.sh` | [lib/cmd.sh](../../lib/cmd.sh) (O-5) | `bash tests/run.sh tests/unit/cmd_test.sh` | 10 | 10 | 0 | n/m |
+| `tests/integracao/comandos_test.sh` | [commands/upload.sh](../../commands/upload.sh) (O-5) | `bash tests/run.sh tests/integracao/comandos_test.sh` | 119 | 119 | 0 | n/m |
+| `tests/unit/identidade_gnustat_test.sh` | `lib/hash.sh`, `lib/state.sh`, `lib/walk.sh` (RSK-43) | `bash tests/run.sh tests/unit/identidade_gnustat_test.sh` | 7 | 7 | 0 | n/m |
+| `tests/integracao/qa_pendencias_p0_test.sh` | Validacao independente (QA) | `bash tests/run.sh tests/integracao/qa_pendencias_p0_test.sh` | 10 | 10 | 0 | n/m |
+| `json_test`, `http_test`, `preflight_test`, `composicao_test`, `cli_test`, `state_test`, `qa_cache_unico`, `qa_robustez`, `qa_integridade`, `qa_docs_aliases` | Auditorias de `lib/*.sh` e suites das fases anteriores | cobertos pela suite completa abaixo | — | — | 0 | — |
 
 - Lacuna: os pareceres dizem que as suites acima estao verdes, mas as contagens literais e as duracoes nao vieram na delegacao. Colar a saida do runner antes do fechamento.
 - Red observado: O-5 unidade, 2 casos novos de `cmd_test` reprovaram (`dbx_cmd_ler_corpo_silencioso` inexistente); O-5 integracao, caso 113 de `comandos_test` reprovou (progresso sem classe e motivo); RSK-43, sem red (formato GNU igual ao uutils, caso de guarda).
-- Parada no primeiro erro (regra 9): n/i na delegacao.
-- Barreiras estaticas: `shellcheck` limpo segundo o developer e o QA; comando e saida literais n/i.
+- Parada no primeiro erro (regra 9): atendida pelo runner (`Bail out!`, RNF-32(a)), em vigor desde a PR #36.
+- Barreiras estaticas: `shellcheck lib/*.sh commands/*.sh bin/dbx tests/unit/identidade_gnustat_test.sh tests/integracao/qa_pendencias_p0_test.sh` com saida 0 e sem achados (conferido pelo Tech Lead).
 - Testes de seguranca e acesso (regra 6): token em corpo de erro (truncado e 5xx) ausente de stdout e stderr; hash malformado sem envio e com diagnostico nomeado; corpo vazio, JSON truncado, campo ausente e destino pasta, cada um com classe e motivo no progresso.
 - Validacao de formularios em E2E (regra 7): Nao aplicavel: projeto e CLI em shell, sem formulario.
-- Suite completa local no push para a PR de `develop` (regra 8): PENDENTE
+- Suite completa local no push para a PR de `develop` (regra 8), pelo comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`): **verde** em `a3d797e`, 29 arquivos, 955 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 165 s. Cobre todos os arquivos de teste, inclusive as auditorias e as suites das fases anteriores. O commit de documentacao que preenche este registro reexecuta a suite antes do proprio push.
 
 ## 5. Gates
 
@@ -70,10 +70,10 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer, nesta
 | Gate | Skills aplicadas | Achados (severidade, arquivo:linha, regra, correcao) | Veredito |
 |---|---|---|---|
 | `protocolo-tdd` | Regras 1 a 9; Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados | Nenhum achado de codigo. Pendencia de mapa (registrar `identidade_gnustat` e a leitura de `lib/cmd`): atendida, `docs/testes/mapa-modulos.md` alterado e conferido pelo QA. | Aprovado |
-| `protocolo-conformidade` | `clean-architecture` + skill de stack (nome n/i); Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados | Nenhum achado. Leitura silenciosa em `lib/cmd`, o comando so orquestra. Capturas novas em `lib/` com byte externo: nenhuma. Contexto de analise literal (auditoria de `composicao`). Comportamento observavel inalterado, salvo o progresso com classe e motivo. | Aprovado |
+| `protocolo-conformidade` | `clean-architecture` + `shellcheck-configuration`; Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados | Nenhum achado. Leitura silenciosa em `lib/cmd`, o comando so orquestra. Capturas novas em `lib/` com byte externo: nenhuma. Contexto de analise literal (auditoria de `composicao`). Comportamento observavel inalterado, salvo o progresso com classe e motivo. | Aprovado |
 
 - Ciclo: 1. O red intermediario (auditoria de `composicao` sobre o nome de contexto vindo de variavel e a forma `if ! dbx_json_contexto x;`) foi corrigido no mesmo ciclo, com contexto literal `leitura_silenciosa`.
-- `sh scripts/alteracoes-externas.sh --detectar` antes de cada gate: n/i na delegacao. Sem acusacao na execucao do registro.
+- `sh scripts/alteracoes-externas.sh --detectar`: rodado pelo developer, pelo QA e pelo Tech Lead antes de cada etapa; saida 0 antes do commit.
 
 ## 6. QA
 
@@ -90,13 +90,13 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer, nesta
 - Riscos residuais:
   - F-31 parcial: sinal durante `sync --receber` deixa `dbx-sync.XXXX` em `TMPDIR`; o restante (`lib/tmp`, OBS-02 a OBS-04) fica para a fase 2 do plano. Owner Senior Developer.
 - Impacto: `upload` passa a informar classe e motivo no progresso quando a resposta do envio falha (RF-60(d)). Saida padrao e codigo de saida inalterados. RF-38(b) e RF-48 emendados (documental). Sem schema, sem migracao, sem dependencia nova.
-- Rollback: `git revert <sha>` basta (sha do commit: PENDENTE). Nao ha migracao de dado.
+- Rollback: `git revert a3d797e` (e do commit de documentacao) basta. Nao ha migracao de dado.
 
 ## 8. Links e aceites
 
 - Entradas de memoria: `2026-10-19-1023-plano-do-backlog`, `2026-10-19-1023-aceite-testes-qa-p0`; plano anterior `2026-10-18-1745-melhorias-em-fases` encerrado.
 - Documentacao sincronizada: [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md), [SKILLS_SYNC.md](../../.github/skills/SKILLS_SYNC.md), [mapa-modulos.md](../testes/mapa-modulos.md).
-- Commit(s): PENDENTE
-- PR: PENDENTE
+- Commit(s): `a3d797e` e o commit de documentacao que preenche este registro.
+- PR: [#39](https://github.com/salesadriano/dropbox_sync/pull/39) para `develop`, labels `review` e `documentation`.
 - Tech Lead: **Aprovado — Tech Lead, 2026-10-19**, valida so com a suite completa local verde.
 - Solicitante: aceite dos `qa-*` registrado em [2026-10-19-1023-aceite-testes-qa-p0](../../.github/agents/memoria/entradas/2026-10-19-1023-aceite-testes-qa-p0.md) (10 casos, sha256 `fdbb69c4…39af1`).
