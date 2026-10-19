@@ -40,9 +40,9 @@
 # Nao ha nenhum cano em todo o caminho de calculo, portanto nao existe status de
 # pipeline a mascarar erro. Custo: uma escrita e uma leitura adicionais por
 # bloco, absorvidas pelo cache de paginas e despreziveis diante da transferencia
-# de rede que este resumo acompanha. O buffer fica em area criada por `mktemp`,
-# com permissao restrita e removida por `trap`, inclusive em interrupcao
-# (RNF-05). Quando lib/tmp existir, esta area deve migrar para la.
+# de rede que este resumo acompanha. O buffer fica em area de `lib/tmp`
+# (`dbx-hash.*`, 0700), removida em todo termino, inclusive em interrupcao
+# (RNF-05, RNF-35).
 #
 # Contrato de status de saida — alinhado a taxonomia de RF-29, para que um
 # status propagado ao orquestrador nunca signifique duas coisas diferentes:
@@ -66,6 +66,8 @@ _dbx_hash_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_hash_diretorio=$(cd -P -- "$_dbx_hash_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_hash_diretorio/errors.sh"
+# shellcheck source=lib/tmp.sh
+. "$_dbx_hash_diretorio/tmp.sh"
 unset _dbx_hash_diretorio
 
 readonly DBX_HASH_TAMANHO_BLOCO=4194304
@@ -255,26 +257,20 @@ dbx_hash_acumular_encerrar() {
 }
 
 # _dbx_hash_calcular — le a entrada padrao e imprime "<content_hash> <bytes>".
-# Deve ser invocada em subshell (o que a substituicao de comando ja garante),
-# para que o `trap` de limpeza tenha escopo proprio e nao substitua o do chamador.
+# Deve ser invocada em subshell (o que a substituicao de comando ja garante):
+# o `umask` dela nao vaza, e a area que ela registra em `lib/tmp` e do subshell
+# e sai com ele, sem tocar no registro de quem chamou.
 _dbx_hash_calcular() {
   local buffer tamanho
 
   dbx_hash_verificar_dependencias || return "$DBX_HASH_ERRO_DEPENDENCIA"
 
   umask 077
-  # DELIBERADAMENTE global, e nao `local`: a acao do `trap` e avaliada quando o
-  # subshell encerra, momento em que o escopo da funcao ja nao existe. Com uma
-  # variavel local, `$area` expandiria para vazio e a limpeza nao removeria
-  # nada, deixando residuo a cada calculo — defeito que o caso
-  # `nao_deixa_residuo_temporario` capturou.
   # Area temporaria indisponivel e problema do HOST, nao recurso remoto ausente.
   # Classificar como `nao_encontrado` mandava investigar a Dropbox por falha de
   # disco local.
-  DBX_HASH_AREA_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/dbx-hash.XXXXXXXX") ||
-    return "$DBX_HASH_ERRO_DEPENDENCIA"
-  trap 'rm -rf "$DBX_HASH_AREA_TEMP"' EXIT INT TERM HUP
-  buffer="$DBX_HASH_AREA_TEMP/bloco"
+  dbx_tmp_area hash || return "$DBX_HASH_ERRO_DEPENDENCIA"
+  buffer="$DBX_TMP_CAMINHO/bloco"
 
   dbx_hash_acumular_iniciar || return $?
   while :; do

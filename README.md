@@ -49,7 +49,7 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 - **Sistema Operacional:** Linux (POSIX compatível).
 - **Interpretador:** GNU Bash 4.4 ou superior.
 - **Rede:** `cURL` com suporte a HTTPS e TLS 1.2+ (única dependência externa).
-- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df` e um utilitário de resumo SHA-256: `sha256sum`, `shasum` ou `openssl`.
+- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum` ou `openssl`.
 - **Opcionais, só no diagnóstico de `dbx config --debug`:** `mount`, `grep`, `getenforce` e `lsattr`; na falta deles, a linha correspondente do relatório é omitida.
 
 ---
@@ -129,6 +129,8 @@ Para desvincular a conta e revogar o token:
 dbx unlink --confirmar          # ou: dbx unlink --yes
 dbx unlink --yes --keep-app     # preserva app key e app secret (--manter-aplicativo)
 ```
+
+Com `sync` ou `verificar` em curso neste host, o `unlink` recusa com código `7` sem apagar nada. Trava órfã, ilegível ou de outro host não é apagada: o resto do estado sai e cada trava mantida gera um aviso em `stderr`.
 
 ---
 
@@ -245,6 +247,7 @@ Cada opção do `sync` tem um nome em português e um alias em inglês, com o me
 | `--confirmar` | `--yes` | Reconhece a primeira execução com espelhamento |
 | `--permitir-origem-vazia` | `--allow-empty-source` | Permite espelhar uma origem vazia |
 | `--forcar` | `--force` | Só com `--enviar`: pula a checagem de espaço livre (com `--receber` é uso inválido, código `2`) |
+| `--esperar <s>` | `--wait <s>` | Espera até `<s>` segundos (inteiro de `0` a `3600`) pela trava do par; inválido sai com `2` |
 
 No `--enviar`, a soma dos arquivos a transferir (omitidos e exclusões não contam; sobrescrita conta o arquivo novo inteiro) é conferida com o espaço livre da conta numa única consulta: se não cabe, o plano sai e a execução é recusada com código `12` **antes de qualquer escrita**, inclusive das exclusões do `--espelhar` e da gravação da memória. Com `--dry-run`, o plano só anuncia `recusaria=...`. O `--forcar` não muda a decisão por `content_hash`: arquivo idêntico continua omitido.
 
@@ -253,6 +256,8 @@ Repetir uma opção, ainda que pelos dois nomes, segue a mesma regra: opção co
 > **Origem vazia com `--espelhar`:** se a origem está vazia (`--enviar`: a raiz local não tem nenhum arquivo; `--receber`: a listagem remota está vazia) e há algo a apagar no destino, a execução é **recusada inteira, antes de qualquer escrita**, haja ou não memória do par — é o caso de uma montagem que não subiu. Nos dois sentidos o plano sai antes, com `recusada=origem vazia`, e o código de saída é `14`. Só `--permitir-origem-vazia` (`--allow-empty-source`) libera; `--confirmar` (`--yes`) não basta. Com `--dry-run`, o plano anuncia `recusaria=origem vazia`, não lista exclusões e sai com `0`. Origem vazia sem nada a apagar no destino, ou sem `--espelhar`, é uma operação vazia que sai com `0`; uma raiz local inexistente continua recusada.
 >
 > **Primeira execução com `--espelhar`:** sobre um par de raízes ainda não visto, o `sync` exige `--dry-run` antes ou `--confirmar`. **Se a identificação da conta falhar** (`users/get_current_account`), o `sync` segue sem memória auxiliar e, com `--espelhar`, as **exclusões ficam desabilitadas naquela execução**, nos dois sentidos: envios e recebimentos acontecem, o motivo sai no relatório (`exclusao_desabilitada=conta nao identificada` na saída estruturada) e o código de saída é diferente de `0`. O `--confirmar` **não** reabilita as exclusões — sem a memória não há linha de base, e uma origem que ficou parcial por engano apagaria o que faltou nela.
+>
+> **Trava de concorrência:** só um `sync` ou `verificar` por vez para o mesmo par — a conta, a raiz local e a raiz remota (sem caixa), **em qualquer sentido**: `--enviar A B` e `--receber B A` se excluem. Pares diferentes rodam juntos, e os outros comandos não travam. A trava vale também com `--dry-run` e é adquirida antes de qualquer chamada à API, escrita ou leitura da memória. Ocupada, a execução é **recusada na hora com código `7`**, dizendo o pid, o host, o início (UTC) e o comando de quem a tem; com `--esperar N` (`--wait N`) ela tenta a cada segundo por até `N` segundos e, esgotado o tempo, recusa dizendo quanto esperou. Fica em `${XDG_STATE_HOME:-~/.local/state}/dbx/trava-<resumo>` (`0600`) e sai em todo término, inclusive por `INT`, `TERM` e `HUP` (código `14`). Trava de processo que morreu **neste host** (ou de antes de um reinício) é retomada com aviso; de **outro host** ou **ilegível**, nunca: o `dbx diagnostico` a mostra com o remédio (`rm` do arquivo, depois de confirmar que nada está em curso). Com o diretório de estado de outro usuário, a execução segue sem trava, com aviso. Num diretório de estado em **NFS**, a exclusão entre máquinas é **melhor esforço**; prefira um `XDG_STATE_HOME` local.
 >
 > **Caixa e localidade:** a Dropbox não diferencia caixa, e o `sync` também não: `Foto.JPG` e `foto.jpg` são o mesmo arquivo. Para letras acentuadas (`É`/`é`), a comparação usa a localidade `C.UTF-8`, fixada só dentro dela, mesmo com `LC_ALL=C` no ambiente. Se a localidade não existir no sistema, a comparação vale só no ASCII e o `sync` avisa uma vez em `stderr`, sem recusar a execução.
 
@@ -320,12 +325,12 @@ dbx verificar --enviar --origem /dados --destino /backup
 dbx verify --pull --source /backup --dest /dados
 ```
 
-Cada arquivo sai uma vez como `igual`, `diferente` (com `motivo=conteudo` ou `motivo=tipo`, quando é arquivo de um lado e pasta do outro), `so_origem` ou `so_destino`, na ordem do caminho sem caixa, com as contagens `iguais`, `diferentes`, `so_origem`, `so_destino` e `total` ao fim. Código de saída: `0` só quando tudo é igual; `11` quando há divergência (mensagem própria, nada foi transferido); `14` com travessia local parcial; erro de execução (rede `9`, autenticação `5`, limite de taxa `8`, ...) prevalece. `--espelhar`, `--confirmar`, `--permitir-origem-vazia` e `--forcar` (e os aliases) são recusados com `2`.
+Cada arquivo sai uma vez como `igual`, `diferente` (com `motivo=conteudo` ou `motivo=tipo`, quando é arquivo de um lado e pasta do outro), `so_origem` ou `so_destino`, na ordem do caminho sem caixa, com as contagens `iguais`, `diferentes`, `so_origem`, `so_destino` e `total` ao fim. Código de saída: `0` só quando tudo é igual; `11` quando há divergência (mensagem própria, nada foi transferido); `14` com travessia local parcial; erro de execução (rede `9`, autenticação `5`, limite de taxa `8`, ...) prevalece. `--espelhar`, `--confirmar`, `--permitir-origem-vazia` e `--forcar` (e os aliases) são recusados com `2`. O `verificar` trava o par como o `sync` (código `7` se ocupada) e aceita `--esperar`/`--wait`; o arquivo de trava é a única escrita, e o diretório de estado termina exatamente como estava.
 
 ---
 
 ### 9. `diagnostico` (`doctor`) — Checagem do Ambiente
-Checa, sem parar no primeiro item e sem passar pela verificação prévia, sete pontos: `dependencias`, `credencial`, `conectividade` (`check/user`), `escopos`, `espaco`, `localidade` e `estado`. Cada checagem sai numa linha, com `ok`, `aviso` ou `falha`, a mensagem e o remédio sugerido:
+Checa, sem parar no primeiro item e sem passar pela verificação prévia, oito pontos: `dependencias`, `credencial`, `conectividade` (`check/user`), `escopos`, `espaco`, `localidade`, `estado` e `trava` (uma linha por trava de `sync`/`verificar`: `viva`, `orfa`, `outro-host` ou `ilegivel`, com o remédio; trava nunca reprova, e diretório de estado em NFS gera aviso). Cada checagem sai numa linha, com `ok`, `aviso` ou `falha`, a mensagem e o remédio sugerido:
 
 ```bash
 dbx diagnostico

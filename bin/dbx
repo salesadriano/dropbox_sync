@@ -155,14 +155,16 @@ case $DBX_CLI_COMANDO in
         ;;
       unlink)
         printf 'Uso: dbx unlink [--confirmar | --yes] [--manter-aplicativo | --keep-app]\n\n'
-        printf 'Revoga o vinculo com a conta remota e limpa a credencial local.\n\n'
+        printf 'Revoga o vinculo com a conta remota e limpa a credencial local.\n'
+        printf 'Com sync ou verificar em curso neste host, recusa com codigo 7 sem apagar nada;\n'
+        printf 'trava orfa, ilegivel ou de outro host fica, com um aviso por trava.\n\n'
         printf 'Opcoes:\n'
         printf '  --confirmar, --yes              Confirma o desvinculo sem terminal interativo\n'
         printf '  --manter-aplicativo, --keep-app Preserva app key e app secret para religar\n'
         exit 0
         ;;
       sync)
-        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--progresso]\n\n'
+        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--esperar | --wait <s>] [--progresso]\n\n'
         printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n\n'
         printf 'Opcoes (o nome em ingles e alias do nome em portugues; podem ser misturados):\n'
         printf '  --enviar, --push                Origem local, destino remoto\n'
@@ -174,8 +176,16 @@ case $DBX_CLI_COMANDO in
         printf '  --permitir-origem-vazia, --allow-empty-source\n'
         printf '                                  Permite espelhar uma origem VAZIA (apaga o destino)\n'
         printf '  --forcar, --force               So com --enviar: pula a checagem de espaco livre\n'
+        printf '  --esperar, --wait <s>           Espera ate <s> segundos (0 a 3600) pela trava do par\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        printf 'Trava de concorrencia (RF-69):\n'
+        printf '  Um sync ou verificar por vez para o mesmo par (conta, raiz local, raiz remota,\n'
+        printf '  em qualquer sentido), inclusive com --dry-run. Ocupada, a execucao e recusada\n'
+        printf '  na hora com codigo 7, dizendo pid, host, inicio e comando de quem a tem; com\n'
+        printf '  --esperar N ela tenta a cada segundo por ate N segundos. Trava de processo\n'
+        printf '  morto neste host e retomada com aviso; de outro host ou ilegivel, nunca: o\n'
+        printf '  dbx diagnostico mostra o arquivo e como libera-lo.\n\n'
         printf 'Repeticao: opcao com valor vale o ultimo valor dado; opcao sem valor e\n'
         printf '  idempotente; um segundo sentido (--enviar/--push/--receber/--pull) e recusado.\n\n'
         printf 'Origem vazia (RF-41):\n'
@@ -238,7 +248,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       verificar)
-        printf 'Uso: dbx verificar (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--progresso]\n\n'
+        printf 'Uso: dbx verificar (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--esperar | --wait <s>] [--progresso]\n\n'
         printf 'Compara a arvore local e a remota por content_hash, sem transferir nem gravar nada.\n'
         printf 'Alias em ingles: verify.\n\n'
         printf 'Opcoes (as mesmas do sync; o nome em ingles e alias do nome em portugues):\n'
@@ -246,18 +256,22 @@ case $DBX_CLI_COMANDO in
         printf '  --receber, --pull               Origem remota, destino local\n'
         printf '  --origem, --source <dir>        Lado de referencia (obrigatorio)\n'
         printf '  --destino, --dest <dir>         Lado comparado (obrigatorio)\n'
+        printf '  --esperar, --wait <s>           Espera ate <s> segundos (0 a 3600) pela trava do par\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
         printf 'Cada arquivo sai uma vez como igual, diferente, so_origem ou so_destino, com as\n'
         printf 'contagens ao fim. Codigo de saida: 0 tudo igual; 11 ha divergencia; 14 travessia\n'
         printf 'parcial; erro de execucao (rede, autenticacao, ...) prevalece. As opcoes do sync que\n'
         printf 'escrevem (--espelhar, --confirmar, --permitir-origem-vazia, --forcar) sao recusadas.\n'
+        printf 'Trava o par como o sync (codigo 7 se ocupada; veja dbx help sync); o arquivo de\n'
+        printf 'trava e a unica escrita e sai no fim.\n'
         exit 0
         ;;
       diagnostico)
         printf 'Uso: dbx diagnostico\n\n'
-        printf 'Checa dependencias, credencial, conectividade, escopos, espaco, localidade e o\n'
-        printf 'diretorio de estado, uma linha por checagem (ok, aviso ou falha) com o remedio.\n'
+        printf 'Checa dependencias, credencial, conectividade, escopos, espaco, localidade, o\n'
+        printf 'diretorio de estado e as travas de sync/verificar, uma linha por checagem (ok,\n'
+        printf 'aviso ou falha) com o remedio.\n'
         printf 'Alias em ingles: doctor.\n\n'
         printf 'Nao passa pela verificacao previa, nunca imprime segredo e nao altera nada.\n'
         printf 'Codigo de saida: 0 sem falha (aviso nao reprova); 3 com ao menos uma falha.\n'

@@ -144,6 +144,25 @@ dbx_cli_requisito_interno() {
   esac
 }
 
+# Teto de `--esperar` (RF-70(b)), em segundos.
+readonly DBX_CLI_ESPERA_MAXIMA=3600
+
+# dbx_cli_validar_espera <opcao> <valor> — RF-70(b): inteiro decimal de 0 a
+# 3600, so digitos. Qualquer outra coisa e uso invalido, com a opcao e o valor
+# na mensagem (o valor citado se tiver byte de controle); nunca ignorado.
+# Ponto unico para `sync` e `verificar`.
+dbx_cli_validar_espera() {
+  local opcao=$1 valor=${2-} exibido
+  DBX_CLI_MOTIVO=''
+  if [[ $valor =~ ^[0-9]{1,4}$ ]] && ((10#$valor <= DBX_CLI_ESPERA_MAXIMA)); then
+    return 0
+  fi
+  exibido=${valor:0:64}
+  [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+  DBX_CLI_MOTIVO="valor invalido para $opcao: [$exibido]; use um inteiro de 0 a $DBX_CLI_ESPERA_MAXIMA (segundos)"
+  return "$DBX_CLI_ERRO_USO"
+}
+
 _dbx_cli_recusar() {
   DBX_CLI_MOTIVO=$1
   return "$DBX_CLI_ERRO_USO"

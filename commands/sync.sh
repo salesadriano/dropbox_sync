@@ -35,37 +35,12 @@
 
 dbx_cmd_sync_requisitos() { printf 'credencial'; }
 
-# RNF-31: area temporaria da execucao em curso. Global, e nao `local`, porque o
-# tratador de sinal roda quando o escopo da funcao ja nao existe.
-DBX_CMD_SYNC_AREA=''
 # RF-59: falhas por item, na ordem em que ocorreram, e a classe da ultima.
 DBX_CMD_SYNC_FALHAS_CAMINHOS=()
 DBX_CMD_SYNC_FALHAS_CLASSES=()
 DBX_CMD_SYNC_FALHA_CLASSE=''
 DBX_CMD_SYNC_EXIBIDO=''
 DBX_CMD_SYNC_RESUMO_FALHA=''
-
-# _dbx_cmd_sync_interrompido — tratador de INT, TERM e HUP enquanto a area
-# existe (RNF-31), no estilo do recebimento: remove a area e encerra como
-# operacao nao concluida. Recebimento e sessao de envio armam o proprio
-# tratador por cima deste e, no sinal, chegam aqui por `dbx_http_interrompido`.
-_dbx_cmd_sync_interrompido() {
-  [[ -n $DBX_CMD_SYNC_AREA ]] && rm -rf -- "$DBX_CMD_SYNC_AREA"
-  DBX_CMD_SYNC_AREA=''
-  # Esvaziado antes de delegar: `dbx_http_interrompido` chamaria este mesmo
-  # tratador de novo.
-  DBX_HTTP_TRATADOR_EXTERNO=''
-  dbx_http_interrompido
-}
-
-# _dbx_cmd_sync_encerrar_area — remove a area e devolve os sinais ao padrao.
-# Ponto unico, chamado em TODA saida da execucao depois que a area existe.
-_dbx_cmd_sync_encerrar_area() {
-  [[ -n $DBX_CMD_SYNC_AREA ]] && rm -rf -- "$DBX_CMD_SYNC_AREA"
-  DBX_CMD_SYNC_AREA=''
-  DBX_HTTP_TRATADOR_EXTERNO=''
-  dbx_http_sinais_devolver
-}
 
 # _dbx_cmd_sync_exibir <caminho> — forma do caminho que cabe numa linha
 # (RNF-10, RF-28): com byte de controle ou quebra de linha ele sai citado, e a
@@ -189,7 +164,7 @@ dbx_cmd_sync_executar() {
   _dbx_cmd_sync_carregar_dependencias
 
   local origem='' destino='' sentido='' espelhar='nao' confirmado='nao' permitir_origem_vazia='nao'
-  local tem_origem='nao' tem_destino='nao' forcar='nao'
+  local tem_origem='nao' tem_destino='nao' forcar='nao' espera=0 opcao_espera='' valor_espera=''
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
@@ -225,6 +200,12 @@ dbx_cmd_sync_executar() {
       # RF-67(e), DIV-33: so pula a checagem de espaco; a decisao por
       # `content_hash` (RF-39) nao muda.
       --forcar | --force) forcar='sim' ;;
+      # RF-70: espera pela trava do par; validada depois do laco (ultimo vence).
+      --esperar | --wait)
+        opcao_espera=$1
+        shift
+        valor_espera=${1-}
+        ;;
       --progresso | --progress | -p)
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
         DBX_CLI_PROGRESSO='sim'
@@ -258,6 +239,13 @@ dbx_cmd_sync_executar() {
       'informe o sentido: --enviar ou --push (origem local para destino remoto), --receber ou --pull (origem remota para destino local)'
     return $?
   }
+  if [[ -n $opcao_espera ]]; then
+    dbx_cli_validar_espera "$opcao_espera" "$valor_espera" || {
+      dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+      return $?
+    }
+    espera=$((10#$valor_espera))
+  fi
   if [[ $forcar == 'sim' && $sentido == 'receber' ]]; then
     dbx_cmd_falhar uso_invalido \
       '--forcar (--force) so vale com --enviar: ele pula a checagem de espaco da conta, que o --receber nao faz'
@@ -298,18 +286,24 @@ dbx_cmd_sync_executar() {
   _dbx_cmd_caminho_remoto "$raiz_remota" || return $?
   remoto=$DBX_CMD_LIDO
 
-  # No sentido 'receber', o destino local e criado caso ainda nao exista (se nao for simulacao).
   # No sentido 'enviar', a origem local deve preexistir para poder ser transferida.
-  if [[ $sentido == 'receber' && ! -d $raiz_local ]]; then
-    if [[ ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
-      mkdir -p -- "$raiz_local" 2>/dev/null || {
-        dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $raiz_local"
-        return $?
-      }
-    fi
-  elif [[ ! -d $raiz_local ]]; then
+  if [[ $sentido != 'receber' && ! -d $raiz_local ]]; then
     dbx_cmd_falhar nao_encontrado "raiz local inexistente ou nao e diretorio: $raiz_local"
     return $?
+  fi
+
+  # RF-69(b): trava do par e area temporaria, pelo ciclo comum ao `verificar`
+  # (RNF-36), DEPOIS da validacao e da recusa de caminho e ANTES de qualquer
+  # chamada a API, escrita ou leitura de memoria.
+  dbx_cmd_ciclo_iniciar sync "$raiz_local" "$remoto" "$espera" || return $?
+
+  # No sentido 'receber', o destino local e criado caso ainda nao exista (se nao
+  # for simulacao) — ja sob a trava, porque e escrita.
+  if [[ $sentido == 'receber' && ! -d $raiz_local && ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
+    mkdir -p -- "$raiz_local" 2>/dev/null || {
+      dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $raiz_local"
+      return $?
+    }
   fi
 
   # RF-62(c): a raiz local entra na identidade da memoria ja canonizada, para
@@ -351,19 +345,11 @@ dbx_cmd_sync_executar() {
   fi
 
   local area registros_locais registros_remotos
-  # RNF-31: o tratador e armado ANTES de a area existir, para nao haver janela
-  # entre a criacao e a protecao; sem area, ele so encerra.
   DBX_CMD_SYNC_FALHAS_CAMINHOS=()
   DBX_CMD_SYNC_FALHAS_CLASSES=()
-  # shellcheck disable=SC2034  # canal de lib/http, lido por dbx_http_sinais_devolver
-  DBX_HTTP_TRATADOR_EXTERNO=_dbx_cmd_sync_interrompido
-  dbx_http_sinais_devolver
-  area=$(mktemp -d "${TMPDIR:-/tmp}/dbx-sync.XXXXXXXX") || {
-    _dbx_cmd_sync_encerrar_area
-    dbx_cmd_falhar configuracao 'nao foi possivel criar area temporaria'
-    return $?
-  }
-  DBX_CMD_SYNC_AREA=$area
+  # A area e do ciclo comum, registrada em `lib/tmp`: sai em toda saida,
+  # inclusive por sinal (RNF-35), sem limpeza por porta de saida.
+  area=$DBX_CMD_CICLO_AREA
   registros_locais="$area/local"
   registros_remotos="$area/remoto"
   local revs_remotos="$area/revs"
@@ -383,8 +369,7 @@ dbx_cmd_sync_executar() {
   else
     dbx_progress_mensagem "[sync] analisando arquivos locais em: $raiz_local"
     dbx_walk_local "$raiz_local" "$registros_locais" || {
-      _dbx_cmd_sync_encerrar_area
-      dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
+        dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
       return $?
     }
     parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
@@ -394,8 +379,7 @@ dbx_cmd_sync_executar() {
     # RF-54(c): colisao de caixa e recusa integral, antes de qualquer escrita e
     # tambem em simulacao — o plano de uma arvore assim nao tem leitura unica.
     if ! dbx_sync_colisao_de_caixa caminhos_locais; then
-      _dbx_cmd_sync_encerrar_area
-      dbx_cmd_falhar conflito "$DBX_SYNC_MOTIVO"
+        dbx_cmd_falhar conflito "$DBX_SYNC_MOTIVO"
       return $?
     fi
     local indice
@@ -428,7 +412,6 @@ dbx_cmd_sync_executar() {
   local estado_remoto=0
   dbx_sync_enumerar_remoto "$remoto" "$registros_remotos" "$revs_remotos" || estado_remoto=$?
   if [[ $estado_remoto -ne 0 ]]; then
-    _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
     return "$estado_remoto"
   fi
@@ -613,7 +596,6 @@ dbx_cmd_sync_executar() {
   # RF-41(b) emendado: a recusa da origem vazia acontece aqui, com o plano ja
   # emitido e antes de qualquer escrita.
   if [[ $recusa_origem_vazia == 'sim' && ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
-    _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar nao_concluida \
       "a origem esta vazia e o espelhamento apagaria $a_apagar_recusado item(ns) no destino: execucao recusada integralmente (se a origem foi esvaziada de proposito, use --permitir-origem-vazia ou --allow-empty-source; --confirmar ou --yes nao basta)"
     return $?
@@ -621,7 +603,6 @@ dbx_cmd_sync_executar() {
 
   # RF-67(d): com o plano ja emitido e antes de qualquer escrita.
   if [[ $recusa_espaco == 'sim' ]]; then
-    _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar espaco "$DBX_CMD_ESPACO_MOTIVO"
     return $?
   fi
@@ -630,7 +611,6 @@ dbx_cmd_sync_executar() {
     dbx_cmd_iniciar_saida
     dbx_output_campo simulado sim
     dbx_output_render
-    _dbx_cmd_sync_encerrar_area
     return 0
   fi
 
@@ -733,7 +713,6 @@ dbx_cmd_sync_executar() {
     done
   fi
   dbx_output_render
-  _dbx_cmd_sync_encerrar_area
 
   # RF-41(a) exige codigo diferente de zero quando a travessia foi parcial, ainda
   # que nada tenha falhado: o operador precisa saber que o resultado nao e o

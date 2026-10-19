@@ -46,6 +46,8 @@ _dbx_walk_diretorio=$(cd -P -- "$_dbx_walk_diretorio" && pwd -P)
 . "$_dbx_walk_diretorio/errors.sh"
 # shellcheck source=lib/hash.sh
 . "$_dbx_walk_diretorio/hash.sh"
+# shellcheck source=lib/tmp.sh
+. "$_dbx_walk_diretorio/tmp.sh"
 unset _dbx_walk_diretorio
 
 DBX_WALK_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -160,7 +162,8 @@ dbx_walk_local() {
   [[ -d $raiz ]] || return "$DBX_WALK_ERRO_NAO_ENCONTRADO"
   [[ -r $raiz && -x $raiz ]] || return "$DBX_WALK_ERRO_NAO_ENCONTRADO"
 
-  motivos=$(mktemp "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX") || return "$DBX_WALK_ERRO_USO"
+  dbx_tmp_arquivo "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX" || return "$DBX_WALK_ERRO_USO"
+  motivos=$DBX_TMP_CAMINHO
 
   : >"$destino"
   (
@@ -195,7 +198,7 @@ dbx_walk_local() {
       DBX_WALK_MOTIVO="${DBX_WALK_MOTIVO}${DBX_WALK_MOTIVO:+; }${_linha}"
     done <"$motivos"
   fi
-  rm -f -- "$motivos" 2>/dev/null
+  dbx_tmp_remover "$motivos"
 
   # Contagem por registro, e nao por linha: o separador e o byte nulo justamente
   # porque nome de arquivo carrega quebra de linha, e contar linhas devolveria
