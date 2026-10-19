@@ -238,8 +238,8 @@ teste_qa_ver_estado_fica_byte_a_byte_igual_presente_ou_ausente() {
 teste_qa_ver_caminhos_hostis_recusados_antes_da_api() {
   # `..` que sobe acima da raiz da conta e caminho relativo: recusa antes de
   # qualquer chamada e de qualquer acesso a disco (RF-65(c), mesmas guardas do
-  # sync). A raiz `raiz_remota` da credencial nao e aplicada por comando algum
-  # (achado preexistente, registrado no parecer); por isso nao e vetor aqui.
+  # sync). O confinamento a `raiz_remota` da credencial (F-36, fase 1b) e
+  # atacado em qa_confinamento_remoto_b1b_test.sh; aqui a raiz e `/`.
   _qa_cenario
   printf 'x' >"$BASE/local/a.txt"
   local remoto

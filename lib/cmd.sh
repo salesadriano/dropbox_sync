@@ -180,16 +180,57 @@ dbx_cmd_ler_corpo_silencioso() {
   [[ -z $DBX_CMD_FALHA_CLASSE ]]
 }
 
-# _dbx_cmd_caminho_remoto <caminho> — normaliza sem poluir a saida padrao.
+# _dbx_cmd_caminho_remoto <caminho> [raiz] — PONTO UNICO do caminho remoto
+# recebido como argumento (RNF-20(b1..b6), RNF-10(b); F-36, F-37).
 #
-# Conjunto onde incide: TODO comando que recebe caminho remoto. A funcao de
-# lib/path IMPRIME o resultado alem de publica-lo no canal; num comando isso cai
-# no meio da saida estruturada e quebra o consumidor automatizado (RF-28).
+# Conjunto onde incide: TODO comando que recebe caminho remoto, inclusive o
+# destino que o `upload` de diretorio e o `download` de pasta derivam e
+# repassam ao `sync`, que passa por aqui de novo. A auditoria de `composicao`
+# reprova comando que chame `lib/path` remoto direto ou ignore a recusa.
+#
+# A raiz e a `raiz_remota` da credencial, ja carregada por `bin/dbx` antes do
+# comando e, portanto, antes de qualquer chamada a API e da renovacao do token.
+# So `config` passa a raiz explicita (`/`): a raiz que se define nao e confinada
+# pela anterior. A recusa emite o diagnostico aqui, com o byte de controle
+# citado (`dbx_cmd_caminho_exibivel`) e nunca cru; quem chama so propaga o
+# status (`|| return $?`). Classe `caminho_recusado` (13); raiz da credencial
+# malformada falha fechado como `configuracao` (3).
+#
+# A funcao de lib/path IMPRIME o resultado alem de publica-lo no canal; num
+# comando isso cai no meio da saida estruturada (RF-28), dai o `>/dev/null`.
 _dbx_cmd_caminho_remoto() {
-  dbx_path_remoto_para_api "$1" >/dev/null || return $?
-  # shellcheck disable=SC2153  # canal publico de lib/path, carregada por bin/dbx
-  DBX_CMD_LIDO=$DBX_PATH_RESULTADO
-  return 0
+  local caminho=${1-} raiz=${2-${DBX_CONFIG_RAIZ_REMOTA:-}} raiz_exibida
+  DBX_CMD_LIDO=''
+  if dbx_path_remoto_argumento "$raiz" "$caminho" >/dev/null; then
+    # shellcheck disable=SC2153  # canal publico de lib/path, carregada por bin/dbx
+    DBX_CMD_LIDO=$DBX_PATH_RESULTADO
+    return 0
+  fi
+  dbx_cmd_caminho_exibivel "${raiz:-/}"
+  raiz_exibida=$DBX_CMD_EXIBIDO
+  dbx_cmd_caminho_exibivel "$caminho"
+  case $DBX_PATH_MOTIVO in
+    raiz_invalida)
+      dbx_cmd_falhar configuracao \
+        "raiz remota da credencial invalida ($raiz_exibida): reconfigure com 'dbx config --raiz'"
+      ;;
+    controle)
+      dbx_cmd_falhar caminho_recusado \
+        "caminho remoto recusado, contem caractere de controle: $DBX_CMD_EXIBIDO"
+      ;;
+    fora_da_raiz)
+      dbx_cmd_falhar caminho_recusado \
+        "caminho remoto recusado, fora da raiz remota configurada ($raiz_exibida): $DBX_CMD_EXIBIDO"
+      ;;
+    acima_da_raiz)
+      dbx_cmd_falhar caminho_recusado \
+        "caminho remoto recusado, sobe acima da raiz da conta: $DBX_CMD_EXIBIDO"
+      ;;
+    *)
+      dbx_cmd_falhar caminho_recusado \
+        "caminho remoto recusado, informe um caminho absoluto: $DBX_CMD_EXIBIDO"
+      ;;
+  esac
 }
 
 # _dbx_cmd_encerrar_consulta — descarta o documento e os canais adjacentes.

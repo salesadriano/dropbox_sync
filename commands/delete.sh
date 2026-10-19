@@ -46,10 +46,7 @@ dbx_cmd_delete_executar() {
   }
 
   local remoto
-  _dbx_cmd_caminho_remoto "$caminho" || {
-    dbx_cmd_falhar caminho_recusado "caminho remoto recusado: $caminho"
-    return $?
-  }
+  _dbx_cmd_caminho_remoto "$caminho" || return $?
   remoto=$DBX_CMD_LIDO
 
   dbx_json_escapar_cadeia "$remoto"

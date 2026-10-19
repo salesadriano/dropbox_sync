@@ -68,10 +68,7 @@ dbx_cmd_download_executar() {
   }
 
   local remoto
-  _dbx_cmd_caminho_remoto "$caminho" || {
-    dbx_cmd_falhar caminho_recusado "caminho remoto recusado: $caminho"
-    return $?
-  }
+  _dbx_cmd_caminho_remoto "$caminho" || return $?
   remoto=$DBX_CMD_LIDO
 
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
