@@ -91,7 +91,7 @@ _qa_rodar() { # <base> <argumentos...>
   DBX_SAIDA=''
   DBX_ERRO=''
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
-    XDG_STATE_HOME="$base/estado" TMPDIR="$base/tmp" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$base/tmp" ${QA_TZ:+TZ="$QA_TZ"} \
     bash "$DBX_EXEC" "$@" </dev/null >"$base/out" 2>"$base/err"
   DBX_ESTADO=$?
   [[ -r $base/out ]] && IFS= read -r -d '' DBX_SAIDA <"$base/out"
@@ -493,6 +493,82 @@ teste_qa_nomes_parecidos_com_temporario_continuam_sincronizados() {
   assert_contem 'a_transferir=3' "$DBX_SAIDA" 'so a marca exata e retirada da arvore'
   assert_contem '.x.dbx-part.abc' "$(_qa_args_de_envio "$base" '/r/.x.dbx-part.abc')" 'sufixo curto e enviado'
   assert_nao_contem 'Ab12Cd' "$(cat "$base/opcoes")" 'o temporario com a marca exata nunca e enviado'
+}
+
+# ---------------------------------------------------------------------------
+# Ciclo 5 do developer (RNF-24): vinculo lido ate o byte nulo, carimbo por
+# `printf %()T` sob TZ=UTC e resumo publicado em DBX_HASH_RESULTADO
+# ---------------------------------------------------------------------------
+
+teste_qa_download_por_cadeia_de_vinculos_relativos_ate_nome_com_quebra_final() {
+  # Equivalencia com o `readlink -f` antigo: cadeia de dois vinculos relativos
+  # ate um arquivo cujo nome TERMINA em quebra de linha. Cortar a quebra (como
+  # `$( )`) ou deixar a que o readlink acrescenta escreveria em outro arquivo.
+  local base alvo_real=$'fim\n'
+  base=$(_qa_cenario)
+  mkdir -p "$base/local/real" "$base/local/atalhos"
+  printf 'ANTIGO' >"$base/local/real/$alvo_real"
+  ln -s "../real/$alvo_real" "$base/local/atalhos/meio"
+  ln -s atalhos/meio "$base/local/vinculo"
+  _qa_hash_conferido "$base"
+  _qa_rodar "$base" download /r/a.txt "$base/local/vinculo"
+  assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 'conteudo remoto' "$(cat "$base/local/real/$alvo_real")" 'o arquivo do fim da cadeia recebe o conteudo'
+  assert_arquivo_ausente "$base/local/real/fim" 'nenhum arquivo sem a quebra final e criado'
+  assert_arquivo_ausente "$base/local/real/$alvo_real"$'\n' 'nenhum arquivo com quebra extra e criado'
+  assert_sucesso test -L "$base/local/vinculo"
+  assert_sucesso test -L "$base/local/atalhos/meio"
+  assert_igual 0 "$(_qa_partes "$base/local")" 'nenhum temporario resta'
+}
+
+teste_qa_download_por_vinculo_em_ciclo_recusa_sem_transferir() {
+  local base
+  base=$(_qa_cenario)
+  ln -s b "$base/local/a"
+  ln -s a "$base/local/b"
+  _qa_rodar "$base" download /r/a.txt "$base/local/a"
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" 'ciclo de vinculos e configuracao'
+  assert_contem 'vinculo simbolico' "$DBX_ERRO" 'o diagnostico nomeia a causa'
+  assert_igual 0 "$(_harness_contar 'files/download' "$base/chamadas")" 'nada e transferido'
+  assert_sucesso test -L "$base/local/a"
+  assert_sucesso test -L "$base/local/b"
+  assert_igual 0 "$(_qa_residuos_http "$base")" 'nenhuma area HTTP resta'
+}
+
+teste_qa_client_modified_sai_em_utc_em_fuso_com_horario_de_verao() {
+  [[ -r /usr/share/zoneinfo/America/New_York && -r /usr/share/zoneinfo/America/Sao_Paulo ]] ||
+    pular 'base de fusos indisponivel'
+  local base fuso args
+  # Fuso vazio: TZ fora do ambiente, vale o /etc/localtime do host.
+  for fuso in '' America/New_York America/Sao_Paulo; do
+    base=$(_qa_cenario)
+    printf 'v' >"$base/local/verao.txt"
+    printf 'i' >"$base/local/inverno.txt"
+    touch -d '2021-07-04 12:00:00 UTC' "$base/local/verao.txt"
+    touch -d '2021-01-15 23:30:05 UTC' "$base/local/inverno.txt"
+    QA_TZ=$fuso _qa_rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+    assert_igual 0 "$DBX_ESTADO" "sync deve concluir (${fuso:-host}); diagnostico: $DBX_ERRO"
+    args=$(_qa_args_de_envio "$base" '/r/verao.txt')
+    assert_contem 'client_modified\":\"2021-07-04T12:00:00Z\"' "$args" "carimbo UTC no horario de verao ($fuso)"
+    args=$(_qa_args_de_envio "$base" '/r/inverno.txt')
+    assert_contem 'client_modified\":\"2021-01-15T23:30:05Z\"' "$args" "carimbo UTC fora do horario de verao ($fuso)"
+  done
+}
+
+teste_qa_hash_publicado_nao_carrega_valor_da_chamada_anterior() {
+  local base saida
+  base=$(_qa_cenario)
+  printf 'abc' >"$base/bom"
+  saida=$(bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/hash.sh"
+    dbx_hash_publicar_arquivo "$2/bom"; printf "1:%s:%s\n" "$?" "${#DBX_HASH_RESULTADO}"
+    dbx_hash_publicar_arquivo "$2/inexistente"; printf "2:%s:[%s]\n" "$?" "$DBX_HASH_RESULTADO"
+    dbx_hash_publicar_arquivo "$2/bom"
+    dbx_hash_publicar_arquivo "$2"; printf "3:%s:[%s]\n" "$?" "$DBX_HASH_RESULTADO"
+  ' _ "$DBX_HARNESS_RAIZ" "$base")
+  assert_contem '1:0:64' "$saida" 'o calculo bem sucedido publica 64 hex'
+  assert_contem '2:'"$(dbx_errors_codigo_saida nao_encontrado)"':[]' "$saida" 'origem ausente zera o resultado'
+  assert_contem '3:'"$(dbx_errors_codigo_saida nao_encontrado)"':[]' "$saida" 'diretorio zera o resultado'
 }
 
 harness_executar "$@"

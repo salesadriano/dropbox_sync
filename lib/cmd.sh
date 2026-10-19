@@ -331,11 +331,14 @@ dbx_cmd_receber_arquivo() {
   DBX_JSON_ESCAPADO=''
 
   if [[ -L $alvo ]]; then
-    alvo=$(readlink -f -- "$alvo") || {
+    # Leitura ate o byte nulo, como em `lib/path`: `$( )` cortaria as quebras de
+    # linha finais do caminho e resolveria outro arquivo.
+    IFS= read -r -d '' alvo < <(readlink -f -- "$2" && printf '\0') || {
       DBX_CMD_FALHA_CLASSE='configuracao'
       DBX_CMD_FALHA_MOTIVO="vinculo simbolico de destino nao resolvido: $2"
       return "$(dbx_errors_codigo_saida configuracao)"
     }
+    alvo=${alvo%$'\n'} # readlink acrescenta exatamente uma quebra de linha
   fi
 
   if [[ -e $alvo && ! -f $alvo ]]; then
@@ -377,7 +380,8 @@ dbx_cmd_receber_arquivo() {
   dbx_cmd_content_hash_do_resultado
   DBX_CMD_CONTENT_HASH=$DBX_CMD_LIDO
   if [[ -n $DBX_CMD_CONTENT_HASH ]]; then
-    obtido=$(dbx_hash_conteudo_arquivo "$temporario" 2>/dev/null) || obtido=''
+    obtido=''
+    dbx_hash_publicar_arquivo "$temporario" 2>/dev/null && obtido=$DBX_HASH_RESULTADO
     # Resumo local ilegivel nunca e lido como conferido: sem prova, o alvo fica.
     if ! dbx_hash_iguais "$obtido" "$DBX_CMD_CONTENT_HASH"; then
       rm -f -- "$temporario"

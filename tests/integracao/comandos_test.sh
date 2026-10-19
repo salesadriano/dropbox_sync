@@ -815,6 +815,38 @@ teste_download_cujo_alvo_perde_a_escrita_durante_o_recebimento_recusa() {
   assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/alvo")" 'nao resta temporario'
 }
 
+# O destino que e vinculo simbolico continua vinculo: a troca atomica acontece
+# no arquivo para onde ele aponta.
+teste_download_para_vinculo_simbolico_atualiza_o_arquivo_apontado() {
+  local base resumo
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  mkdir -p "$base/real" "$base/atalhos"
+  printf 'ANTIGO' >"$base/real/a.txt"
+  ln -s "$base/real/a.txt" "$base/atalhos/a.txt"
+  printf 'CONTEUDO-NOVO' >"$base/referencia"
+  resumo=$(dbx_hash_conteudo_arquivo "$base/referencia")
+  printf '{"name":"a.txt","content_hash":"%s"}' "$resumo" >"$base/resultado_cabecalho"
+  _rodar "$base" download /r/a.txt "$base/atalhos/a.txt"
+  assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'integridade=conferida' "$DBX_SAIDA" 'o resumo e conferido'
+  assert_sucesso test -L "$base/atalhos/a.txt"
+  assert_igual 'CONTEUDO-NOVO' "$(cat "$base/real/a.txt")" 'o arquivo apontado recebe o conteudo'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/real")" 'nao resta temporario'
+}
+
+# RNF-27: o carimbo sai no formato que a Dropbox aceita, em UTC.
+teste_upload_formata_client_modified_em_utc() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'x\n' >"$origem"
+  touch -d '2021-03-04 05:06:07 UTC' "$origem"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'client_modified\":\"2021-03-04T05:06:07Z\"' "$(grep 'Dropbox-API-Arg' "$base/opcoes")" \
+    'carimbo em ISO 8601 UTC, sem fracao'
+}
+
 # RF-56: o ramo de pasta nunca remove arquivo regular do usuario.
 teste_download_de_pasta_sobre_arquivo_existente_recusa_e_preserva() {
   local base destino mtime_antes

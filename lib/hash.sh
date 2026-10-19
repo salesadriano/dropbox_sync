@@ -339,6 +339,22 @@ dbx_hash_conteudo_arquivo() {
   dbx_hash_conteudo_fluxo <"$1"
 }
 
+# dbx_hash_publicar_arquivo <caminho> — content_hash de um arquivo local,
+# publicado em DBX_HASH_RESULTADO em vez de impresso.
+#
+# Para quem nao pode capturar a saida de `dbx_hash_conteudo_arquivo`: a captura
+# por substituicao de comando e reprovada pela auditoria de RNF-24 fora do
+# alfabeto fechado. A unica captura aqui e a do calculo, que devolve so hex e
+# digitos, e roda em subshell para o `trap` e o `umask` dele nao vazarem.
+dbx_hash_publicar_arquivo() {
+  local saida
+  DBX_HASH_RESULTADO=''
+  _dbx_hash_validar_origem "$@" || return $?
+  saida=$(_dbx_hash_calcular <"$1") || return $?
+  DBX_HASH_RESULTADO=${saida%% *}
+  return "$DBX_HASH_OK"
+}
+
 # dbx_hash_conteudo_arquivo_com_tamanho <caminho>
 dbx_hash_conteudo_arquivo_com_tamanho() {
   _dbx_hash_validar_origem "$@" || return $?

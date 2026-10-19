@@ -667,13 +667,17 @@ DBX_TRANSFER_POR_SESSAO='nao'
 # `mute` e do chamador: o `upload` de um arquivo notifica os dispositivos do
 # usuario, o `sync` de uma arvore nao, para nao gerar uma notificacao por item.
 dbx_transfer_objeto_de_publicacao() {
-  local remoto=$1 modo=$2 rev=$3 origem=$4 mute=${5:-false} carimbo=''
+  local remoto=$1 modo=$2 rev=$3 origem=$4 mute=${5:-false} carimbo='' mtime=''
   [[ $mute == 'true' ]] || mute='false'
 
-  if [[ $origem != '-' ]] && carimbo=$(date -u -r "$origem" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null); then
-    :
-  else
-    carimbo=''
+  # `stat` devolve so digitos e o carimbo e formatado pelo proprio shell, em UTC
+  # local a funcao: capturar `date` seria captura fora do alfabeto fechado
+  # (RNF-24). `TZ` precisa ser EXPORTADA: o shell so reaplica o fuso quando a
+  # variavel esta no ambiente, e sem `-x` o carimbo sairia na hora local.
+  if [[ $origem != '-' ]] && mtime=$(stat -c %Y -- "$origem" 2>/dev/null) &&
+    [[ $mtime =~ ^[0-9]+$ ]]; then
+    local -x TZ=UTC
+    printf -v carimbo '%(%Y-%m-%dT%H:%M:%SZ)T' "$mtime"
   fi
 
   dbx_json_escapar_cadeia "$remoto"

@@ -31,21 +31,22 @@ Requisitos: [RF-54 a RF-57, RNF-29, RF-49 (TC-REV-01..02), RNF-04 emendado](../r
 | [commands/download.sh](../../commands/download.sh) | Alterado | +39/-44 |
 | [commands/sync.sh](../../commands/sync.sh) | Alterado | +42/-20 |
 | [commands/upload.sh](../../commands/upload.sh) | Alterado | +22/-91 |
-| [lib/cmd.sh](../../lib/cmd.sh) | Alterado | +184/-0 |
+| [lib/cmd.sh](../../lib/cmd.sh) | Alterado | +188/-0 |
+| [lib/hash.sh](../../lib/hash.sh) | Alterado (ciclo 5) | +16/-0 |
 | [lib/http.sh](../../lib/http.sh) | Alterado | +30/-30 |
 | [lib/sync.sh](../../lib/sync.sh) | Alterado | +111/-8 |
-| [lib/transfer.sh](../../lib/transfer.sh) | Alterado | +107/-4 |
-| [tests/integracao/comandos_test.sh](../../tests/integracao/comandos_test.sh) | Alterado | +204/-2 |
+| [lib/transfer.sh](../../lib/transfer.sh) | Alterado | +111/-4 |
+| [tests/integracao/comandos_test.sh](../../tests/integracao/comandos_test.sh) | Alterado | +236/-2 |
 | [tests/integracao/sync_test.sh](../../tests/integracao/sync_test.sh) | Alterado | +278/-4 |
 | [tests/unit/http_test.sh](../../tests/unit/http_test.sh) | Alterado | +57/-6 |
-| [tests/integracao/qa_integridade_p1_test.sh](../../tests/integracao/qa_integridade_p1_test.sh) | Novo (QA) | +498/-0 |
+| [tests/integracao/qa_integridade_p1_test.sh](../../tests/integracao/qa_integridade_p1_test.sh) | Novo (QA) | +574/-0 |
 | [docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) | Alterado (BA) | +18/-4 |
 | [docs/requisitos/decisoes-pendentes.md](../requisitos/decisoes-pendentes.md) | Alterado (BA) | +26/-0 |
 | [docs/requisitos/funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md) | Alterado (BA) | +20/-0 |
 | [docs/requisitos/riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md) | Alterado (BA) | +3/-0 |
 | [docs/arquitetura/system-design.md](../arquitetura/system-design.md) | Alterado (BA) | +11/-0 |
 
-Total de linhas de codigo (producao e teste, sem documentacao): **1781** (soma de +/- dos 11 arquivos de `commands/`, `lib/`, `tests/`). Medido por `git diff --numstat` e contagem do arquivo novo.
+Total de linhas de codigo (producao e teste, sem documentacao): **1913** (soma de +/- dos 12 arquivos de `commands/`, `lib/`, `tests/`). Medido por `git diff --numstat 5aee478 -- lib commands tests`.
 
 ## 4. Testes rodados
 
@@ -53,17 +54,21 @@ Comando e contagem literais, por arquivo de teste. Pulados: 0 em todos os itens 
 
 | Arquivo de teste | Item afetado que o justifica | Comando | Total | Aprovados | Falhos | Duracao |
 |---|---|---|---|---|---|---|
-| `http_test` | [lib/http.sh](../../lib/http.sh) | `bash tests/run.sh http_test` | 36 | 36 | 0 | 4 s |
-| `comandos_test` | [lib/cmd.sh](../../lib/cmd.sh), [commands/download.sh](../../commands/download.sh), [commands/upload.sh](../../commands/upload.sh) | `bash tests/run.sh comandos_test` | 82 | 82 | 0 | 12 s |
-| `sync_test` | [lib/sync.sh](../../lib/sync.sh), [lib/cmd.sh](../../lib/cmd.sh), [lib/transfer.sh](../../lib/transfer.sh), [commands/sync.sh](../../commands/sync.sh) | `bash tests/run.sh sync_test` | 39 | 39 | 0 | 17 s |
-| `qa_integridade_p1` | Validacao independente de todos os itens acima | `bash tests/run.sh qa_integridade_p1` | 23 | 23 | 0 | 8 s |
-| `transfer_test` | [lib/transfer.sh](../../lib/transfer.sh) | `bash tests/run.sh transfer_test` | 26 | 26 | 0 | 2 s |
-| `cli_test` | Selecao do Tech Lead (regra 8) | `bash tests/run.sh cli_test` | 17 | 17 | 0 | < 1 s |
-| `preflight_test` | Selecao do Tech Lead (regra 8) | `bash tests/run.sh preflight_test` | 25 | 25 | 0 | 3 s |
-| `composicao_test` | Selecao do Tech Lead (regra 8) | `bash tests/run.sh composicao_test` | 24 | 24 | 0 | 6 s |
+| `json_test` | Auditoria estatica de todo `lib/*.sh` (RNF-24, RSK-27) | `bash tests/run.sh json_test` | 60 | 60 | 0 | 1 s |
+| `http_test` | [lib/http.sh](../../lib/http.sh); auditoria de `lib/*.sh` | `bash tests/run.sh http_test` | 36 | 36 | 0 | 4 s |
+| `preflight_test` | Auditoria de comandos de `lib/*.sh` | `bash tests/run.sh preflight_test` | 25 | 25 | 0 | 3 s |
+| `composicao_test` | Auditoria de `lib/*.sh` | `bash tests/run.sh composicao_test` | 24 | 24 | 0 | 6 s |
+| `hash_test` | [lib/hash.sh](../../lib/hash.sh) (ciclo 5) | `bash tests/run.sh hash_test` | 40 | 40 | 0 | 6 s |
+| `transfer_test` | [lib/transfer.sh](../../lib/transfer.sh) | `bash tests/run.sh transfer_test` | 26 | 26 | 0 | 3 s |
+| `cli_test` | Selecao do Tech Lead | `bash tests/run.sh cli_test` | 17 | 17 | 0 | < 1 s |
+| `comandos_test` | [lib/cmd.sh](../../lib/cmd.sh), [commands/download.sh](../../commands/download.sh), [commands/upload.sh](../../commands/upload.sh) | `bash tests/run.sh comandos_test` | 84 | 84 | 0 | 12 s |
+| `sync_test` | [lib/sync.sh](../../lib/sync.sh), [lib/cmd.sh](../../lib/cmd.sh), [lib/transfer.sh](../../lib/transfer.sh), [commands/sync.sh](../../commands/sync.sh) | `bash tests/run.sh sync_test` | 39 | 39 | 0 | 18 s |
+| `qa_integridade_p1` | Validacao independente de todos os itens acima | `bash tests/run.sh qa_integridade_p1` | 27 | 27 | 0 | 11 s |
 
-- Reexecucao do Tech Lead apos o ciclo 4, os oito arquivos em sequencia, com `bash tests/run.sh <arquivo> < /dev/null`: 272 aprovados, 0 reprovados, 0 pulados, todos `APROVADA`; duracoes na tabela, medidas nessa execucao. `shellcheck lib/*.sh commands/*.sh bin/* tests/integracao/qa_integridade_p1_test.sh` com saida 0; `alteracoes-externas.sh --detectar` com saida 0.
-- Red observado: ciclo 1, `http_test` 3 de 4 novos casos falharam, `comandos_test` 5 de 6, `sync_test` 10 de 12. Ciclo 2, 4 casos novos com red comprovado (mute, temporario orfao em sync e em recebimento, temporario por sinal); `upload_de_arquivo_unico_mantem_mute_falso` e guarda, ja passava. Ciclo 4, os 3 casos de alvo somente leitura com red contra o ciclo 3. Casos de guarda (ja passavam na base) estao identificados nos pareceres e nao sao prova de red.
+- Reexecucao do Tech Lead apos o ciclo 5, os dez arquivos em sequencia com `bash tests/run.sh <arquivo> < /dev/null`: 378 aprovados, 0 reprovados, 0 pulados; duracoes na tabela. `shellcheck lib/*.sh commands/*.sh bin/* tests/integracao/qa_integridade_p1_test.sh` com saida 0; `--detectar` com saida 0.
+- **Selecao insuficiente ate o ciclo 4 (licao):** `json_test`, `http_test`, `preflight_test` e `composicao_test` auditam todo o `lib/*.sh`; o `json_test` ficou fora da selecao e a primeira suite completa local (commit `d4ef8a1`) reprovou em `nenhuma_captura_pode_carregar_byte_externo` (RNF-24: capturas `$(readlink)`, `$(dbx_hash_conteudo_arquivo)` e `$(date)` em `lib/`). Corrigido no ciclo 5 sem nova excecao na auditoria; regra gravada em [selecao-inclui-auditorias-lib](../../.github/agents/memoria/entradas/2026-10-18-1745-selecao-inclui-auditorias-lib.md).
+- **Instabilidade conhecida:** `hash_test` `nao_deixa_residuo_temporario` conta `dbx-http.*` no `/tmp` compartilhado e reprovou 2 vezes em cerca de 20 execucoes do Tech Lead, com outro processo `dbx` do solicitante ativo na maquina; o arquivo nao foi alterado nesta entrega. Mesma classe do QA-04 (ja corrigido em `http_test`); backlog com F-30.
+- Red observado: ciclo 1, `http_test` 3 de 4 novos casos falharam, `comandos_test` 5 de 6, `sync_test` 10 de 12. Ciclo 2, 4 casos novos com red comprovado (mute, temporario orfao em sync e em recebimento, temporario por sinal); `upload_de_arquivo_unico_mantem_mute_falso` e guarda, ja passava. Ciclo 4, os 3 casos de alvo somente leitura com red contra o ciclo 3. Ciclo 5, `upload_formata_client_modified_em_utc` com red contra a primeira versao (fuso local); `download_para_vinculo_simbolico_atualiza_o_arquivo_apontado` e guarda. Casos de guarda (ja passavam na base) estao identificados nos pareceres e nao sao prova de red.
 - Parada no primeiro erro (regra 9): nao atendida. `tests/run.sh` percorre todos os arquivos e casos. Defeito anterior ao P1, registrado como F-30 ([backlog](../requisitos/funcionalidades-candidatas.md)).
 - Barreiras estaticas: `shellcheck lib/*.sh commands/*.sh bin/* scripts/*.sh tests/unit/http_test.sh tests/integracao/comandos_test.sh tests/integracao/sync_test.sh` com saida 0 (shellcheck 0.10.0, modo bash), e `shellcheck tests/integracao/qa_integridade_p1_test.sh` com saida 0. No ciclo 4, o developer registra saida 0. Um SC2153 em `lib/cmd.sh` (`DBX_PATH_RESULTADO`) foi silenciado com justificativa.
 - Testes de seguranca e acesso (regra 6): colisao de caixa (envio, recebimento e simulacao); pasta remota sobre arquivo regular; hash divergente em `download` e `sync`; interrupcao no meio do recebimento; alvo somente leitura (recusa sem efeito); vinculo simbolico para arquivo e vinculo quebrado; area do token em 0700; `umask` do processo preservado. Cada cenario verifica codigo de saida, ausencia de efeito colateral e diagnostico nomeado.
@@ -79,15 +84,15 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Os do
 | `protocolo-tdd` | Regras 1 a 9; Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados | Nenhum achado de codigo. Ressalvas: (1) runner nao para no primeiro erro (F-30); (2) `upload <diretorio>` acima de 150 MiB sem caso proprio: fechada pelo caso do QA (secao 6). | Aprovado com ressalvas |
 | `protocolo-conformidade` | `clean-architecture` + `shellcheck-configuration`; Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados | Ciclo 1, quatro menores: (a) `lib/transfer.sh`, `mute` do sync: corrigido no ciclo 2; (b) `lib/cmd.sh`, temporario orfao em sinal: corrigido no ciclo 2 (filtro em `lib/sync` e tratador em `lib/cmd`); (c) `lib/sync.sh`, dobra fora do ASCII depende de `C.UTF-8` e pasta irma: limite registrado (F-32), aceito pelo Tech Lead; (d) `lib/cmd.sh` carrega `lib/hash`: sem acao. Ciclo 4: nenhum achado novo; o limite (c) segue aberto. | Aprovado com ressalvas |
 
-- Ciclos: 1 (inicial), 2 (correcoes de mute e temporario orfao), 3 (QA-02 `chmod` depois da conferencia do hash; QA-04 teste com `TMPDIR` privado), 4 (decisao do solicitante: alvo somente leitura recusado). Vigente: 4. Status dos achados anteriores: corrigido nos itens (a), (b) e (d); (c) nao corrigido, limite registrado.
+- Ciclos: 1 (inicial), 2 (correcoes de mute e temporario orfao), 3 (QA-02 `chmod` depois da conferencia do hash; QA-04 teste com `TMPDIR` privado), 4 (decisao do solicitante: alvo somente leitura recusado), 5 (suite completa vermelha: achado de seguranca RNF-24, bloqueante, corrigido por publicacao em variavel: `dbx_hash_publicar_arquivo` em `lib/hash`, leitura de vinculo sem captura em `lib/cmd`, carimbo por `stat` e `printf %()T` sob `TZ=UTC` em `lib/transfer`). Vigente: 5. Status dos achados anteriores: corrigido nos itens (a), (b) e (d); (c) nao corrigido, limite registrado.
 - `sh scripts/alteracoes-externas.sh --detectar`: saida 0 no inicio de cada ciclo e antes de cada gate. Nas etapas de registro, saida 3 acusou apenas os arquivos editados pelo agent; apos `--registrar`, saida 0.
 
 ## 6. QA
 
-- Validacao independente do QA Expert sobre os itens afetados, em dois ciclos. Ciclo 1 (21 casos): Aprovado com ressalvas. Ciclo 2 (23 casos, sobre o ciclo 4 do developer): Aprovado com ressalvas.
-- Arquivo do QA: [tests/integracao/qa_integridade_p1_test.sh](../../tests/integracao/qa_integridade_p1_test.sh), 498 linhas, sha256 `21aa8d64b20763dffb9b9ae5eddd24f5e565811ff74147a050bed7839209359f` (versao de 23 casos, em disco no momento deste registro).
+- Validacao independente do QA Expert sobre os itens afetados, em tres ciclos. Ciclo 1 (21 casos), ciclo 2 (23 casos, sobre o ciclo 4) e ciclo 3 (27 casos, sobre o ciclo 5): Aprovado com ressalvas em todos.
+- Arquivo do QA: [tests/integracao/qa_integridade_p1_test.sh](../../tests/integracao/qa_integridade_p1_test.sh), 574 linhas, sha256 `371a93ae5a2a7800cb970fa7b5d370e65ba811655331eea004cfb5902b9cbfb3` (versao de 27 casos, reaprovada).
 - Cenarios independentes: RF-54 (colisao em subdiretorio, simulacao e execucao, `--espelhar` com caixa diferente); RF-49 (`rev` casado sem caixa; sem `rev` nunca sai em `overwrite` nem `autorename`); RF-57 (teto exato de 157286400 bytes; `upload <diretorio>` acima do teto por sessao com `client_modified`); RF-55 (hash divergente, hash malformado, alvo 0444 nunca afrouxado, alvo somente leitura recusado); RF-56 (vinculo simbolico e vinculo quebrado); RNF-29 (umask 027 com 640/750; reemissao diagnostica e sinal sem residuo); filtro do `.dbx-part` (so o padrao exato e retirado).
-- Mutantes: M1 a M7 no ciclo 1, todos mortos. M2 e M4 sobreviveram ao `sync_test` do developer e foram mortos pelos casos do QA. Ciclo 2: M8 e M9 mortos; M10 (retorno `conflito` em vez de `permissao`) sobreviveu e e equivalente, pois o codigo de saida vem de `DBX_CMD_FALHA_CLASSE`.
+- Mutantes: M1 a M7 no ciclo 1, todos mortos. M2 e M4 sobreviveram ao `sync_test` do developer e foram mortos pelos casos do QA. Ciclo 2: M8 e M9 mortos; M10 (retorno `conflito` em vez de `permissao`) sobreviveu e e equivalente, pois o codigo de saida vem de `DBX_CMD_FALHA_CLASSE`. Ciclo 3: M11 a M15 mortos (vinculo, carimbo UTC, hash residual); M13 (sem `-x` no `TZ`) so e detectavel em host fora de UTC.
 - Achados do QA:
 
 | ID | Severidade | Achado | Status |
@@ -95,10 +100,11 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Os do
 | QA-01 | Menor (documental) | TC-SYE-03 contradizia RF-57(c) e RF-49 | Corrigido no ciclo 2 do QA (texto reescrito pelo BA) |
 | QA-02 | Menor | `chmod` aplicado ao temporario antes da escrita, com diagnostico enganoso em alvo 0444 | Corrigido no ciclo 3 do developer (`chmod` depois da conferencia do hash) |
 | QA-03 | Menor (anterior ao P1) | Sinal durante `sync --receber` deixa `dbx-sync.XXXX` em `TMPDIR` | Aberto, backlog [F-31](../requisitos/funcionalidades-candidatas.md) |
+| QA-05 | Maior (processo) | O projeto nao tem mapa de modulos; a lacuna deixou o `json_test` fora da selecao | Regra vigente em memoria (`selecao-inclui-auditorias-lib`); mapa em `docs/testes/mapa-modulos.md` pendente, owner QA Expert, fase 2 |
 | QA-04 | Menor (teste anterior) | `nao_deixa_residuo_temporario` contava `dbx-http*` no `/tmp` compartilhado | Corrigido no ciclo 3 do developer (`TMPDIR` privado); o status aberto no ciclo 2 do QA estava desatualizado, conferido pelo Tech Lead |
 
 - Limites: a recusa por alvo somente leitura nao e exercida como `root` (o teste `-w` e sempre verdadeiro e os casos se pulam). Um arquivo do usuario com o nome exato `.<n>.dbx-part.XXXXXX` e ignorado pelo sync, consequencia do desenho.
-- Veredito do QA: **Aprovado com ressalvas**, 2026-10-18 (ciclo 2). Aceite do solicitante registrado em [aceite-testes-qa-p1](../../.github/agents/memoria/entradas/2026-10-18-1745-aceite-testes-qa-p1.md) (21 casos) e [reaceite-testes-qa-p1](../../.github/agents/memoria/entradas/2026-10-18-1745-reaceite-testes-qa-p1.md) (23 casos).
+- Veredito do QA: **Aprovado com ressalvas**, 2026-10-18 (ciclo 2). Aceite do solicitante registrado em [aceite-testes-qa-p1](../../.github/agents/memoria/entradas/2026-10-18-1745-aceite-testes-qa-p1.md) (21 casos) e [reaceite-testes-qa-p1](../../.github/agents/memoria/entradas/2026-10-18-1745-reaceite-testes-qa-p1.md) (23 casos) e [reaceite-2-testes-qa-p1](../../.github/agents/memoria/entradas/2026-10-18-1745-reaceite-2-testes-qa-p1.md) (27 casos).
 
 ## 7. Riscos e rollback
 
@@ -107,6 +113,7 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Os do
   - F-29, `commands/upload.sh` le `DBX_TRANSFER_HASH` (inexistente); o canal e `DBX_TRANSFER_CONTENT_HASH`. Owner Senior Developer, fase 3.
   - F-30, `tests/run.sh` nao para no primeiro erro (regra 9). Owner Senior Developer, fase 2.
   - F-31, sinal durante `sync --receber` deixa `dbx-sync.XXXX` em `TMPDIR` (QA-03). Owner Senior Developer, fase 2.
+  - QA-05, mapa de modulos inexistente. Owner QA Expert, fase 2.
   - F-32, comparacao sem caixa fora do ASCII depende de `C.UTF-8`. Owner Business Analyst, fase 5.
   - Limite de SIGKILL e de `exit` fora da janela do tratador: um `.dbx-part` pode ficar no disco, mas o filtro do sync impede que seja publicado. Sem owner por ora, fora do backlog.
   - Limite de execucao como `root`: a recusa de alvo somente leitura nao ocorre. Sem owner por ora.
@@ -116,7 +123,7 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Os do
 
 ## 8. Links e aceites
 
-- Entradas de memoria: `2026-10-18-1745-padroes-integridade-p1`, `2026-10-18-1745-melhorias-em-fases`, `2026-10-18-1745-skip-upload-condicionado`, `2026-10-18-1745-aceite-commit-c492085` (regra 48), `2026-10-18-1745-aceite-testes-qa-p1`, `2026-10-18-1745-reaceite-testes-qa-p1`. Links em [.github/agents/memoria/entradas/](../../.github/agents/memoria/entradas/).
+- Entradas de memoria: `2026-10-18-1745-padroes-integridade-p1`, `2026-10-18-1745-melhorias-em-fases`, `2026-10-18-1745-skip-upload-condicionado`, `2026-10-18-1745-aceite-commit-c492085` (regra 48), `2026-10-18-1745-aceite-testes-qa-p1`, `2026-10-18-1745-reaceite-testes-qa-p1`, `2026-10-18-1745-reaceite-2-testes-qa-p1`, `2026-10-18-1745-selecao-inclui-auditorias-lib`. Links em [.github/agents/memoria/entradas/](../../.github/agents/memoria/entradas/).
 - Documentacao sincronizada: [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), [decisoes-pendentes.md](../requisitos/decisoes-pendentes.md), [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md), [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md), [system-design.md](../arquitetura/system-design.md).
 - Intervencao humana (regra 48): nenhum arquivo desta entrega tem origem humana. O unico item acusado foi o commit `c492085` na `develop`, anterior a esta demanda e fora dela, confirmado intencional pelo solicitante ([aceite](../../.github/agents/memoria/entradas/2026-10-18-1745-aceite-commit-c492085.md)).
 - Commit(s): PENDENTE
@@ -135,4 +142,4 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Os do
   - Alvo somente leitura (decisao do ciclo 4): recusado, RF-55(f) e TC-ATM-05; o ciclo 3 substituia o alvo e foi revogado.
   - Achado do gate de conformidade sobre memoria e RF-57(c) (ciclo 1): RF-57(c) emendado pelo BA; a entrada `padroes-integridade-p1` foi atualizada pelo Tech Lead na mesma rodada e registra a revisao do padrao "sem rev". Conferido.
 - Pendencias: suite completa local (secao 4); commit e PR (secao 8).
-- Decisao de fechamento: **Aprovado com ressalvas**, 2026-10-18. Ressalvas: F-28, F-30 e F-31 (Senior Developer, fase 2); F-29 (Senior Developer, fase 3); F-32 (Business Analyst, fase 5). Validacao QA frontend: Nao aplicavel: sem frontend.
+- Decisao de fechamento: **Aprovado com ressalvas**, 2026-10-18. Ressalvas: F-28, F-30 e F-31 (Senior Developer, fase 2); QA-05 (QA Expert, fase 2); F-29 (Senior Developer, fase 3); F-32 (Business Analyst, fase 5). Validacao QA frontend: Nao aplicavel: sem frontend.

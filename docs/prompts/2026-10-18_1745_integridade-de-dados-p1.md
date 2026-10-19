@@ -30,3 +30,5 @@ registro_de_entrega: "docs/reviews/2026-10-18-1745-registro-integridade-de-dados
 - **Alvo somente leitura:** o recebimento atômico passaria a substituir um arquivo local 0444, que antes falhava por acidente. O solicitante decidiu **recusar**: o arquivo fica intacto e o comando falha com diagnóstico claro.
 - **Regra 12:** o solicitante **aprovou** a suíte independente do QA (`tests/integracao/qa_integridade_p1_test.sh`); o ajuste do caso do alvo 0444 exige reaprovação.
 - **Regra 12 (reaprovação):** o solicitante reaprovou a suíte do QA com 23 casos, após o ajuste do alvo somente leitura.
+- **Suíte completa vermelha em `d4ef8a1`:** a auditoria RNF-24 (`json_test`) reprovou. A correção veio no ciclo 5 e a regra de seleção ficou em `2026-10-18-1745-selecao-inclui-auditorias-lib`.
+- **Regra 12 (2ª reaprovação):** o solicitante reaprovou a suíte do QA com 27 casos.
