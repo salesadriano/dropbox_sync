@@ -43,7 +43,7 @@
 | DBA / Persistência | Não | Não aplicável | — | Sem mudança de persistência, schema ou dado |
 | Testes (`protocolo-tdd`) | Sim | Aprovado (ciclos 1 e 2) | [parecer de testes](2026-10-19-0829-parecer-tdd-docs-e-aliases.md) | 935 aprovados, 0 reprovados, 2 pulados |
 | Conformidade (`protocolo-conformidade`) | Sim | Aprovado (ciclos 1 e 2) | [parecer de conformidade](2026-10-19-0829-parecer-conformidade-docs-e-aliases.md) | Achados menores do ciclo 1 decididos pelo Tech Lead |
-| Suíte completa local (`sh scripts/suite-completa.sh`) | Sim | **PENDENTE** | — | Condição de validade ainda não cumprida |
+| Suíte completa local (`sh scripts/suite-completa.sh`) | Sim | **Verde** (verde em `2636a89`: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 157 s; `--conferir` com saida 0) | — | Condição de validade cumprida |
 
 ## Critérios de aceite consolidados
 
@@ -77,9 +77,9 @@
 
 - Decisão do Tech Lead: **Aprovado com ressalvas — Tech Lead, 2026-10-19**.
 - Condições para fechamento:
-  - suíte completa local verde (`sh scripts/suite-completa.sh`, conferida por `--conferir` antes do push): `PENDENTE`;
-  - commit com corpo contendo `Ref:` e `Prompt:`: `PENDENTE`;
-  - PR para `develop`, seguido de `sh scripts/limpar-worktrees.sh` após o merge: `PENDENTE`.
+  - suíte completa local verde (`sh scripts/suite-completa.sh`, conferida por `--conferir` antes do push): cumprida, verde em `2636a89`: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 157 s; `--conferir` com saida 0;
+  - commit com corpo contendo `Ref:` e `Prompt:`: cumprido, `2636a89` (implementacao) e o commit de documentacao que preenche os registros;
+  - PR para `develop`, seguido de `sh scripts/limpar-worktrees.sh` após o merge: [#38](https://github.com/salesadriano/dropbox_sync/pull/38) para `develop`, labels `review` e `enhancement`.
 - Pendências remanescentes (owner e prazo):
   - O-QA-2 e O-QA-3: QA Expert, backlog;
   - O-5 e O-7: Senior Developer, backlog;

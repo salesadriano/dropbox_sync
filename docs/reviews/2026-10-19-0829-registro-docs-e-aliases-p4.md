@@ -122,9 +122,9 @@ Mutantes: 7 não equivalentes mortos; 1 equivalente descartado (detalhe na [vali
 
 | Item | Estado |
 |---|---|
-| Suíte completa local (`sh scripts/suite-completa.sh`) | `PENDENTE` |
-| Commit | `PENDENTE` |
-| PR | `PENDENTE` |
+| Suíte completa local (`sh scripts/suite-completa.sh`) | verde em `2636a89`: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 157 s; `--conferir` com saida 0 |
+| Commit | `2636a89` (implementacao) e o commit de documentacao que preenche os registros |
+| PR | [#38](https://github.com/salesadriano/dropbox_sync/pull/38) para `develop`, labels `review` e `enhancement` |
 
 Nenhum desses três itens foi executado nem registrado até a emissão deste documento. A aprovação do Tech Lead só vale com a suíte completa local verde.
 

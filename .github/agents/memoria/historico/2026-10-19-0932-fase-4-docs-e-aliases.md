@@ -24,7 +24,7 @@ A fase 4 do plano `2026-10-18-1745-melhorias-em-fases` (fonte: `docs/sources/202
 | 2026-10-19 | QA ciclo 1: **Reprovado**. QA-P4-01 (maior: `lib/config.sh` e `lib/auth.sh` diziam "única escrita persistente"), QA-P4-02 (menor: decisão v0.3 sem marca de revogação) | Funcionalidade aprovada; só RNF-34 reprovou |
 | 2026-10-19 | Ciclo 2 do desenvolvimento: comentários reescritos, linha do System Design marcada como revogada | Diff sem comentários dos dois arquivos deu 0 |
 | 2026-10-19 | QA ciclo 2: **Aprovado**; solicitante aprova a suíte do QA (16 casos); Tech Lead aceita O-QA-1 | `aceite-testes-qa-p4` |
-| 2026-10-19 | Revisão consolidada e aprovação final do Tech Lead | Aprovado com ressalvas; suíte completa local, commit e PR: `PENDENTE` |
+| 2026-10-19 | Revisão consolidada e aprovação final do Tech Lead | Aprovado com ressalvas; suíte completa local verde em `2636a89`: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 157 s; `--conferir` com saida 0; PR #38 |
 
 Resultado de testes do ciclo 2 do QA: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados. Suíte do QA: 16 casos, sha256 `adf7f5c2b33b63ce7278e0f44e458dd3fde67c7f7ec7cd67d4ea09042a373fc1`, 7 mutantes mortos.
 
@@ -50,7 +50,7 @@ Resultado de testes do ciclo 2 do QA: 27 arquivos, 935 aprovados, 0 reprovados, 
 | O-5 (leitura de JSON em `upload.sh`) e O-7 (travessia parcial) | Senior Developer | Backlog |
 | RSK-43 (`stat` validado só no uutils) | QA Expert | Backlog |
 | F-34 (paralelismo, com medição) e F-35 (PKCE) | Backlog | Sem prazo |
-| Suíte completa local, commit e PR | Tech Lead | `PENDENTE` |
+| Suíte completa local, commit e PR | Tech Lead | Feito: `2636a89` (implementacao) e o commit de documentacao que preenche os registros; PR #38 |
 
 ## Balanço do plano em quatro fases
 
@@ -61,7 +61,7 @@ Fecha o plano `2026-10-18-1745-melhorias-em-fases`; só o resultado, os detalhes
 | 1, integridade (P1) | #35 | Perda ou corrupção de dados: caixa, recebimento atômico, `umask`, `rev` no envio | Correções de integridade (porte M) | Ver o registro da fase |
 | 2, rede (P2) | #36 | Timeout, `Retry-After`, tentativas, upload retomável, falhas por arquivo | Limites por ambiente, retomada, saída de falhas (porte M) | Ver o registro da fase |
 | 3, cache e correção (P3 e P4) | #37 | Dois caches, SQL por interpolação, skip só local, PKCE | Cache único em `lib/state`, `lib/db` removido, skip pelo hash remoto, segredo obrigatório, guarda de origem vazia (porte G) | F-34, F-35 |
-| 4, documentação e aliases (P5) | esta PR (`PENDENTE`) | Documentação contraditória, comentários longos, peso do `.github`, aliases | RNF-34, comentários enxutos, poda de 31 skills, 11 aliases, F-32, O-1, O-6, SC2034 | O-QA-2, O-QA-3, O-5, O-7, RSK-43 |
+| 4, documentação e aliases (P5) | #38 | Documentação contraditória, comentários longos, peso do `.github`, aliases | RNF-34, comentários enxutos, poda de 31 skills, 11 aliases, F-32, O-1, O-6, SC2034 | O-QA-2, O-QA-3, O-5, O-7, RSK-43 |
 
 ## Diagrama
 

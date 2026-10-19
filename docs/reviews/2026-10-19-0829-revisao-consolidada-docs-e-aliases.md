@@ -16,7 +16,7 @@
 
 - Objetivo da entrega: oferecer aliases em inglês no padrão rsync/git sem retirar os nomes em português, podar do pacote de agents as skills de stacks fora do projeto, deixar nos comentários de `lib/http.sh` e `lib/transfer.sh` só o porquê atual, corrigir as contradições de documentação e fechar as ressalvas O-1, O-6, F-32 e SC2034.
 - Contexto consolidado: decisões em [`aliases-poda-e-comentarios`](../../.github/agents/memoria/entradas/2026-10-19-0829-aliases-poda-e-comentarios.md) e [`aceite-testes-qa-p4`](../../.github/agents/memoria/entradas/2026-10-19-0829-aceite-testes-qa-p4.md).
-- Resultado executivo da revisão: gates de testes e conformidade aprovados nos ciclos 1 e 2; QA reprovou o ciclo 1 (QA-P4-01 e QA-P4-02, só documentação) e aprovou o ciclo 2; a suíte do QA tem aceite do solicitante. Suíte local de referência: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados. Suíte completa local, commit e PR: `PENDENTE`.
+- Resultado executivo da revisão: gates de testes e conformidade aprovados nos ciclos 1 e 2; QA reprovou o ciclo 1 (QA-P4-01 e QA-P4-02, só documentação) e aprovou o ciclo 2; a suíte do QA tem aceite do solicitante. Suíte local de referência: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados. Suíte completa local verde em `2636a89`: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 157 s; `--conferir` com saida 0; commit `2636a89` (implementacao) e o commit de documentacao que preenche os registros; PR [#38](https://github.com/salesadriano/dropbox_sync/pull/38) para `develop`, labels `review` e `enhancement`.
 - Recomendação do Tech Lead: aprovar com ressalvas, condicionado à suíte completa local verde.
 
 ## PRD e ARD
@@ -80,7 +80,7 @@
 
 | Tipo | Descrição | Impacto | Owner | Próxima ação |
 |---|---|---|---|---|
-| Pendência de gate | Suíte completa local, commit e PR | `PENDENTE` | Tech Lead | Rodar `sh scripts/suite-completa.sh` e registrar; sem ela a aprovação não vale |
+| Pendência de gate | Suíte completa local, commit e PR | Resolvida | Tech Lead | verde em `2636a89`: 27 arquivos, 935 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 157 s; `--conferir` com saida 0; PR #38 |
 | Risco aceito | O-QA-1 | Apagar o destino local por caminho remoto errado com `--allow-empty-source` | Tech Lead | Aceito; documentado na ajuda e no README |
 | Ressalva | O-QA-2: memória ausente sem `--confirmar` cai em RF-48 antes do plano | Mensagem; lado seguro | QA Expert | Backlog |
 | Ressalva | O-QA-3: validação de links que inclua `historico/` acusará skills removidas | Falso positivo futuro | QA Expert | Backlog |
@@ -98,7 +98,7 @@ Esta é a última fase. O balanço é só de resultado; os detalhes estão nos r
 | 1, integridade de dados (P1) | [#35](https://github.com/salesadriano/dropbox_sync/pull/35) | Defeitos com risco de perda ou corrupção: caixa no `sync`, recebimento atômico, `rm` de destino, `umask`, `rev` no envio | Correções de integridade ([registro](2026-10-18-1745-registro-integridade-de-dados-p1.md), porte M) | Ver o registro da fase |
 | 2, robustez de rede (P2) | [#36](https://github.com/salesadriano/dropbox_sync/pull/36) | Timeout, `Retry-After`, mais tentativas, upload retomável, falhas por arquivo | Limites de rede por ambiente, retomada do envio, saída de falhas, parada da suíte ([registro](2026-10-18-2045-registro-robustez-de-rede-p2.md), porte M) | Ver o registro da fase |
 | 3, cache e correção (P3 e P4) | [#37](https://github.com/salesadriano/dropbox_sync/pull/37) | Dois caches sobrepostos, SQL por interpolação, skip do upload só local, chave não canônica, PKCE | Cache único em `lib/state`, `lib/db` removido, skip pelo hash remoto, chave canônica, segredo obrigatório, guarda de origem vazia ([registro](2026-10-18-2243-registro-cache-unico-p3.md), porte G) | F-34 paralelismo, F-35 PKCE, O-5, O-7, RSK-43 |
-| 4, documentação e aliases (P5) | esta PR (número `PENDENTE`) | Documentação contraditória, comentários narrativos, peso do `.github`, aliases em inglês | RNF-34, comentários enxutos, poda de 31 skills (`.github` de 9,5 MB para 1,9 MB), 11 aliases, F-32, O-1, O-6, SC2034 | O-QA-2, O-QA-3, O-5, O-7, RSK-43, F-34, F-35 |
+| 4, documentação e aliases (P5) | #38 | Documentação contraditória, comentários narrativos, peso do `.github`, aliases em inglês | RNF-34, comentários enxutos, poda de 31 skills (`.github` de 9,5 MB para 1,9 MB), 11 aliases, F-32, O-1, O-6, SC2034 | O-QA-2, O-QA-3, O-5, O-7, RSK-43, F-34, F-35 |
 
 Itens da análise que ficam fora do plano: paralelismo (F-34, exige medição prévia) e PKCE (F-35, o segredo passou a ser obrigatório). A lição que atravessa as fases: uma guarda de segurança que depende de estado é frágil a cada falha desse estado (fase 3), e a mesma guarda passou a valer nos dois sentidos sem memória (fase 4).
 
