@@ -143,9 +143,35 @@ dbx_output_campo() {
 dbx_output_diagnostico() {
   [[ $# -ge 2 ]] || return "$DBX_OUTPUT_ERRO_USO"
   _dbx_output_chave_valida "${1-}" || return "$DBX_OUTPUT_ERRO_USO"
-  dbx_errors_redigir "${2-}" >/dev/null
+  # QA-P2-04: o valor em memoria e mascarado ANTES da redacao por forma. Na
+  # ordem inversa a forma trocava so parte do token, o resto deixava de casar
+  # com o valor e saia em claro.
+  dbx_output_mascarar_segredos "${2-}"
+  dbx_errors_redigir "$DBX_OUTPUT_MASCARADO" >/dev/null
   DBX_OUTPUT_DIAG_CHAVES+=("$1")
   DBX_OUTPUT_DIAG_VALORES+=("$DBX_ERRORS_REDIGIDO")
+}
+
+# dbx_output_mascarar_segredos <texto> — publica em DBX_OUTPUT_MASCARADO o texto
+# com cada segredo EM MEMORIA substituido pelo VALOR (QA-P2-02, RNF-03).
+#
+# A redacao de lib/errors reconhece FORMAS — `sl.` depois de delimitador, chave
+# sensivel com `=` —, e um segredo colado a outro texto (`x_sl.<token>`) ou sem
+# forma alguma passa por ela. Este e o segundo nivel: quem detem o segredo nao
+# precisa reconhece-lo, so compara-lo. Os canais sao lidos por nome, sem carregar
+# lib/auth nem lib/config; ausentes ou vazios, nao mascaram nada.
+DBX_OUTPUT_MASCARADO=''
+dbx_output_mascarar_segredos() {
+  local texto=${1-} nome segredo
+  for nome in DBX_AUTH_TOKEN DBX_AUTH_REFRESH_TOKEN DBX_CONFIG_REFRESH_TOKEN DBX_CONFIG_APP_SECRET; do
+    segredo=${!nome-}
+    # Segredo curto demais mascararia texto comum (`as`, a credencial de teste):
+    # abaixo de 8 bytes nao ha segredo real a proteger por valor.
+    [[ ${#segredo} -ge 8 ]] || continue
+    texto=${texto//"$segredo"/[REDIGIDO]}
+  done
+  DBX_OUTPUT_MASCARADO=$texto
+  return 0
 }
 
 # ---------------------------------------------------------------------------

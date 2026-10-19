@@ -59,6 +59,7 @@
 | **DP-30** | **`RF-08`: "tamanho de parte configuravel" ainda e requisito?** | 🟡 **Nova na v0.9 — em aberto** | **P1** |
 | **DP-31** | Integridade de dados no `sync` e no `download` (fase P1) | ✅ **Resolvida em 2026-10-18** — ver secao propria; gera `RF-54` a `RF-57`, `RNF-29` | — |
 | **DP-32** | Skip do upload condicionado ao `content_hash` remoto | ✅ **Resolvida em 2026-10-18 — implementacao na fase 3 (backlog `F-26`)** | — |
+| **DP-33** | Timeouts, retentativas, retomada do upload e falhas por item (fase P2) | ✅ **Resolvida em 2026-10-18 — ver secao propria**; gera `RNF-30`, `RF-58`, `RF-59`, emenda `RNF-07`, `RF-09`, `RF-32`; encerra `DIV-22` | — |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
 | DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |
@@ -671,6 +672,21 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 ### DP-32 — Skip do upload condicionado ao `content_hash` remoto ✅ **RESOLVIDA — implementacao na fase 3**
 
 **Decisao do solicitante (2026-10-18):** o upload so dispensa o envio quando o `content_hash` remoto, obtido por `get_metadata`, for igual ao do arquivo local. O cache local passa a ser **apenas otimizacao do calculo de hash** e nao decide sozinho. Isso restabelece o invariante de `RSK-23` ("nenhum artefato persistente participa de decisao") para o `upload`, hoje violado: o skip olha so o lado local e dispensa o envio indevidamente se o remoto foi apagado ou alterado, inclusive com `--modo overwrite`. **Nao e implementado na P1**; registrado como `F-26` e `RSK-37`. Ajusta o criterio de `RF-33` (omissao decidida por `content_hash` de **origem e destino**), que o codigo atual nao cumpre para o `upload`.
+
+### DP-33 — Robustez de rede (fase P2) ✅ **RESOLVIDA (em implementacao em `feature/robustez-de-rede-p2`)**
+
+> Escrita **na mesma rodada** em que as decisoes foram recebidas (`RSK-26`). Memoria: `2026-10-18-2045-padroes-rede-p2`.
+
+**Decisoes do solicitante (2026-10-18):**
+
+1. **Timeouts:** `connect-timeout` de 15 s; corte abaixo de 1 KB/s por 60 s; ambos ajustaveis por ambiente; valor invalido recusado como uso invalido, nunca ignorado; timeout e falha transitoria de rede, retentada so onde a operacao for idempotente → `RNF-30`, `RNF-07(f)`.
+2. **Retentativas:** 5 tentativas configuraveis, recuo exponencial com variacao a partir de 1 s, teto de 60 s; `Retry-After` prevalece, limitado a 300 s; o criterio de `RNF-07` e exigido nesta fase → emenda de `RNF-07` e `RF-09`; **`DIV-22` encerrada**.
+3. **Retomada do upload por sessao:** so na mesma execucao e so para arquivo regular, a partir do `correct_offset` (recusado se fora de `[0, tamanho]`); entrada padrao sem retomada → `RF-58`. `F-03` (entre execucoes) segue fora de escopo.
+4. **Falhas por item no `sync`:** uma linha `falha <caminho>: <classe> <resumo>` no stderr e campo `falhas` no `--json`, sem segredo nem corpo bruto → `RF-59`.
+5. **Entram na fase 2:** `F-28` (→ `RF-32(b)`), `F-30` e `F-33` e `QA-05` (→ `RNF-32`), `F-31` (→ `RNF-31`).
+
+**Pontos propostos pelo Business Analyst e decididos depois pelo Tech Lead (memoria `2026-10-18-2045-detalhes-tecnicos-rede-p2`)** (listados no registro de entrega): leitura de "5 tentativas" como total com a primeira inclusa; cada retomada consumir uma tentativa; tratamento de `Retry-After` em formato de data HTTP (hoje tratado como invalido, caindo no recuo); recusa de arquivo cujo tamanho mudou durante o envio.
+
 
 ---
 

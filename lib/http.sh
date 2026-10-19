@@ -42,7 +42,8 @@ unset _dbx_http_diretorio
 
 DBX_HTTP_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 DBX_HTTP_ERRO_REDE=$(dbx_errors_codigo_saida rede)
-readonly DBX_HTTP_ERRO_USO DBX_HTTP_ERRO_REDE
+DBX_HTTP_ERRO_NAO_CONCLUIDA=$(dbx_errors_codigo_saida nao_concluida)
+readonly DBX_HTTP_ERRO_USO DBX_HTTP_ERRO_REDE DBX_HTTP_ERRO_NAO_CONCLUIDA
 
 # RNF-23: teto de itens por pagina. O teto de entrada de lib/json e 256 KiB, o
 # que comporta cerca de 537 entradas tipicas, enquanto uma listagem sem limite
@@ -51,14 +52,48 @@ readonly DBX_HTTP_ERRO_USO DBX_HTTP_ERRO_REDE
 readonly DBX_HTTP_LIMITE_MAXIMO=100
 # Piso da reducao: abaixo disto, insistir nao ajuda e a falha precisa aparecer.
 readonly DBX_HTTP_LIMITE_MINIMO=5
-readonly DBX_HTTP_TENTATIVAS_MAXIMAS=3
 # Teto do valor de cabecalho. Medido: integro ate ~100.000 bytes, truncagem
 # silenciosa a partir dai e descarte em 1.000.000 — as tres sem aviso do cliente.
 # 8 KiB fica uma ordem de grandeza abaixo da primeira falha observada, e cobre
 # com folga um caminho remoto da Dropbox codificado em JSON.
 readonly DBX_HTTP_LIMITE_CABECALHO=8192
 
-DBX_HTTP_ESPERA_BASE_MS=${DBX_HTTP_ESPERA_BASE_MS:-250}
+# ---------------------------------------------------------------------------
+# AJUSTES POR AMBIENTE (RNF-07, RNF-30, RF-09)
+# ---------------------------------------------------------------------------
+# Padroes decididos pelo solicitante: 5 tentativas contando a primeira, recuo com
+# base de 1 s e teto de 60 s por espera, `Retry-After` limitado a 300 s, conexao
+# em 15 s e corte abaixo de 1 KB/s por 60 s. Cada um pode ser trocado pela
+# variavel de mesmo nome sem o sufixo `_PADRAO`.
+#
+# Lidos A CADA requisicao, e nao na carga: o ambiente da chamada e o que vale, e
+# a suite ajusta por atribuicao no proprio comando.
+readonly DBX_HTTP_TENTATIVAS_MAXIMAS_PADRAO=5
+readonly DBX_HTTP_ESPERA_BASE_MS_PADRAO=1000
+readonly DBX_HTTP_ESPERA_TETO_MS_PADRAO=60000
+readonly DBX_HTTP_RETRY_AFTER_TETO_S_PADRAO=300
+readonly DBX_HTTP_CONNECT_TIMEOUT_S_PADRAO=15
+readonly DBX_HTTP_VELOCIDADE_MINIMA_BPS_PADRAO=1024
+readonly DBX_HTTP_VELOCIDADE_JANELA_S_PADRAO=60
+readonly DBX_HTTP_AJUSTES='DBX_HTTP_TENTATIVAS_MAXIMAS DBX_HTTP_ESPERA_BASE_MS
+  DBX_HTTP_ESPERA_TETO_MS DBX_HTTP_RETRY_AFTER_TETO_S DBX_HTTP_CONNECT_TIMEOUT_S
+  DBX_HTTP_VELOCIDADE_MINIMA_BPS DBX_HTTP_VELOCIDADE_JANELA_S'
+
+# Valores em vigor, publicados pela ultima validacao. Canal publico: `lib/transfer`
+# le daqui o limite de tentativas que cada retomada consome (RF-58).
+declare -gA DBX_HTTP_EFETIVO=(
+  [DBX_HTTP_TENTATIVAS_MAXIMAS]=$DBX_HTTP_TENTATIVAS_MAXIMAS_PADRAO
+  [DBX_HTTP_ESPERA_BASE_MS]=$DBX_HTTP_ESPERA_BASE_MS_PADRAO
+  [DBX_HTTP_ESPERA_TETO_MS]=$DBX_HTTP_ESPERA_TETO_MS_PADRAO
+  [DBX_HTTP_RETRY_AFTER_TETO_S]=$DBX_HTTP_RETRY_AFTER_TETO_S_PADRAO
+  [DBX_HTTP_CONNECT_TIMEOUT_S]=$DBX_HTTP_CONNECT_TIMEOUT_S_PADRAO
+  [DBX_HTTP_VELOCIDADE_MINIMA_BPS]=$DBX_HTTP_VELOCIDADE_MINIMA_BPS_PADRAO
+  [DBX_HTTP_VELOCIDADE_JANELA_S]=$DBX_HTTP_VELOCIDADE_JANELA_S_PADRAO
+)
+# Motivo da ultima recusa de ajuste: nomeia a variavel e o valor. Canal publico,
+# lido por `bin/dbx` para o diagnostico.
+DBX_HTTP_MOTIVO_AMBIENTE=''
+
 DBX_HTTP_AREA_TEMP=''
 
 # Modo de autorizacao da chamada corrente e nome do vetor de campos do modo
@@ -95,6 +130,28 @@ DBX_HTTP_POLITICA=''
 # shellcheck disable=SC2034
 DBX_HTTP_CORRELACAO=''
 # shellcheck disable=SC2034
+# Valor cru do `Retry-After` da ultima resposta; quem o valida e a espera.
+DBX_HTTP_RETRY_AFTER=''
+# shellcheck disable=SC2034
+# `error_summary` da ultima resposta, SO quando veio do JSON do servico. O
+# `DBX_HTTP_RESUMO_DE_ERRO` cai na primeira linha do corpo quando ele nao e JSON,
+# e corpo bruto nao pode ir para relatorio por item (RF-59(c)).
+DBX_HTTP_RESUMO_DO_SERVICO=''
+# shellcheck disable=SC2034
+# Quantas requisicoes este processo ja conduziu. Quem precisa saber se os canais
+# acima descrevem uma operacao SUA compara o valor antes e depois dela (RF-59).
+DBX_HTTP_REQUISICOES=0
+
+# Tratador de INT, TERM e HUP de quem esta POR FORA de um recebimento ou de uma
+# sessao de envio — hoje o `sync` (RNF-31). Nome de funcao, ou vazio.
+#
+# Os tratadores internos (`lib/cmd` no recebimento, `lib/transfer` na sessao)
+# encerram o processo; sem este canal, um sinal recebido com eles armados
+# deixava para tras a area de quem os chamou, e o `trap -` do fim deles
+# desarmava o tratador de fora. Com ele, encerram passando por
+# `dbx_http_interrompido` e devolvem os sinais por `dbx_http_sinais_devolver`.
+DBX_HTTP_TRATADOR_EXTERNO=''
+# shellcheck disable=SC2034
 # Corpo do cabecalho `Dropbox-API-Result`, que o modo de conteudo usa para
 # devolver metadado quando o corpo da resposta e o proprio arquivo.
 DBX_HTTP_RESULTADO_CABECALHO=''
@@ -103,18 +160,107 @@ _dbx_http_limpar() {
   DBX_HTTP_CODIGO=''
   DBX_HTTP_CORPO=''
   DBX_HTTP_RESUMO_DE_ERRO=''
+  DBX_HTTP_RESUMO_DO_SERVICO=''
   DBX_HTTP_CLASSE=''
   DBX_HTTP_POLITICA=''
   DBX_HTTP_CORRELACAO=''
 }
 
-# _dbx_http_esperar <tentativa> — recuo exponencial com variacao.
+# dbx_http_validar_ambiente — confere os ajustes e publica os valores em vigor.
+#
+# RNF-07(e), RNF-30(c): valor invalido e RECUSADO como uso invalido, nunca
+# ignorado nem trocado pelo padrao. Valido e inteiro positivo, sem zero a
+# esquerda — a aritmetica do shell leria `010` como octal e `08` como erro — e
+# com no maximo nove digitos, para nenhuma conta derivada transbordar.
+# Variavel AUSENTE vale o padrao; variavel presente e vazia e invalida.
+dbx_http_validar_ambiente() {
+  local nome padrao valor exibido
+  DBX_HTTP_MOTIVO_AMBIENTE=''
+  for nome in $DBX_HTTP_AJUSTES; do
+    padrao=${nome}_PADRAO
+    valor=${!nome-${!padrao}}
+    if [[ ! $valor =~ ^[1-9][0-9]{0,8}$ ]]; then
+      # O valor vai para o diagnostico: byte de controle sairia como segunda
+      # linha, entao ele e citado em vez de ecoado.
+      exibido=${valor:0:64}
+      [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      printf -v DBX_HTTP_MOTIVO_AMBIENTE \
+        'variavel de ambiente %s invalida: [%s]; use inteiro positivo, sem zero a esquerda' \
+        "$nome" "$exibido"
+      return "$DBX_HTTP_ERRO_USO"
+    fi
+    DBX_HTTP_EFETIVO[$nome]=$valor
+  done
+  return 0
+}
+
+# _dbx_http_tratador_externo_valido — 0 quando o canal nomeia funcao existente.
+# Nome que nao e funcao nunca vira acao de `trap`: seria texto executado no
+# sinal.
+_dbx_http_tratador_externo_valido() {
+  [[ -n $DBX_HTTP_TRATADOR_EXTERNO ]] && declare -F -- "$DBX_HTTP_TRATADOR_EXTERNO" >/dev/null
+}
+
+# dbx_http_sinais_devolver — fim de um tratador interno: INT, TERM e HUP voltam
+# ao tratador externo, ou ao padrao quando nao ha. E o "salvar e restaurar" que
+# o `trap -` de `lib/transfer` e de `lib/cmd` declarava como pendente.
+dbx_http_sinais_devolver() {
+  if _dbx_http_tratador_externo_valido; then
+    trap -- "$DBX_HTTP_TRATADOR_EXTERNO" INT TERM HUP
+  else
+    trap - INT TERM HUP
+  fi
+}
+
+# dbx_http_interrompido — parte comum dos tratadores internos de sinal, depois de
+# cada um limpar o que e seu: remove a area da requisicao em curso (o `exit` nao
+# passa pelo retorno de `_dbx_http_executar`) e entrega ao tratador externo, que
+# limpa o dele e encerra. Sem tratador externo, encerra como operacao nao
+# concluida.
+dbx_http_interrompido() {
+  [[ -n ${DBX_HTTP_AREA_TEMP:-} ]] && rm -rf -- "$DBX_HTTP_AREA_TEMP"
+  DBX_HTTP_AREA_TEMP=''
+  _dbx_http_tratador_externo_valido && "$DBX_HTTP_TRATADOR_EXTERNO"
+  exit "$DBX_HTTP_ERRO_NAO_CONCLUIDA"
+}
+
+# _dbx_http_esperar <tentativa> — espera antes da tentativa seguinte (RNF-07).
+#
+# O `Retry-After` do servidor PREVALECE, limitado ao seu teto, mesmo acima do
+# teto do recuo: e o servico dizendo quando volta. Valido e so o inteiro de
+# segundos; a forma de data HTTP cai no recuo (decisao do Tech Lead). Sem ele,
+# `base * 2^(n-1)` mais variacao de 0 a `base`, limitado ao teto por espera.
+#
+# A espera e o `sleep` do sistema, chamado por nome: e o que deixa a suite
+# observa-la por um substituto, sem dormir (RNF-07(g)).
 _dbx_http_esperar() {
-  local tentativa=$1 milissegundos
-  milissegundos=$((DBX_HTTP_ESPERA_BASE_MS * (1 << (tentativa - 1))))
-  # Variacao aleatoria para nao sincronizar varios hosts na mesma janela.
-  milissegundos=$((milissegundos + RANDOM % (DBX_HTTP_ESPERA_BASE_MS + 1)))
-  sleep "$((milissegundos / 1000)).$(printf '%03d' $((milissegundos % 1000)))"
+  local tentativa=$1 milissegundos indice texto
+  local base=${DBX_HTTP_EFETIVO[DBX_HTTP_ESPERA_BASE_MS]}
+  local teto=${DBX_HTTP_EFETIVO[DBX_HTTP_ESPERA_TETO_MS]}
+  local teto_servidor=${DBX_HTTP_EFETIVO[DBX_HTTP_RETRY_AFTER_TETO_S]}
+
+  if [[ $DBX_HTTP_RETRY_AFTER =~ ^[0-9]+$ ]]; then
+    # Inteiro grande demais para a aritmetica ainda e inteiro valido: vale o teto.
+    if ((${#DBX_HTTP_RETRY_AFTER} > 9 || 10#$DBX_HTTP_RETRY_AFTER > teto_servidor)); then
+      milissegundos=$((teto_servidor * 1000))
+    else
+      milissegundos=$((10#$DBX_HTTP_RETRY_AFTER * 1000))
+    fi
+  else
+    # Dobra ate o expoente ou ate o teto, o que vier antes: o deslocamento
+    # direto transbordaria com muitas tentativas.
+    milissegundos=$base
+    for ((indice = 1; indice < tentativa && milissegundos < teto; indice++)); do
+      milissegundos=$((milissegundos * 2))
+    done
+    # Variacao aleatoria para nao sincronizar varios hosts na mesma janela. Dois
+    # sorteios compostos porque um so vai ate 32767, abaixo da base padrao.
+    milissegundos=$((milissegundos + ((RANDOM << 15) | RANDOM) % (base + 1)))
+    [[ $milissegundos -gt $teto ]] && milissegundos=$teto
+  fi
+  printf -v texto '%d.%03d' "$((milissegundos / 1000))" "$((milissegundos % 1000))"
+  sleep "$texto"
 }
 
 # _dbx_http_correlacao_de <arquivo_de_cabecalhos>
@@ -122,11 +268,15 @@ _dbx_http_esperar() {
 # O identificador de correlacao e capturado nos DOIS caminhos, sucesso e erro:
 # perde-lo apenas no de erro seria a assimetria que RF-30 nao tolera, ja que e
 # no erro que ele serve.
+#
+# Le tambem o `Retry-After` (RNF-07). A leitura NAO para no identificador de
+# correlacao: parar ali perdia todo cabecalho que viesse depois dele.
 _dbx_http_correlacao_de() {
   local arquivo=$1 linha nome valor
   DBX_HTTP_CORRELACAO=''
   # shellcheck disable=SC2034  # canal publico, ver nota no topo
   DBX_HTTP_RESULTADO_CABECALHO=''
+  DBX_HTTP_RETRY_AFTER=''
   [[ -r $arquivo ]] || return 0
   while IFS= read -r linha; do
     linha=${linha%$'\r'}
@@ -140,9 +290,15 @@ _dbx_http_correlacao_de() {
         DBX_HTTP_RESULTADO_CABECALHO=$valor
         ;;
       x-dropbox-request-id | x-request-id | x-server-response)
+        # O primeiro identificador vence, como antes.
         # shellcheck disable=SC2034  # canal publico, ver nota no topo
-        DBX_HTTP_CORRELACAO=$valor
-        return 0
+        [[ -n $DBX_HTTP_CORRELACAO ]] || DBX_HTTP_CORRELACAO=$valor
+        ;;
+      retry-after)
+        # So as pontas sao aparadas (QA-P2-03): espaco INTERNO invalida o
+        # valor — `5 0` nao e 50 s — e ele cai no recuo.
+        [[ $valor =~ ^[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && valor=${BASH_REMATCH[1]}
+        DBX_HTTP_RETRY_AFTER=$valor
         ;;
     esac
   done <"$arquivo"
@@ -158,11 +314,14 @@ _dbx_http_correlacao_de() {
 _dbx_http_interpretar_erro() {
   local corpo=$1
   DBX_HTTP_RESUMO_DE_ERRO=''
+  DBX_HTTP_RESUMO_DO_SERVICO=''
   [[ -n $corpo ]] || return 0
   dbx_json_contexto http_erro || return 0
   if dbx_json_analisar "$corpo"; then
     if dbx_json_valor error_summary >/dev/null; then
       DBX_HTTP_RESUMO_DE_ERRO=$DBX_JSON_RESULTADO
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      DBX_HTTP_RESUMO_DO_SERVICO=$DBX_JSON_RESULTADO
     fi
   else
     local primeira_linha=''
@@ -200,6 +359,12 @@ _dbx_http_opcoes() {
     printf 'silent\n'
   fi
   printf 'show-error\n'
+  # RNF-30: sem estes tres, um servidor que aceita a conexao e nao responde
+  # prende o processo para sempre. O corte por velocidade cobre tambem a
+  # resposta que goteja abaixo do minimo.
+  printf 'connect-timeout = %s\n' "${DBX_HTTP_EFETIVO[DBX_HTTP_CONNECT_TIMEOUT_S]}"
+  printf 'speed-limit = %s\n' "${DBX_HTTP_EFETIVO[DBX_HTTP_VELOCIDADE_MINIMA_BPS]}"
+  printf 'speed-time = %s\n' "${DBX_HTTP_EFETIVO[DBX_HTTP_VELOCIDADE_JANELA_S]}"
   case $_DBX_HTTP_MODO in
     formulario)
       printf 'header = "Content-Type: application/x-www-form-urlencoded"\n'
@@ -380,7 +545,10 @@ _dbx_http_executar() {
   [[ -n $metodo && -n $url ]] || return "$DBX_HTTP_ERRO_USO"
 
   _dbx_http_limpar
+  # Antes de qualquer area ou chamada: ajuste invalido nao chega a rede.
+  dbx_http_validar_ambiente || return "$DBX_HTTP_ERRO_USO"
 
+  DBX_HTTP_REQUISICOES=$((DBX_HTTP_REQUISICOES + 1))
   area=$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/dbx-http.XXXXXXXX") ||
     return "$DBX_HTTP_ERRO_REDE"
   DBX_HTTP_AREA_TEMP=$area
@@ -395,8 +563,26 @@ _dbx_http_executar() {
 _dbx_http_conduzir() {
   local area=$1 metodo=$2 url=$3 corpo=$4 idempotente=$5
   local tentativa=1 estado codigo politica
+  local destino=$_DBX_HTTP_DESTINO saida_padrao='' saida_e_cano='nao'
 
   [[ -n $corpo ]] && printf '%s' "$corpo" >"$area/requisicao"
+
+  # RF-32(b), F-28: o cliente roda DENTRO da substituicao que captura o codigo
+  # HTTP, e ali `/dev/stdout` (ou `-`) e o cano da captura — o conteudo saia
+  # colado ao codigo, o codigo deixava de ser numero e o recebimento virava
+  # falha de rede. A saida padrao do processo e duplicada antes e o cliente
+  # escreve nela pelo descritor.
+  #
+  # LIMITE DECLARADO: o cliente REABRE o descritor. Cano e terminal se
+  # comportam como a saida padrao; arquivo regular e reaberto do inicio e
+  # truncado, e socket nao reabre. Por isso `download` recusa saida padrao em
+  # arquivo nao vazio (o `>>` sobre conteudo existente).
+  if [[ $_DBX_HTTP_CANAL == 'fluxo' && ($destino == '-' || $destino == '/dev/stdout') ]]; then
+    exec {saida_padrao}>&1
+    destino="/dev/fd/$saida_padrao"
+    # Teste de tipo, sem captura: e o que distingue consumidor de disco.
+    [[ -p /dev/stdout ]] && saida_e_cano='sim'
+  fi
 
   while :; do
     : >"$area/resposta"
@@ -414,7 +600,7 @@ _dbx_http_conduzir() {
           # status ZERO — um erro que se parece com exito, com nome de arquivo
           # correto e um JSON dentro. Com ele, zero bytes emitidos e status 22.
           curl -K - --fail -X "$metodo" \
-            -o "$_DBX_HTTP_DESTINO" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+            -o "$destino" -D "$area/cabecalhos" -w '%{http_code}' "$url"
         elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
           curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
             -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
@@ -509,9 +695,28 @@ _dbx_http_conduzir() {
       break
     fi
 
+    # RF-32, OBS-01, QA-P2-05: erro de escrita (23) no fluxo para a saida
+    # padrao. So e consumidor que fechou quando ela e CANO ou FIFO; em arquivo
+    # ou dispositivo (`/dev/full`, disco cheio) e falha local de escrita, a
+    # mesma classe que o recebimento em arquivo usa (`configuracao`). Nos dois
+    # casos nunca se repete: bytes podem ja ter sido entregues. Em fluxo para
+    # arquivo de recebimento o 23 continua o que era.
+    if [[ -n $saida_padrao && $estado -eq 23 ]]; then
+      if [[ $saida_e_cano == 'sim' ]]; then
+        DBX_HTTP_CLASSE='consumidor_encerrou'
+      else
+        DBX_HTTP_CLASSE='configuracao'
+        # shellcheck disable=SC2034  # canal publico, ver nota no topo
+        DBX_HTTP_DIAGNOSTICO='falha de escrita na saida padrao: o arquivo ou dispositivo de destino recusou os dados (sem espaco ou sem permissao)'
+      fi
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      DBX_HTTP_POLITICA='nenhuma'
+      break
+    fi
+
     case $politica in
       recuo_exponencial | respeitar_retry_after)
-        [[ $tentativa -lt $DBX_HTTP_TENTATIVAS_MAXIMAS ]] || break
+        [[ $tentativa -lt ${DBX_HTTP_EFETIVO[DBX_HTTP_TENTATIVAS_MAXIMAS]} ]] || break
         # RETENTATIVA E PROPRIEDADE DO CANAL, NAO DO TRANSPORTE.
         #
         # No canal de fluxo os bytes ja foram entregues ao consumidor e nao
@@ -535,6 +740,7 @@ _dbx_http_conduzir() {
         ;;
     esac
   done
+  [[ -n $saida_padrao ]] && exec {saida_padrao}>&-
 
   # DIAGNOSTICO DO CANAL DE FLUXO: reemissao sem fluxo para obter o corpo do erro.
   #

@@ -48,6 +48,10 @@
 # precisa chegar ao processo filho SEM expansao — expandir no shell pai
 # destruiria o proposito do caso.
 #
+# shellcheck disable=SC2094
+# Justificativa: nos casos de retomada (RF-58) a massa e redirecionada para a
+# entrada padrao E passada como nome; o componente so a le pelos dois caminhos.
+#
 # shellcheck disable=SC2034
 # Justificativa: `DBX_AUTH_TOKEN`, `DBX_AUTH_EXPIRA_EM`, `DBX_HTTP_ESPERA_BASE_MS`
 # e `DBX_CLI_SIMULACAO` sao canais de OUTROS componentes, definidos aqui para
@@ -116,6 +120,7 @@ _duplo() {
   {
     printf '#!/usr/bin/env bash\n'
     printf 'dir=%s\n' "$dir"
+    printf 'raiz=%s\n' "$DBX_HARNESS_RAIZ"
     cat <<'FIM'
 conf=$(cat)
 printf '%s\n' "$*" >>"$dir/argv"
@@ -187,6 +192,31 @@ if [[ -r "$dir/matar" && -r "$dir/pid" ]]; then
     read -r vitima <"$dir/pid"
     kill -TERM "$vitima" 2>/dev/null
   fi
+fi
+# Servidor simulado (RF-58): com `montar`, cada corpo aceito e gravado no
+# deslocamento do cursor sobre o que o "servidor" ja tem, e o `finish` devolve o
+# `content_hash` do resultado montado. E o que torna verificavel que a retomada
+# produz o arquivo certo, e nao apenas uma sequencia plausivel de chamadas.
+if [[ -r "$dir/montar" ]]; then
+  desl=''
+  [[ $argapi =~ \"offset\":([0-9]+) ]] && desl=${BASH_REMATCH[1]}
+  [[ $alvo == start ]] && : >"$dir/remoto"
+  if [[ -n $desl && -n $corpoarq ]] && [[ $alvo == finish || ($alvo == append && $codigo == 200) ]]; then
+    head -c "$desl" "$dir/remoto" >"$dir/remoto.novo"
+    cat "$corpoarq" >>"$dir/remoto.novo"
+    mv "$dir/remoto.novo" "$dir/remoto"
+  fi
+  if [[ $alvo == finish ]]; then
+    resumo=$(TMPDIR=$dir bash -c '. "$1/lib/errors.sh"; . "$1/lib/hash.sh"; dbx_hash_conteudo_arquivo "$2"' \
+      _ "$raiz" "$dir/remoto")
+    corpo="{\"name\":\"a.bin\",\"content_hash\":\"$resumo\"}"
+  fi
+fi
+# Arquivo que muda durante o envio: na primeira `append`, cresce um byte.
+if [[ -r "$dir/crescer" && $alvo == append && $vez == 1 ]]; then
+  alvo_crescer=''
+  read -r alvo_crescer <"$dir/crescer"
+  printf 'X' >>"$alvo_crescer"
 fi
 [[ -n $saida ]] && printf '%s' "$corpo" >"$saida"
 [[ -n $escrever ]] && printf '%s' "$codigo"
@@ -682,6 +712,204 @@ teste_simulacao_nao_alcanca_a_sessao_e_falha_fechado() {
   DBX_CLI_SIMULACAO='nao'
   assert_diferente 0 "$status" 'sessao alcancada em simulacao e defeito do chamador'
   assert_arquivo_ausente "$dir/argv" 'RF-15: nenhuma chamada pode ser emitida em simulacao'
+}
+
+# ---------------------------------------------------------------------------
+# RF-09 emendado — a parte que falha em todas as tentativas aborta sem finish
+# ---------------------------------------------------------------------------
+
+teste_parte_que_falha_em_todas_as_tentativas_aborta_sem_finish() {
+  local dir status
+  dir=$(_duplo)
+  printf '500\n500\n500\n500\n500\n500\n' >"$dir/cod_append"
+  printf '%s' '{"error_summary":"internal_error/..."}' >"$dir/corpo_append"
+  PATH="$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" <"$(_massa 5242880)"
+  status=$?
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" \
+    'RF-09: esgotadas as tentativas, a operacao nao foi concluida'
+  assert_igual 5 "$(_harness_contar 'alvo=append' "$dir/chamadas")" \
+    '5 tentativas da mesma parte, a primeira inclusa'
+  assert_igual 0 "$(_harness_contar 'alvo=finish' "$dir/chamadas")" 'nada e publicado'
+}
+
+# ---------------------------------------------------------------------------
+# RF-58 — retomada por `incorrect_offset` na mesma execucao (TC-RSM-01..05)
+# ---------------------------------------------------------------------------
+
+# _massa_variada <bytes> — conteudo NAO uniforme: com zeros, reler do lugar
+# errado produziria o mesmo arquivo e a verificacao seria vacua.
+_massa_variada() {
+  local caminho
+  caminho=$(mktemp "$DBX_TESTES_TMP/variada.XXXXXX")
+  head -c "$1" /dev/urandom >"$caminho"
+  printf '%s' "$caminho"
+}
+
+# _corpo_incorrect_offset <correct_offset_em_json> — corpo de `incorrect_offset`.
+_corpo_incorrect_offset() {
+  printf '{"error_summary":"incorrect_offset/...","error":{".tag":"incorrect_offset","correct_offset":%s}}' "$1"
+}
+
+teste_incorrect_offset_em_arquivo_regular_retoma_do_deslocamento_informado() {
+  # TC-RSM-01 e TC-RSM-05: o servico diz ter 2 MiB quando ja mandamos 8 MiB.
+  # O arquivo e relido A PARTIR de 2 MiB — fora da fronteira de bloco —, nada
+  # antes disso e reenviado e o resultado montado confere com o local.
+  local dir massa
+  dir=$(_duplo)
+  : >"$dir/montar"
+  massa=$(_massa_variada 10485760)
+  printf '200\n409\n200\n200\n' >"$dir/cod_append"
+  _corpo_incorrect_offset 2097152 >"$dir/corpo_append_2"
+  PATH="$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" "$massa" <"$massa"
+  assert_igual 0 $? "a retomada conclui o envio; motivo: ${DBX_TRANSFER_MOTIVO:-}"
+  assert_igual 1 "$(_harness_contar 'alvo=start' "$dir/chamadas")" 'o envio nao recomeca do zero'
+  assert_igual $'0\n4194304\n2097152\n6291456\n10485760' "$(_deslocamentos "$dir")" \
+    'depois da recusa, a sessao continua desde o deslocamento informado'
+  assert_sucesso cmp -s "$massa" "$dir/remoto"
+  assert_igual 'conferida' "$DBX_TRANSFER_INTEGRIDADE" \
+    'o content_hash final confere mesmo com retomada fora da fronteira de bloco'
+  assert_igual 10485760 "$DBX_TRANSFER_BYTES" 'o total e o tamanho do arquivo'
+}
+
+teste_deslocamento_hostil_e_recusado_sem_finish_e_sem_residuo() {
+  # TC-RSM-02: ausente, nao inteiro, negativo, maior que o arquivo, enorme.
+  local valor dir status massa antes depois
+  massa=$(_massa_variada 5242880)
+  for valor in '"abc"' '-1' '5242881' '99999999999999999999' '1.5' '"0x10"' '"7\n8"'; do
+    dir=$(_duplo)
+    printf '409\n' >"$dir/cod_append"
+    _corpo_incorrect_offset "$valor" >"$dir/corpo_append"
+    antes=$(_conteudo_do_tmpdir)
+    PATH="$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" "$massa" <"$massa"
+    status=$?
+    depois=$(_conteudo_do_tmpdir)
+    assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" "correct_offset $valor recusado"
+    assert_igual 0 "$(_harness_contar 'alvo=finish' "$dir/chamadas")" "nada publicado com $valor"
+    assert_igual 1 "$(_harness_contar 'alvo=append' "$dir/chamadas")" "nenhuma releitura com $valor"
+    assert_igual "$antes" "$depois" "nenhum residuo com $valor"
+    assert_contem 'recusado' "$DBX_TRANSFER_MOTIVO" "a mensagem diz que o valor foi recusado ($valor)"
+    assert_nao_contem $'\n' "$DBX_TRANSFER_MOTIVO" 'o valor hostil nao quebra a linha do diagnostico'
+    case $valor in
+      '-1' | '5242881' | '99999999999999999999')
+        assert_contem "$valor" "$DBX_TRANSFER_MOTIVO" 'a mensagem nomeia o valor recusado'
+        ;;
+    esac
+  done
+  dir=$(_duplo)
+  printf '409\n' >"$dir/cod_append"
+  printf '%s' '{"error_summary":"incorrect_offset/...","error":{".tag":"incorrect_offset"}}' >"$dir/corpo_append"
+  PATH="$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" "$massa" <"$massa"
+  status=$?
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" 'correct_offset ausente e recusado'
+  assert_igual 0 "$(_harness_contar 'alvo=finish' "$dir/chamadas")" 'nada publicado sem correct_offset'
+}
+
+teste_deslocamento_acima_do_ja_enviado_e_recusado_sem_finish() {
+  # Ciclo 2 (decisao do Tech Lead): o servico nao pode ter bytes que nunca
+  # mandamos. Com 4 MiB confirmados, 6 MiB esta dentro do arquivo mas acima do
+  # enviado — servidor hostil ou inconsistente, e a releitura dali publicaria
+  # um arquivo com buraco.
+  local dir massa status
+  dir=$(_duplo)
+  massa=$(_massa_variada 10485760)
+  printf '200\n409\n' >"$dir/cod_append"
+  _corpo_incorrect_offset 6291456 >"$dir/corpo_append_2"
+  PATH="$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" "$massa" <"$massa"
+  status=$?
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" 'offset acima do enviado e recusado'
+  assert_igual 2 "$(_harness_contar 'alvo=append' "$dir/chamadas")" 'nenhuma releitura'
+  assert_igual 0 "$(_harness_contar 'alvo=finish' "$dir/chamadas")" 'nada publicado'
+  assert_contem '6291456' "$DBX_TRANSFER_MOTIVO" 'a mensagem nomeia o valor recusado'
+  assert_contem '4194304' "$DBX_TRANSFER_MOTIVO" 'e o limite, que e o ja enviado'
+}
+
+teste_entrada_padrao_nao_retoma() {
+  # TC-RSM-03 (RF-58(d)): sem origem posicionavel, `incorrect_offset` falha como
+  # antes, mesmo com deslocamento valido.
+  local dir status
+  dir=$(_duplo)
+  printf '409\n' >"$dir/cod_append"
+  _corpo_incorrect_offset 0 >"$dir/corpo_append"
+  PATH="$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" <"$(_massa 5242880)"
+  status=$?
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" 'entrada padrao nao retoma'
+  assert_igual 1 "$(_harness_contar 'alvo=append' "$dir/chamadas")" 'nenhuma releitura'
+  assert_igual 0 "$(_harness_contar 'alvo=finish' "$dir/chamadas")" 'nada publicado'
+  assert_contem 'posicionavel' "$DBX_TRANSFER_MOTIVO" 'o diagnostico diz por que nao retoma'
+}
+
+teste_origem_que_nao_e_arquivo_regular_nao_retoma() {
+  local dir status
+  dir=$(_duplo)
+  printf '409\n' >"$dir/cod_append"
+  _corpo_incorrect_offset 0 >"$dir/corpo_append"
+  PATH="$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" "$DBX_TESTES_TMP" <"$(_massa 5242880)"
+  status=$?
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" 'so arquivo regular retoma'
+  assert_igual 1 "$(_harness_contar 'alvo=append' "$dir/chamadas")" 'nenhuma releitura'
+}
+
+teste_retomada_nao_escreve_estado_persistente() {
+  # TC-RSM-04 (RF-58(c)): sessao e deslocamento vivem so no processo.
+  local dir massa casa estado
+  dir=$(_duplo)
+  : >"$dir/montar"
+  massa=$(_massa_variada 6291456)
+  printf '409\n200\n' >"$dir/cod_append"
+  _corpo_incorrect_offset 0 >"$dir/corpo_append_1"
+  casa=$(mktemp -d "$DBX_TESTES_TMP/casa.XXXXXX")
+  estado=$(mktemp -d "$DBX_TESTES_TMP/estado.XXXXXX")
+  HOME=$casa XDG_STATE_HOME=$estado XDG_CONFIG_HOME=$casa PATH="$dir:$PATH" \
+    dbx_transfer_sessao "$COMMIT_DE_TESTE" "$massa" <"$massa"
+  assert_igual 0 $? "a retomada conclui; motivo: ${DBX_TRANSFER_MOTIVO:-}"
+  assert_igual '' "$(find "$casa" "$estado" -mindepth 1)" 'nenhum arquivo de estado escrito'
+  assert_igual '' "$(_conteudo_do_tmpdir)" 'nada sobra na area temporaria'
+  assert_sucesso cmp -s "$massa" "$dir/remoto"
+}
+
+teste_cada_retomada_consome_uma_tentativa() {
+  # Decisao do Tech Lead: o laco de retomada e limitado pelas tentativas.
+  local dir status
+  dir=$(_duplo)
+  printf '409\n' >"$dir/cod_append"
+  _corpo_incorrect_offset 0 >"$dir/corpo_append"
+  DBX_HTTP_TENTATIVAS_MAXIMAS=3 PATH="$dir:$PATH" \
+    dbx_transfer_sessao "$COMMIT_DE_TESTE" "$(_massa 5242880)" <"$(_massa 5242880)"
+  status=$?
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" 'esgotadas as tentativas, aborta'
+  assert_igual 3 "$(_harness_contar 'alvo=append' "$dir/chamadas")" \
+    'a primeira e duas retomadas: tres tentativas'
+  assert_igual 0 "$(_harness_contar 'alvo=finish' "$dir/chamadas")" 'nada publicado'
+  assert_contem 'tentativas' "$DBX_TRANSFER_MOTIVO" 'o diagnostico diz o que esgotou'
+}
+
+teste_voltar_e_reaceitar_o_mesmo_trecho_nao_renova_as_tentativas() {
+  # Guarda do QA-P2-01: o contador e por parte e zera so quando o confirmado
+  # passa do maior ja visto. Mandar voltar a 0 e aceitar de novo os primeiros
+  # 4 MiB nao e progresso, e o laco tem de acabar.
+  local dir status
+  dir=$(_duplo)
+  printf '200\n409\n200\n409\n200\n200\n' >"$dir/cod_append"
+  _corpo_incorrect_offset 0 >"$dir/corpo_append_2"
+  _corpo_incorrect_offset 0 >"$dir/corpo_append_4"
+  DBX_HTTP_TENTATIVAS_MAXIMAS=2 PATH="$dir:$PATH" \
+    dbx_transfer_sessao "$COMMIT_DE_TESTE" "$(_massa 10485760)" <"$(_massa 10485760)"
+  status=$?
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" 'a segunda volta na mesma parte esgota'
+  assert_igual 4 "$(_harness_contar 'alvo=append' "$dir/chamadas")" 'quatro chamadas e nenhuma alem'
+  assert_igual 0 "$(_harness_contar 'alvo=finish' "$dir/chamadas")" 'nada publicado'
+}
+
+teste_arquivo_que_muda_de_tamanho_durante_o_envio_e_recusado() {
+  local dir massa status
+  dir=$(_duplo)
+  massa=$(_massa_variada 5242880)
+  printf '%s\n' "$massa" >"$dir/crescer"
+  PATH="$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" "$massa" <"$massa"
+  status=$?
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$status" 'arquivo que mudou e recusado'
+  assert_igual 0 "$(_harness_contar 'alvo=finish' "$dir/chamadas")" 'nada publicado'
+  assert_contem 'tamanho' "$DBX_TRANSFER_MOTIVO" 'o diagnostico diz que o tamanho mudou'
 }
 
 teste_commit_ausente_e_uso_invalido() {

@@ -372,6 +372,15 @@ harness_executar() {
         nao_ok=$((nao_ok + 1))
         printf 'not ok %d - %s\n' "$indice" "${nome#teste_}"
         _harness_registrar_reprovacao "$nome" "$status" "$estado_inicial" "$saida_do_caso"
+        # RNF-32(a), Regra 9 de `protocolo-tdd`: o primeiro erro interrompe o
+        # que viria depois. `Bail out!` e a forma do TAP 13 de declarar que o
+        # plano nao sera cumprido, para o consumidor nao ler os casos que
+        # faltam como omitidos por engano.
+        if [[ $indice -lt $total ]]; then
+          printf 'Bail out! %s reprovou; %d caso(s) nao executado(s)\n' \
+            "${nome#teste_}" "$((total - indice))"
+        fi
+        break
         ;;
     esac
   done

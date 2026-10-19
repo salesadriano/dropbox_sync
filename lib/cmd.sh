@@ -269,11 +269,12 @@ dbx_cmd_content_hash_do_resultado() {
 #
 # Encerra o PROCESSO: o alvo continua o anterior, e seguir depois de um sinal
 # trataria como concluido um recebimento que nao terminou. `exit` nao passa
-# pela limpeza de `_dbx_http_executar`, entao a area dela sai daqui tambem.
+# pela limpeza de `_dbx_http_executar`; a area dela, e a de quem chamou o
+# recebimento (o `sync`, RNF-31), saem por `dbx_http_interrompido`.
 _dbx_cmd_recebimento_interrompido() {
   [[ -n $DBX_CMD_TEMPORARIO_RECEBIMENTO ]] && rm -f -- "$DBX_CMD_TEMPORARIO_RECEBIMENTO"
-  [[ -n ${DBX_HTTP_AREA_TEMP:-} ]] && rm -rf -- "$DBX_HTTP_AREA_TEMP"
-  exit "$(dbx_errors_codigo_saida nao_concluida)"
+  DBX_CMD_TEMPORARIO_RECEBIMENTO=''
+  dbx_http_interrompido
 }
 
 # _dbx_cmd_alvo_somente_leitura <alvo> — 0 quando o alvo e arquivo existente sem
@@ -367,10 +368,9 @@ dbx_cmd_receber_arquivo() {
   dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
     "$argumento" "$temporario"
   estado=$?
-  # LIMITE DECLARADO, o mesmo de `dbx_transfer_sessao`: remove os tratadores
-  # em vez de restaurar os do chamador; hoje nenhum caminho arma INT, TERM ou HUP
-  # antes de receber.
-  trap - INT TERM HUP
+  # Os sinais voltam a quem chamou o recebimento — o `sync` arma o seu antes
+  # (RNF-31) —, e ao padrao quando ninguem armou.
+  dbx_http_sinais_devolver
   DBX_CMD_TEMPORARIO_RECEBIMENTO=''
   if [[ $estado -ne 0 ]]; then
     rm -f -- "$temporario"

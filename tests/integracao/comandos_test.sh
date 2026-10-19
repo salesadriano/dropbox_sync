@@ -82,6 +82,11 @@ _ambiente() {
     printf '  printf "curl: (18) transfer closed with outstanding read data remaining\\n" >&2\n'
     printf '  exit 18\n'
     printf 'fi\n'
+    # Consumidor da saida padrao que fechou: o cliente real sai com 23 (erro de
+    # escrita) depois de ter escrito o codigo HTTP.
+    printf 'if [[ $url == *files/download* && -f "$base/consumidor_fechou" ]]; then\n'
+    printf '  printf "%%s" "$codigo"; exit 23\n'
+    printf 'fi\n'
     printf '[[ -n $escrever ]] && printf "%%s" "$codigo"\n'
     printf 'if [[ $fail == "sim" && $codigo -ge 400 ]]; then\n'
     printf '  printf "curl: (22) The requested URL returned error: %%s\\n" "$codigo" >&2\n'
@@ -1400,6 +1405,117 @@ teste_download_de_pasta_com_progresso_nao_vaza_erro_bruto_do_cliente_em_stderr()
   assert_contem 'o caminho remoto e uma pasta' "$DBX_ERRO" \
     'mensagem de fallback de pasta deve ser emitida'
   assert_sucesso test -d "$destino"
+}
+
+# ---------------------------------------------------------------------------
+# RF-32(b), F-28 — `download` sem destino escreve o conteudo no stdout
+#
+# Investigacao: o codigo 9 vinha do COMANDO, e nao do duplo. O canal de fluxo
+# roda o cliente dentro da substituicao que captura o `-w '%{http_code}'`; ali
+# `/dev/stdout` e o cano da captura, entao o conteudo ia parar junto do codigo
+# HTTP, o codigo deixava de ser numero e a chamada virava falha de rede. Medido
+# com o cliente real (`curl -o /dev/stdout -w ... file://...` dentro de `$( )`
+# captura `CONTEUDO000`), e nao so com o duplo.
+# ---------------------------------------------------------------------------
+
+teste_download_sem_destino_escreve_so_o_conteudo_no_stdout() {
+  # TC-DLS-01.
+  local base
+  base=$(_ambiente 'CONTEUDO-DO-ARQUIVO')
+  _rodar "$base" download /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "sem destino o recebimento conclui; diagnostico: $DBX_ERRO"
+  assert_igual 'CONTEUDO-DO-ARQUIVO' "$DBX_SAIDA" 'o stdout tem o conteudo e nada alem dele'
+}
+
+teste_download_para_o_hifen_escreve_so_o_conteudo_no_stdout() {
+  # Mesmo canal com `-` explicito; o caso roda num diretorio proprio para
+  # provar que nenhum arquivo chamado `-` e criado.
+  local base
+  base=$(_ambiente 'CONTEUDO-DO-ARQUIVO')
+  cd "$base" || _harness_falhar 'diretorio do caso indisponivel'
+  _rodar "$base" download /r/a.txt -
+  assert_igual 0 "$DBX_ESTADO" "o recebimento conclui; diagnostico: $DBX_ERRO"
+  assert_igual 'CONTEUDO-DO-ARQUIVO' "$DBX_SAIDA" 'o stdout tem o conteudo e nada alem dele'
+  assert_arquivo_ausente "$base/-" 'o hifen e a saida padrao, e nao um arquivo'
+}
+
+teste_download_para_consumidor_que_fecha_sai_com_codigo_proprio() {
+  # OBS-01 (RF-32): consumidor que fecha antes do fim nao e falha de rede. A
+  # taxonomia ja tem a classe (`consumidor_encerrou`, 15).
+  # So existe consumidor quando a saida padrao e um CANO (QA-P2-05).
+  local base estado
+  base=$(_ambiente 'CONTEUDO-DO-ARQUIVO')
+  : >"$base/consumidor_fechou"
+  estado=$(
+    env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+      XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
+      bash "$DBX_EXEC" download /r/a.txt </dev/null 2>"$base/err" | cat >/dev/null
+    printf '%s' "${PIPESTATUS[0]}"
+  )
+  assert_igual "$(dbx_errors_codigo_saida consumidor_encerrou)" "$estado" \
+    'codigo de saida especifico do consumidor que encerrou'
+  assert_contem 'consumidor' "$(cat "$base/err")" 'o diagnostico diz o que aconteceu'
+  assert_igual 1 "$(_harness_contar 'files/download' "$base/argv")" 'fluxo nao e repetido'
+}
+
+teste_download_com_falha_de_escrita_em_arquivo_nao_culpa_consumidor() {
+  # QA-P2-05: o mesmo erro de escrita com a saida padrao em ARQUIVO e falha local
+  # de escrita, e nao consumidor encerrado.
+  local base
+  base=$(_ambiente 'CONTEUDO-DO-ARQUIVO')
+  : >"$base/consumidor_fechou"
+  _rodar "$base" download /r/a.txt
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" 'falha local de escrita'
+  assert_nao_contem 'consumidor' "$DBX_ERRO" 'nao ha consumidor a culpar'
+  assert_contem 'escrita' "$DBX_ERRO" 'o diagnostico diz que a escrita falhou'
+  assert_igual 1 "$(_harness_contar 'files/download' "$base/argv")" 'fluxo nao e repetido'
+}
+
+teste_download_sem_destino_sobre_arquivo_com_conteudo_recusa_e_preserva() {
+  # O cliente reabre a saida padrao do inicio: com `>>` sobre conteudo existente
+  # isso o apagaria. A recusa vem antes de qualquer recebimento.
+  local base estado
+  base=$(_ambiente 'CONTEUDO-DO-ARQUIVO')
+  printf 'ANTERIOR\n' >"$base/acumulado"
+  env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
+    bash "$DBX_EXEC" download /r/a.txt </dev/null >>"$base/acumulado" 2>"$base/err"
+  estado=$?
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$estado" 'saida padrao com conteudo e recusada'
+  assert_igual 'ANTERIOR' "$(cat "$base/acumulado")" 'o conteudo anterior fica intacto'
+  assert_igual 0 "$(_harness_contar 'files/download' "$base/argv")" 'a recusa vem antes de receber'
+}
+
+# ---------------------------------------------------------------------------
+# RNF-30(c), RNF-07(e): ajuste de rede invalido e uso invalido, antes da rede
+# ---------------------------------------------------------------------------
+
+teste_ajuda_geral_documenta_as_variaveis_de_rede_e_os_padroes() {
+  local base saida variavel
+  base=$(mktemp -d "$DBX_TESTES_TMP/ajuda-rede.XXXXXX")
+  env -i PATH="/usr/bin:/bin" HOME="$base" bash "$DBX_EXEC" help >"$base/out" 2>&1
+  saida=$(cat "$base/out")
+  for variavel in DBX_HTTP_CONNECT_TIMEOUT_S DBX_HTTP_VELOCIDADE_MINIMA_BPS DBX_HTTP_VELOCIDADE_JANELA_S \
+    DBX_HTTP_TENTATIVAS_MAXIMAS DBX_HTTP_ESPERA_BASE_MS DBX_HTTP_ESPERA_TETO_MS DBX_HTTP_RETRY_AFTER_TETO_S; do
+    assert_contem "$variavel" "$saida" "a ajuda documenta $variavel"
+  done
+  assert_contem 'padrao 5' "$saida" 'cinco tentativas por padrao'
+  assert_nao_contem '250' "$saida" 'a base antiga de 250 ms nao aparece'
+}
+
+teste_ajuste_de_rede_invalido_e_recusado_antes_de_qualquer_chamada() {
+  local base variavel estado
+  for variavel in DBX_HTTP_CONNECT_TIMEOUT_S DBX_HTTP_TENTATIVAS_MAXIMAS; do
+    base=$(_ambiente '{"entries":[],"has_more":false}')
+    env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+      XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" "$variavel=abc" \
+      bash "$DBX_EXEC" list /r </dev/null >"$base/out" 2>"$base/err"
+    estado=$?
+    assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$estado" "$variavel invalida e uso invalido"
+    assert_contem "$variavel" "$(cat "$base/err")" 'o diagnostico nomeia a variavel'
+    assert_contem '[abc]' "$(cat "$base/err")" 'o diagnostico nomeia o valor recusado'
+    assert_arquivo_ausente "$base/argv" 'nenhuma chamada de rede, nem a de renovacao do token'
+  done
 }
 
 harness_executar "$@"

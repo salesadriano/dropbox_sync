@@ -141,6 +141,26 @@ dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] [--debug] <com
 - `--help`: Exibe a ajuda geral ou específica de comandos.
 - `--version`: Exibe a versão instalada.
 
+### Variáveis de Ambiente de Rede (Timeouts e Retentativa)
+Toda requisição tem tempo limite e falhas transitórias são repetidas com recuo exponencial. Os padrões podem ser ajustados por variável de ambiente; o valor precisa ser um inteiro positivo, sem zero à esquerda. Valor inválido (vazio, não numérico, zero ou negativo) é recusado como uso inválido (código de saída `2`) antes de qualquer chamada de rede.
+
+| Variável | Padrão | Efeito |
+|---|---|---|
+| `DBX_HTTP_CONNECT_TIMEOUT_S` | `15` | Tempo máximo, em segundos, para estabelecer a conexão |
+| `DBX_HTTP_VELOCIDADE_MINIMA_BPS` | `1024` | Velocidade mínima, em bytes por segundo, abaixo da qual a transferência é cortada... |
+| `DBX_HTTP_VELOCIDADE_JANELA_S` | `60` | ...se durar esta janela, em segundos |
+| `DBX_HTTP_TENTATIVAS_MAXIMAS` | `5` | Tentativas por requisição ou parte de envio, contando a primeira |
+| `DBX_HTTP_ESPERA_BASE_MS` | `1000` | Base do recuo: a espera n é `base × 2^(n-1)` mais variação aleatória de até `base` |
+| `DBX_HTTP_ESPERA_TETO_MS` | `60000` | Teto de cada espera do recuo |
+| `DBX_HTTP_RETRY_AFTER_TETO_S` | `300` | Teto do `Retry-After` informado pelo servidor, que prevalece sobre o recuo quando presente (só em segundos inteiros; formato de data cai no recuo) |
+
+Timeout conta como falha transitória de rede e só é repetido em operação idempotente. No envio em partes, cada retomada por deslocamento incorreto (`incorrect_offset`) consome uma das tentativas.
+
+```bash
+# Rede lenta: mais tempo para conectar e mais tentativas
+DBX_HTTP_CONNECT_TIMEOUT_S=30 DBX_HTTP_TENTATIVAS_MAXIMAS=8 dbx upload backup.tgz /backups/backup.tgz
+```
+
 ---
 
 ### 1. `upload` — Envio de Arquivos e Pastas
@@ -261,7 +281,7 @@ dbx space --humano
 O projeto conta com uma suíte abrangente de testes automatizados com saída **TAP 13**, cobrindo cenários unitários e de integração com dublês de rede e auditorias adversariais:
 
 ```bash
-# Executar a bateria completa de testes (608 casos aprovados)
+# Executar a bateria completa de testes (para no primeiro erro)
 bash tests/run.sh < /dev/null
 
 # Executar análise estática (linter)
