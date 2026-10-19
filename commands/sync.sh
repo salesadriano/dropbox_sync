@@ -295,10 +295,7 @@ dbx_cmd_sync_executar() {
   fi
 
   local remoto
-  _dbx_cmd_caminho_remoto "$raiz_remota" || {
-    dbx_cmd_falhar caminho_recusado "caminho remoto recusado: $raiz_remota"
-    return $?
-  }
+  _dbx_cmd_caminho_remoto "$raiz_remota" || return $?
   remoto=$DBX_CMD_LIDO
 
   # No sentido 'receber', o destino local e criado caso ainda nao exista (se nao for simulacao).

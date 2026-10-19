@@ -171,11 +171,9 @@ dbx_cmd_config_executar() {
     shift
   done
 
+  # A raiz que se define nao e confinada pela anterior: raiz explicita `/`.
   local remoto
-  _dbx_cmd_caminho_remoto "$raiz" || {
-    dbx_cmd_falhar caminho_recusado "raiz remota recusada: $raiz"
-    return $?
-  }
+  _dbx_cmd_caminho_remoto "$raiz" / || return $?
   remoto=$DBX_CMD_LIDO
 
   dbx_config_caminho || {

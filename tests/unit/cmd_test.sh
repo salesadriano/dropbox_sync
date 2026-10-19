@@ -323,4 +323,78 @@ teste_checar_espaco_com_consulta_falha_avisa_uma_vez_e_segue() {
   assert_igual '' "$(cat "$area/out")" 'stdout limpo'
 }
 
+# ---------------------------------------------------------------------------
+# _dbx_cmd_caminho_remoto — ponto unico do caminho remoto (F-36, F-37)
+# ---------------------------------------------------------------------------
+
+teste_caminho_remoto_dentro_da_raiz_da_credencial_e_aceito_sem_emitir() {
+  DBX_CONFIG_RAIZ_REMOTA='/Raiz'
+  _saidas _dbx_cmd_caminho_remoto '/raiz/sub/../a.txt'
+  assert_igual 0 "$ESTADO" "dentro da raiz; erro: $ERRO"
+  assert_igual '/raiz/a.txt' "$DBX_CMD_LIDO" 'normalizado, grafia do usuario'
+  assert_igual '' "$SAIDA" 'stdout limpo'
+  assert_igual '' "$ERRO" 'stderr limpo'
+}
+
+teste_caminho_remoto_fora_da_raiz_recusa_com_13_e_nomeia_a_raiz() {
+  local caminho
+  DBX_CONFIG_RAIZ_REMOTA='/raiz'
+  for caminho in '/raizX/a' '/raiz/../fora' '/' '/outra'; do
+    _saidas _dbx_cmd_caminho_remoto "$caminho"
+    assert_igual "$(dbx_errors_codigo_saida caminho_recusado)" "$ESTADO" "fora da raiz [$caminho]"
+    assert_igual '' "$DBX_CMD_LIDO" "nada publicado [$caminho]"
+    assert_igual '' "$SAIDA" 'stdout limpo'
+    assert_contem '/raiz' "$ERRO" 'o diagnostico nomeia a raiz configurada'
+  done
+}
+
+teste_caminho_remoto_com_controle_recusa_sem_reproduzir_o_byte() {
+  local caminho
+  DBX_CONFIG_RAIZ_REMOTA=''
+  for caminho in $'/a\nFORJADA' $'/a\rFORJADA' $'/a\001FORJADA' $'/a\177FORJADA'; do
+    _saidas _dbx_cmd_caminho_remoto "$caminho"
+    assert_igual "$(dbx_errors_codigo_saida caminho_recusado)" "$ESTADO" 'controle: 13'
+    assert_contem 'controle' "$ERRO" 'o motivo e nomeado'
+    assert_nao_contem "$caminho" "$ERRO" 'o byte de controle cru nao sai no diagnostico'
+    assert_igual '' "$SAIDA" 'stdout limpo'
+  done
+}
+
+teste_caminho_remoto_com_raiz_da_conta_nao_muda_nada() {
+  local raiz
+  for raiz in '' '/'; do
+    DBX_CONFIG_RAIZ_REMOTA=$raiz
+    _saidas _dbx_cmd_caminho_remoto '/qualquer/x'
+    assert_igual 0 "$ESTADO" "raiz [$raiz]"
+    assert_igual '/qualquer/x' "$DBX_CMD_LIDO"
+    _saidas _dbx_cmd_caminho_remoto '/'
+    assert_igual 0 "$ESTADO" "raiz [$raiz]: a raiz da conta"
+    assert_igual '' "$DBX_CMD_LIDO" 'representacao da API'
+    _saidas _dbx_cmd_caminho_remoto 'relativo'
+    assert_igual "$(dbx_errors_codigo_saida caminho_recusado)" "$ESTADO" 'relativo segue 13'
+  done
+}
+
+teste_caminho_remoto_com_raiz_explicita_ignora_a_da_credencial() {
+  # `config --raiz` define a raiz: ela nao e confinada pela anterior.
+  DBX_CONFIG_RAIZ_REMOTA='/raiz'
+  _saidas _dbx_cmd_caminho_remoto '/outra' /
+  assert_igual 0 "$ESTADO" "raiz explicita; erro: $ERRO"
+  assert_igual '/outra' "$DBX_CMD_LIDO"
+  _saidas _dbx_cmd_caminho_remoto $'/outra\n' /
+  assert_igual "$(dbx_errors_codigo_saida caminho_recusado)" "$ESTADO" 'controle vale tambem aqui'
+}
+
+teste_caminho_remoto_com_raiz_malformada_falha_fechado_como_configuracao() {
+  local raiz
+  for raiz in 'raiz' '/..' $'/raiz\n'; do
+    DBX_CONFIG_RAIZ_REMOTA=$raiz
+    _saidas _dbx_cmd_caminho_remoto '/raiz/a'
+    assert_igual "$(dbx_errors_codigo_saida configuracao)" "$ESTADO" "raiz malformada: 3"
+    assert_igual '' "$DBX_CMD_LIDO"
+    assert_contem 'raiz remota' "$ERRO" 'o diagnostico manda revisar a credencial'
+  done
+  DBX_CONFIG_RAIZ_REMOTA=''
+}
+
 harness_executar "$@"

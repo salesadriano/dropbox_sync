@@ -18,7 +18,9 @@
 #            resolucao de `..` e puramente LEXICAL. A comparacao de confinamento
 #            ignora caixa, porque o servico resolve caminho sem diferenciar
 #            maiusculas de minusculas: comparar de forma sensivel recusaria um
-#            caminho que o servico considera dentro da raiz.
+#            caminho que o servico considera dentro da raiz. A dobra e SO do ASCII
+#            (A-Z), por byte e sem localidade; fora do ASCII os bytes tem de ser
+#            iguais, porque a dobra Unicode do servico difere da glibc (QA-B1B-01).
 #
 #   local  — o sistema de arquivos possui links simbolicos, logo a resolucao e
 #            FISICA, componente a componente, seguindo os links antes de aplicar
@@ -89,6 +91,8 @@ DBX_PATH_RESULTADO=''
 _dbx_path_normalizar_lexical() {
   local resto=${1#/} componente
   local acumulado=''
+  # Componentes por BYTE, independentes da localidade do operador (QA-B1B-01).
+  local LC_ALL=C
   DBX_PATH_RESULTADO=''
   while [[ -n $resto ]]; do
     if [[ $resto == */* ]]; then
@@ -146,9 +150,18 @@ dbx_path_remoto_para_api() {
 # Comparacao com fronteira de componente: `/backups2` nao esta em `/backups`.
 _dbx_path_dentro_de() {
   local alvo=$1 raiz=$2 sensivel=${3:-sim}
+  local letra
+  # Bytes, e nao caracteres da localidade do operador: sob UTF-8 a glibc dobra
+  # U+0130 em `i`, que para a Dropbox e `i`+U+0307 — outra pasta (QA-B1B-01).
+  local LC_ALL=C
   if [[ $sensivel == 'nao' ]]; then
-    alvo=${alvo,,}
-    raiz=${raiz,,}
+    # Sem caixa SO no ASCII, por tabela fixa; fora dele os bytes tem de ser
+    # iguais. Pode recusar um caminho legitimo com acento em outra caixa, mas
+    # nunca aceita um de fora (decisao do Tech Lead, falha fechada).
+    for letra in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z; do
+      alvo=${alvo//"$letra"/"${letra,}"}
+      raiz=${raiz//"$letra"/"${letra,}"}
+    done
   fi
   # Raiz "/" contem todo caminho absoluto pela propria regra de fronteira; nao
   # ha curto-circuito. Quem decide se essa raiz e admissivel sao as funcoes
@@ -227,6 +240,73 @@ dbx_path_remoto_confinar() {
   fi
   DBX_PATH_RESULTADO=$alvo_norm
   printf '%s\n' "$alvo_norm"
+}
+
+# Motivo da ultima recusa de `dbx_path_remoto_argumento`: `controle`, `vazio`,
+# `relativo`, `acima_da_raiz`, `fora_da_raiz` ou `raiz_invalida`. Vazio no exito.
+DBX_PATH_MOTIVO=''
+
+# dbx_path_remoto_argumento <raiz_da_credencial> <caminho> — politica do caminho
+# remoto recebido como ARGUMENTO de comando (RNF-20(b1..b6), RNF-10(b)).
+#
+# O caminho e ABSOLUTO na conta e e recusado fora da raiz; nao e ancorado nela
+# (`dbx_path_remoto_confinar` ancora relativo, que aqui segue recusado como
+# antes). Raiz vazia ou `/` e a conta inteira, sem recusa nova (b6, RNF-20(e)).
+# A comparacao e a de `_dbx_path_dentro_de`: por componente e sem caixa, depois
+# de normalizar `.` e `..`. Byte de controle (0x01..0x1F, 0x7F) recusa ANTES de
+# tudo, no caminho e na raiz: o nome seria valido na Dropbox (RNF-10), mas como
+# argumento ele parte a saida orientada a linha (F-37).
+#
+# Resultado na representacao da API (raiz da conta = cadeia vazia), em
+# DBX_PATH_RESULTADO. Status: RECUSADO (controle, acima_da_raiz, fora_da_raiz),
+# USO_INVALIDO (vazio, relativo), CONFIGURACAO (raiz_invalida, falha fechada).
+# shellcheck disable=SC2034  # DBX_PATH_MOTIVO e canal publico, lido por lib/cmd
+dbx_path_remoto_argumento() {
+  local raiz=${1-} caminho=${2-} raiz_norm alvo
+  DBX_PATH_RESULTADO=''
+  DBX_PATH_MOTIVO=''
+  # Faixa de bytes de controle sob `C`, sem depender da localidade.
+  local LC_ALL=C
+  # A raiz vem antes do caminho: com credencial malformada todo comando falha
+  # como configuracao, inclusive o `list` sem argumento, que usa a propria raiz.
+  [[ -n $raiz ]] || raiz='/'
+  if [[ $raiz != /* || $raiz == *[$'\001'-$'\037\177']* ]] ||
+    ! _dbx_path_normalizar_lexical "$raiz"; then
+    DBX_PATH_RESULTADO=''
+    DBX_PATH_MOTIVO='raiz_invalida'
+    return "$DBX_PATH_CONFIGURACAO"
+  fi
+  raiz_norm=$DBX_PATH_RESULTADO
+  DBX_PATH_RESULTADO=''
+
+  if [[ $caminho == *[$'\001'-$'\037\177']* ]]; then
+    DBX_PATH_MOTIVO='controle'
+    return "$DBX_PATH_RECUSADO"
+  fi
+
+  [[ -n $caminho ]] || {
+    DBX_PATH_MOTIVO='vazio'
+    return "$DBX_PATH_USO_INVALIDO"
+  }
+  [[ $caminho == /* ]] || {
+    DBX_PATH_MOTIVO='relativo'
+    return "$DBX_PATH_USO_INVALIDO"
+  }
+
+  if ! _dbx_path_normalizar_lexical "$caminho"; then
+    DBX_PATH_RESULTADO=''
+    DBX_PATH_MOTIVO='acima_da_raiz'
+    return "$DBX_PATH_RECUSADO"
+  fi
+  alvo=$DBX_PATH_RESULTADO
+  DBX_PATH_RESULTADO=''
+  if ! _dbx_path_dentro_de "$alvo" "$raiz_norm" nao; then
+    DBX_PATH_MOTIVO='fora_da_raiz'
+    return "$DBX_PATH_RECUSADO"
+  fi
+  [[ $alvo == '/' ]] && alvo=''
+  DBX_PATH_RESULTADO=$alvo
+  printf '%s\n' "$alvo"
 }
 
 # ---------------------------------------------------------------------------

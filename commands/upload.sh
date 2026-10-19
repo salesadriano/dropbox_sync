@@ -124,10 +124,7 @@ dbx_cmd_upload_executar() {
   fi
 
   local remoto
-  _dbx_cmd_caminho_remoto "$destino" || {
-    dbx_cmd_falhar caminho_recusado "caminho remoto recusado: $destino"
-    return $?
-  }
+  _dbx_cmd_caminho_remoto "$destino" || return $?
   remoto=$DBX_CMD_LIDO
 
   if [[ $eh_diretorio == 'sim' ]]; then
