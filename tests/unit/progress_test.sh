@@ -216,6 +216,7 @@ teste_transferencia_e_barra_com_progresso_fracionario() {
 }
 
 teste_etapa_barra_exibe_progresso_do_arquivo_atual_e_percentual_global() {
+  # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
   DBX_CLI_PROGRESSO='sim'
   local arq_out="$DBX_TESTES_TMP/eb_arq_out.$$" arq_err="$DBX_TESTES_TMP/eb_arq_err.$$"
   local saida_err

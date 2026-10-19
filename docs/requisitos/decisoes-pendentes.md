@@ -5,7 +5,7 @@
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
 | Data | 2026-10-18 |
-| Versao | **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
+| Versao | **v1.1** — `DP-35` registrada e resolvida (fase 4: aliases em ingles, `O-1`, `F-32`, `P5.1`). *Registro anterior:* **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
 | Status | 🔴 **Duas decisoes novas, devolvidas pela implementacao de `RF-31`/`RF-08`: `DP-29` e `DP-30`.** Nenhuma delas bloqueia a validacao da entrega atual; ambas bloqueiam declarar o requisito correspondente **integralmente** atendido. 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
@@ -61,6 +61,7 @@
 | **DP-32** | Skip do upload condicionado ao `content_hash` remoto | ✅ **Resolvida em 2026-10-18 — implementacao na fase 3 (backlog `F-26`)** | — |
 | **DP-33** | Timeouts, retentativas, retomada do upload e falhas por item (fase P2) | ✅ **Resolvida em 2026-10-18 — ver secao propria**; gera `RNF-30`, `RF-58`, `RF-59`, emenda `RNF-07`, `RF-09`, `RF-32`; encerra `DIV-22` | — |
 | **DP-34** | Cache unico, skip do upload, chave canonica e segredo obrigatorio (fase 3) | ✅ **Resolvida em 2026-10-18 — ver secao propria**; gera `RF-60` a `RF-63`, `RNF-33`; emenda `RF-33`, `RF-38`, `RF-42`, `RF-51`, `RF-52`, `RNF-02`, `RNF-25`, `RNF-26`, `RNF-32`; resolve `DIV-25`; abre e, no mesmo dia, o Tech Lead resolve `DIV-26` a `DIV-29` | — |
+| **DP-35** | Aliases em ingles, guarda de origem vazia pelo plano, localidade da comparacao e coerencia da documentacao (fase 4) | ✅ **Resolvida em 2026-10-19 (solicitante e Tech Lead; memoria `2026-10-19-0829-aliases-poda-e-comentarios`)**: gera `RF-64` e `RNF-34`; emenda `RF-41(b)` (`O-1`), `RF-54(e)(f)(g)` (`F-32`), `RF-53(f)`, `RF-51(g)`, `RF-01`; abre e, no mesmo dia, o Tech Lead resolve `DIV-30` a `DIV-32` (guarda antiga sai e origem vazia sem `--espelhar` e operacao vazia; repeticao de sentido segue invalida; `C.UTF-8` so dentro da comparacao, aviso so no `sync`). A poda das skills fora da stack e o enxugamento de comentarios nao geram requisito funcional | — |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
 | DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |

@@ -46,6 +46,6 @@ Para cada formulario ou grupo de campos tocado, alem da jornada feliz:
 - O cenario afirma o feedback pelo seletor estavel do erro (`data-cy`/`data-test`), nunca apenas pela ausencia de navegacao ou por texto generico como "erro".
 - Mensagens esperadas vem do Design System ou do criterio de aceite, nao do texto que o teste encontrou na tela.
 - O bloqueio de submissao no frontend nao substitui o teste de integracao que prova a rejeicao no backend (Regra 6, entrada fora do schema); os dois coexistem, porque a validacao de interface pode ser contornada.
-- Quando `accessibility-review` estiver acionada para o fluxo, o feedback de erro entra na verificacao de acessibilidade (anuncio por leitor de tela, contraste, foco).
+- Quando a skill de acessibilidade (nao incluida neste repositorio; fonte: `ai_team`) estiver acionada para o fluxo, o feedback de erro entra na verificacao de acessibilidade (anuncio por leitor de tela, contraste, foco).
 
 A obrigatoriedade, os gatilhos e a severidade estao nas Regras 6 e 7 de [`SKILL.md`](../SKILL.md).

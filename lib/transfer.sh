@@ -34,20 +34,12 @@
 # RF-08 pede tamanho de parte CONFIGURAVEL. Esta entrega NAO o torna
 # configuravel, e a lacuna fica declarada aqui em vez de silenciada.
 #
-# Motivo: nesta implementacao o tamanho da parte e a MESMA grandeza que o
-# tamanho do bloco do `content_hash`. Uma parte de tamanho diferente do bloco
-# faria a cadeia de resumos ser montada sobre fatias que nao sao blocos, e o
-# resultado seria um `content_hash` bem formado e errado — divergencia que so
-# apareceria na comparacao com o servico. Tornar o valor configuravel sem antes
-# SEPARAR as duas nocoes (fatia de rede e bloco de resumo) quebraria a cadeia em
-# silencio, que e a pior forma de errar.
-#
-# Ha ainda uma razao de requisito: para a entrada padrao, o teto de ocupacao de
-# RF-31 e exatamente UM BLOCO. Enquanto parte e bloco forem a mesma grandeza, o
-# teto e uma consequencia estrutural e nao uma promessa a vigiar.
-#
-# Trabalho futuro declarado: separar `parte de rede` de `bloco de resumo`,
-# permitindo parte multipla do bloco, e so entao expor o valor.
+# Motivo: o tamanho da parte e a MESMA grandeza que o bloco do `content_hash`.
+# Uma parte de outro tamanho montaria a cadeia de resumos sobre fatias que nao
+# sao blocos, e o `content_hash` sairia bem formado e errado. Para a entrada
+# padrao, o teto de ocupacao de RF-31 e exatamente UM BLOCO, e a igualdade o
+# torna estrutural. Expor o valor exige antes separar `parte de rede` de
+# `bloco de resumo`.
 #
 # ---------------------------------------------------------------------------
 # TETO DE OCUPACAO EM DISCO (RF-31)
@@ -65,26 +57,17 @@
 # LEITURA SEM CANO
 # ---------------------------------------------------------------------------
 # `head -c N >arquivo`, com o status observado diretamente, e `wc -c <arquivo`
-# para o tamanho. O motivo esta medido em lib/hash: por cano, apenas o status do
-# ultimo comando e observavel, e EIO, truncamento sob leitura ou produtor morto
-# no meio produziam resumo bem formado de conteudo INCOMPLETO com status 0.
-# Declarar integridade sobre dado truncado e o pior resultado possivel.
+# para o tamanho: por cano, so o status do ultimo comando e observavel, e uma
+# leitura truncada produziria resumo bem formado de conteudo INCOMPLETO.
 #
-# LIMITE QUE ESTE COMPONENTE NAO COBRE, E QUE NAO ADIANTA FINGIR QUE COBRE:
-# quando a origem e um cano anonimo, PRODUTOR QUE MORRE NO MEIO E
-# INDISTINGUIVEL DE FIM DE FLUXO LEGITIMO. O cano fecha e nos vemos EOF nos dois
-# casos; o status de saida do produtor pertence ao shell do operador e nunca
-# chega a este processo. Portanto o criterio de RF-31 "dado que a origem do
-# fluxo falhe no meio, entao nenhum arquivo parcial e publicado" e cumprido para
-# FALHA DE LEITURA — status nao zero do leitor, que aqui e observavel e aborta a
-# sessao — e NAO para produtor que encerrou mal depois de escrever um prefixo.
-# Nesse segundo caso publicamos o prefixo como se fosse o arquivo inteiro.
-#
-# MEDIDO, e nao suposto: com um produtor que escreve 5.000.000 bytes e sai com
-# status 3, o comando publica os 5.000.000 bytes e sai com ZERO. Com
-# `set -o pipefail` no shell do operador, o encadeamento devolve 3 — a falha
-# reaparece, mas do lado de quem tem a informacao. Por isso a recomendacao ao
-# operador e essa, e nao uma promessa nossa que nao podemos cumprir.
+# LIMITE DECLARADO (RSK-36): quando a origem e um cano anonimo, produtor que
+# morre no meio e indistinguivel de fim de fluxo legitimo — o status dele
+# pertence ao shell do operador. O criterio de RF-31 ("nenhum arquivo parcial e
+# publicado") vale para FALHA DE LEITURA, que aqui e observavel e aborta a
+# sessao, e NAO para produtor que encerrou mal depois de escrever um prefixo:
+# esse prefixo e publicado como arquivo inteiro. Por isso a recomendacao ao
+# operador e `set -o pipefail`. Medicao em
+# docs/registros/2026-10-19-historico-comentarios-http-transfer.md.
 #
 # ---------------------------------------------------------------------------
 # INTEGRIDADE PONTA A PONTA, E O QUE NAO SE ENVIA POR PARTE
@@ -93,13 +76,10 @@
 # `finish` devolve no metadado. Divergencia e classe `integridade`.
 #
 # NAO enviamos `content_hash` por parte no `append`, embora o campo exista no
-# argumento. Motivo: a interpretacao exata do campo por chamada — se e o resumo
-# daquela parte, do acumulado, ou do arquivo final — nao pode ser validada fora
-# do servico, e errar significaria quebrar TODO envio em partes de um jeito que
-# a suite nao apanha, porque o duplo aceitaria qualquer valor. A comparacao
-# contra o `content_hash` do `finish` da a mesma garantia de ponta a ponta sem
-# arriscar contrato. Melhoria futura declarada: enviar por parte depois de
-# verificar o campo contra o servico real.
+# argumento: a interpretacao exata dele por chamada nao pode ser validada fora
+# do servico, e um erro quebraria todo envio em partes sem que a suite o visse.
+# A comparacao com o `content_hash` do `finish` da a mesma garantia de ponta a
+# ponta sem arriscar contrato.
 #
 # ---------------------------------------------------------------------------
 # NADA PARCIAL PUBLICADO
@@ -160,16 +140,15 @@ DBX_TRANSFER_TAMANHO=0
 DBX_TRANSFER_LIDO=''
 
 # DELIBERADAMENTE global, e nao `local`: a acao do `trap` e avaliada quando o
-# escopo da funcao ja nao existe. Com variavel local a expansao viraria vazia e
-# a limpeza nao removeria nada — defeito ja corrigido em lib/hash e em lib/http,
-# e que voltaria aqui se a disciplina fosse reescrita em vez de reusada.
+# escopo da funcao ja nao existe, e com variavel local a limpeza nao removeria
+# nada.
 DBX_TRANSFER_AREA_TEMP=''
 
 # RF-58 — estado da retomada, SO EM MEMORIA e so durante a sessao: a origem
 # posicionavel (vazia para a entrada padrao), o tamanho medido no inicio, o
 # descritor de onde as partes sao lidas e o deslocamento pedido pelo servico.
 # Nenhum deles e gravado em disco; uma nova execucao recomeca do zero (F-03
-# continua fora de escopo).
+# fora de escopo).
 _DBX_TRANSFER_ORIGEM=''
 _DBX_TRANSFER_TAMANHO_INICIAL=0
 _DBX_TRANSFER_FONTE=0
@@ -218,8 +197,7 @@ dbx_transfer_tamanho_de_arquivo() {
 # _dbx_transfer_falhar <classe> <motivo> — publica classe e motivo redigido.
 #
 # Chamada SEMPRE em `{ ...; return $?; }`, nunca em `return "$(...)"`: a segunda
-# forma roda em subshell e a publicacao se perderia junto com ele. E o defeito
-# C2-01, ja pago duas vezes neste projeto.
+# forma roda em subshell e a publicacao se perderia junto com ele.
 _dbx_transfer_falhar() {
   local classe=$1 motivo=$2
   dbx_errors_redigir "$motivo" >/dev/null
@@ -248,12 +226,8 @@ _dbx_transfer_ler_campo() {
     fi
   fi
   dbx_json_descartar transferencia
-  # A restauracao usa o canal DIRETAMENTE, e nao uma copia local. Nao e estilo:
-  # a auditoria de procedencia de contexto so aceita nome literal ou este canal,
-  # justamente porque um nome vindo de variavel qualquer poderia ter procedencia
-  # externa — e nome de contexto derivado de dado remoto faz dois corpos de erro
-  # colidirem no mesmo contexto, destruindo o primeiro. Guardar numa local
-  # escaparia da auditoria sem mudar o risco, que e o pior dos dois mundos.
+  # A restauracao usa o canal DIRETAMENTE, e nao uma copia local: a auditoria
+  # de procedencia de contexto (RNF-24) so aceita nome literal ou este canal.
   # Seguro aqui: nada entre a selecao e esta linha troca de contexto.
   dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
   # shellcheck disable=SC2034  # canal publico alheio, limpo por quem o encheu
@@ -263,12 +237,11 @@ _dbx_transfer_ler_campo() {
 
 # _dbx_transfer_deslocamento_correto — le `correct_offset` do corpo de erro.
 #
-# DUAS FORMAS ACEITAS, e a razao esta escrita porque nao foi medida: o contrato
-# declara `incorrect_offset` como membro de uniao carregando
-# `UploadSessionOffsetError{correct_offset}`, mas a serializacao exata da carga
-# de uniao — achatada no objeto `error` ou aninhada sob a tag — nao foi
-# verificada contra o servico. Aceitar as duas formas nao cria risco: se nenhuma
-# estiver presente, a funcao falha e a sessao aborta fechada.
+# DUAS FORMAS ACEITAS: o contrato declara `incorrect_offset` como membro de
+# uniao carregando `UploadSessionOffsetError{correct_offset}`, mas a
+# serializacao da carga — achatada no objeto `error` ou aninhada sob a tag — nao
+# foi verificada contra o servico. Se nenhuma estiver presente, a funcao falha e
+# a sessao aborta fechada.
 _dbx_transfer_deslocamento_correto() {
   _dbx_transfer_ler_campo error correct_offset && return 0
   _dbx_transfer_ler_campo error incorrect_offset correct_offset && return 0
@@ -292,38 +265,17 @@ _dbx_transfer_remover_area() {
 # envio parcial travestido de sucesso. O codigo e o de operacao nao concluida,
 # que e literalmente o que aconteceu.
 #
-# ---------------------------------------------------------------------------
-# PALIATIVO DECLARADO: esta funcao faz remover tambem a area de `lib/http`
-# ---------------------------------------------------------------------------
-# Desde a fase 2 a remocao e feita por `dbx_http_interrompido`, do proprio
-# `lib/http`, e a disciplina "quem enche o canal o esvazia" deixou de ser
-# violada aqui. O que continua paliativo e o arranjo entre os ciclos de vida.
-#
-# O defeito: `lib/http` remove a propria area quando `_dbx_http_executar`
-# retorna, e so entao. Esta funcao faz `exit`, que encerra o processo sem esse
-# retorno. Sem esta linha, uma interrupcao no
-# meio de um `append` deixava `dbx-http.XXXX/{erro_cliente,cabecalhos,resposta}`
-# em `$TMPDIR`, com corpo do usuario dentro.
-#
-# POR QUE NAO A CORRECAO OBVIA: fazer `lib/http` armar `EXIT INT TERM HUP`
-# resolveria a limpeza dele e QUEBRARIA a nossa. `trap` e global ao shell, e
-# `dbx_transfer_sessao` ja arma `EXIT` para remover a PROPRIA area — o segundo
-# `trap` atropelaria o primeiro. Trocaria um vazamento por uma regressao de
-# limpeza, que e negocio pior.
-#
-# CORRECAO ESTRUTURAL, nao feita aqui: o componente `lib/tmp`, dono UNICO de area
-# temporaria, ja no backlog do projeto. Enquanto ele nao existir, tres
-# componentes criam area sob `$TMPDIR` com tres ciclos de vida diferentes, e
-# qualquer arranjo entre eles e paliativo.
-#
-# RECORTE QUE PERMANECE, e que o caso de teste declara em vez de esconder: isto
-# cobre o caminho em que ESTE tratador roda. Sinal que chegue fora dessa janela —
-# antes de o `trap` ser armado, depois de `trap -`, ou durante um `upload` por
-# requisicao unica, que nao passa pelo transfer — continua vazando por
-# `lib/http`. Pendencia aberta.
-#
 # RNF-31: a area de `lib/http` e a de quem chamou a sessao (o `sync`) saem por
-# `dbx_http_interrompido`, que tambem encerra com operacao nao concluida.
+# `dbx_http_interrompido`, que tambem encerra com operacao nao concluida. O
+# `exit` nao passa pelo retorno de `_dbx_http_executar`, que e onde `lib/http`
+# remove a propria area; `lib/http` nao arma `trap` proprio porque `trap` e
+# global e atropelaria o `EXIT` desta sessao.
+#
+# PALIATIVO DECLARADO, ate o componente `lib/tmp` (dono unico de area
+# temporaria, no backlog): sinal fora da janela deste tratador — antes do
+# `trap`, depois do `trap -`, ou num `upload` por requisicao unica — ainda deixa
+# a area de `lib/http` para tras. Historico em
+# docs/registros/2026-10-19-historico-comentarios-http-transfer.md.
 _dbx_transfer_interrompida() {
   _dbx_transfer_remover_area
   dbx_http_interrompido
@@ -337,9 +289,7 @@ _dbx_transfer_interrompida() {
 #
 # A entrada padrao da chamada e desviada de `/dev/null` DE PROPOSITO: a entrada
 # padrao desta funcao e o FLUXO DE DADOS do operador, e qualquer comando da
-# cadeia de autenticacao que a lesse consumiria bytes do conteudo. O prejuizo
-# seria silencioso — o arquivo remoto sairia menor, com resumo coerente com o
-# que sobrou.
+# cadeia de autenticacao que a lesse consumiria bytes do conteudo em silencio.
 _dbx_transfer_emitir() {
   local url=$1 argumento=$2 corpo=$3 idempotente=$4
   dbx_auth_conteudo POST "$url" "$argumento" "$corpo" "$idempotente" </dev/null
@@ -358,42 +308,23 @@ _dbx_transfer_emitir() {
 #      ja foi aceita numa tentativa anterior cuja resposta se perdeu: insistir
 #      duplicaria conteudo. Tratamos como progresso e avancamos.
 #
-# A PROPRIEDADE QUE IMPORTA: a reconciliacao torna a retentativa correta
-# INDEPENDENTEMENTE de a primeira tentativa ter chegado ou nao. O contrato
-# documentado confirma o desenho — `incorrect_offset` e descrito exatamente como
-# o caso da resposta perdida —, mas o desenho nao depende dessa confirmacao: ele
-# depende apenas de o servico dizer onde acha que esta.
+# A reconciliacao torna a retentativa correta INDEPENDENTEMENTE de a primeira
+# tentativa ter chegado ou nao: depende so de o servico dizer onde acha que
+# esta.
 #
 # Qualquer outro valor de `correct_offset` significa discordancia real sobre o
-# que ja chegou. Com a entrada padrao nao ha reposicionamento possivel: ela nao
-# e posicionavel e reler nao e opcao. Abortamos, e o diagnostico diz os dois
-# numeros para que a divergencia seja diagnosticavel sem adivinhacao. Com
-# arquivo regular (RF-58) o deslocamento e validado e o laco rele a partir dele.
+# que ja chegou. Com a entrada padrao, que nao e posicionavel, abortamos, e o
+# diagnostico diz os dois numeros. Com arquivo regular (RF-58) o deslocamento e
+# validado e o laco rele a partir dele.
 #
-# ---------------------------------------------------------------------------
-# QUEM RECONHECE A CONDICAO DE SESSAO: `lib/errors.sh`, E SO ELE
-# ---------------------------------------------------------------------------
-# Esta funcao NAO reconhece a tag por conta propria. Ela le a POLITICA que
-# `lib/http` publica em `DBX_HTTP_POLITICA`, e essa politica vem inteira da
-# taxonomia — que casa prefixo em FRONTEIRA DE COMPONENTE
-# (`_dbx_errors_prefixo_casa`) e remove qualificadores de uniao um a um.
+# QUEM RECONHECE A CONDICAO DE SESSAO E `lib/errors.sh`, E SO ELE: esta funcao
+# le a POLITICA que `lib/http` publica em `DBX_HTTP_POLITICA`, vinda inteira da
+# taxonomia (prefixo casado em fronteira de componente), para a regra ter um
+# dono so.
 #
-# A versao anterior decidia DE NOVO, com glob de substring
-# (`*incorrect_offset*`), e a regra passou a ter dois donos. Eles ja divergiam,
-# e a divergencia foi MEDIDA com `error_summary=path/conflict/incorrect_offset_like`:
-#   taxonomia -> classe `conflito`, politica `nenhuma`
-#   transfer  -> ramo de deslocamento, abortando com "por deslocamento
-#                incorreto"
-# Falha fechada nas duas, mas com DIAGNOSTICO ERRADO: mandava investigar
-# deslocamento diante de um conflito de caminho. E a familia de gemeos que este
-# projeto ja pagou oito vezes, na sua forma mais barata de evitar — bastava
-# consultar quem ja sabia.
-#
-# `reiniciar` (tag `reset`) tambem passa a ter tratamento PROPRIO. Antes caia no
-# ramo generico: falha fechada, sem dizer que a causa era invalidacao da sessao.
-# Reiniciar exige reler a origem desde o inicio, e com entrada padrao isso e
-# impossivel — entao a resposta correta e abortar dizendo exatamente isso, e nao
-# tentar um reinicio que publicaria conteudo embaralhado.
+# `reiniciar` (tag `reset`) tem tratamento proprio: reiniciar exige reler a
+# origem desde o inicio, impossivel com entrada padrao, entao o envio aborta
+# dizendo isso em vez de publicar conteudo embaralhado.
 _dbx_transfer_anexar() {
   local sessao=$1 deslocamento=$2 tamanho=$3 corpo=$4
   local argumento esperado=$((deslocamento + tamanho)) correto
@@ -476,7 +407,7 @@ _dbx_transfer_exibir() {
 # inteiro em [0, bytes ja confirmados pelo servico], que nunca passa do tamanho
 # do arquivo. Acima do confirmado o servico alega ter bytes que nunca mandamos:
 # hostil ou inconsistente, e reler dali publicaria um arquivo com buraco
-# (decisao do Tech Lead, ciclo 2). Fora da faixa o envio aborta antes de
+# (decisao do Tech Lead). Fora da faixa o envio aborta antes de
 # qualquer `finish` e a mensagem nomeia o valor recusado.
 _dbx_transfer_validar_retomada() {
   local correto=$1 enviado=$2
@@ -544,9 +475,8 @@ _dbx_transfer_conferir_tamanho() {
 #
 # Ha um unico laco de sessao, e ele nao sabe de onde vem o fluxo: para a entrada
 # padrao o chamador nao redireciona nada, e para arquivo local acima do teto o
-# chamador redireciona a entrada do arquivo. Dois lacos — um para fluxo, outro
-# para arquivo — seriam a nona ocorrencia da familia de gemeos, com a proxima
-# correcao de deslocamento valendo para um lado so.
+# chamador redireciona a entrada do arquivo. Um laco so, para uma correcao de
+# deslocamento nunca valer para um lado so.
 #
 # O `argumento_de_commit` chega PRONTO do comando: e o mesmo objeto que a
 # requisicao unica envia a `files/upload`. Monta-lo aqui criaria a segunda copia
@@ -555,7 +485,7 @@ _dbx_transfer_conferir_tamanho() {
 # `origem`, opcional, e o caminho do ARQUIVO REGULAR que o chamador redirecionou
 # para a entrada padrao. So com ele a sessao retoma diante de `incorrect_offset`
 # (RF-58); a entrada padrao e qualquer origem nao posicionavel seguem sem
-# retomada, como antes.
+# retomada.
 dbx_transfer_sessao() {
   local commit=${1-} origem=${2-} estado
 
@@ -565,10 +495,8 @@ dbx_transfer_sessao() {
   }
 
   # RF-15, SEGUNDA LINHA DE DEFESA. O gate de simulacao vive no comando, ANTES
-  # da bifurcacao entre requisicao unica e sessao, e portanto domina os dois
-  # ramos. Esta guarda existe para o chamador FUTURO que esquecer: falha
-  # fechada, e nao emissao silenciosa. Nao e duplicacao da regra — e recusa de
-  # executar sem ela.
+  # da bifurcacao entre requisicao unica e sessao; esta guarda falha fechada
+  # para um chamador que o esqueca.
   [[ ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]] || {
     _dbx_transfer_falhar uso_invalido \
       'sessao em partes alcancada em modo de simulacao: nenhuma escrita e emitida'
@@ -603,16 +531,9 @@ dbx_transfer_sessao() {
     _DBX_TRANSFER_TAMANHO_INICIAL=$DBX_TRANSFER_TAMANHO
   fi
 
-  # `umask` SALVA E RESTAURADA, e nao apenas endurecida. A mascara e estado do
-  # PROCESSO, nao da funcao: deixa-la em 077 na volta altera a permissao padrao
-  # de tudo que o chamador criar depois — medido antes desta correcao, 0022 na
-  # entrada e 0077 na saida.
-  #
-  # Nenhum consumidor de hoje observa a diferenca, e o valor deixado era o mais
-  # restritivo. Ainda assim e a forma exata da familia de gemeos que este projeto
-  # ja pagou oito vezes: `lib/config.sh` faz o par salvar/restaurar
-  # (`mascara_anterior`) e o irmao NOVO nao fazia. A disciplina so vale se nao
-  # tiver excecao negociada caso a caso.
+  # `umask` SALVA E RESTAURADA, e nao apenas endurecida: a mascara e estado do
+  # PROCESSO, e deixa-la em 077 alteraria a permissao de tudo que o chamador
+  # criar depois. Mesmo par salvar/restaurar de `lib/config.sh`.
   local mascara_anterior
   mascara_anterior=$(umask)
   umask 077
@@ -681,10 +602,8 @@ _dbx_transfer_conduzir() {
   }
   dbx_json_escapar_cadeia "$DBX_TRANSFER_LIDO"
   sessao=$DBX_JSON_ESCAPADO
-  # Canal publico ALHEIO, esvaziado por quem o encheu. O identificador de sessao
-  # nao e credencial, mas a disciplina nao e "so limpe o que for segredo": e
-  # "quem enche o canal de outro componente o esvazia", e ela so vale se nao
-  # tiver excecoes negociadas caso a caso.
+  # Canal publico ALHEIO, esvaziado por quem o encheu, mesmo sem segredo: a
+  # disciplina e "quem enche o canal de outro componente o esvazia".
   # shellcheck disable=SC2034  # canal publico alheio, limpo por quem o encheu
   DBX_JSON_ESCAPADO=''
 
@@ -738,7 +657,7 @@ _dbx_transfer_conduzir() {
       continue
     fi
     deslocamento=$((deslocamento + tamanho))
-    # QA-P2-01: as tentativas sao DA PARTE (RF-09, RF-58(e)). O contador zera
+    # As tentativas sao DA PARTE (RF-09, RF-58(e)). O contador zera
     # so quando o confirmado passa do maior ja visto: um servico que manda
     # voltar e depois aceita de novo o mesmo trecho nao renova as tentativas, e
     # o laco continua limitado.
@@ -827,9 +746,8 @@ DBX_TRANSFER_POR_SESSAO='nao'
 # dbx_transfer_objeto_de_publicacao <remoto> <modo> <rev> <origem> [mute]
 #
 # UNICO lugar que monta o objeto de publicacao, para `upload` e para `sync`.
-# Resultado em DBX_TRANSFER_COMMIT. Monta-lo em cada comando faria a proxima
-# correcao em `mode` ou em `client_modified` valer para um caminho so, com o
-# sintoma — metadado diferente conforme o comando — longe da causa.
+# Resultado em DBX_TRANSFER_COMMIT. Um lugar so, para o metadado (`mode`,
+# `client_modified`) nunca diferir conforme o comando.
 #
 # Com `rev`, o modo e `update` sobre ele (RF-49): alteracao remota entre a
 # leitura e o envio vira conflito, e nao sobrescrita do que mudou.

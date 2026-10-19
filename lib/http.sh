@@ -22,9 +22,10 @@
 # por qualquer usuario do host. O corpo da requisicao vai por arquivo
 # temporario, justamente para deixar a entrada padrao livre para o segredo.
 #
-# RSK-23 — nao ha estado local persistente. Nenhum cursor e guardado "para
-# retomar": a camada de adaptadores e exatamente onde esse cache pareceria
-# inofensivo.
+# RSK-23 — `lib/http` nao persiste nada: nenhum cursor e guardado "para
+# retomar", porque a camada de adaptadores e onde esse cache pareceria
+# inofensivo. Todo estado persistente do projeto passa so por `lib/state`
+# (RF-38, RF-61, RNF-26).
 
 [[ -n ${DBX_HTTP_CARREGADO:-} ]] && return 0
 DBX_HTTP_CARREGADO=1
@@ -45,17 +46,14 @@ DBX_HTTP_ERRO_REDE=$(dbx_errors_codigo_saida rede)
 DBX_HTTP_ERRO_NAO_CONCLUIDA=$(dbx_errors_codigo_saida nao_concluida)
 readonly DBX_HTTP_ERRO_USO DBX_HTTP_ERRO_REDE DBX_HTTP_ERRO_NAO_CONCLUIDA
 
-# RNF-23: teto de itens por pagina. O teto de entrada de lib/json e 256 KiB, o
-# que comporta cerca de 537 entradas tipicas, enquanto uma listagem sem limite
-# pode devolver 2.000 — quase quatro vezes o teto. Cem entradas dao cerca de
-# 49 KiB por pagina, com folga larga.
+# RNF-23: teto de itens por pagina, para a pagina caber com folga no teto de
+# entrada de `lib/json` (256 KiB).
 readonly DBX_HTTP_LIMITE_MAXIMO=100
 # Piso da reducao: abaixo disto, insistir nao ajuda e a falha precisa aparecer.
 readonly DBX_HTTP_LIMITE_MINIMO=5
-# Teto do valor de cabecalho. Medido: integro ate ~100.000 bytes, truncagem
-# silenciosa a partir dai e descarte em 1.000.000 — as tres sem aviso do cliente.
-# 8 KiB fica uma ordem de grandeza abaixo da primeira falha observada, e cobre
-# com folga um caminho remoto da Dropbox codificado em JSON.
+# Teto do valor de cabecalho: uma ordem de grandeza abaixo do ponto em que o
+# cliente passa a truncar sem aviso, e com folga para um caminho remoto
+# codificado em JSON.
 readonly DBX_HTTP_LIMITE_CABECALHO=8192
 
 # ---------------------------------------------------------------------------
@@ -146,10 +144,9 @@ DBX_HTTP_REQUISICOES=0
 # sessao de envio — hoje o `sync` (RNF-31). Nome de funcao, ou vazio.
 #
 # Os tratadores internos (`lib/cmd` no recebimento, `lib/transfer` na sessao)
-# encerram o processo; sem este canal, um sinal recebido com eles armados
-# deixava para tras a area de quem os chamou, e o `trap -` do fim deles
-# desarmava o tratador de fora. Com ele, encerram passando por
-# `dbx_http_interrompido` e devolvem os sinais por `dbx_http_sinais_devolver`.
+# encerram o processo passando por `dbx_http_interrompido`, que entrega a este
+# tratador a limpeza da area de quem os chamou, e no fim devolvem os sinais por
+# `dbx_http_sinais_devolver`, sem desarmar o tratador de fora.
 DBX_HTTP_TRATADOR_EXTERNO=''
 # shellcheck disable=SC2034
 # Corpo do cabecalho `Dropbox-API-Result`, que o modo de conteudo usa para
@@ -203,8 +200,7 @@ _dbx_http_tratador_externo_valido() {
 }
 
 # dbx_http_sinais_devolver — fim de um tratador interno: INT, TERM e HUP voltam
-# ao tratador externo, ou ao padrao quando nao ha. E o "salvar e restaurar" que
-# o `trap -` de `lib/transfer` e de `lib/cmd` declarava como pendente.
+# ao tratador externo, ou ao padrao quando nao ha.
 dbx_http_sinais_devolver() {
   if _dbx_http_tratador_externo_valido; then
     trap -- "$DBX_HTTP_TRATADOR_EXTERNO" INT TERM HUP
@@ -269,8 +265,9 @@ _dbx_http_esperar() {
 # perde-lo apenas no de erro seria a assimetria que RF-30 nao tolera, ja que e
 # no erro que ele serve.
 #
-# Le tambem o `Retry-After` (RNF-07). A leitura NAO para no identificador de
-# correlacao: parar ali perdia todo cabecalho que viesse depois dele.
+# Le tambem o `Retry-After` (RNF-07) e o `Dropbox-API-Result`. A leitura
+# percorre todos os cabecalhos e nao para no identificador de correlacao, para
+# nao perder o que vier depois dele.
 _dbx_http_correlacao_de() {
   local arquivo=$1 linha nome valor
   DBX_HTTP_CORRELACAO=''
@@ -290,13 +287,13 @@ _dbx_http_correlacao_de() {
         DBX_HTTP_RESULTADO_CABECALHO=$valor
         ;;
       x-dropbox-request-id | x-request-id | x-server-response)
-        # O primeiro identificador vence, como antes.
+        # O primeiro identificador vence.
         # shellcheck disable=SC2034  # canal publico, ver nota no topo
         [[ -n $DBX_HTTP_CORRELACAO ]] || DBX_HTTP_CORRELACAO=$valor
         ;;
       retry-after)
-        # So as pontas sao aparadas (QA-P2-03): espaco INTERNO invalida o
-        # valor — `5 0` nao e 50 s — e ele cai no recuo.
+        # So as pontas sao aparadas: espaco INTERNO invalida o valor — `5 0`
+        # nao e 50 s — e ele cai no recuo.
         [[ $valor =~ ^[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && valor=${BASH_REMATCH[1]}
         DBX_HTTP_RETRY_AFTER=$valor
         ;;
@@ -380,9 +377,8 @@ _dbx_http_opcoes() {
       printf 'header = "Authorization: Bearer %s"\n' "$_DBX_HTTP_TOKEN"
       printf 'header = "Content-Type: application/octet-stream"\n'
       # O valor vai dentro de cadeia entre aspas no arquivo de configuracao: uma
-      # aspa crua ENCERRA a cadeia e o resto do JSON e descartado em silencio.
-      # Medido: `{"path":"/a.txt"}` chegava ao servidor como `{`. Mesmo escape ja
-      # aplicado ao modo formulario — a disciplina existia no gemeo e nao aqui.
+      # aspa crua ENCERRARIA a cadeia e o resto do JSON seria descartado em
+      # silencio. Mesmo escape do modo formulario.
       local _arg_escapado=${_DBX_HTTP_ARG//\\/\\\\}
       _arg_escapado=${_arg_escapado//\"/\\\"}
       printf 'header = "Dropbox-API-Arg: %s"\n' "$_arg_escapado"
@@ -396,14 +392,10 @@ _dbx_http_opcoes() {
 
 # dbx_http_cabecalho_valido <valor> — status 0 aceita, uso invalido recusa.
 #
-# A recusa e NOSSA. Medido contra o cliente real: um valor com `\n` ou `\r\n` NAO
-# e descartado — o cliente transmite, o servidor interpreta o que vem depois da
-# quebra como cabecalho proprio, e o cliente sai com status 0 sem aviso. Como a
-# origem do valor e nome de arquivo do usuario, isso e injecao de cabecalho HTTP
-# com entrada controlada.
-#
-# Por isso a garantia nao pode ser "o cliente sanitiza": um caso escrito contra o
-# comportamento do cliente teria passado e codificado a conclusao falsa.
+# A recusa e NOSSA: o cliente transmite um valor com `\n` ou `\r\n` sem aviso, e
+# o servidor le o que vem depois da quebra como cabecalho proprio. Como o valor
+# vem de nome de arquivo do usuario, seria injecao de cabecalho HTTP com entrada
+# controlada.
 #
 # Conjunto onde incide: todo valor que va para um cabecalho — hoje o argumento do
 # modo de conteudo, e qualquer outro que venha a existir.
@@ -567,11 +559,10 @@ _dbx_http_conduzir() {
 
   [[ -n $corpo ]] && printf '%s' "$corpo" >"$area/requisicao"
 
-  # RF-32(b), F-28: o cliente roda DENTRO da substituicao que captura o codigo
-  # HTTP, e ali `/dev/stdout` (ou `-`) e o cano da captura — o conteudo saia
-  # colado ao codigo, o codigo deixava de ser numero e o recebimento virava
-  # falha de rede. A saida padrao do processo e duplicada antes e o cliente
-  # escreve nela pelo descritor.
+  # RF-32(b): o cliente roda DENTRO da substituicao que captura o codigo HTTP,
+  # onde `/dev/stdout` (ou `-`) seria o cano da captura e o conteudo se
+  # misturaria ao codigo. A saida padrao do processo e duplicada antes e o
+  # cliente escreve nela pelo descritor.
   #
   # LIMITE DECLARADO: o cliente REABRE o descritor. Cano e terminal se
   # comportam como a saida padrao; arquivo regular e reaberto do inicio e
@@ -590,15 +581,13 @@ _dbx_http_conduzir() {
     : >"$area/erro_cliente"
     # A redirecao do stderr fica DENTRO da substituicao: aplicada do lado de
     # fora, a substituicao ja teria sido expandida com o stderr original e a
-    # mensagem do cliente se perderia. Foi o que aconteceu na primeira versao —
-    # o canal existia e chegava sempre vazio.
+    # mensagem do cliente se perderia.
     codigo=$(
       {
         _dbx_http_opcoes | if [[ $_DBX_HTTP_CANAL == 'fluxo' ]]; then
-          # `--fail` e o que impede a resposta de ERRO de sair como se fosse o
-          # conteudo do arquivo. Medido: sem ele, um 409 sai pela saida padrao com
-          # status ZERO — um erro que se parece com exito, com nome de arquivo
-          # correto e um JSON dentro. Com ele, zero bytes emitidos e status 22.
+          # `--fail` impede a resposta de ERRO de sair como se fosse o conteudo
+          # do arquivo (um 409 sairia com status zero e um JSON dentro): com
+          # ele, zero bytes emitidos e status 22.
           curl -K - --fail -X "$metodo" \
             -o "$destino" -D "$area/cabecalhos" -w '%{http_code}' "$url"
         elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
@@ -618,26 +607,18 @@ _dbx_http_conduzir() {
 
     # DEFEITO NOSSO NAO PODE CHEGAR AO OPERADOR COMO PROBLEMA DE REDE.
     #
-    # Antes, qualquer status nao zero do cliente virava `codigo=0` e era
-    # classificado como falha de rede, entao opcao mal formada ou arquivo de
-    # corpo ilegivel — defeitos do PROPRIO PROGRAMA — chegavam ao operador como
-    # "verifique conectividade, DNS, proxy e TLS", mandando investigar a rede
-    # alheia por bug nosso.
-    #
     # Estes status do cliente sao emitidos ANTES de qualquer tentativa de
     # conversa com o servidor e nao dependem da rede:
     #   2  falha de inicializacao, inclusive arquivo de opcoes mal formado
     #   3  URL mal formada
     #   26 erro de leitura do arquivo indicado ao corpo
     #   43 argumento interno invalido
-    # O stderr do cliente deixou de ser descartado: pedir `show-error` e jogar a
-    # mensagem fora era pedir diagnostico para nao le-lo.
+    # O stderr do cliente e guardado, redigido, para o diagnostico.
     DBX_HTTP_DEFEITO_CLIENTE=''
     if [[ $estado -eq 22 ]]; then
       # `--fail` no canal de fluxo: HOUVE resposta HTTP e o codigo e conhecido; o
-      # cliente apenas se recusou a emitir o corpo de erro como se fosse conteudo.
-      # Tratar como falha de rede mandaria o operador investigar DNS e TLS diante
-      # de um 404 perfeitamente informativo.
+      # cliente apenas se recusou a emitir o corpo de erro como se fosse
+      # conteudo. Nao e falha de rede.
       :
     elif [[ $estado -ne 0 ]]; then
       # Sem resposta HTTP: codigo zero, e nao um codigo inventado.
@@ -662,14 +643,11 @@ _dbx_http_conduzir() {
     # shellcheck disable=SC2034  # canal publico, ver nota no topo
     DBX_HTTP_CODIGO=$codigo
     # Leitura byte a byte, e nao por substituicao de comando, que removeria
-    # quebras de linha finais do corpo. A auditoria estatica nao alcanca este
-    # caso — o utilitario de copia nao tem prefixo do projeto —, mas a classe e
-    # a mesma de D1, C2-01 e E2-04.
+    # quebras de linha finais do corpo.
     #
-    # LIMITE DECLARADO: este canal e para corpo TEXTUAL. Conteudo binario, como
-    # o de um recebimento de arquivo, nao pode transitar por variavel de shell,
-    # que nao carrega o byte nulo; quando `download` existir, precisara de canal
-    # por arquivo ou descritor.
+    # LIMITE DECLARADO: este canal e para corpo TEXTUAL. Conteudo binario nao
+    # transita por variavel de shell, que nao carrega o byte nulo; o recebimento
+    # de arquivo usa o canal de fluxo, por arquivo ou descritor.
     DBX_HTTP_CORPO=''
     [[ -r $area/resposta ]] && IFS= read -r -d '' DBX_HTTP_CORPO <"$area/resposta"
 
@@ -680,10 +658,9 @@ _dbx_http_conduzir() {
       _dbx_http_interpretar_erro "$DBX_HTTP_CORPO"
     fi
 
-    # A decisao de repetir CONSULTA a taxonomia; reimplementa-la por codigo HTTP
-    # foi defeito real, em que classe e politica se contradiziam.
-    # P3.4: por variavel, sem substituicao de comando — eram dois subshells
-    # (tres, com o da politica por dentro) a cada tentativa de cada requisicao.
+    # A decisao de repetir CONSULTA a taxonomia de `lib/errors`, para classe e
+    # politica nunca se contradizerem; por variavel, sem subshell a cada
+    # tentativa.
     dbx_errors_classificar "$codigo" "$DBX_HTTP_RESUMO_DE_ERRO" >/dev/null
     DBX_HTTP_CLASSE=$DBX_ERRORS_CLASSE
     dbx_errors_politica_retentativa "$codigo" "$DBX_HTTP_RESUMO_DE_ERRO" "$idempotente" >/dev/null
@@ -699,12 +676,12 @@ _dbx_http_conduzir() {
       break
     fi
 
-    # RF-32, OBS-01, QA-P2-05: erro de escrita (23) no fluxo para a saida
-    # padrao. So e consumidor que fechou quando ela e CANO ou FIFO; em arquivo
-    # ou dispositivo (`/dev/full`, disco cheio) e falha local de escrita, a
-    # mesma classe que o recebimento em arquivo usa (`configuracao`). Nos dois
-    # casos nunca se repete: bytes podem ja ter sido entregues. Em fluxo para
-    # arquivo de recebimento o 23 continua o que era.
+    # RF-32: erro de escrita (23) no fluxo para a saida padrao. So e
+    # consumidor que fechou quando ela e CANO ou FIFO; em arquivo ou dispositivo
+    # (`/dev/full`, disco cheio) e falha local de escrita, a mesma classe que o
+    # recebimento em arquivo usa (`configuracao`). Nos dois casos nunca se
+    # repete: bytes podem ja ter sido entregues. Em fluxo para arquivo de
+    # recebimento o 23 segue o tratamento comum abaixo.
     if [[ -n $saida_padrao && $estado -eq 23 ]]; then
       if [[ $saida_e_cano == 'sim' ]]; then
         DBX_HTTP_CLASSE='consumidor_encerrou'
@@ -728,10 +705,10 @@ _dbx_http_conduzir() {
         # produzida pela nossa propria politica de confiabilidade, e
         # indistinguivel de conteudo legitimo do lado de fora.
         #
-        # Repetir so e seguro quando NADA foi emitido. Medido contra o cliente
-        # real: sob `--fail`, uma recusa HTTP emite zero bytes (status 22), e
-        # conexao recusada tambem (status 7). Ja o erro de escrita (23) significa
-        # que houve transferencia — e ai nao se repete.
+        # Repetir so e seguro quando NADA foi emitido: sob `--fail`, uma recusa
+        # HTTP emite zero bytes (status 22), e conexao recusada tambem (status
+        # 7). Ja o erro de escrita (23) significa que houve transferencia — e ai
+        # nao se repete.
         if [[ $_DBX_HTTP_CANAL == 'fluxo' && $estado -ne 22 && $estado -ne 7 ]]; then
           break
         fi
@@ -778,9 +755,8 @@ _dbx_http_conduzir() {
   fi
 
   [[ $DBX_HTTP_CLASSE == 'sucesso' ]] && return 0
-  # P3.4: o codigo vem da tabela da taxonomia, numa consulta so; antes eram duas
-  # chamadas, uma delas em subshell. Classe fora da tabela mantem o status de
-  # uso que a consulta devolvia.
+  # O codigo vem da tabela da taxonomia, numa consulta so. Classe fora da
+  # tabela devolve o status de uso.
   dbx_errors_classe_valida "$DBX_HTTP_CLASSE" || return "$DBX_ERRORS_STATUS_USO"
   return "${DBX_ERRORS_CODIGO[$DBX_HTTP_CLASSE]}"
 }

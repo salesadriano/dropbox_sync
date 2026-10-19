@@ -96,7 +96,7 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 | Casos de uso: problema, usuarios primarios, criterios mensuraveis (primeiro passo do escopo) | `../skills/use-case-specification/` |
 | Formalizar PRD ou detalhar historias | `../skills/prd-generator/`, `../skills/user-story-writing/` |
 | Camadas, fronteiras e separacao de responsabilidades no System Design | `../skills/clean-architecture/` |
-| Requisitos de multi-tenancy, organizacoes, times e papeis | `../skills/better-auth-organization/` |
+| Requisitos de multi-tenancy, organizacoes, times e papeis | nao incluida neste repositorio; fonte: `ai_team` |
 | Diagramas C4 e demais representacoes do System Design | `../skills/mermaid-generator/` |
 | Impacto documental apos mudanca de escopo ou arquitetura | `../skills/documentation-sync/` |
 

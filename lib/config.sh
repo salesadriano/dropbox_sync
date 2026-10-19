@@ -3,9 +3,10 @@
 #
 # Camada: adaptadores. Depende de lib/errors.sh (dominio) e de lib/json.sh.
 #
-# ESTA E A UNICA ESCRITA PERSISTENTE DE TODO O PROJETO (PRJ-DEC-07). Nao ha
-# cache, indice, cursor nem arquivo de trava, e RSK-23 existe para vigiar
-# exatamente esta camada, onde um cache pareceria inofensivo.
+# A CREDENCIAL E O UNICO ARQUIVO QUE GUARDA SEGREDO. O outro estado em disco e
+# a memoria de hash de `lib/state` (RF-38, RF-61), que nao guarda segredo
+# algum. Esta camada nao guarda cursor, indice nem arquivo de trava: RSK-23
+# vigia exatamente aqui, onde um cache pareceria inofensivo.
 #
 # Formato: JSON. Justificativa da escolha, contra as alternativas:
 #

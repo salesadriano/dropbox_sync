@@ -70,8 +70,9 @@ readonly DBX_PREFLIGHT_BASH_MENOR=4
 # preflight que aprova ambiente onde a primeira operacao ja falha e pior do que
 # nao existir: cria confianca falsa e empurra o diagnostico para um ponto mais
 # obscuro. Ha caso de teste que reprova se a biblioteca passar a invocar um
-# utilitario ausente desta lista.
-readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep'
+# utilitario ausente desta lista. `df` e `tail` entram pelo diagnostico de
+# `commands/config.sh` (RNF-34(c)); a mesma lista esta no README.
+readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df'
 
 DBX_PREFLIGHT_MOTIVO=''
 DBX_PREFLIGHT_DETALHE=''

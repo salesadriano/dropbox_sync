@@ -30,8 +30,9 @@
 # `xargs -0`. E o que torna representavel um nome contendo quebra de linha, que
 # RNF-10 exige preservar e que uma saida por linhas nao consegue delimitar.
 #
-# Sem estado entre execucoes (PRJ-DEC-07): o modelo vive em memoria e e
-# descartado por `dbx_output_iniciar`. Este componente nao escreve em disco.
+# Sem estado entre execucoes: o modelo descreve UMA saida, vive em memoria e e
+# descartado por `dbx_output_iniciar`. Este componente nao escreve em disco;
+# todo estado persistente do projeto passa por `lib/state` (RF-38, RF-61).
 
 [[ -n ${DBX_OUTPUT_CARREGADO:-} ]] && return 0
 DBX_OUTPUT_CARREGADO=1

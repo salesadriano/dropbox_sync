@@ -85,12 +85,12 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 
 | Situacao | Skill |
 |---|---|
-| Modelar componentes, contratos de interacao e Design System | `../skills/interface-design/` |
-| Criterios e padroes de acessibilidade nos componentes e fluxos | `../skills/accessibility/` |
-| Auditoria WCAG 2.2 AA antes de submeter ao QA ou Tech Lead | `../skills/accessibility-review/` |
-| Estrutura e completude do documento de Design System em Markdown | `../skills/design-md/` |
-| Tokens, estetica e padroes visuais de componente | `../skills/frontend-design/` |
-| Padroes de interacao e restricoes de performance em telas React Native | `../skills/react-native-best-practices/` |
+| Modelar componentes, contratos de interacao e Design System | nao incluida neste repositorio; fonte: `ai_team` |
+| Criterios e padroes de acessibilidade nos componentes e fluxos | nao incluida neste repositorio; fonte: `ai_team` |
+| Auditoria WCAG 2.2 AA antes de submeter ao QA ou Tech Lead | nao incluida neste repositorio; fonte: `ai_team` |
+| Estrutura e completude do documento de Design System em Markdown | nao incluida neste repositorio; fonte: `ai_team` |
+| Tokens, estetica e padroes visuais de componente | nao incluida neste repositorio; fonte: `ai_team` |
+| Padroes de interacao e restricoes de performance em telas React Native | nao incluida neste repositorio; fonte: `ai_team` |
 | Jornadas, fluxos de interacao e diagramas do Design System | `../skills/mermaid-generator/` |
 
 ## Entrega obrigatoria

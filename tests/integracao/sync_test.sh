@@ -314,6 +314,10 @@ teste_origem_vazia_com_memoria_povoada_recusa_integralmente() {
   _rodar "$base" sync --enviar --origem "$base/local" --destino /r
   assert_igual 0 "$DBX_ESTADO" "primeira execucao deve concluir; diagnostico: $DBX_ERRO"
   rm -f "$base/local/um.txt"
+  # MUDANCA DECLARADA (fase 4, O-1): a recusa nao depende mais da memoria, e
+  # sim de haver algo a apagar no destino. O duplo agora lista o `um.txt` que a
+  # primeira execucao enviou, como a Dropbox listaria.
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/um.txt' 'ff' 1)" >"$base/listagem"
   : >"$base/chamadas"
   _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
   assert_diferente 0 "$DBX_ESTADO" 'origem vazia com memoria povoada e recusa'
@@ -1044,7 +1048,13 @@ teste_sem_identidade_de_conta_espelhar_pede_reconhecimento_e_a_ajuda_avisa() {
 # sem memoria a recusa de RF-41(b) nao protege. A exclusao fica DESABILITADA na
 # execucao, com a semantica de RF-41(a), e `--confirmar` nao a reabilita.
 
-teste_sem_conta_origem_vazia_com_confirmar_nao_apaga_nada() {
+# MUDANCA DECLARADA (fase 4, O-6): este caso se chamava
+# `teste_sem_conta_origem_vazia_com_confirmar_nao_apaga_nada`. Desde o ciclo 4
+# (RF-41(b) emendado) o que ele prova e a RECUSA por origem vazia, que vale
+# mesmo sem identidade de conta; o nome passou a dizer isso. As assercoes nao
+# mudaram. A afirmacao de `exclusao_desabilitada` sem conta segue no caso de
+# origem povoada, logo abaixo.
+teste_sem_conta_origem_vazia_com_algo_a_apagar_e_recusada_mesmo_com_confirmar() {
   local base
   base=$(_cenario)
   : >"$base/conta_falha"
@@ -1052,11 +1062,6 @@ teste_sem_conta_origem_vazia_com_confirmar_nao_apaga_nada() {
   _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
   assert_igual 0 "$(_exclusoes "$base")" 'conta nao identificada: zero exclusoes'
   assert_diferente 0 "$DBX_ESTADO" 'a execucao nao e o espelho pedido'
-  # MUDANCA DECLARADA (ciclo 4, RF-41(b) emendado): origem vazia com algo a
-  # apagar agora e recusada inteira pela guarda sem memoria, antes do plano; a
-  # protecao do caso (zero exclusoes, saida diferente de 0) continua afirmada.
-  # A afirmacao de `exclusao_desabilitada` sem conta segue no caso de origem
-  # povoada, logo abaixo.
   assert_contem 'origem esta vazia' "$DBX_ERRO" 'recusada pela guarda de origem vazia'
 }
 
@@ -1334,6 +1339,318 @@ teste_sync_usa_a_memoria_sem_sqlite_nem_python_e_preserva_o_legado() {
   assert_arquivo_ausente "$base/proibido" 'nenhuma invocacao de sqlite3, python3 ou python'
   depois=$(cd "$base/estado/dbx" && stat -c '%n %s %Y' dbx.db dbx.db-wal dbx.db-shm && cat dbx.db dbx.db-wal dbx.db-shm)
   assert_igual "$antes" "$depois" 'dbx.db* intactos: conteudo e mtime'
+}
+
+# ---------------------------------------------------------------------------
+# Fase 4 — aliases em ingles (RF-64), origem vazia pelo plano no `--receber`
+# (RF-41(b), O-1, DIV-30) e localidade da comparacao sem caixa (RF-54(e)(f)(g))
+# ---------------------------------------------------------------------------
+
+# _rodar_com_ambiente <base> <atribuicoes> <argumentos...> — como `_rodar`, com
+# atribuicoes extras (`NOME=valor`, separadas por espaco) no ambiente limpo.
+_rodar_com_ambiente() {
+  local base=$1 extra=$2
+  shift 2
+  local -a ambiente=()
+  [[ -n $extra ]] && read -r -a ambiente <<<"$extra"
+  DBX_SAIDA=''
+  DBX_ERRO=''
+  env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" ${ambiente[@]+"${ambiente[@]}"} \
+    bash "$DBX_EXEC" "$@" >"$base/out" 2>"$base/err"
+  DBX_ESTADO=$?
+  [[ -r $base/out ]] && IFS= read -r -d '' DBX_SAIDA <"$base/out"
+  [[ -r $base/err ]] && IFS= read -r -d '' DBX_ERRO <"$base/err"
+  return 0
+}
+
+# _plano_de <base> <argumentos do sync...> — saida do `--json --dry-run sync`,
+# com o caminho temporario do cenario trocado por um marcador, para comparar
+# planos de cenarios diferentes.
+_plano_de() {
+  local base=$1
+  shift
+  _rodar "$base" --json --dry-run sync "$@"
+  printf '%s|%s' "$DBX_ESTADO" "${DBX_SAIDA//$base/BASE}"
+}
+
+# _cenario_de_plano <com_origem_vazia> — local com `novo.txt` (ou vazio) e
+# remoto com `orfao.txt`, o que torna visiveis no plano o sentido, os lados, o
+# espelhamento e a liberacao da origem vazia.
+_cenario_de_plano() {
+  local base
+  base=$(_cenario)
+  [[ $1 == sim ]] || printf 'novo' >"$base/local/novo.txt"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/orfao.txt' 'ff' 1)" >"$base/listagem"
+  printf '%s' "$base"
+}
+
+teste_cada_alias_do_sync_produz_o_mesmo_plano_que_o_nome_em_portugues() {
+  # TC-ALI-01, RF-64(a)(b): um caso por par. Cada linha troca UM nome pelo alias
+  # e o plano da simulacao tem de ser identico ao do portugues.
+  local -a pares=(
+    '--origem|--source' '--destino|--dest' '--enviar|--push' '--espelhar|--mirror'
+    '--confirmar|--yes' '--permitir-origem-vazia|--allow-empty-source'
+  )
+  local par pt en vazia esperado obtido base
+  for par in "${pares[@]}"; do
+    pt=${par%|*} en=${par#*|}
+    vazia=nao
+    [[ $pt == --permitir-origem-vazia ]] && vazia=sim
+    local -a comando=(--enviar --origem LOCAL --destino /r --espelhar --confirmar)
+    [[ $vazia == sim ]] && comando+=(--permitir-origem-vazia)
+    base=$(_cenario_de_plano "$vazia")
+    comando=("${comando[@]/#LOCAL/$base/local}")
+    esperado=$(_plano_de "$base" "${comando[@]}")
+    obtido=$(_plano_de "$base" "${comando[@]/#$pt/$en}")
+    assert_contem '0|' "${esperado:0:2}" "$pt: o plano de referencia sai com 0 ($esperado)"
+    assert_igual "$esperado" "$obtido" "$en: mesmo plano que $pt"
+  done
+  # `--pull` = `--receber`, no sentido inverso.
+  base=$(_cenario_de_plano nao)
+  esperado=$(_plano_de "$base" --receber --origem /r --destino "$base/local" --espelhar)
+  obtido=$(_plano_de "$base" --pull --origem /r --destino "$base/local" --espelhar)
+  assert_contem 'sentido=receber' "$esperado" 'o plano de referencia e de recebimento'
+  assert_igual "$esperado" "$obtido" '--pull: mesmo plano que --receber'
+}
+
+teste_aliases_do_sync_todos_em_ingles_e_misturados_dao_o_mesmo_plano() {
+  # TC-ALI-01, RF-64(d): misturar os dois idiomas e valido.
+  local base pt en misto
+  base=$(_cenario_de_plano nao)
+  pt=$(_plano_de "$base" --enviar --origem "$base/local" --destino /r --espelhar --confirmar)
+  en=$(_plano_de "$base" --push --source "$base/local" --dest /r --mirror --yes)
+  misto=$(_plano_de "$base" --push --origem "$base/local" --dest /r --mirror --confirmar)
+  assert_contem 'apagar=orfao.txt' "$pt" 'o plano de referencia lista a exclusao espelhada'
+  assert_igual "$pt" "$en" 'todo em ingles: mesmo plano'
+  assert_igual "$pt" "$misto" 'misto: mesmo plano'
+}
+
+teste_yes_reconhece_a_primeira_execucao_espelhada_como_confirmar() {
+  # RF-64(b) com RF-48: o efeito de `--yes` so aparece na execucao real.
+  local base
+  base=$(_cenario_de_plano nao)
+  _rodar "$base" sync --push --source "$base/local" --dest /r --mirror
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" 'sem reconhecimento, recusa'
+  _rodar "$base" sync --push --source "$base/local" --dest /r --mirror --yes
+  assert_igual 0 "$DBX_ESTADO" "--yes reconhece; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_exclusoes "$base")" 'e a exclusao espelhada acontece'
+}
+
+teste_aliases_do_sync_herdam_as_recusas() {
+  # TC-ALI-01, RF-64(b)(e), DIV-31: o alias e a MESMA opcao.
+  local base uso recusa
+  uso=$(dbx_errors_codigo_saida uso_invalido)
+  recusa=$(dbx_errors_codigo_saida nao_concluida)
+  base=$(_cenario)
+  _rodar "$base" sync --push --pull --source "$base/local" --dest /r
+  assert_igual "$uso" "$DBX_ESTADO" '--push com --pull e uso invalido'
+  assert_contem 'mutuamente exclusiv' "$DBX_ERRO" 'pela regra do sentido, e nao por opcao desconhecida'
+  _rodar "$base" sync --enviar --push --origem "$base/local" --destino /r
+  assert_igual "$uso" "$DBX_ESTADO" '--enviar --push repete o sentido: uso invalido'
+  assert_contem 'mutuamente exclusiv' "$DBX_ERRO" '--enviar --push: mesma recusa de --enviar --enviar'
+  _rodar "$base" sync --pull --receber --origem /r --destino "$base/local"
+  assert_igual "$uso" "$DBX_ESTADO" '--pull --receber tambem'
+  assert_contem 'mutuamente exclusiv' "$DBX_ERRO" '--pull --receber: mesma recusa'
+  # Origem vazia com algo a apagar: `--yes` nao dispensa; so o alias de
+  # `--permitir-origem-vazia` dispensa.
+  base=$(_cenario_de_plano sim)
+  _rodar "$base" sync --push --source "$base/local" --dest /r --mirror --yes
+  assert_igual "$recusa" "$DBX_ESTADO" "--mirror --yes com origem vazia: recusa; diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_escritas "$base")" 'recusa sem escrita'
+  _rodar "$base" sync --push --source "$base/local" --dest /r --mirror --yes --allow-empty-source
+  assert_igual 0 "$DBX_ESTADO" "--allow-empty-source dispensa; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_exclusoes "$base")" 'e a exclusao acontece'
+}
+
+teste_opcao_com_valor_repetida_por_alias_vale_o_ultimo() {
+  # RF-64(e): `--origem a --source b` usa `b`; o mesmo para o destino.
+  local base outro
+  base=$(_cenario)
+  outro=$(mktemp -d "$DBX_TESTES_TMP/outro.XXXXXX")
+  _rodar "$base" --json --dry-run sync --push --origem /nao/existe --source "$outro" --dest /x --destino /r
+  assert_igual 0 "$DBX_ESTADO" "o ultimo valor vale; diagnostico: $DBX_ERRO"
+  assert_contem "origem=$outro" "$DBX_SAIDA" 'a origem e a do alias, dado por ultimo'
+  assert_contem 'destino=/r' "$DBX_SAIDA" 'o destino e o do nome em portugues, dado por ultimo'
+}
+
+teste_ajuda_do_sync_lista_os_dois_nomes_de_cada_opcao() {
+  # RF-64(c): o `Uso:` nao pode listar so o portugues.
+  local base nome uso
+  base=$(_cenario)
+  _rodar "$base" help sync
+  assert_igual 0 "$DBX_ESTADO" 'a ajuda sai com 0'
+  uso=${DBX_SAIDA%%$'\n'*}
+  for nome in --origem --source --destino --dest --enviar --push --receber --pull \
+    --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source; do
+    assert_contem "$nome" "$uso" "o Uso: do sync lista $nome"
+  done
+}
+
+teste_receber_espelhado_com_origem_vazia_recusa_pelo_plano_em_toda_memoria() {
+  # TC-DEL-13 (RF-41(b) emendado por O-1): no `--receber` a recusa sai pelo
+  # plano, como no `--enviar`, com memoria valida, descartada ou ausente, e
+  # nenhuma mensagem cita a memoria.
+  local memoria confirmar base recusa
+  recusa=$(dbx_errors_codigo_saida nao_concluida)
+  for memoria in valida descartada ausente; do
+    for confirmar in '' --confirmar; do
+      # Sem memoria o par nunca foi visto, e sem `--confirmar` quem recusa antes
+      # e o reconhecimento da primeira execucao (RF-48), nao a origem vazia.
+      [[ $memoria == ausente && -z $confirmar ]] && continue
+      base=$(_cenario)
+      _par_semeado "$base" receber "$memoria"
+      _rodar "$base" --json sync --receber --origem /r --destino "$base/local" --espelhar $confirmar
+      assert_igual "$recusa" "$DBX_ESTADO" "$memoria/${confirmar:-sem}: recusa; diagnostico: $DBX_ERRO"
+      assert_contem 'recusada=origem vazia' "$DBX_SAIDA" "$memoria/${confirmar:-sem}: o plano traz a recusa"
+      assert_contem 'a_apagar=0' "$DBX_SAIDA" "$memoria/${confirmar:-sem}: o plano nao lista exclusao"
+      assert_nao_contem 'memoria registra' "$DBX_ERRO" "$memoria/${confirmar:-sem}: a recusa nao cita a memoria"
+      assert_arquivo_existe "$base/local/a.txt" "$memoria/${confirmar:-sem}: o arquivo local fica"
+    done
+  done
+}
+
+teste_receber_espelhado_com_origem_vazia_simula_e_libera_como_o_enviar() {
+  # TC-DEL-13: a simulacao nao muda; `--permitir-origem-vazia` libera.
+  local base
+  base=$(_cenario)
+  _par_semeado "$base" receber valida
+  _rodar "$base" --json --dry-run sync --receber --origem /r --destino "$base/local" --espelhar
+  assert_igual 0 "$DBX_ESTADO" "a simulacao sai com 0; diagnostico: $DBX_ERRO"
+  assert_contem 'recusaria=origem vazia' "$DBX_SAIDA" 'o plano anuncia a recusa'
+  assert_arquivo_existe "$base/local/a.txt" 'simulacao nao apaga'
+  _rodar "$base" sync --receber --origem /r --destino "$base/local" --espelhar --permitir-origem-vazia
+  assert_igual 0 "$DBX_ESTADO" "a opcao libera; diagnostico: $DBX_ERRO"
+  assert_arquivo_ausente "$base/local/a.txt" 'e a exclusao acontece'
+}
+
+teste_origem_vazia_sem_espelhar_e_operacao_vazia_com_saida_zero() {
+  # DIV-30 (decisao do Tech Lead): sem `--espelhar` nada seria apagado, e a
+  # guarda antiga, anterior ao plano, recusava pela memoria. Nos dois sentidos.
+  local base sentido
+  for sentido in receber enviar; do
+    base=$(_cenario)
+    _par_semeado "$base" "$sentido" valida
+    if [[ $sentido == receber ]]; then
+      _rodar "$base" --json sync --receber --origem /r --destino "$base/local"
+    else
+      _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+    fi
+    assert_igual 0 "$DBX_ESTADO" "$sentido sem --espelhar: operacao vazia; diagnostico: $DBX_ERRO"
+    assert_nao_contem 'recusad' "$DBX_SAIDA" "$sentido: o plano nao anuncia recusa"
+    assert_igual 0 "$(_escritas "$base")" "$sentido: nenhuma escrita remota"
+    [[ $sentido == receber ]] && assert_arquivo_existe "$base/local/a.txt" 'receber: o local fica'
+  done
+  return 0
+}
+
+teste_raiz_local_inexistente_continua_recusada() {
+  # RF-41(b): a remocao da guarda antiga nao alcanca a raiz inexistente.
+  local base
+  base=$(_cenario)
+  _rodar "$base" sync --enviar --origem "$base/nao_existe" --destino /r --espelhar --confirmar
+  assert_igual "$(dbx_errors_codigo_saida nao_encontrado)" "$DBX_ESTADO" 'raiz inexistente e recusada'
+  assert_igual 0 "$(_escritas "$base")" 'sem escrita'
+}
+
+readonly E_AGUDO_MAIUSCULO=$'\xc3\x89'
+readonly E_AGUDO_MINUSCULO=$'\xc3\xa9'
+
+teste_caixa_fora_do_ascii_e_um_caminho_mesmo_com_lc_all_c() {
+  # TC-CX-04 (RF-54(e), DIV-32): `LC_ALL=C` no ambiente nao anula a fixacao,
+  # que vale so dentro da comparacao.
+  local base local_nome remoto_nome
+  local_nome="${E_AGUDO_MAIUSCULO}a.txt"
+  remoto_nome="${E_AGUDO_MINUSCULO}a.txt"
+  base=$(_cenario)
+  printf 'novo' >"$base/local/$local_nome"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota "/r/$remoto_nome" "$RESUMO_ZERADO" 4)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C LANG=C' --json sync --enviar --origem "$base/local" \
+    --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem "transferir=$local_nome" "$DBX_SAIDA" 'o conteudo divergente e enviado'
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'o par nao entra no plano de exclusao'
+  assert_igual 0 "$(_exclusoes "$base")" 'o --espelhar nao apaga o recem-enviado'
+  assert_contem "/r/$remoto_nome" "$(cat "$base/opcoes")" 'a escrita usa a grafia do destino'
+  assert_nao_contem 'C.UTF-8' "$DBX_ERRO" 'com a localidade presente nao ha aviso'
+}
+
+teste_caixa_fora_do_ascii_com_conteudo_igual_e_omitida_com_lc_all_c() {
+  local base resumo
+  base=$(_cenario)
+  printf 'igual' >"$base/local/${E_AGUDO_MAIUSCULO}.txt"
+  resumo=$(_resumo_de "$base/local/${E_AGUDO_MAIUSCULO}.txt")
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}.txt" "$resumo" 5)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C' --json sync --enviar --origem "$base/local" --destino /r \
+    --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'identicos=1' "$DBX_SAIDA" 'o mesmo arquivo e omitido'
+  assert_igual 0 "$(_escritas "$base")" 'nenhuma escrita'
+}
+
+teste_comparacao_sem_caixa_nao_muda_medida_em_bytes() {
+  # RF-54(e): a fixacao nao vaza da comparacao. Sob `LC_ALL=C`, nome multibyte
+  # continua medido em bytes antes e depois dela, e `lib/json` o preserva.
+  local saida
+  saida=$(env -i LC_ALL=C bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/progress.sh"; . "$1/lib/json.sh"; . "$1/lib/sync.sh"
+    nome=$2
+    antes=${#nome}
+    _dbx_sync_chave "$nome"
+    chave=$DBX_SYNC_CHAVE
+    depois=${#nome}
+    dbx_json_escapar_cadeia "$nome"
+    printf "%s|%s|%s|%s" "$antes" "$depois" "${#chave}" "$([[ $DBX_JSON_ESCAPADO == "$nome" ]] && echo igual)"
+  ' _ "$DBX_HARNESS_RAIZ" "${E_AGUDO_MAIUSCULO}a.txt")
+  assert_igual '7|7|7|igual' "$saida" 'medidas em bytes antes e depois da comparacao, e json intacto'
+}
+
+teste_localidade_ausente_avisa_uma_vez_e_compara_so_no_ascii() {
+  # TC-CX-05 (RF-54(f)): a ausencia e simulada pelo nome da localidade, sem
+  # depender da maquina do teste.
+  local base local_nome remoto_nome
+  local_nome="${E_AGUDO_MAIUSCULO}a.txt"
+  remoto_nome="${E_AGUDO_MINUSCULO}a.txt"
+  base=$(_cenario)
+  printf 'novo' >"$base/local/$local_nome"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota "/r/$remoto_nome" "$RESUMO_ZERADO" 4)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C DBX_SYNC_LOCALIDADE=xx_XX.inexistente' --json --dry-run \
+    sync --enviar --origem "$base/local" --destino /r --espelhar
+  assert_igual 0 "$DBX_ESTADO" "o aviso nao recusa; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'comparacao sem caixa' "$base/err")" 'um aviso so, no stderr'
+  assert_contem 'ausente' "$DBX_ERRO" 'o aviso nomeia a causa'
+  assert_contem 'so no ASCII' "$DBX_ERRO" 'e o efeito'
+  assert_nao_contem 'comparacao sem caixa' "$DBX_SAIDA" 'a saida padrao nao recebe o aviso'
+  assert_contem "transferir=$local_nome" "$DBX_SAIDA" 'fora do ASCII as chaves sao distintas'
+  assert_contem "apagar=$remoto_nome" "$DBX_SAIDA" 'e o remoto vira candidato a exclusao'
+}
+
+teste_localidade_ausente_nao_muda_saida_nem_codigo_no_ascii() {
+  # RF-54(f): no ASCII o resultado e o mesmo de uma execucao sem aviso.
+  local base com sem
+  base=$(_cenario)
+  printf 'novo' >"$base/local/Foto.JPG"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota '/r/foto.jpg' "$RESUMO_ZERADO" 4)" >"$base/listagem"
+  _rodar_com_ambiente "$base" '' --json --dry-run sync --enviar --origem "$base/local" --destino /r --espelhar
+  sem="$DBX_ESTADO|$DBX_SAIDA"
+  _rodar_com_ambiente "$base" 'DBX_SYNC_LOCALIDADE=xx_XX.inexistente' --json --dry-run sync --enviar \
+    --origem "$base/local" --destino /r --espelhar
+  com="$DBX_ESTADO|$DBX_SAIDA"
+  assert_contem 'comparacao sem caixa' "$DBX_ERRO" 'o aviso sai'
+  assert_igual "$sem" "$com" 'codigo e saida padrao iguais aos da execucao sem aviso'
+}
+
+teste_aviso_de_localidade_e_so_do_sync() {
+  # RF-54(g): so o `sync` compara caminhos sem caixa.
+  local base
+  base=$(_cenario)
+  _rodar_com_ambiente "$base" 'DBX_SYNC_LOCALIDADE=xx_XX.inexistente' list /r
+  assert_igual 0 "$DBX_ESTADO" "list conclui; diagnostico: $DBX_ERRO"
+  assert_nao_contem 'comparacao sem caixa' "$DBX_ERRO" 'list nao avisa'
 }
 
 harness_executar "$@"

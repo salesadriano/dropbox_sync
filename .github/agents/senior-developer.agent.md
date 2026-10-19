@@ -112,7 +112,7 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37). Skil
 | Gate local de conformidade sobre o diff, antes de qualquer handoff (obrigatoria, sem excecao) | `../skills/protocolo-conformidade/` |
 | Qualidade do teste dentro do ciclo red-green (seams, mocking, anti-patterns) | `../skills/tdd-test-design/` |
 | Detalhamento arquitetural e fronteiras tecnicas | `../skills/clean-architecture/` |
-| Qualidade de codigo e engenharia em geral | `../skills/best-practices/` |
+| Qualidade de codigo e engenharia em geral | nao incluida neste repositorio; fonte: `ai_team` |
 | Hardening de codigo, config e infra (headers, cookies, HTTPS, secrets, CSP) | `../skills/security-best-practices/` |
 | Autenticacao, autorizacao e protecao de endpoints | `../skills/api-security-best-practices/` |
 | Diagramas de arquitetura e integracao nos handoffs | `../skills/mermaid-generator/` |

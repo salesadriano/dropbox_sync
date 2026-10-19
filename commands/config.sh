@@ -153,9 +153,9 @@ dbx_cmd_config_executar() {
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
-      --substituir) substituir='sim' ;;
+      --substituir | --replace) substituir='sim' ;;
       --debug) debug='sim' ;;
-      --raiz)
+      --raiz | --root)
         shift
         raiz=${1-}
         ;;
@@ -209,7 +209,7 @@ dbx_cmd_config_executar() {
   # isso em vez de so recusar.
   if [[ -e $arquivo && $substituir == 'nao' ]]; then
     dbx_cmd_falhar configuracao \
-      "ja existe credencial em $arquivo; gravar por cima NAO revoga o token anterior, que segue valido na Dropbox — use 'dbx unlink' para revoga-lo antes, ou 'dbx config --substituir' para trocar assumindo esse risco"
+      "ja existe credencial em $arquivo; gravar por cima NAO revoga o token anterior, que segue valido na Dropbox — use 'dbx unlink' para revoga-lo antes, ou 'dbx config --substituir' (ou --replace) para trocar assumindo esse risco"
     return $?
   fi
 
