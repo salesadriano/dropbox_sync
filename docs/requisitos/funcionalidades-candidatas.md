@@ -338,3 +338,23 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 **Nenhum acrescimo foi solicitado alem das candidatas propostas.**
 
 **Pergunta que permanece aberta e independente desta decisao:** qual o tamanho tipico e maximo dos arquivos transferidos, quantos arquivos por execucao e com que frequencia (DP-12)? Necessaria para o dimensionamento e para eventual reavaliacao de F-03.
+
+
+---
+
+## Backlog derivado da analise de melhorias (2026-10-18)
+
+> Origem: `docs/sources/2026-10-18-analise-melhorias.md`. Decisao do solicitante: quatro demandas em ordem de prioridade, cada uma com branch e PR proprios (memoria `2026-10-18-1745-melhorias-em-fases`). Itens abaixo sao **correcao ou endurecimento de comportamento existente**, nao funcionalidades novas.
+
+| ID | Item | Fase | Estado | Requisitos / riscos |
+|---|---|---|---|---|
+| F-23 | Integridade de dados no `sync`/`download`: caixa de caminho, recebimento atomico com hash, `download` sem `rm`, `sync --enviar` por sessao com `client_modified`, `umask` e area temporaria | **P1** | 🔧 Em implementacao (`bugfix/integridade-de-dados-p1`) | `RF-54`..`RF-57`, `RNF-29`, `DP-31`, `RSK-39` |
+| F-24 | Robustez de rede: timeout (`connect-timeout`, `speed-limit`), `Retry-After`, 5 tentativas com base 1 s e teto 60 s, upload por sessao retomavel, falhas por arquivo no `sync` | **P2** | ⬜ Backlog | `RNF-07` (ver `DIV-22`, `RSK-38`), `RF-09` (revisitar "ate 3 tentativas"), `RF-36` |
+| F-25 | Cache e SQL: gravacao em lote numa transacao, escolha de um unico cache (`lib/state` x `lib/db`), chave canonica (`realpath`), SQL com validacao/parametros, erros do fallback Python visiveis; PKCE (S256) ou `client_secret` obrigatorio | **P3+P4** | ⬜ Backlog | `RF-38`, `RF-42`, `RNF-26` |
+| F-26 | Skip do upload condicionado ao `content_hash` remoto (`get_metadata`); cache apenas otimiza o hash | **Fase 3 (junto de P3+P4)** | ⬜ Backlog — decidido, nao implementado | `DP-32`, `RF-33`, `RSK-23`, `RSK-37` |
+| F-27 | Documentacao e manutencao: contradicao "sem estado local / cURL unica dependencia", `sqlite3`/`python3` no `preflight`, comentarios longos para registros/ADRs, aliases em ingles no `sync`, testes faltantes | **P5** | ⬜ Backlog | `RNF-02`, `RNF-26`, `DP-15` |
+| F-28 | **Achado QA-01(a), anterior a P1:** `dbx download <remoto>` sem destino (saida para o terminal) sai com codigo 9 no duplo de teste, no HEAD e na branch; confirmar se o defeito e do duplo ou do comando | **P2** | ⬜ Backlog — a investigar | `RF-11`, `RF-32` |
+| F-29 | **Achado QA-01(b), anterior a P1:** `commands/upload.sh` le `DBX_TRANSFER_HASH`, variavel inexistente; o canal correto e `DBX_TRANSFER_CONTENT_HASH`, entao o upload por sessao pode deixar de gravar o hash no cache | **Fase 3 (P3+P4)** | ⬜ Backlog | `RF-08`, `RF-38`, `DP-32` |
+| F-30 | **Achado QA-01(c), anterior a P1:** `tests/run.sh` nao para no primeiro erro, como exige a Regra 9 de `protocolo-tdd` | **P2** | ⬜ Backlog | protocolo de testes |
+| F-31 | **Achado QA-01(d):** sinal durante `sync --receber` deixa `dbx-sync.XXXX` (listagens e revs, sem token) em `TMPDIR`; depende do `lib/tmp` (trap `EXIT` unico com areas registradas) | **P2/estrutural** | ⬜ Backlog | `RNF-29(c)` (escopo atual cobre so a area HTTP), `RF-54`..`RF-57` |
+| F-32 | **Achado QA-01(e):** a comparacao sem caixa fora do ASCII depende de `C.UTF-8` no host; documentar a dependencia ou tornar a comparacao independente de locale | **P5** | ⬜ Backlog | `RF-54` |

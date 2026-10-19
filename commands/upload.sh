@@ -12,14 +12,14 @@
 #   sessao em partes  `lib/transfer`, para a entrada padrao (RF-31) e para
 #                     arquivo local acima do teto (RF-08).
 #
-# CONJUNTO ONDE A REGRA DE PUBLICACAO INCIDE: os dois caminhos acima, e o
-# terceiro que `sync` vai trazer. O objeto de publicacao — caminho, modo ou
-# `rev` esperado, `client_modified`, `autorename`, `mute` — e montado UMA vez,
-# em `_dbx_upload_objeto_de_publicacao`, e usado pelos dois. Monta-lo em cada
-# ramo e a forma exata das ocorrencias da familia de gemeos ja pagas neste
-# projeto: a proxima correcao em `mode` ou em `client_modified` valeria para um
-# caminho so, e o sintoma — arquivo publicado com metadado diferente conforme o
-# tamanho — nao se parece com a causa.
+# CONJUNTO ONDE A REGRA DE PUBLICACAO INCIDE: os dois caminhos acima e o envio
+# do `sync`. O objeto de publicacao — caminho, modo ou `rev` esperado,
+# `client_modified`, `autorename`, `mute` — e montado UMA vez, em
+# `dbx_transfer_objeto_de_publicacao`, e a escolha entre requisicao unica e
+# sessao para arquivo local mora em `dbx_transfer_enviar_arquivo`, ambos em
+# `lib/transfer`. Monta-los em cada comando e a forma exata das ocorrencias da
+# familia de gemeos ja pagas neste projeto: o sintoma — arquivo publicado com
+# metadado diferente conforme o comando ou o tamanho — nao se parece com a causa.
 #
 # RF-15 — POSICAO DO GATE DE SIMULACAO
 # ------------------------------------
@@ -48,49 +48,6 @@
 # de ajuda de `bin/dbx` (`dbx help` e `dbx help upload`).
 
 dbx_cmd_upload_requisitos() { printf 'credencial'; }
-
-# _dbx_upload_objeto_de_publicacao <remoto> <modo> <rev> <origem>
-#
-# UNICO lugar que monta o objeto de publicacao. Resultado em DBX_UPLOAD_COMMIT.
-#
-# RNF-27 — `client_modified` a partir do `mtime` local.
-#
-# Isto NAO serve ao `upload`. Serve ao `sync`, que compara carimbos dos dois
-# lados: definindo `client_modified` no envio, todo arquivo que esta aplicacao
-# mandou passa a ter, nos dois lados, carimbo da MESMA origem de relogio, e a
-# incomparabilidade entre `mtime` local e horario do servico desaparece nesses
-# casos. A propriedade e permanente: o que subir sem ela nunca a ganha, porque o
-# servico nao recalcula depois.
-#
-# Fluxo pela entrada padrao NAO tem `mtime` — nao ha arquivo de onde le-lo — e
-# por isso sai sem o carimbo. Inventar um carimbo com o horario da execucao
-# seria fabricar procedencia de relogio que o conteudo nao tem.
-_dbx_upload_objeto_de_publicacao() {
-  local remoto=$1 modo=$2 rev=$3 origem=$4 carimbo=''
-
-  if [[ $origem != '-' ]] && carimbo=$(date -u -r "$origem" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null); then
-    :
-  else
-    carimbo=''
-  fi
-
-  dbx_json_escapar_cadeia "$remoto"
-  DBX_UPLOAD_COMMIT="{\"path\":\"$DBX_JSON_ESCAPADO\",\"mode\":"
-  if [[ -n $rev ]]; then
-    # RF-49: o `rev` esperado viaja com a escrita. Alteracao remota entre a
-    # leitura e o envio vira conflito, e nao sobrescrita do que mudou.
-    dbx_json_escapar_cadeia "$rev"
-    DBX_UPLOAD_COMMIT+="{\".tag\":\"update\",\"update\":\"$DBX_JSON_ESCAPADO\"}"
-  else
-    DBX_UPLOAD_COMMIT+="\"$modo\""
-  fi
-  if [[ -n $carimbo ]]; then
-    dbx_json_escapar_cadeia "$carimbo"
-    DBX_UPLOAD_COMMIT+=",\"client_modified\":\"$DBX_JSON_ESCAPADO\""
-  fi
-  DBX_UPLOAD_COMMIT+=',"autorename":false,"mute":false}'
-  return 0
-}
 
 dbx_cmd_upload_executar() {
   local origem='' destino='' modo='add' rev='' forcar='nao'
@@ -206,7 +163,9 @@ dbx_cmd_upload_executar() {
     return $?
   fi
 
-  _dbx_upload_objeto_de_publicacao "$remoto" "$modo" "$rev" "$origem"
+  # shellcheck source=lib/transfer.sh
+  . "${BASH_SOURCE[0]%/*}/../lib/transfer.sh"
+  dbx_transfer_objeto_de_publicacao "$remoto" "$modo" "$rev" "$origem"
 
   # A guarda de cabecalho e de `lib/http` e recusa antes de qualquer invocacao do
   # cliente. Verificar aqui tambem seria duplicar a regra em dois lugares — e a
@@ -223,10 +182,6 @@ dbx_cmd_upload_executar() {
     return 0
   fi
 
-  # Carga sob demanda, no unico caminho que usa o componente. `bin/dbx` carrega
-  # a camada de credencial; o envio em partes e propriedade deste comando.
-  # shellcheck source=lib/transfer.sh
-  . "${BASH_SOURCE[0]%/*}/../lib/transfer.sh"
   # shellcheck source=lib/db.sh
   . "${BASH_SOURCE[0]%/*}/../lib/db.sh"
   dbx_db_inicializar || :
@@ -259,46 +214,22 @@ dbx_cmd_upload_executar() {
     # RF-31: o tamanho total e desconhecido no inicio, entao nao ha decisao a
     # tomar — fluxo obriga sessao.
     por_sessao='sim'
-  else
-    dbx_transfer_tamanho_de_arquivo "$origem" || {
-      dbx_cmd_falhar nao_encontrado "tamanho do arquivo local indeterminado: $origem"
-      return $?
-    }
-    # A entrada do predicado e garantidamente numerica pela chamada acima, que
-    # ja recusou o que nao fosse. Sem essa garantia a forma `&&` seria
-    # FALHA ABERTA: um status de uso invalido cairia em "nao precisa de sessao"
-    # e um arquivo grande iria por requisicao unica, para falhar no servico
-    # longe da causa. A garantia esta aqui escrita porque e ela que autoriza a
-    # forma curta.
-    dbx_transfer_precisa_de_sessao "$DBX_TRANSFER_TAMANHO" && por_sessao='sim'
-  fi
-
-  if [[ $por_sessao == 'sim' ]]; then
-    if [[ $origem == '-' ]]; then
-      dbx_transfer_sessao "$DBX_UPLOAD_COMMIT"
-    else
-      # O MESMO laco de sessao, alimentado pelo arquivo. Um laco proprio para
-      # arquivo seria o gemeo em que a proxima correcao de deslocamento valeria
-      # para um lado so.
-      dbx_transfer_sessao "$DBX_UPLOAD_COMMIT" <"$origem"
-    fi || {
+    dbx_transfer_sessao "$DBX_TRANSFER_COMMIT" || {
       dbx_cmd_falhar "${DBX_TRANSFER_CLASSE:-nao_concluida}" \
         "envio em partes nao concluido: ${DBX_TRANSFER_MOTIVO:-sem detalhe}"
       return $?
     }
   else
-    local str_tam='' str_barra_inicio=''
-    dbx_progress_barra_gerar 0 20 str_barra_inicio
-    if [[ -n $tam_local ]]; then
-      dbx_progress_formatar_bytes "$tam_local" str_tam
-      dbx_progress_mensagem "[upload] enviando arquivo ($str_tam) via requisicao unica... $str_barra_inicio (0%)"
-    else
-      dbx_progress_mensagem "[upload] enviando arquivo via requisicao unica... $str_barra_inicio (0%)"
-    fi
-    dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
-      "$DBX_UPLOAD_COMMIT" "$origem" nao || {
-      local classe=${DBX_HTTP_CLASSE:-erro_remoto}
-      dbx_cmd_falhar "$classe" "envio recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}"
+    dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" upload
+    local estado_envio=$?
+    por_sessao=$DBX_TRANSFER_POR_SESSAO
+    [[ $estado_envio -eq 0 ]] || {
+      if [[ $por_sessao == 'sim' ]]; then
+        dbx_cmd_falhar "${DBX_TRANSFER_CLASSE:-nao_concluida}" \
+          "envio em partes nao concluido: ${DBX_TRANSFER_MOTIVO:-sem detalhe}"
+      else
+        dbx_cmd_falhar "${DBX_TRANSFER_CLASSE:-erro_remoto}" "${DBX_TRANSFER_MOTIVO:-envio recusado}"
+      fi
       return $?
     }
   fi

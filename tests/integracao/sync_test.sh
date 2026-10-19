@@ -37,10 +37,11 @@ _cenario() {
   {
     printf '#!/usr/bin/env bash\n'
     printf 'base=%s\n' "$base"
-    printf 'cat >>"$base/opcoes" 2>/dev/null\n'
-    printf 'saida=""; escrever=""; anterior=""; url=""\n'
+    printf 'conf=$(cat 2>/dev/null)\n'
+    printf 'printf "%%s\\n" "$conf" >>"$base/opcoes"\n'
+    printf 'saida=""; escrever=""; anterior=""; url=""; cabecalhos=""\n'
     printf 'for arg in "$@"; do\n'
-    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac\n'
+    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; esac\n'
     printf '  case $arg in http*) url=$arg ;; esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
@@ -51,8 +52,18 @@ _cenario() {
     printf '  *get_current_account*) corpo=%s ;;\n' "'{\"account_id\":\"dbid:CONTA\"}'"
     printf '  *list_folder*) corpo=$(cat "$base/listagem") ;;\n'
     printf '  *files/download*) corpo=$(cat "$base/conteudo_remoto") ;;\n'
+    printf '  *upload_session/start*) corpo=%s ;;\n' "'{\"session_id\":\"S-1\"}'"
+    printf '  *upload_session/append_v2*) corpo=%s ;;\n' "'{}'"
     printf '  *) corpo=%s ;;\n' "'{\"name\":\"x\",\"rev\":\"1\"}'"
     printf 'esac\n'
+    # Conflito de rev (RF-49): o envio cujo argumento cita o caminho marcado e
+    # recusado como a Dropbox recusa, com 409 e tag `conflict`.
+    printf 'if [[ $url == *files/upload && -f "$base/upload_conflito" && $conf == *"$(cat "$base/upload_conflito")"* ]]; then\n'
+    printf '  codigo=409; corpo=%s\n' "'{\"error_summary\":\"path/conflict/file/..\"}'"
+    printf 'fi\n'
+    printf 'if [[ $url == *files/download* && -n $cabecalhos && -f "$base/resultado_cabecalho" ]]; then\n'
+    printf '  printf "Dropbox-API-Result: %%s\\r\\n" "$(cat "$base/resultado_cabecalho")" >"$cabecalhos"\n'
+    printf 'fi\n'
     printf '[[ -n $saida ]] && printf "%%s" "$corpo" >"$saida"\n'
     printf '[[ -n $escrever ]] && printf "%%s" "$codigo"\n'
     printf 'exit 0\n'
@@ -86,6 +97,21 @@ _exclusoes() { # <base>
 _entrada_remota() { # <caminho> <hash> <tamanho>
   printf '{".tag":"file","path_display":"%s","content_hash":"%s","size":%s}' "$1" "$2" "$3"
 }
+
+_entrada_remota_com_rev() { # <caminho> <hash> <tamanho> <rev>
+  printf '{".tag":"file","path_display":"%s","content_hash":"%s","size":%s,"rev":"%s"}' \
+    "$1" "$2" "$3" "$4"
+}
+
+_resumo_de() { # <arquivo>
+  bash -c ". '$DBX_HARNESS_RAIZ/lib/errors.sh'; . '$DBX_HARNESS_RAIZ/lib/hash.sh'; dbx_hash_conteudo_arquivo '$1'"
+}
+
+_conteudo_do_diretorio() { # <diretorio> — nomes, inclusive ocultos, um por linha
+  find "$1" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort
+}
+
+readonly RESUMO_ZERADO=0000000000000000000000000000000000000000000000000000000000000000
 
 # ---------------------------------------------------------------------------
 # Contrato dos lados (RF-53, DP-28)
@@ -415,6 +441,254 @@ teste_sync_com_progresso_exibe_andamento_da_analise_local() {
   assert_nao_contem 'analisando local' "$DBX_SAIDA" 'stdout nao pode conter mensagens de progresso'
 }
 
+# ---------------------------------------------------------------------------
+# Caixa de caminho (RF-54, DP-31): a Dropbox nao diferencia caixa
+# ---------------------------------------------------------------------------
+
+teste_caixa_diferente_e_o_mesmo_arquivo_e_espelhar_nao_apaga_o_enviado() {
+  # TC-CX-01 e TC-CX-02. Antes, o par virava "transferir" + "apagar", e o
+  # `delete_v2` removia o arquivo que acabara de ser enviado.
+  local base
+  base=$(_cenario)
+  mkdir -p "$base/local/Docs"
+  printf 'novo' >"$base/local/Docs/Foto.JPG"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota '/r/docs/foto.jpg' "$RESUMO_ZERADO" 4)" >"$base/listagem"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'transferir=Docs/Foto.JPG' "$DBX_SAIDA" 'o conteudo divergente e enviado'
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'RF-54(a): o par nao entra no plano de exclusao'
+  assert_nao_contem 'apagar=docs/foto.jpg' "$DBX_SAIDA" 'RF-54(a): nenhum apagar para o mesmo arquivo'
+  assert_igual 0 "$(_exclusoes "$base")" 'RF-54(b): nenhuma exclusao remota atinge o enviado'
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/chamadas")" 'um unico envio'
+  assert_contem '/r/docs/foto.jpg' "$(cat "$base/opcoes")" \
+    'a escrita usa a grafia que o destino ja tem'
+}
+
+teste_caixa_diferente_com_conteudo_identico_e_omitido() {
+  local base resumo
+  base=$(_cenario)
+  printf 'igual' >"$base/local/LEIA.txt"
+  resumo=$(_resumo_de "$base/local/LEIA.txt")
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota '/r/leia.TXT' "$resumo" 5)" >"$base/listagem"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'identicos=1' "$DBX_SAIDA" 'o mesmo arquivo com conteudo igual e omitido'
+  assert_igual 0 "$(_escritas "$base")" 'nenhuma escrita para arquivo identico'
+}
+
+teste_colisao_de_caixa_local_e_recusada_antes_de_qualquer_escrita() {
+  # TC-CX-03: `a.txt` e `A.txt` sao o MESMO caminho na Dropbox. Enviar os dois
+  # faria um sobrescrever o outro em silencio.
+  local base modo
+  base=$(_cenario)
+  printf 'minusculo' >"$base/local/a.txt"
+  printf 'MAIUSCULO' >"$base/local/A.txt"
+  for modo in --dry-run --json; do
+    : >"$base/chamadas"
+    _rodar "$base" --json "$modo" sync --enviar --origem "$base/local" --destino /r
+    assert_igual "$(dbx_errors_codigo_saida conflito)" "$DBX_ESTADO" \
+      "RF-54(c): colisao de caixa recusada ($modo)"
+    assert_contem 'a.txt' "$DBX_ERRO" 'o diagnostico nomeia um dos caminhos'
+    assert_contem 'A.txt' "$DBX_ERRO" 'o diagnostico nomeia o outro caminho'
+    assert_igual 0 "$(_escritas "$base")" 'RF-54(c): nenhuma escrita remota'
+    assert_nao_contem 'transferir=' "$DBX_SAIDA" 'nenhum plano e emitido'
+  done
+}
+
+teste_colisao_de_caixa_no_destino_local_recusa_o_recebimento() {
+  local base
+  base=$(_cenario)
+  printf 'minusculo' >"$base/local/a.txt"
+  printf 'MAIUSCULO' >"$base/local/A.txt"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' ff 3)" >"$base/listagem"
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local" --espelhar --confirmar
+  assert_igual "$(dbx_errors_codigo_saida conflito)" "$DBX_ESTADO" 'RF-54(c): recusa tambem no recebimento'
+  assert_igual 0 "$(_harness_contar 'files/download' "$base/chamadas")" 'nenhum recebimento emitido'
+  assert_igual 'minusculo' "$(cat "$base/local/a.txt")" 'o local fica intacto'
+  assert_igual 'MAIUSCULO' "$(cat "$base/local/A.txt")" 'o local fica intacto'
+}
+
+teste_recebimento_com_caixa_diferente_grava_no_arquivo_local_existente() {
+  local base
+  base=$(_cenario)
+  mkdir -p "$base/local/docs"
+  printf 'antigo' >"$base/local/docs/foto.jpg"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota '/r/Docs/Foto.JPG' "$RESUMO_ZERADO" 15)" >"$base/listagem"
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local" --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "recebimento deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 'conteudo remoto' "$(cat "$base/local/docs/foto.jpg")" 'o arquivo local existente e atualizado'
+  assert_arquivo_ausente "$base/local/Docs" 'nenhuma copia com a grafia remota e criada'
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'RF-54: o mesmo arquivo nao e apagado no local'
+}
+
+# ---------------------------------------------------------------------------
+# Recebimento atomico no sync (RF-55(e)) e umask (RNF-29)
+# ---------------------------------------------------------------------------
+
+teste_recebimento_com_hash_divergente_preserva_o_arquivo_local() {
+  local base
+  base=$(_cenario)
+  printf 'antigo' >"$base/local/a.txt"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' ff 15)" >"$base/listagem"
+  printf '{"name":"a.txt","content_hash":"%s"}' "$RESUMO_ZERADO" >"$base/resultado_cabecalho"
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local"
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" \
+    'RF-55(e): divergencia conta como falha do item'
+  assert_contem 'falhas=1' "$DBX_SAIDA" 'a falha e contada'
+  assert_igual 'antigo' "$(cat "$base/local/a.txt")" 'RF-55(b): o arquivo anterior fica intacto'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/local")" 'RF-55(b): sem temporario'
+}
+
+teste_recebimento_com_hash_conferido_substitui_sem_temporario() {
+  local base resumo
+  base=$(_cenario)
+  printf 'antigo' >"$base/local/a.txt"
+  printf 'conteudo remoto' >"$base/referencia"
+  resumo=$(_resumo_de "$base/referencia")
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' ff 15)" >"$base/listagem"
+  printf '{"name":"a.txt","content_hash":"%s"}' "$resumo" >"$base/resultado_cabecalho"
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local"
+  assert_igual 0 "$DBX_ESTADO" "recebimento deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 'conteudo remoto' "$(cat "$base/local/a.txt")" 'RF-55(d): conteudo novo'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/local")" 'RF-55(d): sem temporario'
+}
+
+teste_recebimento_segue_o_umask_do_usuario() {
+  local base
+  base=$(_cenario)
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/sub/a.txt' ff 15)" >"$base/listagem"
+  umask 022
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local"
+  assert_igual 0 "$DBX_ESTADO" "recebimento deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 755 "$(stat -c %a "$base/local/sub")" 'RNF-29(a): diretorio criado segue o umask'
+  assert_igual 644 "$(stat -c %a "$base/local/sub/a.txt")" 'RNF-29(a): arquivo recebido segue o umask'
+}
+
+# ---------------------------------------------------------------------------
+# Envio pelo caminho do upload (RF-57) com concorrencia otimista (RF-49)
+# ---------------------------------------------------------------------------
+
+teste_envio_define_client_modified() {
+  local base
+  base=$(_cenario)
+  printf 'x' >"$base/local/a.txt"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'client_modified' "$(cat "$base/opcoes")" 'RF-57(b): o envio carrega client_modified'
+}
+
+teste_envio_sobre_arquivo_existente_carrega_o_rev_da_listagem() {
+  # TC-REV-01: o rev lido NAQUELA execucao viaja com a escrita; arquivo novo
+  # vai em modo add, sem renomeacao automatica.
+  local base opcoes
+  base=$(_cenario)
+  printf 'novo conteudo' >"$base/local/x.txt"
+  printf 'arquivo novo' >"$base/local/y.txt"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota_com_rev '/r/x.txt' "$RESUMO_ZERADO" 5 015abc)" >"$base/listagem"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  # O argumento viaja com as aspas escapadas no arquivo de opcoes do cliente.
+  opcoes=$(grep 'Dropbox-API-Arg' "$base/opcoes")
+  assert_contem '\"update\":\"015abc\"' "$(grep '/r/x.txt' <<<"$opcoes")" 'RF-49: o envio carrega o rev esperado'
+  assert_contem '\"mode\":\"add\"' "$(grep '/r/y.txt' <<<"$opcoes")" 'arquivo novo vai em modo add'
+  assert_contem '\"autorename\":false' "$(grep '/r/y.txt' <<<"$opcoes")" 'sem renomeacao automatica'
+  assert_nao_contem 'overwrite' "$opcoes" 'o envio nunca sobrescreve as cegas'
+}
+
+teste_conflito_de_rev_nao_sobrescreve_e_conta_como_falha() {
+  # TC-REV-02: mudanca remota concorrente. O item falha, os demais seguem e o
+  # codigo de saida e o de operacao nao concluida.
+  local base
+  base=$(_cenario)
+  printf 'novo conteudo' >"$base/local/x.txt"
+  printf 'arquivo novo' >"$base/local/y.txt"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota_com_rev '/r/x.txt' "$RESUMO_ZERADO" 5 015abc)" >"$base/listagem"
+  printf '/r/x.txt' >"$base/upload_conflito"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" \
+    'RF-49: conflito sai como operacao nao concluida'
+  assert_contem 'falhas=1' "$DBX_SAIDA" 'o item em conflito conta como falha'
+  assert_contem 'enviados=1' "$DBX_SAIDA" 'os demais itens seguem'
+  assert_igual 2 "$(_harness_contar 'files/upload$' "$base/chamadas")" 'uma tentativa por item, sem repeticao'
+}
+
+teste_envio_acima_do_teto_vai_por_sessao_com_rev() {
+  # TC-SYE-01. Arquivo esparso: o que se verifica e o roteamento por tamanho
+  # medido, sem materializar 150 MiB de conteudo.
+  local base
+  base=$(_cenario)
+  dd if=/dev/null of="$base/local/grande.bin" bs=1 seek=$((157286400 + 1)) 2>/dev/null ||
+    pular 'nao foi possivel criar arquivo esparso acima do teto'
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota_com_rev '/r/grande.bin' "$RESUMO_ZERADO" 3 R9)" >"$base/listagem"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_harness_contar 'files/upload$' "$base/chamadas")" \
+    'RF-57(a): nenhuma requisicao unica acima do teto'
+  assert_igual 1 "$(_harness_contar 'upload_session/start' "$base/chamadas")" 'RF-57(a): uma sessao'
+  assert_igual 1 "$(_harness_contar 'upload_session/finish' "$base/chamadas")" 'RF-57(a): uma conclusao'
+  assert_contem '\"update\":\"R9\"' "$(grep 'grande.bin' "$base/opcoes")" \
+    'RF-49: o finish da sessao carrega o rev esperado'
+}
+
+teste_envio_do_sync_mantem_mute_verdadeiro() {
+  local base
+  base=$(_cenario)
+  printf 'x' >"$base/local/a.txt"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '\"mute\":true' "$(grep 'Dropbox-API-Arg' "$base/opcoes")" \
+    'o sync envia sem notificar, como antes'
+}
+
+# ---------------------------------------------------------------------------
+# Temporario de recebimento orfao (`.<nome>.dbx-part.XXXXXX`)
+# ---------------------------------------------------------------------------
+
+teste_temporario_de_recebimento_nao_e_enviado_nem_entra_no_plano() {
+  local base
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  mkdir -p "$base/local/sub"
+  printf 'parcial' >"$base/local/sub/.b.txt.dbx-part.Ab12Cd"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'a_transferir=1' "$DBX_SAIDA" 'so o arquivo real entra no plano'
+  assert_nao_contem 'dbx-part' "$DBX_SAIDA" 'o temporario nao aparece no plano'
+  assert_nao_contem 'dbx-part' "$(cat "$base/opcoes")" 'o temporario nunca e enviado'
+}
+
+teste_temporario_de_recebimento_nao_entra_na_exclusao_local() {
+  local base
+  base=$(_cenario)
+  printf 'parcial' >"$base/local/.x.txt.dbx-part.Zz99Yy"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' ff 15)" >"$base/listagem"
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local" --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "recebimento deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'o temporario nao conta como arquivo local'
+  assert_nao_contem 'dbx-part' "$DBX_SAIDA" 'o temporario nao aparece no plano'
+  assert_contem 'apagados=0' "$DBX_SAIDA" 'nada e apagado'
+}
+
+teste_recebimento_sobre_arquivo_somente_leitura_falha_o_item_e_segue() {
+  local base
+  base=$(_cenario)
+  printf 'antigo' >"$base/local/a.txt"
+  chmod 444 "$base/local/a.txt"
+  printf '{"entries":[%s,%s],"has_more":false}' \
+    "$(_entrada_remota '/r/a.txt' ff 15)" "$(_entrada_remota '/r/b.txt' ff 15)" >"$base/listagem"
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local"
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" 'o item recusado torna a execucao nao concluida'
+  assert_contem 'falhas=1' "$DBX_SAIDA" 'o arquivo somente leitura conta como falha'
+  assert_contem 'recebidos=1' "$DBX_SAIDA" 'os demais itens seguem'
+  assert_igual 'antigo' "$(cat "$base/local/a.txt")" 'o arquivo fica intacto'
+  assert_igual 444 "$(stat -c %a "$base/local/a.txt")" 'o modo fica intacto'
+  assert_igual $'a.txt\nb.txt' "$(_conteudo_do_diretorio "$base/local")" 'nao resta temporario'
+}
+
 harness_executar "$@"
-
-

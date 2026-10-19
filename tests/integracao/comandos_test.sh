@@ -40,9 +40,9 @@ _ambiente() {
     # sobre cabecalhos.
     printf 'opcoes=$(cat)\n'
     printf 'printf "%%s\\n" "$opcoes" >>"$base/opcoes"\n'
-    printf 'saida=""; escrever=""; anterior=""; url=""; fail="nao"\n'
+    printf 'saida=""; escrever=""; anterior=""; url=""; fail="nao"; cabecalhos=""\n'
     printf 'for arg in "$@"; do\n'
-    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac\n'
+    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; esac\n'
     printf '  case $arg in http*) url=$arg ;; --fail) fail="sim" ;; esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
@@ -60,6 +60,27 @@ _ambiente() {
     printf '  fi\n'
     printf 'else\n'
     printf '  corpo=$(cat "$base/corpo"); codigo=$(cat "$base/codigo")\n'
+    printf 'fi\n'
+    # Metadado do recebimento: o servico publica o `content_hash` no cabecalho.
+    printf 'if [[ $url == *files/download* && -n $cabecalhos && -f "$base/resultado_cabecalho" ]]; then\n'
+    printf '  printf "Dropbox-API-Result: %%s\\r\\n" "$(cat "$base/resultado_cabecalho")" >"$cabecalhos"\n'
+    printf 'fi\n'
+    # Corrida (TOCTOU): o alvo perde a escrita enquanto o conteudo chega.
+    printf 'if [[ $url == *files/download* && -f "$base/tornar_somente_leitura" ]]; then\n'
+    printf '  chmod 444 "$(cat "$base/tornar_somente_leitura")"\n'
+    printf 'fi\n'
+    # Sinal no meio do recebimento: parte dos bytes ja escrita e TERM ao grupo
+    # do processo, que so e seguro sob `setsid` (ver `_rodar_em_sessao`).
+    printf 'if [[ $url == *files/download* && -f "$base/sinal" ]]; then\n'
+    printf '  [[ -n $saida ]] && printf "%%s" "${corpo:0:3}" >"$saida"\n'
+    printf '  kill -TERM 0\n'
+    printf '  sleep 5\n'
+    printf 'fi\n'
+    # Queda no meio do recebimento: parte dos bytes ja escrita e status 18.
+    printf 'if [[ $url == *files/download* && -f "$base/interromper" ]]; then\n'
+    printf '  [[ -n $saida ]] && printf "%%s" "${corpo:0:3}" >"$saida"\n'
+    printf '  printf "curl: (18) transfer closed with outstanding read data remaining\\n" >&2\n'
+    printf '  exit 18\n'
     printf 'fi\n'
     printf '[[ -n $escrever ]] && printf "%%s" "$codigo"\n'
     printf 'if [[ $fail == "sim" && $codigo -ge 400 ]]; then\n'
@@ -633,6 +654,219 @@ teste_download_nao_afirma_integridade_sem_resumo_do_servico() {
   assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
   assert_contem 'integridade=nao_aplicavel' "$DBX_SAIDA" \
     'sem resumo do servico a verificacao nao pode ser afirmada'
+}
+
+# RF-55: recebimento atomico. O conteudo vai para um temporario no diretorio do
+# alvo e so substitui o arquivo depois de conferido.
+_conteudo_do_diretorio() { # <diretorio> — nomes, inclusive ocultos, um por linha
+  find "$1" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort
+}
+
+teste_download_com_hash_divergente_preserva_o_arquivo_anterior() {
+  local base destino
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  mkdir -p "$base/alvo"
+  destino="$base/alvo/a.txt"
+  printf 'ANTIGO' >"$destino"
+  printf '%s' '{"name":"a.txt","content_hash":"0000000000000000000000000000000000000000000000000000000000000000"}' \
+    >"$base/resultado_cabecalho"
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual "$(dbx_errors_codigo_saida integridade)" "$DBX_ESTADO" \
+    'RF-55(b): hash divergente sai pelo codigo de integridade'
+  assert_igual 'ANTIGO' "$(cat "$destino")" 'RF-55(b): o arquivo anterior fica intacto'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/alvo")" \
+    'RF-55(b): o temporario e descartado'
+}
+
+teste_download_com_hash_conferido_substitui_e_nao_deixa_temporario() {
+  local base destino resumo
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  mkdir -p "$base/alvo"
+  destino="$base/alvo/a.txt"
+  printf 'ANTIGO' >"$destino"
+  printf 'CONTEUDO-NOVO' >"$base/referencia"
+  resumo=$(dbx_hash_conteudo_arquivo "$base/referencia")
+  printf '{"name":"a.txt","content_hash":"%s"}' "$resumo" >"$base/resultado_cabecalho"
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'integridade=conferida' "$DBX_SAIDA" 'RF-55(d): a conferencia ocorreu'
+  assert_igual 'CONTEUDO-NOVO' "$(cat "$destino")" 'RF-55(d): o alvo tem o conteudo novo'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/alvo")" \
+    'RF-55(d): nao resta temporario'
+}
+
+# _rodar_em_sessao <base> <argumentos...> — como `_rodar`, em sessao propria,
+# para que o duplo possa sinalizar o grupo de processos do comando sem atingir
+# o executor da suite.
+_rodar_em_sessao() {
+  local base=$1
+  shift
+  DBX_SAIDA=''
+  DBX_ERRO=''
+  setsid -w env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
+    bash "$DBX_EXEC" "$@" </dev/null >"$base/out" 2>"$base/err"
+  DBX_ESTADO=$?
+  [[ -r $base/err ]] && IFS= read -r -d '' DBX_ERRO <"$base/err"
+  return 0
+}
+
+teste_download_interrompido_por_sinal_remove_o_temporario() {
+  local base destino
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  mkdir -p "$base/alvo"
+  destino="$base/alvo/a.txt"
+  printf 'ANTIGO' >"$destino"
+  : >"$base/sinal"
+  _rodar_em_sessao "$base" download /r/a.txt "$destino"
+  assert_diferente 0 "$DBX_ESTADO" 'interrupcao por sinal nao e sucesso'
+  assert_igual 'ANTIGO' "$(cat "$destino")" 'o alvo anterior fica intacto'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/alvo")" \
+    'o temporario de recebimento e removido no sinal'
+}
+
+teste_upload_de_arquivo_unico_mantem_mute_falso() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'x\n' >"$origem"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem '\"mute\":false' "$(grep 'Dropbox-API-Arg' "$base/opcoes")" \
+    'o upload de arquivo unico notifica, como antes'
+}
+
+teste_download_interrompido_preserva_o_arquivo_anterior() {
+  local base destino
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  mkdir -p "$base/alvo"
+  destino="$base/alvo/a.txt"
+  printf 'ANTIGO' >"$destino"
+  : >"$base/interromper"
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_diferente 0 "$DBX_ESTADO" 'RF-55(c): queda no meio nao e sucesso'
+  assert_igual 'ANTIGO' "$(cat "$destino")" 'RF-55(c): o alvo anterior fica intacto'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/alvo")" \
+    'RF-55(c): nao resta temporario'
+}
+
+# RNF-29(a): o arquivo do usuario nasce com a mascara do usuario, e nao com a
+# mascara restrita da area temporaria que carrega o token.
+teste_download_segue_o_umask_do_usuario() {
+  local base destino
+  base=$(_ambiente 'CONTEUDO')
+  destino="$base/novo/sub/a.txt"
+  umask 022
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 644 "$(stat -c %a "$destino")" 'RNF-29(a): arquivo baixado segue o umask 022'
+  assert_igual 755 "$(stat -c %a "$base/novo/sub")" 'RNF-29(a): diretorio criado segue o umask 022'
+}
+
+teste_download_sobre_arquivo_existente_preserva_o_modo_dele() {
+  local base destino resumo
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  destino="$base/a.txt"
+  printf 'ANTIGO' >"$destino"
+  chmod 640 "$destino"
+  printf 'CONTEUDO-NOVO' >"$base/referencia"
+  resumo=$(dbx_hash_conteudo_arquivo "$base/referencia")
+  printf '{"name":"a.txt","content_hash":"%s"}' "$resumo" >"$base/resultado_cabecalho"
+  umask 022
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
+  assert_igual 640 "$(stat -c %a "$destino")" 'a substituicao preserva o modo do arquivo anterior'
+}
+
+# Decisao do solicitante (ciclo 4): arquivo local sem permissao de escrita nao
+# e substituido. A recusa vem antes de transferir, e de novo antes da troca.
+teste_download_sobre_arquivo_somente_leitura_recusa_e_preserva() {
+  local base destino
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  mkdir -p "$base/alvo"
+  destino="$base/alvo/a.txt"
+  printf 'ANTIGO' >"$destino"
+  chmod 444 "$destino"
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual "$(dbx_errors_codigo_saida permissao)" "$DBX_ESTADO" \
+    'destino somente leitura e recusa por permissao'
+  assert_contem 'somente leitura' "$DBX_ERRO" 'o diagnostico diz por que'
+  assert_igual 'ANTIGO' "$(cat "$destino")" 'o alvo fica intacto'
+  assert_igual 444 "$(stat -c %a "$destino")" 'o modo do alvo fica intacto'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/alvo")" 'nao resta temporario'
+  assert_igual 0 "$(_harness_contar 'files/download' "$base/argv")" \
+    'a recusa vem antes de gastar a transferencia'
+}
+
+teste_download_cujo_alvo_perde_a_escrita_durante_o_recebimento_recusa() {
+  local base destino resumo
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  mkdir -p "$base/alvo"
+  destino="$base/alvo/a.txt"
+  printf 'ANTIGO' >"$destino"
+  printf '%s' "$destino" >"$base/tornar_somente_leitura"
+  printf 'CONTEUDO-NOVO' >"$base/referencia"
+  resumo=$(dbx_hash_conteudo_arquivo "$base/referencia")
+  printf '{"name":"a.txt","content_hash":"%s"}' "$resumo" >"$base/resultado_cabecalho"
+  _rodar "$base" download /r/a.txt "$destino"
+  assert_igual "$(dbx_errors_codigo_saida permissao)" "$DBX_ESTADO" \
+    'a conferencia antes da troca fecha a corrida'
+  assert_igual 'ANTIGO' "$(cat "$destino")" 'o alvo fica intacto'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/alvo")" 'nao resta temporario'
+}
+
+# O destino que e vinculo simbolico continua vinculo: a troca atomica acontece
+# no arquivo para onde ele aponta.
+teste_download_para_vinculo_simbolico_atualiza_o_arquivo_apontado() {
+  local base resumo
+  base=$(_ambiente 'CONTEUDO-NOVO')
+  mkdir -p "$base/real" "$base/atalhos"
+  printf 'ANTIGO' >"$base/real/a.txt"
+  ln -s "$base/real/a.txt" "$base/atalhos/a.txt"
+  printf 'CONTEUDO-NOVO' >"$base/referencia"
+  resumo=$(dbx_hash_conteudo_arquivo "$base/referencia")
+  printf '{"name":"a.txt","content_hash":"%s"}' "$resumo" >"$base/resultado_cabecalho"
+  _rodar "$base" download /r/a.txt "$base/atalhos/a.txt"
+  assert_igual 0 "$DBX_ESTADO" "download deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'integridade=conferida' "$DBX_SAIDA" 'o resumo e conferido'
+  assert_sucesso test -L "$base/atalhos/a.txt"
+  assert_igual 'CONTEUDO-NOVO' "$(cat "$base/real/a.txt")" 'o arquivo apontado recebe o conteudo'
+  assert_igual 'a.txt' "$(_conteudo_do_diretorio "$base/real")" 'nao resta temporario'
+}
+
+# RNF-27: o carimbo sai no formato que a Dropbox aceita, em UTC.
+teste_upload_formata_client_modified_em_utc() {
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  printf 'x\n' >"$origem"
+  touch -d '2021-03-04 05:06:07 UTC' "$origem"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload deve concluir; diagnostico: $DBX_ERRO"
+  assert_contem 'client_modified\":\"2021-03-04T05:06:07Z\"' "$(grep 'Dropbox-API-Arg' "$base/opcoes")" \
+    'carimbo em ISO 8601 UTC, sem fracao'
+}
+
+# RF-56: o ramo de pasta nunca remove arquivo regular do usuario.
+teste_download_de_pasta_sobre_arquivo_existente_recusa_e_preserva() {
+  local base destino mtime_antes
+  base=$(_ambiente '{}')
+  printf '%s' '{"error_summary":"path/not_file/..."}' >"$base/download_corpo"
+  printf '%s' '409' >"$base/download_codigo"
+  printf '%s' '{"entries":[],"has_more":false}' >"$base/listagem"
+  destino="$base/meu_arquivo.txt"
+  printf 'MEU CONTEUDO' >"$destino"
+  touch -d '2020-01-02 03:04:05' "$destino"
+  mtime_antes=$(stat -c %Y "$destino")
+  _rodar "$base" download /pasta_remota "$destino"
+  assert_igual "$(dbx_errors_codigo_saida conflito)" "$DBX_ESTADO" \
+    'RF-56: pasta remota sobre arquivo local e conflito'
+  assert_contem "$destino" "$DBX_ERRO" 'o diagnostico nomeia o destino'
+  assert_sucesso test -f "$destino"
+  assert_igual 'MEU CONTEUDO' "$(cat "$destino")" 'RF-56: o conteudo fica intacto'
+  assert_igual "$mtime_antes" "$(stat -c %Y "$destino")" 'RF-56: o mtime fica intacto'
+  assert_igual 0 "$(_harness_contar 'list_folder' "$base/argv")" \
+    'nenhuma travessia remota e iniciada depois da recusa'
 }
 
 # Gemeos no transporte: os dois usam o modo de conteudo, em direcoes opostas, e

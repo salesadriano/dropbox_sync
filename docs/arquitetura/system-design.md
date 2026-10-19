@@ -17,6 +17,7 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 | Versao | Mudanca |
 |---|---|
 | v0.1 | Proposta arquitetural inicial |
+| **v1.3** | **Integridade de dados (fase P1, 2026-10-18).** Registrado o comportamento decidido para `lib/sync`, `commands/download`, `lib/transfer` e `lib/http` (secao "Integridade de dados no recebimento e no `sync`"). Sem novo componente; backlog das fases P2 a P5 em `F-23`..`F-27` |
 | **v1.2** | **Correcoes devolvidas pela implementacao de `RF-31`/`RF-08`/`RF-09` (2026-08-19).** 🔴 **`lib/stream` reclassificado como PLANEJADO E NAO MATERIALIZADO** (`DIV-20`): verificado por leitura direta de `lib/`, o arquivo nunca foi criado; `RF-31` ficou em `lib/transfer` + `lib/hash` (API incremental), e `RF-32` segue nao implementado, com o componente **em aberto**. A linha da tabela e o no do diagrama sao **riscados, nao removidos**. **Dimensionamento corrigido:** a celula de estrategia por tamanho de arquivo afirmava tamanho de parte **configuravel** com faixa sugerida de 8 a 32 MiB — **falso em relacao ao implementado e nunca medido**; a parte esta **fixa em 4.194.304 bytes** (`DIV-19`), e o estagio "ajuste fino" do plano de expansao passa a constar como **indisponivel**. **Contrato de conteudo revalidado** contra `files.stone` do ramo **`main`**, incluindo `offset` e `incorrect_offset` como base documentada da retentativa por parte, e a **validade de 7 dias da sessao** (`RES-18`); ⚠️ `DIV-21` registra que o ramo `master` esta **desatualizado** (48 horas, sem `session_type`). **Criterio de aceite de transferencia por fluxo qualificado** por `DIV-18`/`RSK-36`. *(A numeracao salta de v1.1 para v1.2 sem v1.1.x intermediaria; nao ha versao omitida neste registro.)* |
 | v0.2 | Incorpora DP-01 (reimplementacao independente), DP-03 (uso interativo **e** automatizado, exigindo camada de saida com duas apresentacoes) e DP-04 (conta pessoal com acesso amplo, exigindo menor privilegio e confinamento de raiz). Contratos de integracao **revalidados via Context7** sobre `/websites/dropbox_developers_http`, corrigindo hosts, unidades, o requisito de multiplo de 4 MiB, a paginacao de busca e a restricao de concorrencia em listagem. Nota de nao verificacao do Context7 removida por erro factual |
 
@@ -397,6 +398,16 @@ Obtidas pelo QA e pelo Tech Lead apos a correcao do defeito de complexidade quad
 | Solicitante | Resposta a DP-02 (quais funcionalidades novas); aprovacao explicita dos testes de QA | **Bloqueante** |
 
 ---
+
+### Integridade de dados no recebimento e no `sync` (P1, 2026-10-18)
+
+Decisoes do solicitante (`DP-31`), sem novo componente:
+
+- **`lib/sync`**: a chave de comparacao dos mapas local/remoto e o caminho em minusculas (`path_lower` no remoto); a grafia original e mantida so para exibicao e escrita. Colisao de caixa na arvore local e detectada na fase de planejamento e recusada antes de qualquer escrita (`RF-54`).
+- **Recebimento (`commands/download`, `commands/sync --receber`)**: escrita em temporario no mesmo diretorio do alvo (mesmo sistema de arquivos, para a renomeacao ser atomica), conferencia de `content_hash` e `mv` atomico; falha descarta o temporario e preserva o alvo (`RF-55`). `download` de pasta recusa destino que seja arquivo regular (`RF-56`).
+- **Envio (`sync --enviar`)**: reutiliza o helper de publicacao e o roteamento por tamanho do `upload` (requisicao unica ate 150 MiB, sessao acima), com `client_modified`; sobrescreve em modo `update` com o `rev` da listagem da execucao e usa `add` para arquivo novo; recusa da Dropbox vira falha do item, sem sobrescrever (`RF-57`, `RF-49`); a origem vence entre execucoes (`DP-27`; `DIV-23` resolvida).
+- **`lib/http`**: `umask 077` restrito a criacao da area temporaria com o token; `umask` do processo preservado; area temporaria de cada requisicao removida sempre, inclusive na reemissao diagnostica, sem gancho armado apos o retorno (`RNF-29`; `RNF-04` emendado, `DIV-24` resolvida). Evolucao estrutural prevista: gestao unica de areas temporarias registradas.
+- **Fora da P1 (registrado, nao implementado)**: skip do upload condicionado ao `content_hash` remoto, com o cache de `lib/db`/`lib/state` reduzido a otimizacao de calculo de hash (`DP-32`, `F-26`); politica `Retry-After` de `lib/http` (`DIV-22`, fase P2).
 
 ## Decisoes e trade-offs
 

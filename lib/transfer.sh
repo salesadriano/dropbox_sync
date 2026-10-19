@@ -288,10 +288,9 @@ _dbx_transfer_remover_area() {
 # Isto VIOLA a disciplina "quem enche o canal de outro componente o esvazia", e a
 # violacao esta escrita aqui em vez de escondida.
 #
-# O defeito: `lib/http` limpa a propria area com `trap ... RETURN`, que dispara
-# SO no retorno normal da funcao. Esta funcao faz `exit`, e `exit` nao dispara
-# `RETURN` — medido: `f(){ trap "echo X" RETURN; exit 7; }; f` nao imprime nada,
-# enquanto o controle com `return 0` imprime. Sem esta linha, uma interrupcao no
+# O defeito: `lib/http` remove a propria area quando `_dbx_http_executar`
+# retorna, e so entao. Esta funcao faz `exit`, que encerra o processo sem esse
+# retorno. Sem esta linha, uma interrupcao no
 # meio de um `append` deixava `dbx-http.XXXX/{erro_cliente,cabecalhos,resposta}`
 # em `$TMPDIR`, com corpo do usuario dentro.
 #
@@ -637,4 +636,112 @@ _dbx_transfer_conduzir() {
   fi
 
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# Envio de arquivo local: objeto de publicacao e roteamento (RF-57)
+# ---------------------------------------------------------------------------
+
+# shellcheck disable=SC2034
+# Justificativa: objeto de publicacao montado, lido por quem envia.
+DBX_TRANSFER_COMMIT=''
+# shellcheck disable=SC2034
+# Justificativa: `sim` quando o ultimo envio de arquivo foi por sessao.
+DBX_TRANSFER_POR_SESSAO='nao'
+
+# dbx_transfer_objeto_de_publicacao <remoto> <modo> <rev> <origem> [mute]
+#
+# UNICO lugar que monta o objeto de publicacao, para `upload` e para `sync`.
+# Resultado em DBX_TRANSFER_COMMIT. Monta-lo em cada comando faria a proxima
+# correcao em `mode` ou em `client_modified` valer para um caminho so, com o
+# sintoma — metadado diferente conforme o comando — longe da causa.
+#
+# Com `rev`, o modo e `update` sobre ele (RF-49): alteracao remota entre a
+# leitura e o envio vira conflito, e nao sobrescrita do que mudou.
+#
+# RNF-27 — `client_modified` a partir do `mtime` local, para que o que esta
+# aplicacao enviou tenha carimbo da mesma origem de relogio nos dois lados; o
+# servico nao o recalcula depois. Fluxo pela entrada padrao nao tem `mtime` e
+# sai sem o carimbo, em vez de um inventado com o horario da execucao.
+#
+# `mute` e do chamador: o `upload` de um arquivo notifica os dispositivos do
+# usuario, o `sync` de uma arvore nao, para nao gerar uma notificacao por item.
+dbx_transfer_objeto_de_publicacao() {
+  local remoto=$1 modo=$2 rev=$3 origem=$4 mute=${5:-false} carimbo='' mtime=''
+  [[ $mute == 'true' ]] || mute='false'
+
+  # `stat` devolve so digitos e o carimbo e formatado pelo proprio shell, em UTC
+  # local a funcao: capturar `date` seria captura fora do alfabeto fechado
+  # (RNF-24). `TZ` precisa ser EXPORTADA: o shell so reaplica o fuso quando a
+  # variavel esta no ambiente, e sem `-x` o carimbo sairia na hora local.
+  if [[ $origem != '-' ]] && mtime=$(stat -c %Y -- "$origem" 2>/dev/null) &&
+    [[ $mtime =~ ^[0-9]+$ ]]; then
+    local -x TZ=UTC
+    printf -v carimbo '%(%Y-%m-%dT%H:%M:%SZ)T' "$mtime"
+  fi
+
+  dbx_json_escapar_cadeia "$remoto"
+  DBX_TRANSFER_COMMIT="{\"path\":\"$DBX_JSON_ESCAPADO\",\"mode\":"
+  if [[ -n $rev ]]; then
+    dbx_json_escapar_cadeia "$rev"
+    DBX_TRANSFER_COMMIT+="{\".tag\":\"update\",\"update\":\"$DBX_JSON_ESCAPADO\"}"
+  else
+    DBX_TRANSFER_COMMIT+="\"$modo\""
+  fi
+  if [[ -n $carimbo ]]; then
+    dbx_json_escapar_cadeia "$carimbo"
+    DBX_TRANSFER_COMMIT+=",\"client_modified\":\"$DBX_JSON_ESCAPADO\""
+  fi
+  DBX_TRANSFER_COMMIT+=",\"autorename\":false,\"mute\":$mute}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  return 0
+}
+
+# dbx_transfer_enviar_arquivo <origem> <objeto_de_publicacao> [rotulo]
+#
+# UNICO ponto de escolha entre requisicao unica e sessao para arquivo local,
+# usado por `upload` e por `sync` (RF-08, RF-57). O tamanho e MEDIDO aqui; a
+# forma `&&` do predicado so e segura porque a medicao ja recusou o que nao
+# fosse numero — sem isso um status de uso cairia em "nao precisa de sessao".
+#
+# Falha publica DBX_TRANSFER_CLASSE e DBX_TRANSFER_MOTIVO nos dois caminhos; o
+# corpo da resposta de sucesso fica em DBX_HTTP_CORPO para quem o le.
+dbx_transfer_enviar_arquivo() {
+  local origem=${1-} commit=${2-} rotulo=${3:-envio} str_tam='' str_barra=''
+  DBX_TRANSFER_POR_SESSAO='nao'
+  # shellcheck disable=SC2034  # canais publicos, lidos pelos comandos
+  DBX_TRANSFER_CLASSE=''
+  # shellcheck disable=SC2034
+  DBX_TRANSFER_MOTIVO=''
+
+  [[ -n $commit ]] || {
+    _dbx_transfer_falhar uso_invalido 'envio de arquivo sem objeto de publicacao'
+    return $?
+  }
+  # RF-15, segunda linha de defesa, pelo mesmo motivo da sessao.
+  [[ ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]] || {
+    _dbx_transfer_falhar uso_invalido \
+      'envio de arquivo alcancado em modo de simulacao: nenhuma escrita e emitida'
+    return $?
+  }
+  dbx_transfer_tamanho_de_arquivo "$origem" || {
+    _dbx_transfer_falhar nao_encontrado "tamanho do arquivo local indeterminado: $origem"
+    return $?
+  }
+
+  if dbx_transfer_precisa_de_sessao "$DBX_TRANSFER_TAMANHO"; then
+    # shellcheck disable=SC2034  # canal publico, lido por commands/upload
+    DBX_TRANSFER_POR_SESSAO='sim'
+    dbx_transfer_sessao "$commit" <"$origem"
+    return $?
+  fi
+
+  dbx_progress_barra_gerar 0 20 str_barra
+  dbx_progress_formatar_bytes "$DBX_TRANSFER_TAMANHO" str_tam
+  dbx_progress_mensagem "[$rotulo] enviando arquivo ($str_tam) via requisicao unica... $str_barra (0%)"
+  dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
+    "$commit" "$origem" nao && return 0
+  _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
+    "envio recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}"
 }

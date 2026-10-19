@@ -58,7 +58,7 @@ _duplo() {
     printf 'dir=%s\n' "$dir"
     printf 'printf "%%s\\n" "$*" >>"$dir/argv"\n'
     printf 'cat >"$dir/entrada" 2>/dev/null\n'
-    printf 'saida=""; cabecalhos=""; escrever=""\n'
+    printf 'saida=""; cabecalhos=""; escrever=""; fail="nao"\n'
     printf 'anterior=""\n'
     printf 'for arg in "$@"; do\n'
     printf '  case $anterior in\n'
@@ -68,12 +68,19 @@ _duplo() {
     printf '  esac\n'
     printf '  case $arg in\n'
     printf '    --data-binary) : ;;\n'
+    printf '    --fail) fail="sim" ;;\n'
     printf '    @*) [[ -r ${arg#@} ]] && cat "${arg#@}" >>"$dir/enviado" ;;\n'
     printf '  esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
-    printf '[[ -n $saida ]] && cp "$dir/corpo" "$saida"\n'
+    printf '[[ -n $cabecalhos ]] && stat -c %%a "${cabecalhos%%/*}" >>"$dir/modo_area"\n'
     printf '[[ -n $cabecalhos ]] && cp "$dir/cabecalhos" "$cabecalhos"\n'
+    # `--fail` diante de 4xx/5xx: o cliente real nao emite corpo e sai com 22.
+    printf 'if [[ $fail == "sim" && $(cat "$dir/status") -ge 400 ]]; then\n'
+    printf '  [[ -n $escrever ]] && printf "%%s" "$(cat "$dir/status")"\n'
+    printf '  exit 22\n'
+    printf 'fi\n'
+    printf '[[ -n $saida ]] && cp "$dir/corpo" "$saida"\n'
     printf 'if [[ -n $escrever ]]; then printf "%%s" "$(cat "$dir/status")"; fi\n'
     printf 'exit "$(cat "$dir/saida_curl" 2>/dev/null || printf 0)"\n'
   } >"$dir/curl"
@@ -306,12 +313,56 @@ teste_nao_introduz_estado_local_persistente() {
 }
 
 teste_nao_deixa_residuo_temporario() {
-  local dir antes depois
+  # TMPDIR privado: no diretorio compartilhado, outro processo criando ou
+  # removendo `dbx-http*` mudaria a contagem sem relacao com este caso.
+  local dir area restantes
   dir=$(_duplo 200 '{"ok":true}')
-  antes=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'dbx-http*' 2>/dev/null | wc -l)
+  area=$(mktemp -d "$DBX_TESTES_TMP/tmpdir.XXXXXX")
+  TMPDIR=$area PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  restantes=$(find "$area" -mindepth 1 -maxdepth 1 | wc -l)
+  assert_igual 0 "$restantes" 'a requisicao nao pode deixar temporario para tras'
+}
+
+# RNF-29(a): a mascara e estado do PROCESSO. Deixa-la em 077 faria todo arquivo
+# que o usuario receber depois da primeira chamada nascer 0600.
+teste_umask_do_processo_e_preservado_apos_chamada_http() {
+  local dir
+  dir=$(_duplo 200 '{"ok":true}')
+  umask 022
   PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
-  depois=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'dbx-http*' 2>/dev/null | wc -l)
-  assert_igual "$antes" "$depois" 'a requisicao nao pode deixar temporario para tras'
+  assert_igual 0022 "$(umask)" 'a chamada nao pode alterar o umask do chamador'
+}
+
+# RNF-29(b): o 077 continua valendo para a area que recebe o token e o corpo.
+teste_area_temporaria_da_requisicao_nasce_restrita() {
+  local dir
+  dir=$(_duplo 200 '{"ok":true}')
+  umask 022
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 700 "$(head -n 1 "$dir/modo_area")" 'a area com o segredo e restrita ao dono'
+}
+
+# RNF-29(c) e (d): a reemissao diagnostica do canal de fluxo e chamada
+# recursiva; cada nivel precisa remover a propria area, e nenhum gancho de
+# limpeza pode sobreviver ao retorno.
+teste_reemissao_diagnostica_nao_deixa_area_temporaria() {
+  local dir area restantes
+  dir=$(_duplo 409 '{"error_summary":"path/not_file/.."}')
+  area=$(mktemp -d "$DBX_TESTES_TMP/tmpdir.XXXXXX")
+  TMPDIR=$area PATH="$dir:$PATH" dbx_http_conteudo_receber POST 'https://c/2/files/download' \
+    'tok' '{"path":"/p"}' "$area/destino"
+  assert_igual 409 "$DBX_HTTP_CODIGO" 'o codigo observado e preservado'
+  assert_igual 2 "$(wc -l <"$dir/argv")" 'houve a requisicao original e a reemissao'
+  restantes=$(find "$area" -maxdepth 1 -name 'dbx-http*' | wc -l)
+  assert_igual 0 "$restantes" 'nenhuma area temporaria pode restar apos a reemissao'
+  assert_igual '' "$(trap -p RETURN)" 'nenhum gancho RETURN pode ficar armado'
+}
+
+teste_nenhum_gancho_de_limpeza_fica_armado_apos_requisicao() {
+  local dir
+  dir=$(_duplo 200 '{"ok":true}')
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual '' "$(trap -p RETURN)" 'o gancho RETURN nao pode sobreviver ao retorno'
 }
 
 # ---------------------------------------------------------------------------

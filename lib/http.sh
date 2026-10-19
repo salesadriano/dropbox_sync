@@ -353,9 +353,25 @@ dbx_http_formulario() {
   _dbx_http_executar POST "$1" '' nao
 }
 
+# _dbx_http_executar <metodo> <url> <corpo> <idempotente>
+#
+# Dono do ciclo de vida da area temporaria de UMA requisicao: cria, entrega a
+# `_dbx_http_conduzir` e remove no retorno, com o status preservado. A remocao e
+# explicita, e nao por `trap ... RETURN`: o gancho e estado global do shell,
+# continua armado depois do retorno e, na reemissao diagnostica (chamada
+# recursiva), apontaria para a area do nivel interno e deixaria a externa.
+#
+# O `umask 077` vale so para a criacao da area, dentro da substituicao de
+# comando: a mascara e estado do processo, e o arquivo que o usuario recebe
+# precisa nascer com a mascara dele.
+#
+# `DBX_HTTP_AREA_TEMP` e global porque `_dbx_transfer_interrompida` a remove
+# quando um sinal encerra o processo no meio da sessao; o valor do nivel
+# externo e restaurado no retorno do interno. `exit` e sinal fora dessa janela
+# continuam sem cobertura ate o componente `lib/tmp` do backlog.
 _dbx_http_executar() {
   local metodo=$1 url=$2 corpo=$3 idempotente=$4
-  local tentativa=1 estado codigo politica
+  local area area_externa=$DBX_HTTP_AREA_TEMP estado
 
   case $idempotente in
     sim | nao) ;;
@@ -365,36 +381,20 @@ _dbx_http_executar() {
 
   _dbx_http_limpar
 
-  umask 077
-  # DELIBERADAMENTE global, e nao `local`: a acao do `trap` e avaliada quando a
-  # funcao retorna, momento em que o escopo local ja nao existe — com variavel
-  # local a expansao viraria vazia e nada seria removido. E o mesmo defeito ja
-  # corrigido em lib/hash, repetido aqui: a disciplina existia num componente e
-  # nao no gemeo.
-  DBX_HTTP_AREA_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/dbx-http.XXXXXXXX") ||
+  area=$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/dbx-http.XXXXXXXX") ||
     return "$DBX_HTTP_ERRO_REDE"
-  local area=$DBX_HTTP_AREA_TEMP
-  # ALCANCE REAL DESTA LIMPEZA, medido — e a afirmacao anterior era FALSA.
-  #
-  # O comentario que estava aqui dizia "a limpeza vale tambem para sinal
-  # interceptavel". Nao vale. `trap ... RETURN` dispara APENAS no retorno normal
-  # da funcao. Medido em tres formas:
-  #   f(){ trap "echo X" RETURN; exit 7; }; f      -> nao imprime nada
-  #   f(){ trap "echo X" RETURN; return 0; }; f    -> imprime (controle)
-  #   TERM nao tratado durante a funcao            -> nao imprime, status 143
-  #
-  # O que esta limpeza DE FATO cobre: retorno da funcao, seja com sucesso ou com
-  # erro classificado. O corpo pode conter dado do usuario e as opcoes contem o
-  # segredo, e nesse caminho eles nao sobrevivem a chamada.
-  #
-  # O QUE ELA NAO COBRE, e por que nao e corrigido aqui: `exit` do processo e
-  # sinal, tratado ou nao. Armar `EXIT INT TERM HUP` neste ponto seria pior — o
-  # `trap` e global ao shell e atropelaria o `EXIT` que `dbx_transfer_sessao`
-  # arma para remover a PROPRIA area, trocando um vazamento por uma regressao de
-  # limpeza. O paliativo declarado vive em `_dbx_transfer_interrompida`, que
-  # remove tambem esta area; a correcao estrutural e o componente `lib/tmp`,
-  # dono unico de area temporaria, ja no backlog do projeto.
-  trap 'rm -rf -- "$DBX_HTTP_AREA_TEMP"' RETURN
+  DBX_HTTP_AREA_TEMP=$area
+  _dbx_http_conduzir "$area" "$metodo" "$url" "$corpo" "$idempotente"
+  estado=$?
+  rm -rf -- "$area"
+  DBX_HTTP_AREA_TEMP=$area_externa
+  return "$estado"
+}
+
+# _dbx_http_conduzir <area> <metodo> <url> <corpo> <idempotente>
+_dbx_http_conduzir() {
+  local area=$1 metodo=$2 url=$3 corpo=$4 idempotente=$5
+  local tentativa=1 estado codigo politica
 
   [[ -n $corpo ]] && printf '%s' "$corpo" >"$area/requisicao"
 

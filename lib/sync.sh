@@ -53,6 +53,13 @@ DBX_SYNC_LIDO=''
 declare -ga DBX_SYNC_TRANSFERIR=()
 declare -ga DBX_SYNC_APAGAR=()
 declare -ga DBX_SYNC_IDENTICOS=()
+# Caminho do item da origem como o DESTINO o grafa: a grafia que ja existe do
+# outro lado quando o par existe, ou a da origem quando o item e novo. E por ele
+# que a escrita acontece — gravar com a grafia da origem num destino que
+# diferencia caixa criaria uma segunda copia ao lado da existente.
+declare -gA DBX_SYNC_ALVO=()
+# shellcheck disable=SC2034  # canal publico de _dbx_sync_chave
+DBX_SYNC_CHAVE=''
 
 # dbx_sync_relativo <raiz_api> <caminho_absoluto>
 #
@@ -75,21 +82,79 @@ dbx_sync_relativo() {
   [[ -n $DBX_SYNC_LIDO ]]
 }
 
-# dbx_sync_enumerar_remoto <raiz_api> <arquivo>
+# _dbx_sync_chave <caminho> — chave de comparacao em DBX_SYNC_CHAVE (RF-54).
+#
+# A Dropbox nao diferencia caixa, entao dois caminhos que so diferem nela sao o
+# MESMO arquivo. A conversao roda sob localidade UTF-8 quando ela existe: sob
+# `C`, `${x,,}` so converte ASCII e um `É` local nao casaria com o `é` remoto.
+# Sem a localidade, o recuo e a conversao ASCII, e a atribuicao nao emite aviso.
+_dbx_sync_chave() {
+  { local LC_ALL=C.UTF-8; } 2>/dev/null
+  DBX_SYNC_CHAVE=${1,,}
+}
+
+# dbx_sync_colisao_de_caixa <nome_do_vetor> — 1 quando dois caminhos do vetor
+# so diferem na caixa; o par vai nomeado em DBX_SYNC_MOTIVO.
+#
+# Do lado local isso e possivel e do remoto nao: `a.txt` e `A.txt` viram um
+# arquivo so na Dropbox, e enviar os dois faria o segundo sobrescrever o
+# primeiro sem aviso; receber escolheria um deles por acaso.
+dbx_sync_colisao_de_caixa() {
+  [[ $# -eq 1 ]] || return "$DBX_SYNC_ERRO_USO"
+  local -n _caminhos=$1
+  local -A _vistos=()
+  local caminho
+  for caminho in ${_caminhos[@]+"${_caminhos[@]}"}; do
+    _dbx_sync_chave "$caminho"
+    if [[ -n ${_vistos[$DBX_SYNC_CHAVE]+definido} ]]; then
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      DBX_SYNC_MOTIVO="colisao de caixa na arvore local: '${_vistos[$DBX_SYNC_CHAVE]}' e '$caminho' sao o mesmo caminho na Dropbox"
+      return 1
+    fi
+    _vistos[$DBX_SYNC_CHAVE]=$caminho
+  done
+  return 0
+}
+
+# dbx_sync_sem_temporarios <vetor_caminhos> <vetor_tamanhos> <vetor_mtimes>
+#
+# Retira da arvore local os temporarios de recebimento (`.<nome>.dbx-part.XXXXXX`)
+# que um processo interrompido sem tratador deixou: contados como arquivo, um
+# `--enviar` os publicaria e um `--receber --espelhar` os planejaria apagar.
+dbx_sync_sem_temporarios() {
+  [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
+  local -n _c=$1 _t=$2 _m=$3
+  local -a c=() t=() m=()
+  local indice nome
+  for indice in "${!_c[@]}"; do
+    nome=${_c[$indice]##*/}
+    [[ $nome == .*"$DBX_CMD_MARCA_RECEBIMENTO"?????? ]] && continue
+    c+=("${_c[$indice]}") t+=("${_t[$indice]}") m+=("${_m[$indice]}")
+  done
+  _c=(${c[@]+"${c[@]}"}) _t=(${t[@]+"${t[@]}"}) _m=(${m[@]+"${m[@]}"})
+  return 0
+}
+
+# dbx_sync_enumerar_remoto <raiz_api> <arquivo> [arquivo_de_revs]
 #
 # Emite `resumo<TAB>tamanho<TAB>caminho\0`, no mesmo formato de `lib/walk`, para
 # que quem consome nao precise saber de que lado veio a listagem.
+#
+# O `rev` vai para arquivo PROPRIO, em `rev<TAB>caminho\0`: e o valor que o
+# envio leva como concorrencia otimista (RF-49), lido nesta mesma execucao, e
+# mante-lo fora do registro preserva a paridade de formato com `lib/walk`.
 #
 # Raiz remota INEXISTENTE nao e erro: e arvore vazia. A distincao importa porque
 # `--enviar` para um destino que ainda nao existe e o caso normal da primeira
 # execucao, e recusar ali obrigaria o operador a criar a pasta a mao.
 dbx_sync_enumerar_remoto() {
-  [[ $# -eq 2 ]] || return "$DBX_SYNC_ERRO_USO"
-  local raiz=$1 destino=$2
-  local corpo url estado quantidade indice tag caminho resumo tamanho
+  [[ $# -ge 2 && $# -le 3 ]] || return "$DBX_SYNC_ERRO_USO"
+  local raiz=$1 destino=$2 revs=${3:-}
+  local corpo url estado quantidade indice tag caminho resumo tamanho rev
   local total_remotos=0 pagina=1
 
   : >"$destino"
+  [[ -n $revs ]] && : >"$revs"
   dbx_json_escapar_cadeia "$raiz"
   corpo="{\"path\":\"$DBX_JSON_ESCAPADO\",\"recursive\":true}"
   # O canal do escapador e ALHEIO e fica limpo assim que o documento e montado.
@@ -138,6 +203,11 @@ dbx_sync_enumerar_remoto() {
       tamanho=0
       _dbx_cmd_campo entries "$indice" size && tamanho=$DBX_CMD_LIDO
       printf '%s\t%s\t%s\0' "$resumo" "$tamanho" "$caminho" >>"$destino"
+      if [[ -n $revs ]]; then
+        rev=''
+        _dbx_cmd_campo entries "$indice" rev && rev=$DBX_CMD_LIDO
+        [[ -n $rev ]] && printf '%s\t%s\0' "$rev" "$caminho" >>"$revs"
+      fi
       total_remotos=$((total_remotos + 1))
       dbx_progress_mensagem "[sync] consultando remoto ($total_remotos): $caminho"
     done
@@ -178,27 +248,59 @@ dbx_sync_ler_resumos() {
   return 0
 }
 
+# dbx_sync_ler_revs <arquivo> <nome_do_mapa> — `rev` por caminho remoto.
+dbx_sync_ler_revs() {
+  [[ $# -eq 2 ]] || return "$DBX_SYNC_ERRO_USO"
+  local arquivo=$1
+  local -n _revs=$2
+  local registro
+  _revs=()
+  [[ -r $arquivo ]] || return 0
+  while IFS= read -r -d '' registro; do
+    [[ $registro == *$'\t'* ]] || continue
+    _revs["${registro#*$'\t'}"]=${registro%%$'\t'*}
+  done <"$arquivo"
+  return 0
+}
+
 # dbx_sync_planejar <vetor_origem> <mapa_origem> <vetor_destino> <mapa_destino>
 #
 # Aplica a tabela de 5.8.2. Nao emite escrita alguma: separar decidir de executar
 # e o que permite a `RF-44` imprimir o plano completo e a `RF-41(d)` anunciar
 # toda exclusao ANTES da primeira delas.
+#
+# Os lados sao casados pela chave sem caixa (RF-54): um par que so difere na
+# caixa e um arquivo so, decidido pelo resumo, e nunca vira "transferir" de um
+# lado e "apagar" do outro.
 dbx_sync_planejar() {
   [[ $# -eq 4 ]] || return "$DBX_SYNC_ERRO_USO"
   local -n _ordem_o=$1 _mapa_o=$2 _ordem_d=$3 _mapa_d=$4
-  local caminho resumo_o resumo_d
+  local caminho par resumo_o resumo_d
+  local -A _destino_por_chave=() _chaves_da_origem=()
 
   DBX_SYNC_TRANSFERIR=()
   DBX_SYNC_APAGAR=()
   DBX_SYNC_IDENTICOS=()
+  DBX_SYNC_ALVO=()
+
+  for caminho in ${_ordem_d[@]+"${_ordem_d[@]}"}; do
+    _dbx_sync_chave "$caminho"
+    _destino_por_chave[$DBX_SYNC_CHAVE]=$caminho
+  done
 
   for caminho in ${_ordem_o[@]+"${_ordem_o[@]}"}; do
     resumo_o=${_mapa_o[$caminho]:-}
-    if [[ -z ${_mapa_d[$caminho]+definido} ]]; then
+    _dbx_sync_chave "$caminho"
+    _chaves_da_origem[$DBX_SYNC_CHAVE]=1
+    if [[ -z ${_destino_por_chave[$DBX_SYNC_CHAVE]+definido} ]]; then
+      DBX_SYNC_ALVO[$caminho]=$caminho
       DBX_SYNC_TRANSFERIR+=("$caminho")
       continue
     fi
-    resumo_d=${_mapa_d[$caminho]:-}
+    par=${_destino_por_chave[$DBX_SYNC_CHAVE]}
+    # shellcheck disable=SC2034  # canal publico, lido por commands/sync
+    DBX_SYNC_ALVO[$caminho]=$par
+    resumo_d=${_mapa_d[$par]:-}
     # `dbx_hash_iguais` distingue "diferentes" de "malformado", e a distincao
     # decide: resumo ilegivel NAO pode ser lido como conteudo identico, sob pena
     # de omitir uma transferencia necessaria — que e a falha sem sintoma.
@@ -210,7 +312,8 @@ dbx_sync_planejar() {
   done
 
   for caminho in ${_ordem_d[@]+"${_ordem_d[@]}"}; do
-    [[ -z ${_mapa_o[$caminho]+definido} ]] && DBX_SYNC_APAGAR+=("$caminho")
+    _dbx_sync_chave "$caminho"
+    [[ -z ${_chaves_da_origem[$DBX_SYNC_CHAVE]+definido} ]] && DBX_SYNC_APAGAR+=("$caminho")
   done
   return 0
 }

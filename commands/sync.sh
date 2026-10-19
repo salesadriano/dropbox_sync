@@ -44,6 +44,8 @@ _dbx_cmd_sync_carregar_dependencias() {
   . "$DBX_CLI_RAIZ/lib/sync.sh"
   # shellcheck source=lib/db.sh
   . "$DBX_CLI_RAIZ/lib/db.sh"
+  # shellcheck source=lib/transfer.sh
+  . "$DBX_CLI_RAIZ/lib/transfer.sh"
   dbx_db_inicializar || :
 }
 
@@ -227,6 +229,7 @@ dbx_cmd_sync_executar() {
   }
   registros_locais="$area/local"
   registros_remotos="$area/remoto"
+  local revs_remotos="$area/revs"
 
   local parcial='nao' motivo_parcial=''
   local -a caminhos_locais=() tamanhos=() mtimes=()
@@ -249,6 +252,14 @@ dbx_cmd_sync_executar() {
     parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
 
     dbx_walk_ler "$registros_locais" caminhos_locais tamanhos mtimes
+    dbx_sync_sem_temporarios caminhos_locais tamanhos mtimes
+    # RF-54(c): colisao de caixa e recusa integral, antes de qualquer escrita e
+    # tambem em simulacao — o plano de uma arvore assim nao tem leitura unica.
+    if ! dbx_sync_colisao_de_caixa caminhos_locais; then
+      rm -rf -- "$area"
+      dbx_cmd_falhar conflito "$DBX_SYNC_MOTIVO"
+      return $?
+    fi
     local indice
     local total_locais=${#caminhos_locais[@]}
     for indice in "${!caminhos_locais[@]}"; do
@@ -276,7 +287,7 @@ dbx_cmd_sync_executar() {
   fi
 
   dbx_progress_mensagem "[sync] consultando arquivos remotos em: $remoto"
-  if ! dbx_sync_enumerar_remoto "$remoto" "$registros_remotos"; then
+  if ! dbx_sync_enumerar_remoto "$remoto" "$registros_remotos" "$revs_remotos"; then
     local estado_remoto=$?
     rm -rf -- "$area"
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
@@ -286,8 +297,9 @@ dbx_cmd_sync_executar() {
   local -a ordem_remota=()
   # shellcheck disable=SC2034  # preenchido e lido por referencia de nome nas
   # funcoes de lib/sync; a analise estatica nao segue nameref entre arquivos.
-  local -A mapa_remoto=()
+  local -A mapa_remoto=() mapa_revs=()
   dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
+  dbx_sync_ler_revs "$revs_remotos" mapa_revs
   dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
 
   # RF-41(b): origem vazia com memoria povoada e recusa integral, sem escrita
@@ -327,10 +339,10 @@ dbx_cmd_sync_executar() {
 
     for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
       idx_analise=$((idx_analise + 1))
-      local tipo_item='novo'
-      if [[ $sentido == 'enviar' && -n ${mapa_remoto[$caminho]+definido} ]]; then
+      local tipo_item='novo' par=${DBX_SYNC_ALVO[$caminho]:-$caminho}
+      if [[ $sentido == 'enviar' && -n ${mapa_remoto[$par]+definido} ]]; then
         tipo_item='modificado'
-      elif [[ $sentido == 'receber' && -n ${mapa_local[$caminho]+definido} ]]; then
+      elif [[ $sentido == 'receber' && -n ${mapa_local[$par]+definido} ]]; then
         tipo_item='modificado'
       fi
       dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> $tipo_item ($acao_transferir)"
@@ -406,15 +418,19 @@ dbx_cmd_sync_executar() {
     total_ops=$((total_ops + ${#DBX_SYNC_APAGAR[@]}))
   fi
 
-  local op_atual=0
+  local op_atual=0 alvo rev
   local enviados=0 recebidos=0 apagados=0 falhas=0
   for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
     op_atual=$((op_atual + 1))
+    # A escrita usa a grafia que o destino ja tem (RF-54(d)).
+    alvo=${DBX_SYNC_ALVO[$caminho]:-$caminho}
     if [[ $sentido == 'enviar' ]]; then
       dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
-      if _dbx_cmd_sync_enviar "$raiz_local" "$remoto" "$caminho"; then
+      rev=''
+      [[ -n ${mapa_remoto[$alvo]+definido} ]] && rev=${mapa_revs[$alvo]:-}
+      if _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev"; then
         enviados=$((enviados + 1))
-        dbx_db_salvar_operacao "$raiz_local/$caminho" "$remoto/$caminho" "sync" \
+        dbx_db_salvar_operacao "$raiz_local/$caminho" "$remoto/$alvo" "sync" \
           "${mapa_tamanhos_local[$caminho]:-0}" "${mapa_mtimes_local[$caminho]:-0}" \
           "${mapa_local[$caminho]:-}" || :
       else
@@ -422,7 +438,7 @@ dbx_cmd_sync_executar() {
       fi
     else
       dbx_progress_etapa "$op_atual" "$total_ops" 'recebendo' "$caminho"
-      _dbx_cmd_sync_receber "$raiz_local" "$remoto" "$caminho" && recebidos=$((recebidos + 1)) ||
+      _dbx_cmd_sync_receber "$remoto/$caminho" "$raiz_local" "$alvo" && recebidos=$((recebidos + 1)) ||
         falhas=$((falhas + 1))
     fi
   done
@@ -480,22 +496,28 @@ dbx_cmd_sync_executar() {
   return 0
 }
 
+# _dbx_cmd_sync_enviar <arquivo_local> <caminho_remoto> <rev>
+#
+# Mesmo caminho do `upload` (RF-57): objeto de publicacao e roteamento por
+# tamanho vem de `lib/transfer`. Com `rev` o envio e `update` sobre ele (RF-49):
+# mudanca remota desde a listagem desta execucao e recusada como conflito e o
+# item conta como falha, sem sobrescrever. Sem `rev` o arquivo e novo, e vai em
+# `add` — se alguem o criou nesse intervalo, a recusa tambem protege.
 _dbx_cmd_sync_enviar() {
-  local raiz=$1 remoto=$2 relativo=$3
-  dbx_json_escapar_cadeia "$remoto/$relativo"
-  local argumento="{\"path\":\"$DBX_JSON_ESCAPADO\",\"mode\":\"overwrite\",\"autorename\":false,\"mute\":true}"
-  dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
-    "$argumento" "$raiz/$relativo" nao >/dev/null 2>&1
+  local origem=$1 destino=$2 rev=$3
+  dbx_transfer_objeto_de_publicacao "$destino" add "$rev" "$origem" true
+  dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" sync >/dev/null 2>&1
 }
 
+# _dbx_cmd_sync_receber <caminho_remoto> <raiz_local> <relativo_local>
+#
+# Recebimento atomico com conferencia de resumo (RF-55(e)), o mesmo do
+# `download`.
 _dbx_cmd_sync_receber() {
-  local raiz=$1 remoto=$2 relativo=$3
-  local alvo="$raiz/$relativo" pasta=${relativo%/*}
+  local remoto=$1 raiz=$2 relativo=$3
+  local pasta=${relativo%/*}
   [[ $pasta == "$relativo" ]] || mkdir -p -- "$raiz/$pasta" 2>/dev/null || return 1
-  dbx_json_escapar_cadeia "$remoto/$relativo"
-  local argumento="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
-  dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
-    "$argumento" "$alvo" >/dev/null 2>&1
+  dbx_cmd_receber_arquivo "$remoto" "$raiz/$relativo" >/dev/null 2>&1
 }
 
 _dbx_cmd_sync_apagar_remoto() {
