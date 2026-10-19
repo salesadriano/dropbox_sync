@@ -16,7 +16,7 @@
 
 - Objetivo da entrega: unificar o cache de `content_hash` em `lib/state`, remover `lib/db` e a dependência de `sqlite3`/`python3`, condicionar o skip do upload ao hash remoto, exigir o `client_secret` na biblioteca e fechar a brecha de exclusão em massa do `sync --espelhar`.
 - Contexto consolidado: decisões em [`cache-unico-e-segredo`](../../.github/agents/memoria/entradas/2026-10-18-2243-cache-unico-e-segredo.md), [`cache-do-upload`](../../.github/agents/memoria/entradas/2026-10-18-2243-cache-do-upload.md) e [`guarda-origem-vazia`](../../.github/agents/memoria/entradas/2026-10-18-2243-guarda-origem-vazia.md); o skip condicionado vem de [`skip-upload-condicionado`](../../.github/agents/memoria/entradas/2026-10-18-1745-skip-upload-condicionado.md).
-- Resultado executivo da revisão: gates de testes e conformidade aprovados; QA aprovou no ciclo 3 após duas reprovações; a suíte do QA e a remoção do `db_test` têm aceite do solicitante. Suíte local de referência: 26 arquivos, 894 aprovados, 0 falhas, 2 pulados. A **suíte completa local, o commit e o PR estão PENDENTES**.
+- Resultado executivo da revisão: gates de testes e conformidade aprovados; QA aprovou no ciclo 3 após duas reprovações; a suíte do QA e a remoção do `db_test` têm aceite do solicitante. Suíte local de referência: 26 arquivos, 894 aprovados, 0 falhas, 2 pulados. Suíte completa local verde em `9407c9a`: 26 arquivos, 894 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 142 s; `--conferir` com saida 0; commit `9407c9a` (implementacao, com `Remocao-de-casos: tests/unit/db_test.sh 4`, aceita pela guarda) e o commit de documentacao que preenche os registros; PR [#37](https://github.com/salesadriano/dropbox_sync/pull/37) para `develop`, labels `review` e `enhancement`.
 - Recomendação do Tech Lead: aprovar com ressalvas, condicionado à suíte completa local verde.
 
 ## PRD e ARD
@@ -84,7 +84,7 @@
 
 | Tipo | Descrição | Impacto | Owner | Próxima ação |
 |---|---|---|---|---|
-| Pendência de gate | Suíte completa local, commit e PR: PENDENTE | Bloqueia o fechamento | Tech Lead | `sh scripts/suite-completa.sh` e registro antes do push |
+| Pendência de gate | Suíte completa local, commit e PR | Resolvida | Tech Lead | verde em `9407c9a`: 26 arquivos, 894 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 142 s; `--conferir` com saida 0; PR #37 |
 | Ressalva | O-1: no `--receber`, recusa pela guarda antiga, sem o campo `recusada` no plano | Mensagem menos precisa; lado seguro | Senior Developer | Próxima fase |
 | Ressalva | O-6: nome de `sem_conta_origem_vazia_com_confirmar_nao_apaga_nada` enganoso | Legibilidade do teste | Senior Developer | Próxima fase |
 | Ressalva | O-7: travessia parcial não grava entradas novas | Custo de recálculo | Senior Developer | Próxima fase |
@@ -108,7 +108,7 @@
 - Dependências para `templates/aprovacao-final-tech-lead-template.md`: suíte completa local verde; commit com `Remocao-de-casos: tests/unit/db_test.sh 4`; PR para `develop`
 - Arquivo concreto desta revisão consolidada para referência no fechamento final: `docs/reviews/2026-10-18-2243-revisao-consolidada-cache-unico.md`
 - Resumo das divergências resolvidas que devem constar no fechamento final: DIV-25 a DIV-29 (DIV-28 revista), QA-P3-01 a 07, direção de dependência `lib/state` para `lib/walk`, contradição do segredo opcional
-- Bloqueios remanescentes que precisam constar no fechamento final: suíte completa local PENDENTE; ressalvas O-1, O-5, O-6, O-7, RSK-43, SC2034
+- Bloqueios remanescentes que precisam constar no fechamento final: nenhum bloqueio de gate; ressalvas O-1, O-5, O-6, O-7, RSK-43, SC2034
 - Observações finais do Tech Lead: a guarda de origem vazia sem memória é o ponto de maior risco da fase; a lição de que guarda dependente de estado é frágil orienta as próximas fases.
 
 ```mermaid

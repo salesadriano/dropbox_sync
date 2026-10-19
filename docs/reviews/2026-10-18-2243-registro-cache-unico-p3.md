@@ -111,9 +111,9 @@ O parecer de testes registra 890 no ciclo 4 do desenvolvimento (antes dos 4 caso
 
 | Item | Estado |
 |---|---|
-| Suíte completa local (`sh scripts/suite-completa.sh`) | PENDENTE |
-| Commit | PENDENTE |
-| PR | PENDENTE |
+| Suíte completa local (`sh scripts/suite-completa.sh`) | verde em `9407c9a`: 26 arquivos, 894 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 142 s; `--conferir` com saida 0 |
+| Commit | `9407c9a` (implementacao, com `Remocao-de-casos: tests/unit/db_test.sh 4`, aceita pela guarda) e o commit de documentacao que preenche os registros |
+| PR | [#37](https://github.com/salesadriano/dropbox_sync/pull/37) para `develop`, labels `review` e `enhancement` |
 
 Nenhum desses três itens foi executado nem registrado até a emissão deste documento. A aprovação do Tech Lead só vale com a suíte completa local verde.
 

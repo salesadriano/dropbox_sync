@@ -26,7 +26,7 @@ A fase 3 do plano `2026-10-18-1745-melhorias-em-fases` (fonte: `docs/sources/202
 | 2026-10-19 | QA ciclo 2: **Reprovado**. QA-P3-05 e 06 (bloqueantes: a regravação após descarte e a travessia parcial deixavam base vazia; a segunda execução apagava), QA-P3-07 (maior: memória ilegível contava como ausente) | Escalonamento ao solicitante (decisão de requisito) |
 | 2026-10-19 | Solicitante escolhe a **guarda sem memória**; RF-41(b) reescrito | Ciclo 4 do desenvolvimento: guarda por origem vazia, `--permitir-origem-vazia`, gravação só após travessia completa, ilegível conta como descartada |
 | 2026-10-19 | QA ciclo 3: **Aprovado**, com O-1, O-6, O-7 (Info); solicitante aprova a suíte do QA (33 + 8 casos) e a remoção de 4 casos do `db_test` | `aceite-testes-qa-p3`; guarda de remoção de 772 para 833 |
-| 2026-10-19 | Revisão consolidada e aprovação final do Tech Lead | Aprovado com ressalvas; válida só com a suíte completa local verde (PENDENTE) |
+| 2026-10-19 | Revisão consolidada e aprovação final do Tech Lead | Aprovado com ressalvas; suíte completa local verde em `9407c9a`: 26 arquivos, 894 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 142 s; `--conferir` com saida 0 |
 
 Resultado de testes do ciclo 3 do QA: 26 arquivos, 894 aprovados, 0 falhas, 2 pulados.
 
@@ -50,7 +50,7 @@ Resultado de testes do ciclo 3 do QA: 26 arquivos, 894 aprovados, 0 falhas, 2 pu
 | F-34 (paralelismo, com medição) e F-35 (PKCE) | Backlog | Sem prazo |
 | F-32 (caixa fora do ASCII) | Business Analyst | Fase 5 |
 | SC2034 pré-existente em `tests/unit/progress_test.sh:219` | Senior Developer | Fase 5 |
-| Suíte completa local, commit (`Remocao-de-casos: tests/unit/db_test.sh 4`) e PR: PENDENTE | Tech Lead | Antes do push |
+| Suíte completa local, commit e PR | Tech Lead | Feito: `9407c9a` (implementacao, com `Remocao-de-casos: tests/unit/db_test.sh 4`, aceita pela guarda) e o commit de documentacao que preenche os registros; PR #37 |
 
 ## Diagrama
 

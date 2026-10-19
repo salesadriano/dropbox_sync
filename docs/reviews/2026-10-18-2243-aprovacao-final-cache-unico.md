@@ -43,7 +43,7 @@
 | DBA / Persistência | Sim | Aprovado com ressalvas, atendidas | [parecer do DBA](2026-10-18-2243-parecer-dba-cache-unico.md) | Persistência e autenticação mudaram; gate obrigatório em G |
 | Testes (`protocolo-tdd`) | Sim | Aprovado (ciclos 1 a 4) | [parecer de testes](2026-10-18-2243-parecer-tdd-cache-unico.md) | — |
 | Conformidade (`protocolo-conformidade`) | Sim | Aprovado com ressalvas | [parecer de conformidade](2026-10-18-2243-parecer-conformidade-cache-unico.md) | Achado 2 (menor) aberto com owner |
-| Suíte completa local (`sh scripts/suite-completa.sh`) | Sim | **PENDENTE** | — | Condição de validade desta aprovação |
+| Suíte completa local (`sh scripts/suite-completa.sh`) | Sim | **Verde** (verde em `9407c9a`: 26 arquivos, 894 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 142 s; `--conferir` com saida 0) | — | Condição de validade cumprida |
 
 ## Critérios de aceite consolidados
 
@@ -77,9 +77,9 @@
 
 - Decisão do Tech Lead: **Aprovado com ressalvas — Tech Lead, 2026-10-19**.
 - Condições para fechamento:
-  - suíte completa local verde (`sh scripts/suite-completa.sh`, conferida por `--conferir` antes do push), hoje PENDENTE;
-  - commit com o trailer `Remocao-de-casos: tests/unit/db_test.sh 4` e corpo com `Registro:` e `Prompt:`, hoje PENDENTE;
-  - PR para `develop`, hoje PENDENTE, seguido de `sh scripts/limpar-worktrees.sh` após o merge.
+  - suíte completa local verde (`sh scripts/suite-completa.sh`, conferida por `--conferir` antes do push): cumprida, verde em `9407c9a`: 26 arquivos, 894 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 142 s; `--conferir` com saida 0;
+  - commit com o trailer `Remocao-de-casos: tests/unit/db_test.sh 4` e corpo com `Ref:` e `Prompt:`: cumprido, `9407c9a` (implementacao, com `Remocao-de-casos: tests/unit/db_test.sh 4`, aceita pela guarda) e o commit de documentacao que preenche os registros;
+  - PR para `develop`: [#37](https://github.com/salesadriano/dropbox_sync/pull/37) para `develop`, labels `review` e `enhancement`, seguido de `sh scripts/limpar-worktrees.sh` após o merge.
 - Pendências remanescentes (owner e prazo):
   - O-1, O-5, O-6, O-7: Senior Developer, próxima fase;
   - RSK-43: QA Expert, próxima fase;
