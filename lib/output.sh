@@ -164,7 +164,10 @@ dbx_output_diagnostico() {
 DBX_OUTPUT_MASCARADO=''
 dbx_output_mascarar_segredos() {
   local texto=${1-} nome segredo
-  for nome in DBX_AUTH_TOKEN DBX_AUTH_REFRESH_TOKEN DBX_CONFIG_REFRESH_TOKEN DBX_CONFIG_APP_SECRET; do
+  # Todo campo da credencial e do token em memoria (D-2, fase 1 do backlog: a
+  # app key tambem, porque o servico pode ecoa-la no resumo de erro).
+  for nome in DBX_AUTH_TOKEN DBX_AUTH_REFRESH_TOKEN DBX_CONFIG_REFRESH_TOKEN DBX_CONFIG_APP_SECRET \
+    DBX_CONFIG_APP_KEY; do
     segredo=${!nome-}
     # Segredo curto demais mascararia texto comum (`as`, a credencial de teste):
     # abaixo de 8 bytes nao ha segredo real a proteger por valor.

@@ -5,7 +5,7 @@
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
 | Data | 2026-10-18 |
-| Versao | **v0.4** — pendencias da fase 0 (2026-10-19): `F-23` a `F-33` conferidos contra os registros de `docs/reviews/` e marcados como entregues (PRs #35 a #38), com `F-31` parcial; `F-06` entregue; `F-35` fora; `F-03`, `F-07` a `F-22`, `F-34` planejados por fase (memoria `2026-10-19-1023-plano-do-backlog`). *Registro anterior:* **v0.3** — fase 3 (`DP-34`): `F-25`, `F-26` e `F-29` em andamento com rastreio para `RF-60` a `RF-63` e `RNF-33`; `F-34` (paralelismo e APIs em lote, com medicao previa) e `F-35` (PKCE) criados. *Registro anterior:* **v0.2 — DECIDIDO** |
+| Versao | **v0.5** — fase 1 (2026-10-19): `F-11`, `F-19`, `F-21` e `F-22` formalizados em `RF-65` a `RF-68` e marcados "em andamento, fase 1". **v0.4** — pendencias da fase 0 (2026-10-19): `F-23` a `F-33` conferidos contra os registros de `docs/reviews/` e marcados como entregues (PRs #35 a #38), com `F-31` parcial; `F-06` entregue; `F-35` fora; `F-03`, `F-07` a `F-22`, `F-34` planejados por fase (memoria `2026-10-19-1023-plano-do-backlog`). *Registro anterior:* **v0.3** — fase 3 (`DP-34`): `F-25`, `F-26` e `F-29` em andamento com rastreio para `RF-60` a `RF-63` e `RNF-33`; `F-34` (paralelismo e APIs em lote, com medicao previa) e `F-35` (PKCE) criados. *Registro anterior:* **v0.2 — DECIDIDO** |
 | Status | ✅ **DP-02 resolvida.** Escopo do MVP aprovado pelo solicitante. Este documento passa de proposta a **registro da decisao e do backlog** |
 | Origem | Resposta a DP-02 |
 | Documentos relacionados | [Escopo e requisitos](escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](decisoes-pendentes.md) · [System Design](../arquitetura/system-design.md) |
@@ -324,7 +324,7 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 | F-08 | Operacoes em lote | 📅 Planejado, fase 9 | — |
 | F-09 | Paralelismo controlado | 📅 Planejado, fase 9 | — |
 | F-10 | Retencao e rotacao de backup | 📅 Planejado, fase 6 | — |
-| F-11 | Comando de verificacao | 📅 Planejado, fase 1 | — |
+| F-11 | Comando de verificacao | 🔧 Em andamento, fase 1 | `RF-65` |
 | F-12 | Trava de execucao concorrente | 📅 Planejado, fase 2 | — |
 | F-13 | Filtros avancados | 📅 Planejado, fase 4 | — |
 | F-14 | Deteccao de mudancas por cursor | 📅 Planejado, fase 7 | — |
@@ -332,10 +332,10 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 | F-16 | Link compartilhado com expiracao ou senha | 📅 Planejado, fase 5 | — |
 | F-17 | Limitacao de banda | 📅 Planejado, fase 4 | — |
 | F-18 | Perfis nomeados de credencial | 📅 Planejado, fase 8 | — |
-| F-19 | Autocompletar de shell | 📅 Planejado, fase 1 | — |
+| F-19 | Autocompletar de shell | 🔧 Em andamento, fase 1 | `RF-68` |
 | F-20 | Lixeira: listar, restaurar, excluir permanentemente | 📅 Planejado, fase 3 | — |
-| F-21 | Verificacao previa de espaco | 📅 Planejado, fase 1 | — |
-| F-22 | Comando de diagnostico de ambiente | 📅 Planejado, fase 1 | — |
+| F-21 | Verificacao previa de espaco | 🔧 Em andamento, fase 1 | `RF-67` |
+| F-22 | Comando de diagnostico de ambiente | 🔧 Em andamento, fase 1 | `RF-66` |
 
 **Nenhum acrescimo foi solicitado alem das candidatas propostas.**
 
@@ -363,3 +363,5 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 | F-32 | **Achado QA-01(e):** a comparacao sem caixa fora do ASCII depende de `C.UTF-8` no host; documentar a dependencia ou tornar a comparacao independente de locale | **P5** | ✅ **Entregue** na PR #38 (fase 4): `RF-54(e)`..`(g)`, `DIV-32` (`C.UTF-8` so na comparacao, com aviso unico) | `RF-54` |
 | F-34 | **Paralelismo limitado e APIs em lote** (achado P3.3; ex.: `get_metadata` e envios em lote, varias transferencias simultaneas com limite). **Adiado por decisao do solicitante (`DP-34`)**; so entra com **medicao previa**: tempo de `sync`/`upload` sequencial em volume representativo (`DP-12`) e taxa de `429` observada, para comparar com a versao paralela | **Fase 9 do plano de 2026-10-19** | 📅 Planejado, fase 9 (com `F-08` e `F-09`), com medicao antes e depois | `F-09`, `RNF-21` (padrao `1`, limite configuravel), `RES-11`, `RSK-22` |
 | F-35 | **PKCE como alternativa futura ao `client_secret`** (`code_challenge` S256 na autorizacao e `code_verifier` na troca), para aplicativo publico sem segredo. **Nao implementado** por decisao do solicitante (`DP-34`); hoje o segredo e obrigatorio (`RF-63`) | **Fora** | ❌ Fora por decisao do solicitante (2026-10-19) | `RF-01`, `RF-63`, `RNF-03` |
+| F-36 | **Achado O-1 do QA da fase 1, anterior a ela - severidade ALTA (confinamento):** o campo `raiz_remota` da credencial nunca e aplicado por nenhum comando; quem configurou o `dbx` (`config --raiz`) esperando confinamento a uma pasta do Dropbox nao o tem. **Viola `RNF-20(b)`** (operacao fora da raiz remota recusada antes de qualquer chamada a API) e o que `config --raiz` promete. **Status: a decidir com o solicitante; candidata a fase intercalada logo apos a fase 1.** |
+| F-37 | **Achado O-2 do QA da fase 1, anterior a ela - severidade MEDIA:** caminho remoto com quebra de linha e aceito como argumento. **Contraria `RNF-10`** (nenhum caminho contendo nova linha pode ser aceito como valido) e, por consequencia, a saida orientada a linha (`RNF-22`, `RF-28`). **Status: a decidir com o solicitante; candidata a fase intercalada logo apos a fase 1.** |

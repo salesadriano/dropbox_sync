@@ -150,6 +150,29 @@ teste_auditoria_de_multiplexacao_discrimina_selecao_de_registro() {
 # Renovacao
 # ---------------------------------------------------------------------------
 
+teste_renovacao_expoe_os_escopos_concedidos() {
+  # DIV-35 (memoria 2026-10-19-1050): o `diagnostico` compara os escopos que a
+  # resposta de renovacao declara; o campo e exposto aqui, e nao relido.
+  local dir
+  dir=$(_duplo 200 '{"access_token":"sl.AC_token_curto","expires_in":14400,"scope":"account_info.read files.content.read"}')
+  _credencial
+  PATH=$dir:$PATH dbx_auth_renovar
+  assert_igual 0 $? 'renovacao deve concluir'
+  assert_igual 'sim' "$DBX_AUTH_ESCOPOS_INFORMADOS" 'o campo veio na resposta'
+  assert_igual 'account_info.read files.content.read' "$DBX_AUTH_ESCOPOS" 'escopos publicados como vieram'
+}
+
+teste_renovacao_sem_campo_de_escopo_declara_nao_informados() {
+  local dir
+  dir=$(_duplo 200 "$(_resposta_de_token)")
+  _credencial
+  DBX_AUTH_ESCOPOS='resto de outra renovacao'
+  PATH=$dir:$PATH dbx_auth_renovar
+  assert_igual 0 $? 'renovacao deve concluir'
+  assert_igual 'nao' "$DBX_AUTH_ESCOPOS_INFORMADOS" 'sem o campo, nao informados'
+  assert_igual '' "$DBX_AUTH_ESCOPOS" 'nada sobra de renovacao anterior'
+}
+
 teste_renovacao_obtem_token_de_curta_duracao() {
   local dir
   dir=$(_duplo 200 "$(_resposta_de_token)")

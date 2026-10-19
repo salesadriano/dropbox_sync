@@ -190,6 +190,31 @@ dbx_preflight_verificar() {
   return 0
 }
 
+# dbx_preflight_ausentes — inspecao SEM PARADA das dependencias (RF-66(a)(e)).
+#
+# Mesma lista e mesma pergunta de `dbx_preflight_verificar`, mas percorre tudo:
+# cada utilitario ausente vai para DBX_PREFLIGHT_AUSENTES, na ordem da lista, e
+# a falta do resumo SHA-256 entra como `sha256sum`. So usa recursos do proprio
+# shell (`command -v`), porque quem chama e o `diagnostico`, que roda justamente
+# quando o ambiente pode estar sem os utilitarios. Status 0 sem ausentes; senao
+# `configuracao`.
+declare -ga DBX_PREFLIGHT_AUSENTES=()
+dbx_preflight_ausentes() {
+  local utilitario
+  DBX_PREFLIGHT_AUSENTES=()
+  for utilitario in $DBX_PREFLIGHT_UTILITARIOS; do
+    command -v "$utilitario" >/dev/null 2>&1 || DBX_PREFLIGHT_AUSENTES+=("$utilitario")
+  done
+  if declare -F dbx_hash_verificar_dependencias >/dev/null; then
+    dbx_hash_verificar_dependencias || DBX_PREFLIGHT_AUSENTES+=(sha256sum)
+  else
+    command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 ||
+      command -v openssl >/dev/null 2>&1 || DBX_PREFLIGHT_AUSENTES+=(sha256sum)
+  fi
+  [[ ${#DBX_PREFLIGHT_AUSENTES[@]} -eq 0 ]] || return "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
+  return 0
+}
+
 # dbx_preflight_mensagem — diagnostico acionavel, sem qualquer conteudo do
 # arquivo de credencial: o preflight inspeciona metadados, nunca o conteudo.
 dbx_preflight_mensagem() {

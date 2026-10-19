@@ -69,6 +69,9 @@ case $url in
   *files/download*) binario=sim ;;
   *upload_session/start*) corpo='{"session_id":"S-1"}' ;;
   *upload_session/append_v2*) corpo='{}' ;;
+  # RF-67 (fase 1 do backlog): o envio consulta o espaco antes; com folga
+  # folgada, a checagem nao interfere nos cenarios de rede deste arquivo.
+  *get_space_usage*) corpo='{"used":0,"allocation":{".tag":"individual","allocated":1000000000000}}' ;;
   *) corpo='{"name":"x","rev":"1"}' ;;
 esac
 if [[ $url == *files/upload && -r "$base/falhar_envio" ]]; then

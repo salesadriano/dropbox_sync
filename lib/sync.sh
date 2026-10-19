@@ -342,3 +342,131 @@ dbx_sync_planejar() {
   done
   return 0
 }
+
+# ---------------------------------------------------------------------------
+# Comparacao do `verificar` (RF-65)
+# ---------------------------------------------------------------------------
+
+# Canais publicos de `dbx_sync_comparar`, paralelos e na ordem da chave sem
+# caixa: caminho, estado (`igual`, `diferente`, `so_origem`, `so_destino`) e
+# motivo (`conteudo` ou `tipo` no `diferente`; vazio nos demais).
+declare -ga DBX_SYNC_COMPARADOS_CAMINHOS=()
+declare -ga DBX_SYNC_COMPARADOS_ESTADOS=()
+declare -ga DBX_SYNC_COMPARADOS_MOTIVOS=()
+declare -ga DBX_SYNC_ORDEM=()
+
+# _dbx_sync_pastas_de <caminho> <nome_do_mapa> — acrescenta ao mapa a chave de
+# cada pasta que o caminho atravessa (`a/b/c` da `a` e `a/b`). A pasta existe
+# para a comparacao so quando contem arquivo: e o mesmo limite do topo, so
+# arquivos sao comparados.
+_dbx_sync_pastas_de() {
+  local caminho=$1 prefixo=''
+  local -n _pastas=$2
+  while [[ $caminho == */* ]]; do
+    prefixo+=${prefixo:+/}${caminho%%/*}
+    caminho=${caminho#*/}
+    _dbx_sync_chave "$prefixo"
+    # shellcheck disable=SC2004  # `_pastas` e nameref para mapa associativo:
+    # o `$` e necessario, a chave e texto e nao expressao aritmetica.
+    _pastas[$DBX_SYNC_CHAVE]=1
+  done
+}
+
+# _dbx_sync_ordenar_por_chave <nome_do_vetor_de_chaves> — indices do vetor em
+# DBX_SYNC_ORDEM, pela chave em bytes (`LC_ALL=C` local), de forma estavel.
+#
+# Intercalacao de baixo para cima, so com recursos do shell: `sort` seria um
+# utilitario fora do preflight, e `[[ < ]]` sem localidade fixa compararia por
+# colacao, que muda de maquina para maquina.
+_dbx_sync_ordenar_por_chave() {
+  local -n _chaves=$1
+  { local LC_ALL=C; } 2>/dev/null
+  local total=${#_chaves[@]} largura inicio meio fim a b k
+  local -a ordem=() auxiliar=()
+  for ((k = 0; k < total; k++)); do ordem[k]=$k; done
+  for ((largura = 1; largura < total; largura *= 2)); do
+    for ((inicio = 0; inicio < total; inicio += 2 * largura)); do
+      meio=$((inicio + largura))
+      ((meio > total)) && meio=$total
+      fim=$((inicio + 2 * largura))
+      ((fim > total)) && fim=$total
+      a=$inicio b=$meio k=$inicio
+      while ((a < meio && b < fim)); do
+        if [[ ${_chaves[ordem[b]]} < ${_chaves[ordem[a]]} ]]; then
+          auxiliar[k]=${ordem[b]} b=$((b + 1))
+        else
+          auxiliar[k]=${ordem[a]} a=$((a + 1))
+        fi
+        k=$((k + 1))
+      done
+      while ((a < meio)); do auxiliar[k]=${ordem[a]} a=$((a + 1)) k=$((k + 1)); done
+      while ((b < fim)); do auxiliar[k]=${ordem[b]} b=$((b + 1)) k=$((k + 1)); done
+    done
+    ordem=("${auxiliar[@]}")
+  done
+  DBX_SYNC_ORDEM=(${ordem[@]+"${ordem[@]}"})
+}
+
+# dbx_sync_comparar <vetor_origem> <mapa_origem> <vetor_destino> <mapa_destino>
+#
+# A MESMA tabela do `sync` (`dbx_sync_planejar`), lida como relatorio: o que o
+# `sync` transferiria e `diferente` (o par existe) ou `so_origem`; o que ele
+# omitiria e `igual`; o que ele apagaria com espelhamento e `so_destino`. Usar o
+# planejador, e nao uma segunda comparacao, e o que garante que `verificar` e
+# `sync --dry-run` enxerguem a mesma arvore (RF-65(a)).
+#
+# Arquivo num lado e pasta no outro e `diferente` com motivo `tipo`; o arquivo
+# de dentro da pasta continua listado no proprio estado.
+dbx_sync_comparar() {
+  [[ $# -eq 4 ]] || return "$DBX_SYNC_ERRO_USO"
+  local -n _cmp_ordem_o=$1 _cmp_ordem_d=$3 _cmp_mapa_d=$4
+  local caminho par indice
+  local -A _cmp_pastas_o=() _cmp_pastas_d=()
+  local -a caminhos=() estados=() motivos=() chaves=()
+
+  dbx_sync_planejar "$@" || return $?
+  for caminho in ${_cmp_ordem_o[@]+"${_cmp_ordem_o[@]}"}; do
+    _dbx_sync_pastas_de "$caminho" _cmp_pastas_o
+  done
+  for caminho in ${_cmp_ordem_d[@]+"${_cmp_ordem_d[@]}"}; do
+    _dbx_sync_pastas_de "$caminho" _cmp_pastas_d
+  done
+
+  for caminho in ${DBX_SYNC_IDENTICOS[@]+"${DBX_SYNC_IDENTICOS[@]}"}; do
+    caminhos+=("$caminho") estados+=(igual) motivos+=('')
+  done
+  for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
+    par=${DBX_SYNC_ALVO[$caminho]:-$caminho}
+    _dbx_sync_chave "$caminho"
+    if [[ -n ${_cmp_mapa_d[$par]+definido} ]]; then
+      caminhos+=("$caminho") estados+=(diferente) motivos+=(conteudo)
+    elif [[ -n ${_cmp_pastas_d[$DBX_SYNC_CHAVE]+definido} ]]; then
+      caminhos+=("$caminho") estados+=(diferente) motivos+=(tipo)
+    else
+      caminhos+=("$caminho") estados+=(so_origem) motivos+=('')
+    fi
+  done
+  for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+    _dbx_sync_chave "$caminho"
+    if [[ -n ${_cmp_pastas_o[$DBX_SYNC_CHAVE]+definido} ]]; then
+      caminhos+=("$caminho") estados+=(diferente) motivos+=(tipo)
+    else
+      caminhos+=("$caminho") estados+=(so_destino) motivos+=('')
+    fi
+  done
+
+  for caminho in ${caminhos[@]+"${caminhos[@]}"}; do
+    _dbx_sync_chave "$caminho"
+    chaves+=("$DBX_SYNC_CHAVE")
+  done
+  _dbx_sync_ordenar_por_chave chaves
+  DBX_SYNC_COMPARADOS_CAMINHOS=()
+  DBX_SYNC_COMPARADOS_ESTADOS=()
+  DBX_SYNC_COMPARADOS_MOTIVOS=()
+  for indice in ${DBX_SYNC_ORDEM[@]+"${DBX_SYNC_ORDEM[@]}"}; do
+    DBX_SYNC_COMPARADOS_CAMINHOS+=("${caminhos[indice]}")
+    DBX_SYNC_COMPARADOS_ESTADOS+=("${estados[indice]}")
+    DBX_SYNC_COMPARADOS_MOTIVOS+=("${motivos[indice]}")
+  done
+  return 0
+}

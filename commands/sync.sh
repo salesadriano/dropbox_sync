@@ -72,11 +72,8 @@ _dbx_cmd_sync_encerrar_area() {
 # ambiguidade fica visivel em vez de abrir uma segunda linha — que poderia ate
 # comecar com `falha `. Sem byte de controle, sai como esta.
 _dbx_cmd_sync_exibir() {
-  if [[ $1 == *[$'\001'-$'\037\177']* ]]; then
-    printf -v DBX_CMD_SYNC_EXIBIDO '%q' "$1"
-  else
-    DBX_CMD_SYNC_EXIBIDO=$1
-  fi
+  dbx_cmd_caminho_exibivel "$1"
+  DBX_CMD_SYNC_EXIBIDO=$DBX_CMD_EXIBIDO
 }
 
 # _dbx_cmd_sync_resumo_da_falha <requisicoes_antes_do_item>
@@ -192,7 +189,7 @@ dbx_cmd_sync_executar() {
   _dbx_cmd_sync_carregar_dependencias
 
   local origem='' destino='' sentido='' espelhar='nao' confirmado='nao' permitir_origem_vazia='nao'
-  local tem_origem='nao' tem_destino='nao'
+  local tem_origem='nao' tem_destino='nao' forcar='nao'
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
@@ -225,6 +222,9 @@ dbx_cmd_sync_executar() {
       --espelhar | --mirror) espelhar='sim' ;;
       --confirmar | --yes) confirmado='sim' ;;
       --permitir-origem-vazia | --allow-empty-source) permitir_origem_vazia='sim' ;;
+      # RF-67(e), DIV-33: so pula a checagem de espaco; a decisao por
+      # `content_hash` (RF-39) nao muda.
+      --forcar | --force) forcar='sim' ;;
       --progresso | --progress | -p)
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
         DBX_CLI_PROGRESSO='sim'
@@ -258,6 +258,11 @@ dbx_cmd_sync_executar() {
       'informe o sentido: --enviar ou --push (origem local para destino remoto), --receber ou --pull (origem remota para destino local)'
     return $?
   }
+  if [[ $forcar == 'sim' && $sentido == 'receber' ]]; then
+    dbx_cmd_falhar uso_invalido \
+      '--forcar (--force) so vale com --enviar: ele pula a checagem de espaco da conta, que o --receber nao faz'
+    return $?
+  fi
 
   # RF-54(f)(g): sem a localidade da comparacao, `É` e `é` viram caminhos
   # distintos. O operador e avisado uma vez, so no `sync` (o unico comando que
@@ -543,6 +548,29 @@ dbx_cmd_sync_executar() {
   local total_apagar=0
   [[ $espelhar == 'sim' ]] && total_apagar=${#DBX_SYNC_APAGAR[@]}
 
+  # RF-67: checagem previa de espaco, so no `--enviar`, depois das guardas de
+  # RF-41 e RF-48 e do plano, antes da primeira acao. O total e a soma da parte
+  # "transferir" (omitidos e exclusoes fora), e a sobrescrita conta o arquivo
+  # novo inteiro. Em simulacao, so o anuncio `recusaria`.
+  local recusa_espaco='nao' recusaria_espaco=''
+  if [[ $sentido == 'enviar' && $recusa_origem_vazia != 'sim' ]]; then
+    local -A tamanho_local=()
+    local item total_bytes=0
+    for item in "${!caminhos_locais[@]}"; do
+      tamanho_local["${caminhos_locais[$item]}"]=${tamanhos[$item]}
+    done
+    for item in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
+      total_bytes=$((total_bytes + ${tamanho_local[$item]:-0}))
+    done
+    if ! dbx_cmd_espaco_checar "$total_bytes" "$forcar"; then
+      if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
+        recusaria_espaco=$DBX_CMD_ESPACO_MOTIVO
+      else
+        recusa_espaco='sim'
+      fi
+    fi
+  fi
+
   # RF-41(d) e RF-47: o plano inteiro, com toda exclusao nomeada, sai ANTES da
   # primeira escrita. Em simulacao a saida e a mesma — e o que torna `--dry-run`
   # uma previa fiel, e nao um relatorio diferente.
@@ -564,6 +592,11 @@ dbx_cmd_sync_executar() {
   dbx_output_campo a_transferir "$total_transferir"
   dbx_output_campo a_apagar "$total_apagar"
   dbx_output_campo identicos "${#DBX_SYNC_IDENTICOS[@]}"
+  if [[ $sentido == 'enviar' ]]; then
+    dbx_cmd_espaco_campos
+    [[ -n $recusaria_espaco ]] &&
+      dbx_output_campo recusaria "$recusaria_espaco (a execucao real seria recusada)"
+  fi
   for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
     dbx_output_campo transferir "$caminho"
   done
@@ -586,6 +619,13 @@ dbx_cmd_sync_executar() {
     _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar nao_concluida \
       "a origem esta vazia e o espelhamento apagaria $a_apagar_recusado item(ns) no destino: execucao recusada integralmente (se a origem foi esvaziada de proposito, use --permitir-origem-vazia ou --allow-empty-source; --confirmar ou --yes nao basta)"
+    return $?
+  fi
+
+  # RF-67(d): com o plano ja emitido e antes de qualquer escrita.
+  if [[ $recusa_espaco == 'sim' ]]; then
+    _dbx_cmd_sync_encerrar_area
+    dbx_cmd_falhar espaco "$DBX_CMD_ESPACO_MOTIVO"
     return $?
   fi
 

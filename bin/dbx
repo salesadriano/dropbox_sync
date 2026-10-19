@@ -6,15 +6,45 @@
 # aqui.
 set -u
 
+# RAIZ DO PROJETO ANTES DO DESPACHO, SO COM O SHELL (RF-66(e), RNF-02)
+#
+#   Nada aqui pode depender de utilitario externo: o `diagnostico` precisa
+#   rodar justamente quando falta um deles, e o preflight precisa chegar a
+#   nomear o que falta. O diretorio sai por expansao de parametro (`${x%/*}`,
+#   no lugar de `dirname`) e `cd -P`/`pwd -P`, que sao do shell.
+#
+#   LIMITE DECLARADO: o shell nao le o alvo de um vinculo simbolico. Quando o
+#   `dbx` e chamado pelo vinculo que o `install.sh` cria, o alvo e lido por
+#   `readlink` e, na falta dele, por `find -printf %l`; sem os dois, a recusa e
+#   explicita e nomeia o que instalar. Chamar `bin/dbx` pelo caminho real nao
+#   depende de nenhum dos dois.
 _dbx_fonte=${BASH_SOURCE[0]}
+_dbx_saltos=0
 while [[ -L $_dbx_fonte ]]; do
-  _dbx_dir=$(cd -P -- "$(dirname -- "$_dbx_fonte")" && pwd -P)
-  _dbx_fonte=$(readlink "$_dbx_fonte")
+  _dbx_saltos=$((_dbx_saltos + 1))
+  [[ $_dbx_saltos -le 40 ]] || {
+    printf 'dbx: vinculos simbolicos demais ate o ponto de entrada: %s\n' "${BASH_SOURCE[0]}" >&2
+    exit 3
+  }
+  _dbx_dir=${_dbx_fonte%/*}
+  [[ $_dbx_dir == "$_dbx_fonte" ]] && _dbx_dir=.
+  _dbx_dir=$(cd -P -- "${_dbx_dir:-/}" && pwd -P)
+  if command -v readlink >/dev/null 2>&1; then
+    _dbx_fonte=$(readlink -- "$_dbx_fonte")
+  elif command -v find >/dev/null 2>&1; then
+    _dbx_fonte=$(find "$_dbx_fonte" -maxdepth 0 -printf '%l')
+  else
+    printf 'dbx: o ponto de entrada e vinculo simbolico (%s) e nem readlink nem find estao disponiveis para resolve-lo; instale o utilitario readlink ou chame %s pelo caminho real\n' \
+      "${BASH_SOURCE[0]}" 'bin/dbx' >&2
+    exit 3
+  fi
   [[ $_dbx_fonte != /* ]] && _dbx_fonte="$_dbx_dir/$_dbx_fonte"
 done
-DBX_CLI_RAIZ=$(cd -P -- "$(dirname -- "$_dbx_fonte")/.." && pwd -P)
+_dbx_dir=${_dbx_fonte%/*}
+[[ $_dbx_dir == "$_dbx_fonte" ]] && _dbx_dir=.
+DBX_CLI_RAIZ=$(cd -P -- "${_dbx_dir:-/}/.." && pwd -P)
 export DBX_CLI_RAIZ
-unset _dbx_fonte _dbx_dir
+unset _dbx_fonte _dbx_dir _dbx_saltos
 
 # shellcheck source=lib/errors.sh
 . "$DBX_CLI_RAIZ/lib/errors.sh"
@@ -86,10 +116,12 @@ case $DBX_CLI_COMANDO in
     exit 0
     ;;
   help)
-    _dbx_subcomando=${DBX_CLI_ARGS[0]:-}
+    # O alias em ingles mostra a mesma ajuda do nome em portugues.
+    dbx_cli_canonico "${DBX_CLI_ARGS[0]:-}"
+    _dbx_subcomando=$DBX_CLI_CANONICO
     case $_dbx_subcomando in
       upload)
-        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--progresso] <origem> <destino>\n\n'
+        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--progresso] <origem> <destino>\n\n'
         printf 'Envia arquivo local ou conteudo da entrada padrao (-) para o caminho remoto.\n\n'
         printf 'Argumentos:\n'
         printf '  origem   Caminho de arquivo local ou "-" para entrada padrao (stdin)\n'
@@ -97,8 +129,14 @@ case $DBX_CLI_COMANDO in
         printf 'Opcoes:\n'
         printf '  --modo, --mode <add|overwrite>  Modo de escrita (padrao: add)\n'
         printf '  --rev <rev>                     Revisao esperada para controle de conflito\n'
+        printf '  --forcar, --force               Pula as checagens previas: comparacao por\n'
+        printf '                                  content_hash e espaco livre da conta\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        printf 'Espaco livre (RF-67):\n'
+        printf '  Antes de enviar, uma consulta ao espaco da conta; se o arquivo nao cabe, o\n'
+        printf '  envio e recusado com codigo 12, sem escrever nada. Com --dry-run, so avisa.\n'
+        printf '  A entrada padrao (-) nao e checada. Falha na consulta so avisa.\n\n'
         printf 'Recomendacao operacional (RSK-36):\n'
         printf '  Ao enviar pela entrada padrao via encadeamento (pipe):\n'
         printf '    tar czf - /dados | dbx upload - /destino.tgz\n'
@@ -124,7 +162,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       sync)
-        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--progresso]\n\n'
+        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--progresso]\n\n'
         printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n\n'
         printf 'Opcoes (o nome em ingles e alias do nome em portugues; podem ser misturados):\n'
         printf '  --enviar, --push                Origem local, destino remoto\n'
@@ -135,6 +173,7 @@ case $DBX_CLI_COMANDO in
         printf '  --confirmar, --yes              Reconhece a primeira execucao com --espelhar\n'
         printf '  --permitir-origem-vazia, --allow-empty-source\n'
         printf '                                  Permite espelhar uma origem VAZIA (apaga o destino)\n'
+        printf '  --forcar, --force               So com --enviar: pula a checagem de espaco livre\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
         printf 'Repeticao: opcao com valor vale o ultimo valor dado; opcao sem valor e\n'
@@ -149,6 +188,10 @@ case $DBX_CLI_COMANDO in
         printf 'Localidade (RF-54):\n'
         printf '  A comparacao sem caixa usa C.UTF-8 quando existe; sem ela, vale so no ASCII\n'
         printf '  e o sync avisa uma vez em stderr, sem recusar.\n\n'
+        printf 'Espaco livre (RF-67):\n'
+        printf '  No --enviar, a soma dos arquivos a transferir e conferida com o espaco livre\n'
+        printf '  da conta numa unica consulta; se nao cabe, o plano sai e a execucao e recusada\n'
+        printf '  com codigo 12 antes de qualquer escrita. Com --dry-run, o plano so avisa.\n\n'
         printf 'Aviso (RF-52):\n'
         printf '  Se a identificacao da conta falhar, o sync segue sem memoria auxiliar: com\n'
         printf '  --espelhar, as exclusoes ficam DESABILITADAS naquela execucao (envios e\n'
@@ -163,16 +206,23 @@ case $DBX_CLI_COMANDO in
         printf 'Opcoes:\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
+        printf '  --forcar, --force               Aceita e sem efeito, por paridade com o upload\n'
         exit 0
         ;;
       list)
         printf 'Uso: dbx list [--limite <n>] [--recursivo] <caminho_remoto>\n\n'
-        printf 'Lista o conteudo de pasta remota com paginacao automatica.\n'
+        printf 'Lista o conteudo de pasta remota com paginacao automatica.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --limite, --limit <n>           Itens por pagina pedidos ao servico\n'
+        printf '  --recursivo, --recursive, -R    Inclui o conteudo das subpastas\n'
         exit 0
         ;;
       delete)
         printf 'Uso: dbx delete [--confirmar | --yes] [--rev <rev>] <caminho_remoto>\n\n'
-        printf 'Remove arquivo ou pasta no Dropbox.\n'
+        printf 'Remove arquivo ou pasta no Dropbox.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --confirmar, --yes, -y          Confirma a remocao sem terminal interativo\n'
+        printf '  --rev <rev>                     Revisao esperada para controle de conflito\n'
         exit 0
         ;;
       info)
@@ -182,22 +232,61 @@ case $DBX_CLI_COMANDO in
         ;;
       space)
         printf 'Uso: dbx space [--humano | -H]\n\n'
-        printf 'Exibe capacidade total e espaco utilizado na conta Dropbox.\n'
+        printf 'Exibe capacidade total e espaco utilizado na conta Dropbox.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --humano, --human, -H           Acrescenta os valores em unidade legivel\n'
+        exit 0
+        ;;
+      verificar)
+        printf 'Uso: dbx verificar (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--progresso]\n\n'
+        printf 'Compara a arvore local e a remota por content_hash, sem transferir nem gravar nada.\n'
+        printf 'Alias em ingles: verify.\n\n'
+        printf 'Opcoes (as mesmas do sync; o nome em ingles e alias do nome em portugues):\n'
+        printf '  --enviar, --push                Origem local, destino remoto\n'
+        printf '  --receber, --pull               Origem remota, destino local\n'
+        printf '  --origem, --source <dir>        Lado de referencia (obrigatorio)\n'
+        printf '  --destino, --dest <dir>         Lado comparado (obrigatorio)\n'
+        printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
+        printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        printf 'Cada arquivo sai uma vez como igual, diferente, so_origem ou so_destino, com as\n'
+        printf 'contagens ao fim. Codigo de saida: 0 tudo igual; 11 ha divergencia; 14 travessia\n'
+        printf 'parcial; erro de execucao (rede, autenticacao, ...) prevalece. As opcoes do sync que\n'
+        printf 'escrevem (--espelhar, --confirmar, --permitir-origem-vazia, --forcar) sao recusadas.\n'
+        exit 0
+        ;;
+      diagnostico)
+        printf 'Uso: dbx diagnostico\n\n'
+        printf 'Checa dependencias, credencial, conectividade, escopos, espaco, localidade e o\n'
+        printf 'diretorio de estado, uma linha por checagem (ok, aviso ou falha) com o remedio.\n'
+        printf 'Alias em ingles: doctor.\n\n'
+        printf 'Nao passa pela verificacao previa, nunca imprime segredo e nao altera nada.\n'
+        printf 'Codigo de saida: 0 sem falha (aviso nao reprova); 3 com ao menos uma falha.\n'
+        exit 0
+        ;;
+      completar)
+        printf 'Uso: dbx completar bash\n\n'
+        printf 'Imprime o script de autocompletar do bash (o mesmo de completions/dbx.bash).\n'
+        printf 'Alias em ingles: completion.\n\n'
+        printf 'Para ativar na sessao corrente:  source <(dbx completar bash)\n'
+        printf 'O install.sh ja o instala em ~/.local/share/bash-completion/completions/dbx.\n'
         exit 0
         ;;
       *)
         printf 'Uso: dbx [--json] [--null] [--dry-run] [--progresso] [--debug] <comando> [argumentos]\n\n'
         printf 'Comandos:\n'
-        printf '  config    Configura credenciais de acesso via OAuth2\n'
-        printf '  unlink    Revoga credencial e remove estado local\n'
-        printf '  sync      Sincroniza diretorio local e remoto (--enviar ou --receber)\n'
-        printf '  upload    Envia arquivo local ou entrada padrao (-) para o Dropbox\n'
-        printf '  download  Baixa arquivo remoto para caminho local ou stdout\n'
-        printf '  list      Lista conteudo de diretorio remoto\n'
-        printf '  delete    Remove arquivo ou diretorio remoto\n'
-        printf '  info      Exibe metadados de arquivo ou pasta remota\n'
-        printf '  space     Exibe capacidade e uso do espaco da conta\n\n'
-        printf 'Opcoes globais: --help --version --json --null --dry-run --progresso --sem-progresso --debug\n\n'
+        printf '  config       Configura credenciais de acesso via OAuth2\n'
+        printf '  unlink       Revoga credencial e remove estado local\n'
+        printf '  sync         Sincroniza diretorio local e remoto (--enviar ou --receber)\n'
+        printf '  upload       Envia arquivo local ou entrada padrao (-) para o Dropbox\n'
+        printf '  download     Baixa arquivo remoto para caminho local ou stdout\n'
+        printf '  list         Lista conteudo de diretorio remoto\n'
+        printf '  delete       Remove arquivo ou diretorio remoto\n'
+        printf '  info         Exibe metadados de arquivo ou pasta remota\n'
+        printf '  space        Exibe capacidade e uso do espaco da conta\n'
+        printf '  verificar    Compara local e remoto por content_hash, so leitura (alias: verify)\n'
+        printf '  diagnostico  Checa o ambiente e sugere o remedio (alias: doctor)\n'
+        printf '  completar    Imprime o autocompletar do bash (alias: completion)\n\n'
+        printf 'Opcoes globais: --help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
         # RNF-07, RNF-30: os ajustes de rede sao documentados onde o operador os
         # procura; valor invalido e recusado com codigo 2 antes da rede.
