@@ -105,7 +105,7 @@ Resultado da execucao: 23 arquivos, **760 aprovados, 0 reprovados, 2 pulados**, 
   - Token `sl.u.` e refresh token sem forma reconhecivel ausentes de stdout, stderr e memoria do diagnostico (QA-P2-02 e QA-P2-04).
   - Download de 6 MiB com NUL byte a byte, com `-` e com `--json`, sem corrupcao (RF-32(b)).
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: o projeto e CLI em shell, sem formulario nem frontend.
-- Suite completa local no push para a PR de `develop` (Regra 8): PENDENTE — preenchida apos o commit pelo comando oficial
+- Suite completa local no push para a PR de `develop` (Regra 8), pelo comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`): em `22e0a6f`, **verde**, 23 arquivos, 760 aprovados, 0 reprovados, 2 pulados (`hash_vetor_oficial_test`, sem rede), 118 s; base do push que abriu a PR. O commit so de documentacao que preenche este registro reexecuta a suite antes do proprio push.
 
 ## 5. Gates
 
@@ -164,14 +164,14 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Vered
   - Limite de cliente reabrir o stdout: socket nao reabre; arquivo e truncado, tratado no `>>`. Declarado em `lib/http`. Sem owner.
   - Limite de SIGKILL e de `exit` fora da janela do tratador: um `.dbx-part` pode ficar no disco, mas o filtro do sync impede a publicacao. Sem owner.
 - Impacto (contrato): `sync` envia com `rev` (`update`) para arquivo existente e `add` para arquivo novo, sem `autorename`; conflito vira falha do item e o sync sai com `nao_concluida`. `download` recusa alvo somente leitura (codigo 6, `permissao`) e destino que e diretorio ou pasta sobre arquivo (`conflito`). Novas variaveis de ambiente de rede (7), com valor invalido recusado com codigo 2. Parte esgotada em `append` sai `nao_concluida` (RF-09 emendado). `DBX_TRANSFER_ERRO_NAO_CONCLUIDA` removido; `DBX_HTTP_TENTATIVAS_MAXIMAS` deixou de ser `readonly`. Sem schema, sem migracao, sem dependencia nova (`lib/db.sh` e `lib/state.sh` nao alterados).
-- Rollback: `git revert` dos commits da fase (shas PENDENTE, preenchidos apos o commit). Nao ha migracao de dado. Consumidores que leem a linha `falha_caminho=`, a classe `consumidor_encerrou` ou os codigos novos precisam ser avisados se o revert for feito.
+- Rollback: `git revert` de `22e0a6f` e do commit de documentacao que preenche este registro. Nao ha migracao de dado. Consumidores que leem a linha `falha_caminho=`, a classe `consumidor_encerrou` ou os codigos novos precisam ser avisados se o revert for feito.
 
 ## 8. Links e aceites
 
 - Entradas de memoria: [padroes-rede-p2](../../.github/agents/memoria/entradas/2026-10-18-2045-padroes-rede-p2.md), [detalhes-tecnicos-rede-p2](../../.github/agents/memoria/entradas/2026-10-18-2045-detalhes-tecnicos-rede-p2.md), [aceite-testes-qa-p2](../../.github/agents/memoria/entradas/2026-10-18-2045-aceite-testes-qa-p2.md).
 - Documentacao sincronizada: [README.md](../../README.md) (secao de variaveis de rede), `bin/dbx` (ajuda), [docs/README.md](../README.md), [System Design](../arquitetura/system-design.md), [escopo, requisitos e criterios de aceite](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), [decisoes pendentes](../requisitos/decisoes-pendentes.md), [funcionalidades candidatas](../requisitos/funcionalidades-candidatas.md), [riscos](../requisitos/riscos-restricoes-e-licenciamento.md), [mapa de modulos](../testes/mapa-modulos.md).
-- Commit(s): PENDENTE — preenchido apos o commit.
-- PR: PENDENTE — preenchido apos a abertura da PR para `develop`.
+- Commit(s): `22e0a6f` (implementacao, mensagem pelo `commit-writer`, revisada pelo Tech Lead) e o commit de documentacao que preenche este registro.
+- PR: [#36](https://github.com/salesadriano/dropbox_sync/pull/36) para `develop`, labels `review` e `enhancement`. Review request nativo nao aplicado: o unico colaborador e o proprio autor.
 - Intervencao humana (regra 48): Nenhum arquivo de origem humana registrado nos insumos desta fase.
 - Tech Lead: **Aprovado com ressalvas**, 2026-10-18. Ressalvas: F-29 e F-32, OBS-02 a OBS-04, lacunas do mapa de modulos (ver secao 7). A aprovacao final vale somente com a suite completa local verde registrada na secao 4.
 - Solicitante: aceite dos `qa-*` registrado em [aceite-testes-qa-p2](../../.github/agents/memoria/entradas/2026-10-18-2045-aceite-testes-qa-p2.md) (25 + 20 casos, sha256 da secao 6).
@@ -186,5 +186,5 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Vered
   - RF-09 (parte esgotada em `append`): emendado; sai `nao_concluida`, com a classe original no diagnostico.
   - RF-58(e) (tentativas por parte): QA-P2-01 corrigido; o limite continua por parte.
   - RF-59(b) x contrato de `falhas=`: resolvida. O Tech Lead decidiu manter `falhas` como contagem e acrescentar os pares `falha_caminho`/`falha_classe` ([detalhes-tecnicos-rede-p2](../../.github/agents/memoria/entradas/2026-10-18-2045-detalhes-tecnicos-rede-p2.md)), e o Business Analyst emendou o RF-59(b) e o TC-FLH.
-- Pendencias: suite completa local verde e registrada na secao 4 (PENDENTE); commit e PR (PENDENTE); confirmacao do nome do par `falha_caminho=`/`falha_classe=` pelo Business Analyst.
+- Pendencias: merge da PR #36 pelo solicitante (sem pipeline no repositorio).
 - Decisao de fechamento: **Aprovado com ressalvas**, 2026-10-18. Ressalvas: F-29 (Senior Developer, fase 3); F-32 (Business Analyst, fase 5); OBS-02, OBS-03 e OBS-04 (Senior Developer, backlog `lib/tmp`); lacunas do mapa de modulos (QA Expert, fase 3). Validacao QA frontend: Nao aplicavel: sem frontend.
