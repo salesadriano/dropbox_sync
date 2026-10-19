@@ -15,12 +15,33 @@
 [[ -n ${DBX_CMD_CARREGADO:-} ]] && return 0
 DBX_CMD_CARREGADO=1
 
+_dbx_cmd_diretorio=${BASH_SOURCE[0]%/*}
+[[ $_dbx_cmd_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_cmd_diretorio=.
+_dbx_cmd_diretorio=$(cd -P -- "$_dbx_cmd_diretorio" && pwd -P)
+# shellcheck source=lib/hash.sh
+. "$_dbx_cmd_diretorio/hash.sh"
+unset _dbx_cmd_diretorio
+
 # shellcheck disable=SC2034
 # Justificativa: canal publico consumido pelos arquivos de `commands/`.
 DBX_CMD_LIDO=''
 # shellcheck disable=SC2034
 # Justificativa: canal publico consumido pelos arquivos de `commands/`.
 DBX_CMD_SIMULADO='nao'
+# Marca do temporario de recebimento: `.<nome>.dbx-part.XXXXXX`. E por ela que o
+# `sync` reconhece um temporario orfao e o deixa fora da arvore local.
+readonly DBX_CMD_MARCA_RECEBIMENTO='.dbx-part.'
+# Temporario em curso, global para o tratador de sinal o alcancar.
+DBX_CMD_TEMPORARIO_RECEBIMENTO=''
+# shellcheck disable=SC2034
+# Justificativa: canais publicos de `dbx_cmd_receber_arquivo`, lidos pelos comandos.
+DBX_CMD_INTEGRIDADE='nao_aplicavel'
+# shellcheck disable=SC2034
+DBX_CMD_CONTENT_HASH=''
+# shellcheck disable=SC2034
+DBX_CMD_FALHA_CLASSE=''
+# shellcheck disable=SC2034
+DBX_CMD_FALHA_MOTIVO=''
 
 # SINCRONIZACAO DO RAMO DE VALIDACAO EM FLUXO — medido, nao suposto.
 #
@@ -112,6 +133,7 @@ _dbx_cmd_analisar_corpo() {
 # no meio da saida estruturada e quebra o consumidor automatizado (RF-28).
 _dbx_cmd_caminho_remoto() {
   dbx_path_remoto_para_api "$1" >/dev/null || return $?
+  # shellcheck disable=SC2153  # canal publico de lib/path, carregada por bin/dbx
   DBX_CMD_LIDO=$DBX_PATH_RESULTADO
   return 0
 }
@@ -225,6 +247,168 @@ _dbx_cmd_escrita_remota() {
   dbx_cmd_falhar "$classe" \
     "escrita recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
   return $?
+}
+
+# dbx_cmd_content_hash_do_resultado — le o `content_hash` que o servico publicou
+# no cabecalho `Dropbox-API-Result` da ultima resposta. Resultado em
+# DBX_CMD_LIDO; vazio quando o servico nao o publicou.
+dbx_cmd_content_hash_do_resultado() {
+  DBX_CMD_LIDO=''
+  [[ -n ${DBX_HTTP_RESULTADO_CABECALHO:-} ]] || return 0
+  dbx_json_contexto resultado >/dev/null 2>&1 || return 0
+  if dbx_json_analisar "$DBX_HTTP_RESULTADO_CABECALHO" >/dev/null 2>&1 &&
+    dbx_json_valor content_hash >/dev/null 2>&1; then
+    DBX_CMD_LIDO=$DBX_JSON_RESULTADO
+  fi
+  dbx_json_descartar resultado >/dev/null 2>&1
+  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR" >/dev/null 2>&1
+  return 0
+}
+
+# _dbx_cmd_recebimento_interrompido — tratador de INT, TERM e HUP do recebimento.
+#
+# Encerra o PROCESSO: o alvo continua o anterior, e seguir depois de um sinal
+# trataria como concluido um recebimento que nao terminou. `exit` nao passa
+# pela limpeza de `_dbx_http_executar`, entao a area dela sai daqui tambem.
+_dbx_cmd_recebimento_interrompido() {
+  [[ -n $DBX_CMD_TEMPORARIO_RECEBIMENTO ]] && rm -f -- "$DBX_CMD_TEMPORARIO_RECEBIMENTO"
+  [[ -n ${DBX_HTTP_AREA_TEMP:-} ]] && rm -rf -- "$DBX_HTTP_AREA_TEMP"
+  exit "$(dbx_errors_codigo_saida nao_concluida)"
+}
+
+# _dbx_cmd_alvo_somente_leitura <alvo> — 0 quando o alvo e arquivo existente sem
+# escrita para o usuario; publica a recusa nos canais de falha local.
+_dbx_cmd_alvo_somente_leitura() {
+  [[ -f $1 && ! -w $1 ]] || return 1
+  # shellcheck disable=SC2034  # canais publicos, ver nota no topo
+  DBX_CMD_FALHA_CLASSE='permissao'
+  # shellcheck disable=SC2034
+  DBX_CMD_FALHA_MOTIVO="destino somente leitura, nao substituido: $1"
+  return 0
+}
+
+# dbx_cmd_receber_arquivo <caminho_remoto_api> <alvo> — recebimento atomico
+# (RF-55).
+#
+# Conjunto onde incide: TODO recebimento gravado em arquivo — `download` com
+# destino e `sync --receber`. Saida padrao continua em fluxo e nao passa aqui.
+#
+# O conteudo vai para um temporario no MESMO diretorio do alvo, para que a
+# troca seja um `rename` atomico no mesmo sistema de arquivos; o alvo so e
+# substituido depois de o `content_hash` local conferir com o publicado. Queda
+# de rede ou resumo divergente descartam o temporario e deixam o alvo como
+# estava. Sem resumo publicado nao ha o que conferir, e a integridade fica
+# `nao_aplicavel` em vez de afirmada.
+#
+# Arquivo existente sem escrita para o usuario NAO e substituido (decisao do
+# solicitante): a renomeacao contornaria a protecao que ele pos no arquivo. A
+# recusa e `permissao` — e falta de permissao de escrita, e nao divergencia de
+# tipo ou de versao, que e o que `conflito` descreve. Confere-se antes de
+# transferir, para nao gastar a transferencia, e de novo antes da troca, porque
+# o modo pode mudar enquanto o conteudo chega.
+#
+# O modo do arquivo novo e o do alvo que ele substitui, ou o do `umask` do
+# chamador quando o alvo nao existe: `mktemp` cria em 0600, e deixar assim
+# trocaria a permissao do arquivo do usuario a cada recebimento.
+#
+# Alvo que existe e nao e arquivo regular (diretorio, dispositivo, cano) recebe
+# em fluxo direto: renomear por cima dele substituiria o proprio no.
+#
+# Canais: DBX_CMD_INTEGRIDADE (`conferida` ou `nao_aplicavel`), DBX_CMD_CONTENT_HASH,
+# e, na falha local, DBX_CMD_FALHA_CLASSE e DBX_CMD_FALHA_MOTIVO. Falha de
+# transporte deixa os dois ultimos vazios e os canais de lib/http intactos.
+dbx_cmd_receber_arquivo() {
+  local remoto=$1 alvo=$2
+  local argumento diretorio nome temporario modo estado obtido
+  DBX_CMD_INTEGRIDADE='nao_aplicavel'
+  DBX_CMD_CONTENT_HASH=''
+  DBX_CMD_FALHA_CLASSE=''
+  DBX_CMD_FALHA_MOTIVO=''
+
+  dbx_json_escapar_cadeia "$remoto"
+  argumento="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+
+  if [[ -L $alvo ]]; then
+    alvo=$(readlink -f -- "$alvo") || {
+      DBX_CMD_FALHA_CLASSE='configuracao'
+      DBX_CMD_FALHA_MOTIVO="vinculo simbolico de destino nao resolvido: $2"
+      return "$(dbx_errors_codigo_saida configuracao)"
+    }
+  fi
+
+  if [[ -e $alvo && ! -f $alvo ]]; then
+    dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
+      "$argumento" "$alvo"
+    return $?
+  fi
+
+  _dbx_cmd_alvo_somente_leitura "$alvo" && return "$(dbx_errors_codigo_saida permissao)"
+
+  diretorio=${alvo%/*}
+  [[ $diretorio == "$alvo" ]] && diretorio=.
+  [[ -z $diretorio ]] && diretorio=/
+  nome=${alvo##*/}
+  # O nome do temporario precisa caber no limite de 255 bytes por componente.
+  temporario=$(mktemp -- "$diretorio/.${nome:0:200}${DBX_CMD_MARCA_RECEBIMENTO}XXXXXX" 2>/dev/null) || {
+    DBX_CMD_FALHA_CLASSE='configuracao'
+    DBX_CMD_FALHA_MOTIVO="nao foi possivel criar o temporario de recebimento em: $diretorio"
+    return "$(dbx_errors_codigo_saida configuracao)"
+  }
+
+  # Sinal durante a escrita encerra o processo sem passar pelo retorno abaixo;
+  # o tratador remove o temporario e a area da requisicao, que tem o token.
+  DBX_CMD_TEMPORARIO_RECEBIMENTO=$temporario
+  trap '_dbx_cmd_recebimento_interrompido' INT TERM HUP
+  dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
+    "$argumento" "$temporario"
+  estado=$?
+  # LIMITE DECLARADO, o mesmo de `dbx_transfer_sessao`: remove os tratadores
+  # em vez de restaurar os do chamador; hoje nenhum caminho arma INT, TERM ou HUP
+  # antes de receber.
+  trap - INT TERM HUP
+  DBX_CMD_TEMPORARIO_RECEBIMENTO=''
+  if [[ $estado -ne 0 ]]; then
+    rm -f -- "$temporario"
+    return "$estado"
+  fi
+
+  dbx_cmd_content_hash_do_resultado
+  DBX_CMD_CONTENT_HASH=$DBX_CMD_LIDO
+  if [[ -n $DBX_CMD_CONTENT_HASH ]]; then
+    obtido=$(dbx_hash_conteudo_arquivo "$temporario" 2>/dev/null) || obtido=''
+    # Resumo local ilegivel nunca e lido como conferido: sem prova, o alvo fica.
+    if ! dbx_hash_iguais "$obtido" "$DBX_CMD_CONTENT_HASH"; then
+      rm -f -- "$temporario"
+      DBX_CMD_FALHA_CLASSE='integridade'
+      DBX_CMD_FALHA_MOTIVO="o conteudo recebido nao confere com o resumo publicado pelo servico; o destino foi preservado: $alvo"
+      return "$(dbx_errors_codigo_saida integridade)"
+    fi
+    # shellcheck disable=SC2034  # canal publico, ver nota no topo
+    DBX_CMD_INTEGRIDADE='conferida'
+  fi
+
+  if _dbx_cmd_alvo_somente_leitura "$alvo"; then
+    rm -f -- "$temporario"
+    return "$(dbx_errors_codigo_saida permissao)"
+  fi
+  # O modo entra so na troca: aplicado antes, um alvo 0444 deixaria o
+  # temporario sem escrita e a falha pareceria divergencia de conteudo.
+  if [[ -f $alvo ]]; then
+    modo=$(stat -c %a -- "$alvo" 2>/dev/null) || modo=''
+  fi
+  [[ -n ${modo:-} ]] || printf -v modo '%o' $((0666 & ~$(umask)))
+  chmod "$modo" -- "$temporario" 2>/dev/null || :
+  mv -f -- "$temporario" "$alvo" 2>/dev/null || {
+    rm -f -- "$temporario"
+    # shellcheck disable=SC2034  # canais publicos, ver nota no topo
+    DBX_CMD_FALHA_CLASSE='configuracao'
+    # shellcheck disable=SC2034
+    DBX_CMD_FALHA_MOTIVO="nao foi possivel substituir o destino: $alvo"
+    return "$(dbx_errors_codigo_saida configuracao)"
+  }
+  return 0
 }
 
 # dbx_cmd_bytes_legiveis <n> — apresentacao humana, sem utilitario externo.

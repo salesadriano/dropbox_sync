@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # download — recebimento de item remoto (RF-32, RF-30).
 #
-# EMITE E VALIDA EM PARALELO, por decisao do solicitante. O resumo e calculado
-# enquanto os bytes sao entregues, e a divergencia e reportada por codigo de saida
-# e diagnostico — nao por reter o conteudo.
+# DESTINO EM ARQUIVO E RECEBIDO DE FORMA ATOMICA (RF-55): temporario no mesmo
+# diretorio, conferencia do `content_hash` e so entao a troca pelo alvo — ver
+# `dbx_cmd_receber_arquivo`. Queda de rede ou resumo divergente deixam o
+# arquivo anterior intacto.
 #
-# CONSEQUENCIA ACEITA, e ela precisa estar dita: o consumidor recebe os bytes
-# ANTES do veredito. Quem redirecionar a saida e ignorar o codigo de saida fica
-# com arquivo corrompido sem aviso. O modo suportado e
-# `dbx download ... > arq && processar arq`, coerente com o uso em automacao.
+# SEM DESTINO, o conteudo sai em fluxo pela saida padrao e o consumidor recebe
+# os bytes antes de qualquer veredito; nao ha o que conferir depois. O modo
+# suportado e `dbx download ... > arq && processar arq`.
 #
 # Gemeo de `upload` no transporte: os dois usam o modo de conteudo, em direcoes
 # opostas. A assimetria que importa esta em `lib/http` — retentativa e propriedade
@@ -132,8 +132,20 @@ dbx_cmd_download_executar() {
   dbx_progress_barra_gerar 0 20 str_barra_inicio
   dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo $str_barra_inicio (0%)"
 
-  dbx_auth_conteudo_receber GET \
-    'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo" || {
+  local estado_recebimento=0
+  if [[ $alvo == '/dev/stdout' || $alvo == '-' ]]; then
+    dbx_auth_conteudo_receber GET \
+      'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo"
+    estado_recebimento=$?
+  else
+    dbx_cmd_receber_arquivo "$remoto" "$alvo"
+    estado_recebimento=$?
+  fi
+  if [[ $estado_recebimento -ne 0 ]]; then
+    if [[ -n ${DBX_CMD_FALHA_CLASSE:-} && $alvo != '/dev/stdout' && $alvo != '-' ]]; then
+      dbx_cmd_falhar "$DBX_CMD_FALHA_CLASSE" "$DBX_CMD_FALHA_MOTIVO"
+      return $?
+    fi
     local classe=${DBX_HTTP_CLASSE:-erro_remoto}
     local detalhe=${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}
     case $detalhe in
@@ -143,7 +155,13 @@ dbx_cmd_download_executar() {
             "o caminho remoto e uma pasta; informe o diretorio local de destino"
           return $?
         fi
-        rm -f -- "$alvo" 2>/dev/null || :
+        # RF-56: o destino que ja existe como arquivo e do usuario, e nao vira
+        # diretorio. Remove-lo para dar lugar a pasta seria perda sem aviso.
+        if [[ -e $alvo || -L $alvo ]] && [[ ! -d $alvo ]]; then
+          dbx_cmd_falhar conflito \
+            "o caminho remoto e uma pasta e o destino local ja existe e nao e diretorio: $alvo"
+          return $?
+        fi
         mkdir -p -- "$alvo" 2>/dev/null || {
           dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $alvo"
           return $?
@@ -164,7 +182,7 @@ dbx_cmd_download_executar() {
     esac
     dbx_cmd_falhar "$classe" "recebimento recusado: $detalhe"
     return $?
-  }
+  fi
 
   local str_barra_fim='' str_tam_baixado=''
   dbx_progress_barra_gerar 100 20 str_barra_fim
@@ -182,33 +200,16 @@ dbx_cmd_download_executar() {
     dbx_progress_mensagem "[download] recebimento concluido: $alvo $str_barra_fim (100%)"
   fi
 
-  # VERIFICACAO DE INTEGRIDADE, e o limite dela.
-  #
-  # O `content_hash` que o servico calculou vem no cabecalho `Dropbox-API-Result`.
-  # Comparar exige ler o que foi entregue — possivel quando o destino e arquivo
-  # regular, impossivel quando e fluxo, porque os bytes ja passaram.
-  #
-  # Quando nao da para comparar, o comando NAO afirma integridade: reportar
-  # verificacao que nao ocorreu seria pior que nao verificar.
-  local esperado='' obtido='' verificacao='nao_aplicavel'
-  if [[ -n ${DBX_HTTP_RESULTADO_CABECALHO:-} ]]; then
-    dbx_json_contexto resultado >/dev/null 2>&1
-    if dbx_json_analisar "$DBX_HTTP_RESULTADO_CABECALHO" >/dev/null 2>&1 &&
-      dbx_json_valor content_hash >/dev/null 2>&1; then
-      esperado=$DBX_JSON_RESULTADO
-    fi
-    dbx_json_descartar resultado >/dev/null 2>&1
-    dbx_json_contexto padrao >/dev/null 2>&1
-  fi
-
-  if [[ -n $esperado && -f $alvo ]]; then
-    if obtido=$(dbx_hash_conteudo_arquivo "$alvo" 2>/dev/null) && [[ -n $obtido ]]; then
-      if [[ $obtido == "$esperado" ]]; then
-        verificacao='conferida'
-      else
-        verificacao='divergente'
-      fi
-    fi
+  # Em arquivo, a conferencia ja ocorreu antes da substituicao (RF-55). Em
+  # fluxo os bytes ja passaram e nao ha o que comparar: o comando nao afirma
+  # integridade que nao verificou.
+  local esperado='' verificacao='nao_aplicavel'
+  if [[ $alvo == '/dev/stdout' || $alvo == '-' ]]; then
+    dbx_cmd_content_hash_do_resultado
+    esperado=$DBX_CMD_LIDO
+  else
+    esperado=$DBX_CMD_CONTENT_HASH
+    verificacao=$DBX_CMD_INTEGRIDADE
   fi
 
   dbx_cmd_iniciar_saida
@@ -218,11 +219,5 @@ dbx_cmd_download_executar() {
   dbx_output_campo integridade "$verificacao"
   [[ -n $esperado ]] && dbx_output_campo content_hash "$esperado"
   dbx_output_render
-
-  if [[ $verificacao == 'divergente' ]]; then
-    dbx_cmd_falhar integridade \
-      'o conteudo recebido nao confere com o resumo publicado pelo servico'
-    return $?
-  fi
   return 0
 }

@@ -57,6 +57,8 @@
 | DP-28 | Como o operador declara o sentido do `sync` | ✅ **Resolvida — sinalizador `--enviar` / `--receber`, OBRIGATORIO** | — |
 | **DP-29** | **`RF-31`: aceitar o limite do cano anonimo, ou financiar contrato explicito de tamanho?** | 🔴 **Nova na v0.9 — em aberto** | **P1** |
 | **DP-30** | **`RF-08`: "tamanho de parte configuravel" ainda e requisito?** | 🟡 **Nova na v0.9 — em aberto** | **P1** |
+| **DP-31** | Integridade de dados no `sync` e no `download` (fase P1) | ✅ **Resolvida em 2026-10-18** — ver secao propria; gera `RF-54` a `RF-57`, `RNF-29` | — |
+| **DP-32** | Skip do upload condicionado ao `content_hash` remoto | ✅ **Resolvida em 2026-10-18 — implementacao na fase 3 (backlog `F-26`)** | — |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
 | DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |
@@ -645,6 +647,30 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 **Recomendacao do Business Analyst (nao e decisao):** **B**. Os demais criterios de `RF-08` — ordem das chamadas, teto de 150 MiB por requisicao, tamanho final e `content_hash` — **permanecem exigidos e verificados em qualquer das opcoes**.
 
 **Bloqueia:** declarar `RF-08` integralmente atendido.
+
+---
+
+## Decisoes do solicitante de 2026-10-18 (analise de melhorias)
+
+> Origem: `docs/sources/2026-10-18-analise-melhorias.md`. Os achados foram divididos em quatro demandas (P1; P2 rede; P3+P4 cache/SQL/skip/PKCE; P5 documentacao e aliases), cada uma com branch e PR proprios. Esta secao foi escrita **na mesma rodada** em que as decisoes foram recebidas (`RSK-26`).
+
+### DP-31 — Integridade de dados no `sync` e no `download` ✅ **RESOLVIDA (fase P1, em implementacao)**
+
+**Decisoes do solicitante (2026-10-18):**
+
+1. O `sync` compara caminhos **sem diferenciar caixa**, como o Dropbox; colisao de caixa local (`a.txt` e `A.txt`) e **recusada antes de qualquer escrita** → `RF-54`.
+2. O recebimento (`download` e `sync --receber`) grava em temporario no mesmo diretorio, confere o `content_hash` e so entao substitui de forma atomica; hash divergente mantem o arquivo antigo, descarta o temporario e falha → `RF-55`.
+3. O `download` de pasta **nunca** apaga arquivo regular existente no destino (recusa) → `RF-56`.
+4. Arquivos baixados seguem o `umask` do usuario; so a area temporaria com o token fica em `077`; o `umask` do processo e preservado; a area temporaria de cada requisicao HTTP e sempre removida, inclusive na reemissao diagnostica → `RNF-29`.
+5. `sync --enviar` mantem "origem vence" entre execucoes (`DP-27`), com o `rev` da listagem da execucao (update) ou modo add para arquivo novo, e usa sessao de upload acima de 150 MiB e envia `client_modified`, como o `upload` → `RF-57`, `RNF-27`.
+
+6. Arquivo local existente sem permissao de escrita para o usuario (ex.: `0444`) **nao e substituido** pelo recebimento (`download` com destino e `sync --receber`): falha com diagnostico de destino somente leitura, arquivo intacto (conteudo e modo), sem temporario; no `sync --receber` e falha do item e o `sync` sai como nao concluido → `RF-55(f)`, `TC-ATM-05`. *(Decisao posterior, 2026-10-18.)*
+
+**Divergencias `DIV-23` e `DIV-24` — RESOLVIDAS em 2026-10-18 por decisao do solicitante:** `RF-49` e MANTIDO (recusa da Dropbox por mudanca concorrente vira falha do item, sem sobrescrever; o `sync` sai como nao concluido; `TC-REV-01..02` exigidos na P1; `RF-57(c)` emendado). `RNF-04` emendado: `0600` na credencial e na area temporaria com o token, sem alterar o `umask` do processo; arquivos baixados seguem o `umask` do usuario.
+
+### DP-32 — Skip do upload condicionado ao `content_hash` remoto ✅ **RESOLVIDA — implementacao na fase 3**
+
+**Decisao do solicitante (2026-10-18):** o upload so dispensa o envio quando o `content_hash` remoto, obtido por `get_metadata`, for igual ao do arquivo local. O cache local passa a ser **apenas otimizacao do calculo de hash** e nao decide sozinho. Isso restabelece o invariante de `RSK-23` ("nenhum artefato persistente participa de decisao") para o `upload`, hoje violado: o skip olha so o lado local e dispensa o envio indevidamente se o remoto foi apagado ou alterado, inclusive com `--modo overwrite`. **Nao e implementado na P1**; registrado como `F-26` e `RSK-37`. Ajusta o criterio de `RF-33` (omissao decidida por `content_hash` de **origem e destino**), que o codigo atual nao cumpre para o `upload`.
 
 ---
 
