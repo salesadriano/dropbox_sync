@@ -771,4 +771,37 @@ teste_mensagem_do_cliente_e_redigida_antes_de_publicar() {
     'o cliente reclama citando a opcao, que carrega o segredo'
 }
 
+# ---------------------------------------------------------------------------
+# P3.4 — sem subshell evitavel no caminho de cada requisicao (fase 3)
+# ---------------------------------------------------------------------------
+
+teste_conducao_da_requisicao_nao_captura_a_taxonomia_por_subshell() {
+  # Classe, politica e codigo de saida sao consultados por variavel. As duas
+  # substituicoes que restam sao necessarias: a area temporaria (mktemp, com o
+  # umask isolado) e o codigo HTTP que o cliente escreve na saida padrao.
+  local corpo achados
+  corpo=$(awk '/^_dbx_http_conduzir\(\) \{/ { dentro = 1 } dentro { print } dentro && /^\}/ { exit }' \
+    "$DBX_HARNESS_RAIZ/lib/http.sh")
+  assert_contem 'curl -K -' "$corpo" 'sem o corpo da funcao a auditoria seria vacua'
+  achados=$(grep -vE '^[[:space:]]*#' <<<"$corpo" | grep -nE '\$\((dbx_errors_|_dbx_errors_)' || true)
+  assert_igual '' "$achados" "consulta a taxonomia por substituicao de comando: $achados"
+  assert_igual 0 "$(grep -c 'dbx_errors_codigo_saida' <<<"$corpo")" \
+    'o codigo de saida vem da tabela, sem chamada dupla'
+}
+
+teste_codigo_de_saida_da_requisicao_segue_a_taxonomia() {
+  # O comportamento nao muda com a publicacao por variavel.
+  local dir http estado esperado
+  for http in 400 401 403 404 409; do
+    dir=$(_duplo "$http" '{"error_summary":"path/not_found/.."}')
+    PATH=$dir:$PATH dbx_http_requisitar POST https://exemplo/api tok '{}' nao
+    estado=$?
+    assert_diferente '' "$DBX_HTTP_CLASSE" "classe publicada para $http"
+    esperado=$(dbx_errors_codigo_saida "$DBX_HTTP_CLASSE")
+    assert_igual "$esperado" "$estado" "codigo de saida da classe publicada ($http)"
+    assert_igual "$(dbx_errors_classificar "$http" 'path/not_found/..')" "$DBX_HTTP_CLASSE" \
+      "a classe e a da taxonomia ($http)"
+  done
+}
+
 harness_executar "$@"

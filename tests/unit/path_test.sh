@@ -412,4 +412,45 @@ teste_resultado_e_limpo_quando_a_raiz_total_nao_e_autorizada() {
     'idem no espaco remoto'
 }
 
+# ---------------------------------------------------------------------------
+# RF-62 — chave canonica do cache: caminho fisico absoluto (fase 3)
+#
+# So define a CHAVE do cache (RF-62(d)): nenhuma decisao de transferir ou
+# apagar usa este caminho, e ele nao substitui o confinamento de RNF-20.
+# ---------------------------------------------------------------------------
+
+teste_relativo_absoluto_e_ligacao_simbolica_tem_a_mesma_chave_canonica() {
+  local area relativo absoluto ligacao
+  area=$(_area)
+  mkdir -p "$area/dados"
+  printf 'x' >"$area/dados/a.txt"
+  ln -s "$area/dados/a.txt" "$area/atalho.txt"
+  ln -s dados "$area/pasta"
+  absoluto=$(cd "$area" && dbx_path_local_canonico "$area/dados/a.txt" && printf '%s' "$DBX_PATH_RESULTADO")
+  relativo=$(cd "$area/dados" && dbx_path_local_canonico ./a.txt && printf '%s' "$DBX_PATH_RESULTADO")
+  ligacao=$(cd "$area" && dbx_path_local_canonico atalho.txt && printf '%s' "$DBX_PATH_RESULTADO")
+  assert_igual "$area/dados/a.txt" "$absoluto" 'absoluto fisico'
+  assert_igual "$absoluto" "$relativo" 'relativo cai na mesma chave'
+  assert_igual "$absoluto" "$ligacao" 'ligacao no ULTIMO componente e resolvida'
+  ligacao=$(cd "$area" && dbx_path_local_canonico pasta/../pasta/a.txt && printf '%s' "$DBX_PATH_RESULTADO")
+  assert_igual "$absoluto" "$ligacao" 'ligacao no meio e `..` depois dela, resolvidos fisicamente'
+}
+
+teste_chave_canonica_nao_imprime_e_recusa_vazio() {
+  local area saida
+  area=$(_area)
+  saida=$(cd "$area" && dbx_path_local_canonico x)
+  assert_igual '' "$saida" 'publica no canal, sem poluir a saida padrao'
+  assert_status "$DBX_PATH_USO_INVALIDO" dbx_path_local_canonico ''
+}
+
+teste_chave_canonica_nao_usa_substituicao_de_comando_com_readlink() {
+  # Auditoria RNF-24: o resolvedor existente le o alvo da ligacao por `read`,
+  # sem `$(readlink)`, que perderia quebra de linha final do alvo.
+  local achados
+  achados=$(grep -vE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ"/lib/*.sh | grep -nE '\$\([[:space:]]*readlink' || true)
+  assert_igual '' "$achados" "captura de readlink em lib/: $achados"
+}
+
 harness_executar "$@"
+

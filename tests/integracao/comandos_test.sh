@@ -52,6 +52,10 @@ _ambiente() {
     printf '  corpo=%s; codigo=200\n' "'{\"account_id\":\"dbid:CONTA\"}'"
     printf 'elif [[ $url == *list_folder* && -f "$base/listagem" ]]; then\n'
     printf '  corpo=$(cat "$base/listagem"); codigo=200\n'
+    # RF-60: o `upload` consulta o metadado remoto antes de decidir; a resposta
+    # do duplo vem de `metadado_corpo`/`metadado_codigo` quando existirem.
+    printf 'elif [[ $url == *files/get_metadata* && -f "$base/metadado_corpo" ]]; then\n'
+    printf '  corpo=$(cat "$base/metadado_corpo"); codigo=$(cat "$base/metadado_codigo")\n'
     printf 'elif [[ $url == *files/download* && -f "$base/download_corpo" ]]; then\n'
     printf '  if [[ $opcoes == *relatorio.txt* ]]; then\n'
     printf '    corpo="conteudo do arquivo baixado"; codigo=200\n'
@@ -60,6 +64,15 @@ _ambiente() {
     printf '  fi\n'
     printf 'else\n'
     printf '  corpo=$(cat "$base/corpo"); codigo=$(cat "$base/codigo")\n'
+    printf 'fi\n'
+    # RF-61(c): a origem muda DURANTE o envio — mesmo tamanho, `mtime`
+    # restaurado — e o duplo so devolve quando o `ctime` ja difere (o relogio de
+    # carimbos do nucleo e grosso; espera por condicao, nao por tempo).
+    printf 'if [[ $url == *files/upload && -f "$base/alterar_durante_envio" ]]; then\n'
+    printf '  alvo=$(cat "$base/alterar_durante_envio"); antes=$(stat -c %%z "$alvo")\n'
+    printf '  tr a-z A-Z <"$alvo" >"$alvo.novo"; cat "$alvo.novo" >"$alvo"; rm -f "$alvo.novo"\n'
+    printf '  touch -d @1700000000.250000000 "$alvo"\n'
+    printf '  while [[ $(stat -c %%z "$alvo") == "$antes" ]]; do chmod u+w "$alvo"; done\n'
     printf 'fi\n'
     # Metadado do recebimento: o servico publica o `content_hash` no cabecalho.
     printf 'if [[ $url == *files/download* && -n $cabecalhos && -f "$base/resultado_cabecalho" ]]; then\n'
@@ -96,6 +109,14 @@ _ambiente() {
     printf 'exit 0\n'
   } >"$base/bin/curl"
   chmod +x "$base/bin/curl"
+  # RNF-02, TC-DEP-03: sentinelas no lugar de `sqlite3` e `python3`. Qualquer
+  # invocacao fica registrada em `proibido` e falha.
+  local proibido
+  for proibido in sqlite3 python3 python; do
+    printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "%s" "$*" >>%q\nexit 1\n' \
+      "$proibido" "$base/proibido" >"$base/bin/$proibido"
+    chmod +x "$base/bin/$proibido"
+  done
   printf '%s' "$base"
 }
 
@@ -1321,34 +1342,459 @@ teste_download_cria_diretorio_de_destino_caso_nao_exista() {
   assert_igual 'CONTEUDO-TESTE' "$(cat "$destino")" 'o conteudo deve ser gravado'
 }
 
-teste_upload_dispensa_arquivo_inalterado_e_forca_com_sinalizador() {
+# ---------------------------------------------------------------------------
+# RF-60 — a dispensa do envio e decidida pelo `content_hash` REMOTO (fase 3)
+#
+# MUDANCA DECLARADA: o caso `upload_dispensa_arquivo_inalterado_e_forca_com_
+# sinalizador` AFIRMAVA a dispensa decidida so pelo cache local (`lib/db`), sem
+# consultar o remoto — o comportamento que violava `RSK-23` (`RSK-37`). Ele foi
+# reescrito nos casos abaixo: a mesma jornada (dispensa, `--forcar`, arquivo
+# alterado) agora exige `get_metadata` com hash igual para dispensar.
+# ---------------------------------------------------------------------------
+
+# _metadado <base> <codigo_http> <corpo> — resposta do duplo ao `get_metadata`.
+_metadado() {
+  printf '%s' "$2" >"$1/metadado_codigo"
+  printf '%s' "$3" >"$1/metadado_corpo"
+}
+
+# _remoto_arquivo <base> <content_hash> — o remoto e um arquivo com esse hash.
+_remoto_arquivo() {
+  _metadado "$1" 200 "{\".tag\":\"file\",\"name\":\"a.txt\",\"rev\":\"016\",\"content_hash\":\"$2\"}"
+}
+
+_remoto_ausente() {
+  _metadado "$1" 409 '{"error_summary":"path/not_found/..","error":{".tag":"path"}}'
+}
+
+# _origem_antiga <arquivo> <conteudo> — `mtime` no passado: sem isso a regra
+# anti-corrida de 2 s (RF-61(d)) nao deixaria registro algum ser gravado.
+_origem_antiga() {
+  printf '%s' "$2" >"$1"
+  touch -d '@1700000000.250000000' "$1"
+}
+
+_hash_de() { dbx_hash_conteudo_arquivo "$1"; }
+
+# _resposta_do_envio <base> <arquivo> — o `files/upload` responde, como o
+# servico real, com o `content_hash` do conteudo recebido.
+_resposta_do_envio() {
+  printf '{"name":"a.txt","rev":"016","content_hash":"%s"}' "$(_hash_de "$2")" >"$1/corpo"
+}
+
+_registros_de_upload() { # <base> — quantos `upload-*` existem no estado
+  local -a lista=()
+  shopt -s nullglob
+  lista=("$1/estado/dbx"/upload-*)
+  shopt -u nullglob
+  printf '%s' "${#lista[@]}"
+}
+
+_memorias_do_sync() { # <base>
+  local -a lista=()
+  shopt -s nullglob
+  lista=("$1/estado/dbx"/memoria-*)
+  shopt -u nullglob
+  printf '%s' "${#lista[@]}"
+}
+
+# _esperar_tique_do_ctime <arquivo> — ver a nota em tests/unit/walk_test.sh.
+_esperar_tique_do_ctime() {
+  local arquivo=$1 sonda=$1.sonda referencia
+  referencia=$(stat -c '%z' -- "$arquivo")
+  : >"$sonda"
+  while [[ $(stat -c '%z' -- "$sonda") == "$referencia" ]]; do
+    chmod 600 "$sonda"
+  done
+  rm -f -- "$sonda"
+}
+
+teste_upload_dispensa_quando_o_hash_remoto_e_igual_ao_local() {
+  # TC-SKP-01 (RF-60(a)).
   local base origem
-  base=$(_ambiente '{"name":"a.txt","rev":"016","content_hash":"11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"}')
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
   origem="$base/local.txt"
-  printf 'conteudo original\n' >"$origem"
-
-  # 1. Primeiro upload: envia normalmente
+  _origem_antiga "$origem" 'conteudo original'
+  _remoto_arquivo "$base" "$(_hash_de "$origem")"
   _rodar "$base" upload "$origem" /r/a.txt
-  assert_igual 0 "$DBX_ESTADO" "primeiro upload deve concluir; diagnostico: $DBX_ERRO"
-  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao de upload"
+  assert_igual 0 "$DBX_ESTADO" "dispensa sai com zero; diagnostico: $DBX_ERRO"
+  assert_contem 'status=dispensado' "$DBX_SAIDA" 'o item sai como dispensado'
+  assert_contem 'motivo=' "$DBX_SAIDA" 'com o motivo, campo que a saida ja emitia'
+  assert_igual 1 "$(_harness_contar 'files/get_metadata' "$base/argv")" 'uma consulta de comparacao'
+  assert_igual 0 "$(_harness_contar 'files/upload' "$base/argv")" 'nenhuma chamada de envio'
+}
 
-  # 2. Segundo upload com mesmo arquivo inalterado: dispensa o envio
+teste_upload_envia_quando_o_hash_remoto_difere() {
+  # TC-SKP-02 (RF-60(b)): no modo `add`, o comportamento atual de colisao.
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"017"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo alterado'
+  _remoto_arquivo "$base" '11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff'
   _rodar "$base" upload "$origem" /r/a.txt
-  assert_igual 0 "$DBX_ESTADO" "segundo upload deve concluir com sucesso; diagnostico: $DBX_ERRO"
-  assert_contem 'status=dispensado' "$DBX_SAIDA" "saida deve reportar status dispensado"
-  assert_contem 'motivo=inalterado' "$DBX_SAIDA" "saida deve reportar motivo inalterado"
-  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" "nao deve emitir nova requisicao de upload"
+  assert_igual 0 "$DBX_ESTADO" "envio conclui; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" 'hash diferente envia'
+  assert_contem 'mode\":\"add' "$(cat "$base/opcoes")" 'no modo pedido'
+  assert_nao_contem 'status=dispensado' "$DBX_SAIDA" 'nada dispensado'
+}
 
-  # 3. Terceiro upload com --forcar: deve forcar o envio mesmo inalterado
+teste_upload_com_modo_overwrite_segue_a_mesma_regra() {
+  # TC-SKP-03 (RF-60(c)).
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"017"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _remoto_arquivo "$base" "$(_hash_de "$origem")"
+  _rodar "$base" upload --modo overwrite "$origem" /r/a.txt
+  assert_contem 'status=dispensado' "$DBX_SAIDA" 'overwrite com hash igual tambem dispensa'
+  assert_igual 0 "$(_harness_contar 'files/upload' "$base/argv")" 'sem envio'
+  _remoto_arquivo "$base" '11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff'
+  _rodar "$base" upload --modo overwrite "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "overwrite com hash diferente conclui; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" 'remoto diferente e sobrescrito'
+  assert_contem 'mode\":\"overwrite' "$(cat "$base/opcoes")" 'em modo overwrite'
+}
+
+teste_upload_com_remoto_ausente_envia_sem_calcular_o_resumo_local() {
+  # TC-SKP-04 (RF-60(d), RF-61(f)): "sem consulta redundante".
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'novo'
+  _remoto_ausente "$base"
+  _rodar "$base" --progresso upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "remoto ausente envia; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" 'envio emitido'
+  assert_nao_contem 'resumo local' "$DBX_ERRO" 'o resumo local nao e calculado nem lido do cache para comparar'
+}
+
+teste_upload_com_falha_na_consulta_do_metadado_envia() {
+  # TC-SKP-05 (RF-60(d)): a falha da consulta NUNCA dispensa o envio e nao
+  # aborta o comando. Mutacao "dispensa quando o get_metadata falha" reprova.
+  local base origem hash variante
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  hash=$(_hash_de "$origem")
+  local -a codigos=(409 200 200 400)
+  local -a corpos=(
+    "{\"error_summary\":\"path/malformed_path/\",\"content_hash\":\"$hash\"}"
+    'resposta que nao e json'
+    '{".tag":"file","name":"a.txt"}'
+    "{\"error_summary\":\"other/\",\"content_hash\":\"$hash\"}"
+  )
+  local esperado=0
+  for variante in "${!codigos[@]}"; do
+    _metadado "$base" "${codigos[$variante]}" "${corpos[$variante]}"
+    _rodar "$base" upload "$origem" /r/a.txt
+    esperado=$((esperado + 1))
+    assert_igual 0 "$DBX_ESTADO" "variante $variante: o comando segue; diagnostico: $DBX_ERRO"
+    assert_igual "$esperado" "$(_harness_contar 'files/upload$' "$base/argv")" \
+      "variante $variante: falha na consulta leva ao envio"
+  done
+}
+
+teste_upload_com_remoto_pasta_tenta_o_envio() {
+  # TC-SKP-05 (RF-60(e)): remoto que nao e arquivo nao e comparado.
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _metadado "$base" 200 '{".tag":"folder","name":"a.txt"}'
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" 'o envio e tentado como hoje'
+}
+
+teste_upload_nao_dispensa_pelo_cache_quando_o_remoto_mudou_ou_sumiu() {
+  # TC-SKP-06/07 (RF-60(f)): cache valido nao decide. Mutacao "dispensa pelo
+  # cache sem comparar com o remoto" reprova aqui.
+  local base origem hash
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  hash=$(_hash_de "$origem")
+  _remoto_arquivo "$base" "$hash"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_contem 'status=dispensado' "$DBX_SAIDA" 'primeira execucao: hash igual dispensa'
+  assert_igual 1 "$(_registros_de_upload "$base")" 'e o resumo calculado vai ao cache'
+
+  _remoto_arquivo "$base" '11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff'
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" 'remoto alterado: envia, com cache valido'
+
+  _remoto_ausente "$base"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 2 "$(_harness_contar 'files/upload$' "$base/argv")" 'remoto apagado: envia, com cache valido'
+
+  # Mesmo par arquivo/remoto, com e sem cache: decisao identica.
+  _remoto_arquivo "$base" "$hash"
+  _rodar "$base" upload "$origem" /r/a.txt
+  local com_cache=$DBX_SAIDA
+  rm -rf -- "$base/estado"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_contem 'status=dispensado' "$com_cache" 'com cache: dispensa'
+  assert_contem 'status=dispensado' "$DBX_SAIDA" 'sem cache: a mesma decisao'
+  assert_igual 2 "$(_harness_contar 'files/upload$' "$base/argv")" 'nenhum envio a mais'
+}
+
+teste_upload_forcar_e_entrada_padrao_nao_consultam_o_metadado() {
+  # TC-SKP-08 (RF-60(g), (h)).
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _remoto_arquivo "$base" "$(_hash_de "$origem")"
   _rodar "$base" upload --forcar "$origem" /r/a.txt
-  assert_igual 0 "$DBX_ESTADO" "upload com --forcar deve concluir; diagnostico: $DBX_ERRO"
-  assert_igual 2 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao forcada de upload"
+  assert_igual 0 "$DBX_ESTADO" "--forcar envia; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" '--forcar envia mesmo com hash igual'
+  _rodar "$base" upload - /r/b.txt
+  assert_igual 0 "$(_harness_contar 'files/get_metadata' "$base/argv")" \
+    'nem --forcar nem a entrada padrao emitem consulta de comparacao'
+  assert_igual 0 "$(_registros_de_upload "$base")" 'entrada padrao nao tem cache; --forcar grava so arquivo antigo'
+}
 
-  # 4. Quarto upload com arquivo modificado: deve detectar alteracao e enviar
-  printf 'conteudo alterado com novo tamanho\n' >"$origem"
+teste_upload_com_rev_envia_em_update_sem_consulta_de_comparacao() {
+  # TC-SKP-09 (RF-60(i), DIV-27): o servidor faz valer o rev.
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"017"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _remoto_arquivo "$base" "$(_hash_de "$origem")"
+  _rodar "$base" upload --rev 016 "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload --rev conclui; diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_harness_contar 'files/get_metadata' "$base/argv")" 'sem consulta de comparacao'
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" 'envia mesmo com hash remoto igual'
+  assert_contem 'update\":\"016' "$(cat "$base/opcoes")" 'em update com o rev informado'
+}
+
+# ---------------------------------------------------------------------------
+# RF-61 — cache do upload em `lib/state` (namespace `upload-*`)
+# ---------------------------------------------------------------------------
+
+teste_upload_grava_cache_proprio_e_nao_marca_o_par_do_sync_como_visto() {
+  # TC-UPC-01 (RF-61(a)): proteger RF-48.
+  local base
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  mkdir -p "$base/raiz"
+  _origem_antiga "$base/raiz/a.txt" 'conteudo'
+  _remoto_ausente "$base"
+  _resposta_do_envio "$base" "$base/raiz/a.txt"
+  _rodar "$base" upload "$base/raiz/a.txt" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "upload conclui; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_registros_de_upload "$base")" 'upload-* gravado apos o envio'
+  assert_igual 0 "$(_memorias_do_sync "$base")" 'nenhum memoria-* criado pelo upload'
+  _rodar "$base" sync --enviar --espelhar --origem "$base/raiz" --destino /r
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" \
+    'o sync --espelhar seguinte continua exigindo o reconhecimento'
+  assert_contem 'primeira execucao' "$DBX_ERRO" 'pela regra de RF-48'
+}
+
+teste_upload_reescrita_no_mesmo_segundo_com_remoto_antigo_envia() {
+  # TC-UPC-02/03 (RF-61(b)): mesmo segundo, mesmo tamanho, `mtime` restaurado,
+  # remoto igual ao conteudo ANTIGO. Mutacao com `mtime` em segundos e sem
+  # `ctime` reprova aqui.
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'aaaa'
+  _remoto_arquivo "$base" "$(_hash_de "$origem")"
   _rodar "$base" upload "$origem" /r/a.txt
-  assert_igual 0 "$DBX_ESTADO" "upload com arquivo modificado deve concluir; diagnostico: $DBX_ERRO"
-  assert_igual 3 "$(_harness_contar 'files/upload$' "$base/argv")" "deve emitir requisicao apos alteracao"
+  assert_contem 'status=dispensado' "$DBX_SAIDA" 'conteudo antigo igual ao remoto: dispensa'
+  assert_igual 1 "$(_registros_de_upload "$base")" 'resumo antigo no cache'
+  _esperar_tique_do_ctime "$origem"
+  printf 'bbbb' >"$origem"
+  touch -d '@1700000000.250000000' "$origem"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" \
+    'conteudo novo com o mesmo mtime e tamanho e enviado'
+}
+
+teste_upload_nao_grava_cache_quando_a_origem_muda_durante_o_envio() {
+  # TC-UPC-04 (RF-61(c)): mutacao que grave sem a segunda leitura de `stat`
+  # reprova aqui.
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _remoto_ausente "$base"
+  _resposta_do_envio "$base" "$origem"
+  printf '%s' "$origem" >"$base/alterar_durante_envio"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "o envio conclui; diagnostico: $DBX_ERRO"
+  assert_igual 'CONTEUDO' "$(cat "$origem")" 'o duplo alterou a origem durante o envio'
+  assert_igual 0 "$(_registros_de_upload "$base")" 'stat divergente antes/depois nao grava'
+}
+
+teste_upload_sem_cache_para_arquivo_recente_vazio_ou_fluxo() {
+  # TC-UPC-05/06 (RF-61(d), (e)).
+  local base
+  base=$(_ambiente '{"name":"a.txt","rev":"016","session_id":"S-1","content_hash":"11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"}')
+  _remoto_ausente "$base"
+  printf 'recente' >"$base/recente.txt"
+  _rodar "$base" upload "$base/recente.txt" /r/recente.txt
+  assert_igual 0 "$DBX_ESTADO" "recente envia; diagnostico: $DBX_ERRO"
+  : >"$base/vazio.txt"
+  touch -d '@1700000000' "$base/vazio.txt"
+  _rodar "$base" upload "$base/vazio.txt" /r/vazio.txt
+  assert_igual 0 "$DBX_ESTADO" "vazio envia; diagnostico: $DBX_ERRO"
+  printf '%s' '{"session_id":"S-1"}' >"$base/corpo"
+  _rodar "$base" upload - /r/fluxo.txt
+  assert_igual 0 "$DBX_ESTADO" "fluxo envia; diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_registros_de_upload "$base")" 'nenhum dos tres e cacheado'
+}
+
+teste_upload_acerto_de_cache_renova_o_carimbo_de_uso() {
+  # RF-61(i): o acerto conta como uso para a poda.
+  local base origem registro idade agora
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _remoto_arquivo "$base" "$(_hash_de "$origem")"
+  _rodar "$base" upload "$origem" /r/a.txt
+  registro=("$base/estado/dbx"/upload-*)
+  touch -d '100 days ago' "${registro[0]}"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_contem 'status=dispensado' "$DBX_SAIDA" 'acerto com hash remoto igual dispensa'
+  printf -v agora '%(%s)T' -1
+  idade=$((agora - $(stat -c '%Y' -- "${registro[0]}")))
+  [[ $idade -lt 60 ]] || _harness_falhar 'o acerto renova o carimbo do registro' "idade: $idade s"
+}
+
+teste_upload_falha_ao_gravar_o_cache_nao_muda_o_resultado() {
+  # TC-UPC-08 (RF-61(g)): diretorio de estado alheio.
+  [[ $EUID -ne 0 ]] || pular 'como root todo diretorio pertence ao usuario'
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _remoto_ausente "$base"
+  _resposta_do_envio "$base" "$origem"
+  mkdir -p "$base/estado"
+  ln -s /usr "$base/estado/dbx"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$DBX_ESTADO" "o upload conclui com o mesmo codigo; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" 'envio emitido'
+}
+
+teste_upload_com_segredo_vazio_recusa_antes_da_rede_na_classe_de_rf03() {
+  # QA-P3-02: RF-63(a) ponta a ponta; antes saia com `erro_remoto` (10) e
+  # "envio recusado: sem detalhe", sem o motivo.
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  printf '%s' '{"versao":1,"app_key":"ak","app_secret":"","refresh_token":"rt","raiz_remota":"/"}' \
+    >"$base/config/dbx/credencial.json"
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" "classe de RF-03; diagnostico: $DBX_ERRO"
+  assert_arquivo_ausente "$base/argv" 'nenhuma chamada de rede'
+  assert_contem 'segredo' "$DBX_ERRO" 'o motivo nomeia o segredo'
+}
+
+teste_upload_nao_identifica_a_conta() {
+  # TC-CONTA-03 (RF-61(h), RF-52(b)).
+  local base origem
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  _remoto_arquivo "$base" "$(_hash_de "$origem")"
+  _rodar "$base" upload "$origem" /r/a.txt
+  _remoto_ausente "$base"
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_igual 0 "$(_harness_contar 'get_current_account' "$base/argv")" \
+    'o upload nao emite users/get_current_account'
+}
+
+teste_upload_por_sessao_grava_o_hash_do_canal_de_conteudo() {
+  # TC-UPC-11 (RF-61(j), F-29): no envio por sessao o hash registrado vem de
+  # DBX_TRANSFER_CONTENT_HASH.
+  local base origem registro hash
+  base=$(_ambiente '{"name":"g.bin","rev":"016"}')
+  origem="$base/grande.bin"
+  dd if=/dev/null of="$origem" bs=1 seek=157286401 2>/dev/null ||
+    pular 'nao foi possivel criar arquivo esparso'
+  touch -d '@1700000000.250000000' "$origem"
+  _remoto_ausente "$base"
+  printf '%s' '{"session_id":"S-1"}' >"$base/corpo"
+  _rodar "$base" upload "$origem" /r/g.bin
+  assert_contem 'modo_de_envio=sessao_em_partes' "$DBX_SAIDA" "por sessao; diagnostico: $DBX_ERRO"
+  registro=("$base/estado/dbx"/upload-*)
+  assert_arquivo_existe "${registro[0]}" 'o envio por sessao grava o cache'
+  hash=$(_hash_de "$origem")
+  assert_contem "$hash" "$(tr '\0' '\n' <"${registro[0]}")" 'com o hash do conteudo enviado'
+}
+
+teste_upload_relativo_absoluto_e_ligacao_usam_o_mesmo_cache() {
+  # TC-CAN-01 (RF-62(a)).
+  local base
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  _origem_antiga "$base/a.txt" 'conteudo'
+  ln -s "$base/a.txt" "$base/atalho.txt"
+  _remoto_ausente "$base"
+  _resposta_do_envio "$base" "$base/a.txt"
+  _rodar "$base" upload "$base/a.txt" /r/a.txt
+  (cd "$base" && _rodar "$base" upload ./a.txt /r/a.txt)
+  (cd "$base" && _rodar "$base" upload atalho.txt /r/a.txt)
+  assert_igual 3 "$(_harness_contar 'files/upload$' "$base/argv")" 'tres envios'
+  assert_igual 1 "$(_registros_de_upload "$base")" 'um unico upload-* para os tres caminhos'
+}
+
+teste_upload_nao_usa_sqlite_nem_python_e_preserva_o_legado() {
+  # TC-DEP-03 (RNF-02(c)) e TC-LEG-02 (RNF-33(b)).
+  local base origem legado antes depois
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  origem="$base/local.txt"
+  _origem_antiga "$origem" 'conteudo'
+  mkdir -p "$base/estado/dbx"
+  chmod 700 "$base/estado/dbx"
+  for legado in dbx.db dbx.db-wal dbx.db-shm; do
+    printf 'legado %s' "$legado" >"$base/estado/dbx/$legado"
+    touch -d '@1600000000' "$base/estado/dbx/$legado"
+  done
+  antes=$(cd "$base/estado/dbx" && stat -c '%n %s %Y' dbx.db dbx.db-wal dbx.db-shm && cat dbx.db dbx.db-wal dbx.db-shm)
+  _remoto_arquivo "$base" "$(_hash_de "$origem")"
+  _rodar "$base" upload "$origem" /r/a.txt
+  _rodar "$base" upload "$origem" /r/a.txt
+  assert_contem 'status=dispensado' "$DBX_SAIDA" 'o cache funciona sem sqlite3 nem python3'
+  assert_igual 1 "$(_registros_de_upload "$base")" 'e foi usado'
+  assert_arquivo_ausente "$base/proibido" 'nenhuma invocacao de sqlite3, python3 ou python'
+  depois=$(cd "$base/estado/dbx" && stat -c '%n %s %Y' dbx.db dbx.db-wal dbx.db-shm && cat dbx.db dbx.db-wal dbx.db-shm)
+  assert_igual "$antes" "$depois" 'dbx.db* intactos: conteudo e mtime'
+}
+
+teste_estado_apos_upload_e_sync_so_contem_os_dois_namespaces() {
+  # RNF-26: o estado persistente autorizado e `memoria-*` e `upload-*`.
+  local base nome intrusos=''
+  base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  mkdir -p "$base/raiz"
+  _origem_antiga "$base/raiz/a.txt" 'conteudo'
+  _remoto_ausente "$base"
+  _resposta_do_envio "$base" "$base/raiz/a.txt"
+  printf '%s' '{"entries":[],"has_more":false}' >"$base/listagem"
+  _rodar "$base" upload "$base/raiz/a.txt" /r/a.txt
+  _rodar "$base" sync --enviar --origem "$base/raiz" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync conclui; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_registros_de_upload "$base")" 'um upload-*'
+  assert_igual 1 "$(_memorias_do_sync "$base")" 'uma memoria-*'
+  for nome in "$base/estado/dbx"/* "$base/estado/dbx"/.[!.]*; do
+    [[ -e $nome ]] || continue
+    case ${nome##*/} in memoria-* | upload-*) ;; *) intrusos+=" ${nome##*/}" ;; esac
+  done
+  assert_igual '' "$intrusos" 'nada alem dos dois namespaces no diretorio de estado'
+  assert_igual 700 "$(stat -c '%a' "$base/estado/dbx")" 'diretorio em 0700'
+}
+
+teste_unlink_remove_memorias_temporarios_e_legado() {
+  # TC-LEG-04 (RF-51(f), RNF-33(e)).
+  local base nome
+  base=$(_ambiente '{}')
+  mkdir -p "$base/estado/dbx"
+  for nome in memoria-0123 upload-4567 .memoria.1.AAAA .upload.2.BBBB dbx.db dbx.db-wal dbx.db-shm; do
+    printf 'x' >"$base/estado/dbx/$nome"
+  done
+  _rodar "$base" unlink --confirmar
+  assert_igual 0 "$DBX_ESTADO" "unlink conclui; diagnostico: $DBX_ERRO"
+  assert_arquivo_ausente "$base/estado/dbx" 'o diretorio de estado sai inteiro, com os quatro tipos'
 }
 
 teste_upload_de_diretorio_transfere_recursivamente() {

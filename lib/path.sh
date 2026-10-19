@@ -283,6 +283,21 @@ _dbx_path_resolver_fisico() {
   DBX_PATH_RESULTADO=${acumulado:-/}
 }
 
+# dbx_path_local_canonico <caminho> — caminho fisico absoluto, em DBX_PATH_RESULTADO.
+#
+# RF-62: CHAVE do cache de `content_hash` (`lib/state`). Relativo, absoluto e
+# ligacao simbolica para o mesmo arquivo — inclusive no ultimo componente — caem
+# na mesma chave. Reaproveita o resolvedor fisico acima, sem substituicao de
+# comando (RNF-24). So define a chave: nenhuma decisao de transferir ou apagar
+# usa este caminho (RF-62(d)), e ele nao substitui `dbx_path_local_confinar`.
+dbx_path_local_canonico() {
+  local caminho=${1-}
+  DBX_PATH_RESULTADO=''
+  [[ -n $caminho ]] || return "$DBX_PATH_USO_INVALIDO"
+  [[ $caminho == /* ]] || caminho="$PWD/$caminho"
+  _dbx_path_resolver_fisico "$caminho"
+}
+
 # dbx_path_local_confinar <raiz_local> <caminho> [raiz_total]
 #
 # `raiz_total` tem o mesmo significado do confinamento remoto: autoriza

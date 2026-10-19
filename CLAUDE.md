@@ -12,7 +12,7 @@
 | Projeto | `dropbox_sync` — CLI em shell script para integracao com Dropbox API v2 |
 | Stack | Shell script (Linux `bash` 4.4+ e POSIX `sh`) + `cURL` (unica dependencia de rede) |
 | Arquitetura | Camada de dominio e utilitarios em `lib/`, comandos em `commands/`, entrypoint em `bin/` |
-| Persistencia | Cache de metadados SQLite em `lib/db.sh` e memoria de desempenho em `lib/state.sh`; credencial em `~/.config/dropbox_sync/` |
+| Persistencia | Cache unico de `content_hash` em `lib/state.sh` (memoria do sync e do upload, sem dependencia alem de cURL); credencial em `~/.config/dropbox_sync/` |
 | Testes | Harness proprio com saida TAP 13 em `tests/run.sh` |
 | Linter | `shellcheck` (0.10.0+), verificado nos modos posix e bash |
 | Hooks | Ativos em `.claude/settings.json`: resumo de estado em `SessionStart` e guarda de comandos em `PreToolUse` |

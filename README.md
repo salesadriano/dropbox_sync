@@ -15,11 +15,11 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 
 - **Zero Dependências Pesadas:** Funciona exclusivamente com `bash` 4.4+ e `cURL` padrão do sistema.
 - **Suporte Transparente a Arquivos e Pastas:** `upload` e `download` operam nativamente tanto com arquivos individuais quanto com pastas inteiras recursivamente.
-- **Cache Local Relacional SQLite (`lib/db.sh`):**
-  - Mantém base SQLite em `~/.local/state/dbx/dbx.db` com metadados locais (`tamanho`, `mtime`, `content_hash`) e histórico de operações bem-sucedidas.
-  - Dispensa automaticamente envios redundantes no `upload` quando o arquivo local permanece inalterado para o destino (`status=dispensado`, `motivo=inalterado`), economizando banda e tempo.
-  - Suporte a re-envio forçado via `--forcar` / `--force`.
-  - Motor resiliente híbrido: usa `sqlite3` CLI nativo com fallback automático e transparente para o módulo `sqlite3` do `python3`.
+- **Cache Local Único de `content_hash` (`lib/state.sh`), sem dependência adicional:**
+  - Guarda em `~/.local/state/dbx/` (diretório `0700`, arquivos `0600`) o `content_hash` já calculado de cada arquivo, para não reler o que não mudou: `memoria-*` para o `sync` e `upload-*` para o `upload` de arquivo.
+  - O reaproveitamento exige a identidade inteira do arquivo (`mtime` e `ctime` com nanossegundos, dispositivo, inode e tamanho); o cache nunca decide nada sozinho.
+  - O `upload` só dispensa o envio (`status=dispensado`) quando o `content_hash` **remoto**, consultado na hora, é igual ao do arquivo local — inclusive com `--modo overwrite`. Remoto ausente ou consulta com falha levam ao envio; `--forcar`/`--force`, `--rev` e a entrada padrão (`-`) sempre enviam.
+  - **Legado:** versões anteriores mantinham um cache SQLite em `~/.local/state/dbx/dbx.db` (com `dbx.db-wal` e `dbx.db-shm`). Ele ficou obsoleto: nada mais o lê, escreve, migra ou apaga. O arquivo **contém caminhos absolutos de arquivos enviados** e pode ser removido à mão com `rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/dbx/dbx.db"*`; o `dbx unlink` o remove junto com o diretório de estado. `sqlite3` e `python3` não são usados.
 - **Integridade Ponta a Ponta:** Cálculo e conferência do algoritmo de resumo oficial (`content_hash`) do Dropbox para uploads, downloads e sincronizações.
 - **Progresso de Operações em Tempo Real (`-p` / `--progresso`):**
   - Acompanhamento visual de status e etapas de transferência em `upload`, `download` e `sync`.
@@ -133,7 +133,7 @@ As opções globais podem ser informadas antes do comando (ou nos comandos opera
 dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] [--debug] <comando> [argumentos]
 ```
 - `--debug`: Ativa o modo de depuração operacional com diagnóstico de ambiente e erro detalhado do sistema operacional em `stderr` (equivalente à variável `DBX_DEBUG=1`). Preserva integralmente a confidencialidade de tokens e credenciais.
-- `--progresso`, `--progress`, `-p`: Ativa explicitamente a exibição de progresso em tempo real em `stderr` (útil para scripts e visualização interativa). Durante a análise dos arquivos, lista cada arquivo e o resultado detalhado da análise (status de cache SQLite/memória, hash calculado, idêntico/dispensado, modificado, novo ou ausente na origem).
+- `--progresso`, `--progress`, `-p`: Ativa explicitamente a exibição de progresso em tempo real em `stderr` (útil para scripts e visualização interativa). Durante a análise dos arquivos, lista cada arquivo e o resultado detalhado da análise (resumo reaproveitado do cache em memória (`lib/state`), hash calculado, idêntico/dispensado, modificado, novo ou ausente na origem).
 - `--sem-progresso`, `--no-progress`: Desativa explicitamente a exibição de progresso (modo silencioso forçado mesmo em terminais interativos).
 - `--json`: Formata a saída padrão em objetos JSON estruturados.
 - `--null`: Utiliza o terminador `\0` (compatível com `xargs -0`).
@@ -219,6 +219,10 @@ dbx sync -p --receber --origem /pasta_remota --destino /meus_dados
 # Sincronização com espelhamento (exclui no destino itens ausentes na origem)
 dbx sync -p --enviar --origem /dados --destino /backup --espelhar
 ```
+
+> **Origem vazia com `--espelhar`:** se a origem está vazia (`--enviar`: a raiz local não tem nenhum arquivo; `--receber`: a listagem remota está vazia) e há algo a apagar no destino, a execução é **recusada inteira, antes de qualquer escrita**, haja ou não memória do par — é o caso de uma montagem que não subiu. Só `--permitir-origem-vazia` libera; `--confirmar` não basta. Com `--dry-run`, o plano anuncia `recusaria=origem vazia`, não lista exclusões e sai com `0`. Origem vazia sem nada a apagar no destino segue normalmente.
+>
+> **Primeira execução com `--espelhar`:** sobre um par de raízes ainda não visto, o `sync` exige `--dry-run` antes ou `--confirmar`. **Se a identificação da conta falhar** (`users/get_current_account`), o `sync` segue sem memória auxiliar e, com `--espelhar`, as **exclusões ficam desabilitadas naquela execução**, nos dois sentidos: envios e recebimentos acontecem, o motivo sai no relatório (`exclusao_desabilitada=conta nao identificada` na saída estruturada) e o código de saída é diferente de `0`. O `--confirmar` **não** reabilita as exclusões — sem a memória, nada protegeria o destino de uma origem que ficou vazia por engano.
 
 ---
 

@@ -594,4 +594,79 @@ teste_acumular_encerrar_exige_area_de_trabalho_gravavel() {
     dbx_hash_acumular_encerrar '/caminho/que/nao/existe/nunca/trabalho'
 }
 
+# ---------------------------------------------------------------------------
+# RF-38(e), RF-61(b) — identidade forte do arquivo (fase 3, DIV-26)
+#
+# Definicao unica, no dominio do resumo: decide quando um `content_hash` ja
+# calculado pode ser reaproveitado sem reler o arquivo.
+# ---------------------------------------------------------------------------
+
+# _esperar_tique_do_ctime <arquivo> — espera POR CONDICAO, e nao por tempo fixo,
+# ate o relogio de carimbos do nucleo avancar alem do `ctime` do arquivo.
+#
+# Medido neste ambiente: duas escritas no mesmo tique do relogio grosso do nucleo
+# (da ordem de milissegundos) recebem o MESMO `ctime`. O cenario do requisito e
+# "reescrita no mesmo SEGUNDO", nao no mesmo tique; sem esta espera o caso
+# reprovava de forma intermitente por medir o tique, e nao a regra.
+_esperar_tique_do_ctime() {
+  local arquivo=$1 sonda=$1.sonda referencia
+  referencia=$(stat -c '%z' -- "$arquivo")
+  : >"$sonda"
+  while [[ $(stat -c '%z' -- "$sonda") == "$referencia" ]]; do
+    chmod 600 "$sonda"
+  done
+  rm -f -- "$sonda"
+}
+
+teste_identidade_traz_mtime_e_ctime_com_nanossegundos_dispositivo_inode_e_tamanho() {
+  local base
+  base=$(mktemp -d "$DBX_TESTES_TMP/ident.XXXXXX")
+  printf 'abc' >"$base/f"
+  touch -d '@1700000000.123456789' "$base/f"
+  dbx_hash_identidade "$base/f"
+  assert_igual 0 $? 'arquivo legivel tem identidade'
+  assert_igual "$(stat -c '%Y|%y|%z|%d|%i|%s' -- "$base/f")" "$DBX_HASH_IDENTIDADE" 'campo a campo'
+  assert_contem '.123456789' "$DBX_HASH_IDENTIDADE" 'nanossegundos exatos, sem arredondamento'
+  assert_igual 3 "$DBX_HASH_TAMANHO_ARQUIVO" 'tamanho publicado na mesma leitura'
+}
+
+teste_reescrita_no_mesmo_segundo_com_mesmo_tamanho_muda_a_identidade() {
+  # O caso que motivou a identidade forte: mesmo segundo, mesmo tamanho e
+  # `mtime` restaurado — so o `ctime` (que o usuario nao define) denuncia.
+  local base antes depois
+  base=$(mktemp -d "$DBX_TESTES_TMP/ident.XXXXXX")
+  printf 'aaaa' >"$base/f"
+  touch -d '@1700000000.500000000' "$base/f"
+  dbx_hash_identidade "$base/f"
+  antes=$DBX_HASH_IDENTIDADE
+  _esperar_tique_do_ctime "$base/f"
+  printf 'bbbb' >"$base/f"
+  touch -d '@1700000000.500000000' "$base/f"
+  dbx_hash_identidade "$base/f"
+  depois=$DBX_HASH_IDENTIDADE
+  assert_diferente "$antes" "$depois" 'conteudo novo com o mesmo mtime e tamanho nao pode ter a mesma identidade'
+}
+
+teste_identidade_de_caminho_inexistente_falha_sem_publicar() {
+  local base
+  base=$(mktemp -d "$DBX_TESTES_TMP/ident.XXXXXX")
+  DBX_HASH_IDENTIDADE='residuo'
+  DBX_HASH_TAMANHO_ARQUIVO='residuo'
+  dbx_hash_identidade "$base/nao-existe"
+  assert_diferente 0 $? 'sem arquivo nao ha identidade'
+  assert_igual '' "$DBX_HASH_IDENTIDADE" 'canal limpo na falha'
+  assert_igual '' "$DBX_HASH_TAMANHO_ARQUIVO" 'canal limpo na falha'
+}
+
+teste_identidade_mora_no_dominio_e_nao_em_quem_a_consome() {
+  # Direcao de dependencia (System Design, camadas): `lib/state` (adaptador) e
+  # `lib/walk` consomem a identidade de `lib/hash` (dominio); nenhum deles a
+  # redefine, e `lib/state` nao carrega `lib/walk`.
+  local achados
+  achados=$(grep -nE "stat -c ['\"]?%Y\|" "$DBX_HARNESS_RAIZ"/lib/*.sh | grep -v '/hash.sh:' || true)
+  assert_igual '' "$achados" "identidade redefinida fora de lib/hash: $achados"
+  assert_igual 0 "$(_harness_contar '^\. .*walk\.sh' "$DBX_HARNESS_RAIZ/lib/state.sh")" \
+    'lib/state nao depende de lib/walk'
+}
+
 harness_executar "$@"

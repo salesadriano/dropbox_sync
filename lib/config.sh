@@ -366,9 +366,11 @@ dbx_config_carregar() {
   # revisar a linha de comando, `3` manda reconfigurar, que e o que o operador
   # de fato precisa fazer.
   #
-  # `app_secret` fica de fora da exigencia porque aplicativo sem segredo e
-  # legitimo, e `dbx_auth_renovar` ja o trata como opcional. `raiz_remota`
-  # tambem: vazio e a raiz da conta na representacao da API.
+  # `app_secret` VAZIO passa por aqui de proposito, e nao por ser opcional:
+  # desde RF-63 (fase 3) o segredo e obrigatorio, e quem recusa a falta dele e
+  # `lib/auth`, antes da rede, com a mesma classe deste ramo (`configuracao`) e
+  # um motivo que nomeia o segredo — recusar aqui perderia esse motivo.
+  # `raiz_remota` vazia e legitima: e a raiz da conta na representacao da API.
   if [[ -z $DBX_CONFIG_APP_KEY || -z $DBX_CONFIG_REFRESH_TOKEN ]]; then
     _dbx_config_encerrar_analise incompleto
     return $?

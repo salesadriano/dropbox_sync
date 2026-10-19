@@ -87,13 +87,6 @@ verificar_prerequisitos() {
     erro "Utilitario de integridade sha256sum ou shasum nao encontrado."
   fi
 
-  # SQLite3 (recomendado para cache local de alto desempenho)
-  if command -v sqlite3 >/dev/null 2>&1; then
-    ok "sqlite3 detectado: cache de metadados e operacoes de alta performance ativo."
-  else
-    aviso "sqlite3 nao detectado. A ferramenta funciona normalmente, mas instalar sqlite3 acelerara analises locais repetidas."
-  fi
-
   ok "Pre-requisitos validados com sucesso."
 }
 

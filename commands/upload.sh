@@ -182,18 +182,44 @@ dbx_cmd_upload_executar() {
     return 0
   fi
 
-  # shellcheck source=lib/db.sh
-  . "${BASH_SOURCE[0]%/*}/../lib/db.sh"
-  dbx_db_inicializar || :
+  # RF-60, RF-61: cache do `content_hash` local em `lib/state`, namespace
+  # `upload-*`. A chave e o caminho fisico canonico (RF-62); o arquivo lido,
+  # medido e enviado continua sendo `origem`, como o operador o nomeou.
+  # RF-63(a), QA-P3-02: credencial incompleta recusa aqui, antes da rede, com a
+  # classe e o motivo da autenticacao — a consulta abaixo falharia em silencio.
+  # Gemeo de `commands/sync.sh` (mesmo conjunto, ver `dbx_auth_preparar`).
+  dbx_auth_preparar || {
+    dbx_cmd_falhar "$DBX_AUTH_CLASSE" "${DBX_AUTH_MOTIVO:-nao foi possivel obter o token de acesso}"
+    return $?
+  }
 
-  local tam_local='' mtime_local=''
-  if [[ $origem != '-' ]]; then
-    tam_local=$(stat -c '%s' "$origem" 2>/dev/null)
-    mtime_local=$(stat -c '%Y' "$origem" 2>/dev/null)
-    if [[ $forcar != 'sim' && -n $tam_local && -n $mtime_local ]]; then
-      dbx_progress_mensagem "[upload] analisando arquivo local: $origem"
-      if ! dbx_db_arquivo_alterado "$origem" "$remoto" "upload" "$tam_local" "$mtime_local"; then
-        dbx_progress_mensagem "[upload] resultado da analise: $origem -> inalterado (envio dispensado)"
+  # shellcheck source=lib/state.sh
+  . "${BASH_SOURCE[0]%/*}/../lib/state.sh"
+  local chave='' identidade_antes=''
+  if [[ $origem != '-' ]] && dbx_path_local_canonico "$origem"; then
+    chave=$DBX_PATH_RESULTADO
+    dbx_hash_identidade "$origem" && identidade_antes=$DBX_HASH_IDENTIDADE
+  fi
+
+  # RF-60(g), (h), (i): `--forcar`, entrada padrao e `--rev` nao comparam.
+  if [[ $forcar != 'sim' && $origem != '-' && -z $rev ]]; then
+    dbx_progress_mensagem "[upload] analisando arquivo local: $origem (consultando o destino remoto)"
+    if ! _dbx_cmd_upload_hash_remoto "$remoto"; then
+      dbx_progress_mensagem "[upload] resultado da analise: $origem -> sem arquivo comparavel no destino (necessita envio)"
+    else
+      local hash_local=''
+      if [[ -n $chave ]] && dbx_state_upload_consultar "$chave" "$identidade_antes"; then
+        hash_local=$DBX_STATE_HASH
+        dbx_progress_mensagem "[upload] resumo local em cache: $origem"
+      else
+        dbx_progress_mensagem "[upload] calculando resumo local: $origem"
+        dbx_hash_publicar_arquivo "$origem" && hash_local=$DBX_HASH_RESULTADO
+      fi
+      if [[ -n $hash_local ]] && dbx_hash_iguais "$hash_local" "$DBX_CMD_UPLOAD_HASH_REMOTO"; then
+        dbx_progress_mensagem "[upload] resultado da analise: $origem -> conteudo identico no destino (envio dispensado)"
+        # A gravacao acontece tambem na dispensa: com resumo calculado, guarda;
+        # com acerto, renova o carimbo de uso que a poda le (RF-61(g), (i)).
+        _dbx_cmd_upload_gravar_cache "$chave" "$hash_local" "$identidade_antes" "$origem"
         dbx_cmd_iniciar_saida
         dbx_output_campo operacao upload
         dbx_output_campo origem "$origem"
@@ -203,7 +229,7 @@ dbx_cmd_upload_executar() {
         dbx_output_render
         return 0
       fi
-      dbx_progress_mensagem "[upload] resultado da analise: $origem -> alterado/novo (necessita envio)"
+      dbx_progress_mensagem "[upload] resultado da analise: $origem -> conteudo diferente no destino (necessita envio)"
     fi
   fi
 
@@ -254,18 +280,65 @@ dbx_cmd_upload_executar() {
   fi
   _dbx_cmd_metadado_em
 
-  local hash_gravado='' rev_gravado=''
-  _dbx_cmd_campo content_hash && hash_gravado=$DBX_CMD_LIDO
-  _dbx_cmd_campo rev && rev_gravado=$DBX_CMD_LIDO
-  if [[ -z $hash_gravado && -n ${DBX_TRANSFER_HASH:-} ]]; then
-    hash_gravado=$DBX_TRANSFER_HASH
-  fi
-  if [[ $origem != '-' && -n $hash_gravado && -n $tam_local && -n $mtime_local ]]; then
-    dbx_db_salvar_metadado "$origem" "$tam_local" "$mtime_local" "$hash_gravado" || :
-    dbx_db_salvar_operacao "$origem" "$remoto" "upload" "$tam_local" "$mtime_local" "$hash_gravado" "$rev_gravado" || :
+  # RF-61(g), (j): o resumo do que foi enviado. Por sessao, o calculado sobre os
+  # bytes lidos (`DBX_TRANSFER_CONTENT_HASH`, F-29); em requisicao unica, o que o
+  # servico publicou para o conteudo recebido. Em ambos, so e guardado se a
+  # identidade da origem nao mudou entre antes e depois do envio.
+  if [[ $origem != '-' ]]; then
+    local hash_enviado=''
+    if [[ $por_sessao == 'sim' ]]; then
+      hash_enviado=${DBX_TRANSFER_CONTENT_HASH:-}
+    elif _dbx_cmd_campo content_hash; then
+      hash_enviado=$DBX_CMD_LIDO
+    fi
+    _dbx_cmd_upload_gravar_cache "$chave" "$hash_enviado" "$identidade_antes" "$origem"
   fi
 
   _dbx_cmd_encerrar_consulta
   dbx_output_render
+  return 0
+}
+
+# _dbx_cmd_upload_hash_remoto <caminho_remoto_api>
+#
+# RF-60: `get_metadata` do destino. Status 0 so quando o remoto e ARQUIVO com
+# `content_hash` bem formado, publicado em DBX_CMD_UPLOAD_HASH_REMOTO. Qualquer
+# outra coisa — `not_found`, pasta, falha de rede, resposta ilegivel — e status
+# 1, e o chamador envia: a falha da consulta nunca dispensa o envio e nao aborta
+# o comando (RF-60(d)). Nada e emitido na saida, nem diagnostico.
+DBX_CMD_UPLOAD_HASH_REMOTO=''
+_dbx_cmd_upload_hash_remoto() {
+  local remoto=$1 tipo='' hash=''
+  DBX_CMD_UPLOAD_HASH_REMOTO=''
+  dbx_json_escapar_cadeia "$remoto"
+  dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/get_metadata' \
+    "{\"path\":\"$DBX_JSON_ESCAPADO\"}" sim >/dev/null 2>&1 || return 1
+  dbx_json_contexto upload_metadado || return 1
+  if dbx_json_analisar "$DBX_HTTP_CORPO" 2>/dev/null; then
+    dbx_json_valor '.tag' >/dev/null 2>&1 && tipo=$DBX_JSON_RESULTADO
+    dbx_json_valor content_hash >/dev/null 2>&1 && hash=$DBX_JSON_RESULTADO
+  fi
+  dbx_json_descartar upload_metadado
+  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  # shellcheck disable=SC2034  # canais publicos alheios, limpos aqui
+  DBX_JSON_RESULTADO=''
+  # shellcheck disable=SC2034
+  DBX_HTTP_CORPO=''
+  [[ $tipo == 'file' ]] || return 1
+  dbx_hash_formato_valido "$hash" || return 1
+  DBX_CMD_UPLOAD_HASH_REMOTO=$hash
+  return 0
+}
+
+# _dbx_cmd_upload_gravar_cache <chave> <resumo> <identidade_antes> <origem>
+#
+# A segunda leitura de `stat` e feita AQUI, depois do calculo ou do envio, e a
+# admissao e de `lib/state` (RF-61(c), (d), (e)). Falha de gravacao — inclusive
+# diretorio de estado alheio — nao muda resultado nem codigo de saida.
+_dbx_cmd_upload_gravar_cache() {
+  local chave=$1 resumo=$2 antes=$3 origem=$4
+  [[ -n $chave && -n $resumo && -n $antes ]] || return 0
+  dbx_hash_identidade "$origem" || return 0
+  dbx_state_upload_gravar "$chave" "$resumo" "$antes" "$DBX_HASH_IDENTIDADE" >/dev/null 2>&1 || :
   return 0
 }

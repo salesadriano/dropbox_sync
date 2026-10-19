@@ -4,8 +4,8 @@
 |---|---|
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
-| Data | 2026-08-19 |
-| Versao | **v0.9** |
+| Data | 2026-10-18 |
+| Versao | **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
 | Status | 🔴 **Duas decisoes novas, devolvidas pela implementacao de `RF-31`/`RF-08`: `DP-29` e `DP-30`.** Nenhuma delas bloqueia a validacao da entrega atual; ambas bloqueiam declarar o requisito correspondente **integralmente** atendido. 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
@@ -60,6 +60,7 @@
 | **DP-31** | Integridade de dados no `sync` e no `download` (fase P1) | ✅ **Resolvida em 2026-10-18** — ver secao propria; gera `RF-54` a `RF-57`, `RNF-29` | — |
 | **DP-32** | Skip do upload condicionado ao `content_hash` remoto | ✅ **Resolvida em 2026-10-18 — implementacao na fase 3 (backlog `F-26`)** | — |
 | **DP-33** | Timeouts, retentativas, retomada do upload e falhas por item (fase P2) | ✅ **Resolvida em 2026-10-18 — ver secao propria**; gera `RNF-30`, `RF-58`, `RF-59`, emenda `RNF-07`, `RF-09`, `RF-32`; encerra `DIV-22` | — |
+| **DP-34** | Cache unico, skip do upload, chave canonica e segredo obrigatorio (fase 3) | ✅ **Resolvida em 2026-10-18 — ver secao propria**; gera `RF-60` a `RF-63`, `RNF-33`; emenda `RF-33`, `RF-38`, `RF-42`, `RF-51`, `RF-52`, `RNF-02`, `RNF-25`, `RNF-26`, `RNF-32`; resolve `DIV-25`; abre e, no mesmo dia, o Tech Lead resolve `DIV-26` a `DIV-29` | — |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
 | DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |
@@ -686,6 +687,25 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 5. **Entram na fase 2:** `F-28` (→ `RF-32(b)`), `F-30` e `F-33` e `QA-05` (→ `RNF-32`), `F-31` (→ `RNF-31`).
 
 **Pontos propostos pelo Business Analyst e decididos depois pelo Tech Lead (memoria `2026-10-18-2045-detalhes-tecnicos-rede-p2`)** (listados no registro de entrega): leitura de "5 tentativas" como total com a primeira inclusa; cada retomada consumir uma tentativa; tratamento de `Retry-After` em formato de data HTTP (hoje tratado como invalido, caindo no recuo); recusa de arquivo cujo tamanho mudou durante o envio.
+
+### DP-34 — Cache unico, skip do upload, chave canonica e segredo (fase 3) ✅ **RESOLVIDA (em implementacao em `feature/cache-unico-p3`)**
+
+> Escrita **na mesma rodada** em que as decisoes foram recebidas (`RSK-26`). Memorias: `2026-10-18-2243-cache-unico-e-segredo`, `2026-10-18-2243-cache-do-upload`, `2026-10-18-1745-skip-upload-condicionado`. Handoff do DBA: [parecer](../reviews/2026-10-18-2243-parecer-dba-cache-unico.md).
+
+**Decisoes do solicitante (2026-10-18):**
+
+1. **Cache unico:** o `lib/state` e o unico cache de `content_hash`; o `lib/db` (SQLite) e a dependencia de `sqlite3`/`python3` saem; o `upload` passa a usar o `lib/state` → `RF-38(a)`, `RNF-02`, `RNF-26`, `RNF-33`; resolve `DIV-25`.
+2. **Skip do upload** (`DP-32`, agora com criterios): dispensa so com `content_hash` remoto (`get_metadata`) igual ao local, inclusive com `--modo overwrite`; remoto ausente ou falha da consulta leva ao envio; pasta remota mantem o conflito atual; nenhum skip so pelo cache → `RF-60`; fecha `RSK-37`.
+3. **O cache do `upload` nao se vincula a conta:** emenda do `RF-52` para o `upload`, porque o registro so guarda dado local e a protecao entre contas vem do hash remoto → `RF-52(b)`, `RF-61(h)`.
+4. **Poda:** acima de 10.000 entradas, remover as nao usadas ha mais de 90 dias → `RF-61(i)`.
+5. **Autenticacao:** `client_secret` obrigatorio tambem na biblioteca; PKCE nao e implementado e sai do System Design como disponivel; fica no backlog como alternativa futura → `RF-63`, `F-35`.
+6. **Paralelismo e APIs em lote:** adiados, no backlog, com medicao previa → `F-34`.
+
+**Recomendacoes do DBA aceitas pelo Tech Lead (memoria `2026-10-18-2243-cache-do-upload`):** namespace proprio do `upload`; sem cache para entrada padrao, origem nao regular e arquivo vazio; identidade com inode, dispositivo e `mtime`/`ctime` em ns, `stat` antes e depois, regra anti-corrida de 2 s → `RF-61`; diretorio de estado em `0700` → `RNF-25(b)`; o `sync` grava so as entradas visitadas e, sem conta, segue sem memoria → `RF-38(b)`, `RF-52(a)`; `dbx.db*` legado intacto e documentado → `RNF-33`; chave pelo caminho fisico canonico, tambem na raiz do `sync` → `RF-62`.
+
+**Tambem no escopo da fase, sem decisao nova:** `F-29` (`DBX_TRANSFER_HASH`) → `RF-61(j)`; testes diretos de `lib/state.sh` e `lib/cmd.sh` → `RNF-32(d)`; `install.sh` sem `sqlite3` → `RNF-33(d)`; subshells duplicados em `lib/http` (P3.4) sao refatoracao sem mudanca de comportamento observavel, sem requisito novo, coberta pela suite existente de `lib/http`.
+
+**Pontos que o Business Analyst nao resolveu, RESOLVIDOS em 2026-10-18 por decisao do Tech Lead (memoria `2026-10-18-2243-cache-do-upload`): `RF-38(e)` identidade forte tambem no `sync`; `RF-60(i)` sem skip com `--rev`; `RF-52(a)` falha segura documentada na ajuda e no `README` (REVISTA no mesmo dia apos achado de seguranca do Senior Developer: sem identidade de conta a propagacao de exclusao fica desabilitada na execucao e `--confirmar` nao reabilita, `RF-41(e)`); `RNF-25(b1)` correcao para `0700` do diretorio do usuario ou recusa como `permissao`. Registro original:** `DIV-26` (identidade fraca da memoria do `sync`), `DIV-27` (`upload --rev` com hash igual), `DIV-28` (sem conta, `RF-48` trata o par como nunca visto), `DIV-29` (diretorio de estado ja existente em `0755`). **Interpretacao do Business Analyst, CONFIRMADA pelo Tech Lead em 2026-10-18:** em `RF-61(i)`, "uso" inclui o acerto de cache, que renova o carimbo do arquivo; sem isso, uma entrada usada a cada dia mas nunca regravada seria podada.
 
 
 ---

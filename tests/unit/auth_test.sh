@@ -576,4 +576,96 @@ teste_revogacao_nao_expoe_credencial_na_linha_de_comando() {
   assert_segredo_ausente 'sl.AC_token_curto' "$DBX_LIDO" 'access token em argv'
 }
 
+# ---------------------------------------------------------------------------
+# RF-63 — `client_secret` obrigatorio tambem na biblioteca (fase 3)
+#
+# PKCE nao e implementado: sem segredo nao ha caminho de token. A recusa vem
+# ANTES da rede, como credencial incompleta (mesma classe de RF-03).
+# ---------------------------------------------------------------------------
+
+teste_renovacao_sem_segredo_e_recusada_antes_da_rede() {
+  # TC-SCR-01.
+  local dir estado
+  dir=$(_duplo 200 "$(_resposta_de_token)")
+  _credencial
+  DBX_CONFIG_APP_SECRET=''
+  PATH=$dir:$PATH dbx_auth_renovar
+  estado=$?
+  # MUDANCA DECLARADA (ciclo 3, QA-P3-02): o ciclo 1 afirmava `uso_invalido` (2);
+  # RF-63(a) exige a classe e o codigo de RF-03, `configuracao` (3).
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$estado" 'credencial incompleta: classe de RF-03'
+  assert_igual 0 "$(_harness_contar . "$dir/argv")" 'nenhuma chamada de rede'
+  assert_contem 'segredo' "$DBX_AUTH_MOTIVO" 'o motivo nomeia a falta do segredo'
+  assert_segredo_ausente "$REFRESH" "$DBX_AUTH_MOTIVO" 'sem exibir valor algum'
+  assert_igual '' "$DBX_AUTH_TOKEN" 'nenhum token publicado'
+}
+
+teste_troca_de_codigo_sem_segredo_e_recusada_antes_da_rede() {
+  # TC-SCR-01.
+  local dir estado
+  dir=$(_duplo 200 "$(_resposta_de_vinculo)")
+  PATH=$dir:$PATH dbx_auth_trocar_codigo "$APP_KEY" '' 'CODIGO_DE_UMA_VEZ'
+  estado=$?
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$estado" 'credencial incompleta: classe de RF-03 (mudanca declarada, QA-P3-02)'
+  assert_igual 0 "$(_harness_contar . "$dir/argv")" 'nenhuma chamada de rede'
+  assert_contem 'segredo' "$DBX_AUTH_MOTIVO" 'o motivo nomeia a falta do segredo'
+  assert_segredo_ausente 'CODIGO_DE_UMA_VEZ' "$DBX_AUTH_MOTIVO" 'sem exibir o codigo'
+  assert_igual '' "$DBX_AUTH_REFRESH_TOKEN" 'nada publicado'
+}
+
+# _formularios_de_token_sem_segredo <arquivo...> — blocos de vetor literal que
+# montam formulario de token (contem `grant_type=`) sem a linha INCONDICIONAL
+# `"client_secret=$VAR"`, ou com o segredo em forma condicional (expansao `:+`,
+# `:-`); e acrescimo de `client_secret` a vetor depois de montado (`+=(`), que e
+# a forma do ramo "sem segredo" que existia antes da fase 3.
+_formularios_de_token_sem_segredo() {
+  awk '
+    /^[[:space:]]*#/ { next }
+    /=\([[:space:]]*$/ { dentro = 1; inicio = FNR; segredo = 0; condicional = 0; token = 0; next }
+    dentro && /^[[:space:]]*\)/ {
+      if (token && (!segredo || condicional))
+        print FILENAME ":" inicio ": formulario de token sem client_secret incondicional"
+      dentro = 0; next
+    }
+    dentro {
+      if ($0 ~ /grant_type=/) token = 1
+      if ($0 ~ /^[[:space:]]*"client_secret=\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"[[:space:]]*$/) segredo = 1
+      else if ($0 ~ /client_secret/) condicional = 1
+      next
+    }
+    /\+=\(.*client_secret/ { print FILENAME ":" FNR ": client_secret acrescentado depois do formulario" }
+  ' "$@"
+}
+
+teste_nenhum_formulario_de_token_sai_sem_client_secret() {
+  # TC-SCR-02 (RF-63(b)), com prova de discriminacao (RSK-27): cada mutacao
+  # reintroduz o ramo "sem segredo" em forma nao obvia e precisa ser acusada.
+  local area mutacao achados
+  area=$(mktemp -d "$DBX_TESTES_TMP/auditoria.XXXXXX")
+  printf '%s\n' 'local -a campos=(' '  "grant_type=refresh_token"' '  "client_id=$k"' ')' \
+    '[[ -n $s ]] && campos+=("client_secret=$s")' >"$area/condicional.sh"
+  printf '%s\n' 'local -a campos=(' '  "grant_type=authorization_code"' \
+    '  ${segredo:+"client_secret=$segredo"}' ')' >"$area/expansao.sh"
+  printf '%s\n' 'local -a form=(' '  "grant_type=refresh_token"' '  "client_id=$k"' ')' >"$area/omitido.sh"
+  printf '%s\n' 'local -a campos=(' '  "grant_type=refresh_token"' '  "client_secret=${s:-}"' ')' >"$area/vazio.sh"
+  for mutacao in condicional expansao omitido vazio; do
+    achados=$(_formularios_de_token_sem_segredo "$area/$mutacao.sh")
+    [[ -n $achados ]] || _harness_falhar "a auditoria nao acusou a mutacao '$mutacao'"
+  done
+  printf '%s\n' 'local -a campos=(' '  "grant_type=refresh_token"' '  "client_secret=$s"' ')' >"$area/bom.sh"
+  assert_igual '' "$(_formularios_de_token_sem_segredo "$area/bom.sh")" 'a forma correta nao e acusada'
+  achados=$(_formularios_de_token_sem_segredo "$DBX_HARNESS_RAIZ"/lib/*.sh)
+  assert_igual '' "$achados" "formulario de token sem client_secret: $achados"
+  assert_contem 'grant_type=refresh_token' "$(cat "$DBX_HARNESS_RAIZ/lib/auth.sh")" \
+    'sem o formulario a auditoria seria vacua'
+}
+
+teste_pkce_nao_e_implementado() {
+  # RF-63(c).
+  local achados
+  achados=$(grep -nE 'code_verifier|code_challenge' "$DBX_HARNESS_RAIZ"/lib/*.sh \
+    "$DBX_HARNESS_RAIZ"/commands/*.sh "$DBX_HARNESS_RAIZ"/bin/dbx || true)
+  assert_igual '' "$achados" "PKCE nao consta do codigo: $achados"
+}
+
 harness_executar "$@"

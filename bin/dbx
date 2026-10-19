@@ -117,11 +117,26 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       sync)
-        printf 'Uso: dbx sync (--enviar | --receber) --origem <dir> --destino <dir> [--espelhar] [--reconhecer-primeira-execucao] [--progresso]\n\n'
+        printf 'Uso: dbx sync (--enviar | --receber) --origem <dir> --destino <dir> [--espelhar] [--confirmar] [--permitir-origem-vazia] [--progresso]\n\n'
         printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n\n'
         printf 'Opcoes:\n'
+        printf '  --espelhar                      Apaga no destino o que nao existe na origem\n'
+        printf '  --confirmar                     Reconhece a primeira execucao com --espelhar\n'
+        printf '  --permitir-origem-vazia         Permite espelhar uma origem VAZIA (apaga o destino)\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
-        printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
+        printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        printf 'Origem vazia (RF-41):\n'
+        printf '  Com --espelhar, origem vazia (--enviar: raiz local sem nenhum arquivo;\n'
+        printf '  --receber: listagem remota vazia) e algo a apagar no destino e recusada\n'
+        printf '  inteira, antes de qualquer escrita, haja ou nao memoria do par. So\n'
+        printf '  --permitir-origem-vazia libera; --confirmar nao basta. Com --dry-run, o plano\n'
+        printf '  anuncia "recusaria", nao lista exclusoes e sai com 0.\n\n'
+        printf 'Aviso (RF-52):\n'
+        printf '  Se a identificacao da conta falhar, o sync segue sem memoria auxiliar: com\n'
+        printf '  --espelhar, as exclusoes ficam DESABILITADAS naquela execucao (envios e\n'
+        printf '  recebimentos seguem), o motivo sai no relatorio e o codigo de saida e diferente\n'
+        printf '  de 0. --confirmar NAO reabilita as exclusoes; sem ele, a primeira execucao com\n'
+        printf '  --espelhar continua pedindo reconhecimento.\n'
         exit 0
         ;;
       download)

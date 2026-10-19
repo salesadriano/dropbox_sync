@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/walk.sh — travessia local por descida (RNF-28, RF-41a, RF-50).
 #
-# Camada: adaptadores. Depende de lib/errors.sh, de dominio.
+# Camada: adaptadores. Depende de lib/errors.sh e lib/hash.sh (identidade do arquivo), de dominio.
 #
 # POR QUE DESCIDA COM NOME RELATIVO, E NAO CAMINHO MONTADO EM TEXTO
 #
@@ -44,6 +44,8 @@ _dbx_walk_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_walk_diretorio=$(cd -P -- "$_dbx_walk_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_walk_diretorio/errors.sh"
+# shellcheck source=lib/hash.sh
+. "$_dbx_walk_diretorio/hash.sh"
 unset _dbx_walk_diretorio
 
 DBX_WALK_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -67,14 +69,15 @@ DBX_WALK_TOTAL=0
 # descritor 3. Roda SEMPRE dentro do subshell montado por `dbx_walk_local`, para
 # que a mudanca de diretorio nao escape para o processo do chamador.
 #
-# Formato do registro: `tamanho<TAB>mtime<TAB>caminho\0`.
+# Formato do registro: `tamanho<TAB>identidade<TAB>caminho\0` (identidade sem TAB;
+# vazia quando o `stat` nao a oferece).
 # O caminho vai POR ULTIMO e o registro termina em byte nulo, porque nome de
 # arquivo aceita tabulacao e quebra de linha — e nao aceita nulo. Qualquer outra
 # ordem perderia nomes legitimos, que e a classe de defeito ja vista tres vezes
 # neste projeto.
 _dbx_walk_descer() {
   local profundidade=$1 prefixo=$2
-  local nome relativo tamanho mtime
+  local nome relativo tamanho identidade
 
   if [[ $profundidade -gt $DBX_WALK_PROFUNDIDADE_MAXIMA ]]; then
     printf 'profundidade maxima excedida em: %s\n' "${prefixo:-.}" >&3
@@ -121,13 +124,20 @@ _dbx_walk_descer() {
       continue
     fi
 
-    if ! tamanho=$(stat -c '%s' -- "$nome" 2>/dev/null || stat -f '%z' "$nome" 2>/dev/null) ||
-      ! mtime=$(stat -c '%Y' -- "$nome" 2>/dev/null || stat -f '%m' "$nome" 2>/dev/null); then
+    # Uma leitura so: tamanho e identidade. Sem `stat -c` (BSD) a identidade
+    # fica vazia, e quem a consome nao reaproveita resumo algum — mais lento,
+    # nunca errado.
+    if dbx_hash_identidade "$nome"; then
+      tamanho=$DBX_HASH_TAMANHO_ARQUIVO
+      identidade=$DBX_HASH_IDENTIDADE
+    elif tamanho=$(stat -f '%z' "$nome" 2>/dev/null); then
+      identidade=''
+    else
       printf 'nao foi possivel inspecionar: %s\n' "$relativo" >&3
       continue
     fi
 
-    printf '%s\t%s\t%s\0' "$tamanho" "$mtime" "$relativo"
+    printf '%s\t%s\t%s\0' "$tamanho" "$identidade" "$relativo"
   done
   return 0
 }
@@ -199,7 +209,7 @@ dbx_walk_local() {
 }
 
 # dbx_walk_ler <arquivo> <nome_do_vetor_de_caminhos> <nome_do_vetor_de_tamanhos>
-#   <nome_do_vetor_de_mtimes>
+#   <nome_do_vetor_de_identidades>
 #
 # Vetores por NOME, como em lib/output e lib/http: passar por cadeia unica
 # perderia nome com quebra de linha, e o nome mantem a procedencia visivel no
@@ -207,16 +217,16 @@ dbx_walk_local() {
 dbx_walk_ler() {
   [[ $# -eq 4 ]] || return "$DBX_WALK_ERRO_USO"
   local arquivo=$1
-  local -n _caminhos=$2 _tamanhos=$3 _mtimes=$4
+  local -n _caminhos=$2 _tamanhos=$3 _identidades=$4
   local registro resto
   _caminhos=()
   _tamanhos=()
-  _mtimes=()
+  _identidades=()
   [[ -r $arquivo ]] || return 0
   while IFS= read -r -d '' registro; do
     _tamanhos+=("${registro%%$'\t'*}")
     resto=${registro#*$'\t'}
-    _mtimes+=("${resto%%$'\t'*}")
+    _identidades+=("${resto%%$'\t'*}")
     _caminhos+=("${resto#*$'\t'}")
   done <"$arquivo"
   return 0
