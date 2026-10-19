@@ -107,7 +107,7 @@ Selecao por arquivo de teste, so dos itens afetados (Regra 8 de `protocolo-tdd`)
 - Barreiras estaticas: `shellcheck` sobre `lib/*.sh`, `commands/*.sh`, `bin/dbx`, `completions/dbx.bash`, `install.sh`, `uninstall.sh`, `scripts/empacotar.sh` e os testes alterados com 0 achados (supressoes novas so SC2034 de canal publico e um SC2004 em nameref de mapa associativo, cada uma com o motivo na linha acima); `scripts/*.sh` POSIX com 0 achados. Auditorias de `lib/` (json, http, preflight, composicao) verdes. Guarda `bash scripts/verificar-remocao-de-casos.sh`: 967 para 979 casos, nenhuma reducao.
 - Testes de seguranca e acesso (Regra 6): sentinelas de app key, app secret, refresh e access token ausentes de stdout e stderr em texto, `--json`, `--json --null` e `--debug`, inclusive com corpo de erro que ecoa os segredos; caminho remoto hostil recusado com 13 antes de qualquer chamada; vinculo simbolico para fora da raiz nao seguido; `verificar` sem escrita (estado byte a byte identico, sem temporario); recusa por espaco sem nenhuma escrita; autocompletar sem `curl`, sem leitura de credencial ou estado, `install.sh` sem `sudo` e `.bashrc` intacto.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: projeto e CLI em shell, sem formulario.
-- Suite completa local no push para a PR de `develop` (Regra 8): PENDENTE
+- Suite completa local no push para a PR de `develop` (Regra 8), pelo comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`): **verde** em `5b94299`, 35 arquivos, 1054 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 206 s; `--conferir` com saida 0. O commit de documentacao que preenche este registro reexecuta a suite antes do proprio push.
 
 ## 5. Gates
 
@@ -143,13 +143,13 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer, nesta
   - DIV-35: o campo `scope` da renovacao nao foi confirmado contra o servico real; sem o campo, a checagem de escopos e aviso.
   - D-1: sem `readlink` e sem `find`, o `dbx` chamado pelo vinculo recusa com codigo 3 (limite aceito pelo Tech Lead).
 - Impacto: dois comandos novos (`verificar`/`verify`, `diagnostico`/`doctor`) e `completar`/`completion`; `sync` ganha `--forcar`/`--force` (so com `--enviar`); `upload` e `sync --enviar` passam a recusar envio que nao cabe no espaco livre, e `--forcar` pula a checagem; `lib/auth` expoe `scope` da renovacao; `install.sh` instala `completions/dbx.bash` e `uninstall.sh` o remove; `bin/dbx` resolve o proprio caminho so com o shell. Sem schema, sem migracao, sem dependencia nova (nenhum utilitario novo fora do preflight).
-- Rollback: `git revert <sha>` basta. Nao ha migracao de dado.
+- Rollback: `git revert 5b94299` (e do commit de documentacao) basta. Nao ha migracao de dado.
 
 ## 8. Links e aceites
 
 - Entradas de memoria: `2026-10-19-1050-consulta-e-diagnostico`, `2026-10-19-1050-aceite-testes-qa-b1`.
 - Documentacao sincronizada: [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md), [system-design.md](../arquitetura/system-design.md), [mapa-modulos.md](../testes/mapa-modulos.md), [README.md](../../README.md).
-- Commit(s): PENDENTE
-- PR: PENDENTE
+- Commit(s): `5b94299` e o commit de documentacao que preenche este registro.
+- PR: [#40](https://github.com/salesadriano/dropbox_sync/pull/40) para `develop`, labels `review` e `enhancement`.
 - Tech Lead: **Aprovado com ressalvas — Tech Lead, 2026-10-19**, valida so com a suite completa local verde.
 - Solicitante: aceite dos `qa-*` registrado em [2026-10-19-1050-aceite-testes-qa-b1](../../.github/agents/memoria/entradas/2026-10-19-1050-aceite-testes-qa-b1.md): `qa_consulta_diagnostico_b1_test.sh` (21 casos, sha256 `9bf94d63…7ed8`), reaprovacao de `qa_cache_unico_p3_test.sh` (`337adb84…c98c`) e de `qa_robustez_rede_p2_test.sh` (`5289027e…ac4a77`).
