@@ -73,7 +73,10 @@ Comando e contagem literais, por arquivo de teste. Pulados: 0 em todos os itens 
 - Barreiras estaticas: `shellcheck lib/*.sh commands/*.sh bin/* scripts/*.sh tests/unit/http_test.sh tests/integracao/comandos_test.sh tests/integracao/sync_test.sh` com saida 0 (shellcheck 0.10.0, modo bash), e `shellcheck tests/integracao/qa_integridade_p1_test.sh` com saida 0. No ciclo 4, o developer registra saida 0. Um SC2153 em `lib/cmd.sh` (`DBX_PATH_RESULTADO`) foi silenciado com justificativa.
 - Testes de seguranca e acesso (regra 6): colisao de caixa (envio, recebimento e simulacao); pasta remota sobre arquivo regular; hash divergente em `download` e `sync`; interrupcao no meio do recebimento; alvo somente leitura (recusa sem efeito); vinculo simbolico para arquivo e vinculo quebrado; area do token em 0700; `umask` do processo preservado. Cada cenario verifica codigo de saida, ausencia de efeito colateral e diagnostico nomeado.
 - Validacao de formularios em E2E (regra 7): Nao aplicavel: o projeto e CLI em shell, sem formulario nem frontend.
-- Suite completa local no push para a PR de `develop` (regra 8): PENDENTE — preenchida apos o commit pelo comando oficial
+- Suite completa local no push para a PR de `develop` (regra 8), pelo comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`):
+  - `d4ef8a1`: **vermelha**, 660 aprovados, 1 reprovado (`json_test` `nenhuma_captura_pode_carregar_byte_externo`, RNF-24), 2 pulados, 68 s; push bloqueado; corrigido no ciclo 5.
+  - `67e521b`: **verde**, 21 arquivos, 667 aprovados, 0 reprovados, 2 pulados (`hash_vetor_oficial_test`, sem rede), 76 s, registrada em 2026-10-19T01:28:18Z; `--conferir` com saida 0. Base do push que abriu a PR.
+  - O commit so de documentacao que preenche este registro tem a suite completa reexecutada antes do proprio push, conforme a guarda.
 
 ## 5. Gates
 
@@ -126,8 +129,9 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Os do
 - Entradas de memoria: `2026-10-18-1745-padroes-integridade-p1`, `2026-10-18-1745-melhorias-em-fases`, `2026-10-18-1745-skip-upload-condicionado`, `2026-10-18-1745-aceite-commit-c492085` (regra 48), `2026-10-18-1745-aceite-testes-qa-p1`, `2026-10-18-1745-reaceite-testes-qa-p1`, `2026-10-18-1745-reaceite-2-testes-qa-p1`, `2026-10-18-1745-selecao-inclui-auditorias-lib`. Links em [.github/agents/memoria/entradas/](../../.github/agents/memoria/entradas/).
 - Documentacao sincronizada: [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), [decisoes-pendentes.md](../requisitos/decisoes-pendentes.md), [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md), [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md), [system-design.md](../arquitetura/system-design.md).
 - Intervencao humana (regra 48): nenhum arquivo desta entrega tem origem humana. O unico item acusado foi o commit `c492085` na `develop`, anterior a esta demanda e fora dela, confirmado intencional pelo solicitante ([aceite](../../.github/agents/memoria/entradas/2026-10-18-1745-aceite-commit-c492085.md)).
-- Commit(s): PENDENTE
-- PR: PENDENTE
+- Commit(s): `d4ef8a1` (implementacao, ciclos 1 a 4), `67e521b` (ciclo 5, RNF-24) e o commit de documentacao que preenche este registro. **Desvio:** a mensagem de `67e521b` foi redigida pelo Tech Lead, e nao delegada ao `commit-writer` (obrigatorio em M); o conteudo segue o formato e as linhas `Ref:`/`Prompt:`.
+- PR: [#35](https://github.com/salesadriano/dropbox_sync/pull/35) para `develop`, labels `review` e `bug`. Review request nativo nao aplicado: o unico colaborador e o proprio autor.
+- Limite do pacote observado: `guarda-de-comandos.sh` confere a suite pelo `cwd` da sessao, e nao pelo `cd` dentro do comando; com o checkout principal como `cwd`, bloqueou o push conferindo `5aee478`. Contornado legitimamente com a sessao dentro do worktree. Candidato a correcao no pacote `ai_team`.
 - Tech Lead: **Aprovado com ressalvas**, 2026-10-18. Aprovacao final vale somente com a suite completa local verde registrada na secao 4.
 - Solicitante: aceite dos `qa-*` registrado por entrada de memoria, citada na secao 6. O sha256 acima nao consta dos aceites, que citam a contagem de casos.
 
@@ -141,5 +145,5 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer. Os do
   - DIV-22 (`RNF-07` x `Retry-After`): aberta, fase 2, fora desta entrega.
   - Alvo somente leitura (decisao do ciclo 4): recusado, RF-55(f) e TC-ATM-05; o ciclo 3 substituia o alvo e foi revogado.
   - Achado do gate de conformidade sobre memoria e RF-57(c) (ciclo 1): RF-57(c) emendado pelo BA; a entrada `padroes-integridade-p1` foi atualizada pelo Tech Lead na mesma rodada e registra a revisao do padrao "sem rev". Conferido.
-- Pendencias: suite completa local (secao 4); commit e PR (secao 8).
+- Pendencias: merge da PR #35 (pipeline, se houver, e revisao do solicitante).
 - Decisao de fechamento: **Aprovado com ressalvas**, 2026-10-18. Ressalvas: F-28, F-30 e F-31 (Senior Developer, fase 2); QA-05 (QA Expert, fase 2); F-29 (Senior Developer, fase 3); F-32 (Business Analyst, fase 5). Validacao QA frontend: Nao aplicavel: sem frontend.
