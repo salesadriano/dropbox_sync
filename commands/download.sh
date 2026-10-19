@@ -32,6 +32,18 @@ dbx_cmd_download_executar() {
       --forcar | --force)
         # aceito para paridade operacional
         ;;
+      -)
+        # `-` e o destino "saida padrao" (RF-32), e nao uma opcao: o ramo
+        # abaixo o recusava como opcao desconhecida.
+        if [[ -z $caminho ]]; then
+          dbx_cmd_falhar uso_invalido 'informe o caminho remoto antes do destino'
+          return $?
+        elif [[ -n $destino ]]; then
+          dbx_cmd_falhar uso_invalido 'informe apenas o caminho remoto e o destino'
+          return $?
+        fi
+        destino=-
+        ;;
       -*)
         dbx_cmd_falhar uso_invalido "opcao nao reconhecida: $1"
         return $?
@@ -134,6 +146,14 @@ dbx_cmd_download_executar() {
 
   local estado_recebimento=0
   if [[ $alvo == '/dev/stdout' || $alvo == '-' ]]; then
+    # O cliente reabre a saida padrao do inicio (limite declarado em lib/http):
+    # sobre arquivo que ja tem conteudo — o `>>` — isso o apagaria. Recusa
+    # antes de qualquer chamada, em vez de perda silenciosa.
+    if [[ -f /dev/stdout && -s /dev/stdout ]]; then
+      dbx_cmd_falhar uso_invalido \
+        'a saida padrao e um arquivo que ja tem conteudo e seria sobrescrito; use ">" para um arquivo novo, um cano, ou informe o destino'
+      return $?
+    fi
     dbx_auth_conteudo_receber GET \
       'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo"
     estado_recebimento=$?
@@ -148,6 +168,16 @@ dbx_cmd_download_executar() {
     fi
     local classe=${DBX_HTTP_CLASSE:-erro_remoto}
     local detalhe=${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}
+    # QA-P2-05: falha local de escrita na saida padrao tem diagnostico proprio.
+    if [[ $classe == 'configuracao' && ($alvo == '/dev/stdout' || $alvo == '-') ]]; then
+      dbx_cmd_falhar configuracao "${DBX_HTTP_DIAGNOSTICO:-falha de escrita na saida padrao}"
+      return $?
+    fi
+    if [[ $classe == 'consumidor_encerrou' ]]; then
+      dbx_cmd_falhar consumidor_encerrou \
+        'o consumidor da saida padrao encerrou antes do fim do fluxo; o recebimento foi interrompido e nao foi repetido'
+      return $?
+    fi
     case $detalhe in
       *not_file*)
         if [[ -z $destino || $destino == '-' ]]; then
@@ -186,7 +216,9 @@ dbx_cmd_download_executar() {
 
   local str_barra_fim='' str_tam_baixado=''
   dbx_progress_barra_gerar 100 20 str_barra_fim
-  if [[ -f $alvo ]]; then
+  # So destino em arquivo: medir `/dev/stdout` dentro da substituicao abaixo
+  # leria o proprio cano da captura e nunca terminaria.
+  if [[ $alvo != '/dev/stdout' && $alvo != '-' && -f $alvo ]]; then
     local bytes_baixados
     bytes_baixados=$(wc -c <"$alvo" 2>/dev/null)
     bytes_baixados=${bytes_baixados//[^0-9]/}
@@ -218,6 +250,13 @@ dbx_cmd_download_executar() {
   dbx_output_campo destino "$alvo"
   dbx_output_campo integridade "$verificacao"
   [[ -n $esperado ]] && dbx_output_campo content_hash "$esperado"
-  dbx_output_render
+  # RF-32(b): em fluxo a saida padrao E o conteudo; o registro do resultado
+  # colado ao fim dele corromperia o que o consumidor recebe. Vai para a saida
+  # de erro, como o diagnostico.
+  if [[ $alvo == '/dev/stdout' || $alvo == '-' ]]; then
+    dbx_output_render >&2
+  else
+    dbx_output_render
+  fi
   return 0
 }

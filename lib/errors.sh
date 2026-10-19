@@ -529,12 +529,20 @@ dbx_errors_redigir() {
     chave=${termo,,}
     chave=${chave//-/_}
 
-    # Prefixo documentado do access token da Dropbox: `sl` `.` `<termo>`.
+    # Prefixo documentado do access token da Dropbox: `sl` `.` `<termo>`. O
+    # formato atual, `sl.u.<corpo>`, tem mais de um ponto (QA-P2-04): mascarar so
+    # ate o primeiro deixava o `<corpo>` em claro. Cada `.` `<termo>` seguinte
+    # tambem e consumido; ponto seguido de espaco ou fim e pontuacao e fica.
     if [[ $chave == 'sl' && ${partes[indice + 1]:-} == '.' && -n ${partes[indice + 2]:-} ]]; then
       partes[indice]='[REDIGIDO]'
       partes[indice + 1]=''
       partes[indice + 2]=''
       indice=$((indice + 2))
+      while [[ ${partes[indice + 1]:-} == '.' && ${partes[indice + 2]:-} == [A-Za-z0-9_-]* ]]; do
+        partes[indice + 1]=''
+        partes[indice + 2]=''
+        indice=$((indice + 2))
+      done
       continue
     fi
 

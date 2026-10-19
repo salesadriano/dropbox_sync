@@ -7,7 +7,7 @@
 - Projeto ou produto: `dropbox_api` — aplicacao de linha de comando em shell script para integracao com a Dropbox API v2
 - Responsavel Business Analyst: Business Analyst (pacote de agents)
 - Responsavel tecnico principal: a definir pelo Tech Lead
-- Data da versao: 2026-08-19 (**v1.2**)
+- Data da versao: 2026-10-18 (**v1.4**)
 - Status: 🔴 **`lib/stream` era componente planejado e NAO se materializou** (`DIV-20`); `RF-31` roda em `lib/transfer` + `lib/hash`. **Tamanho de parte FIXO em 4.194.304 bytes** (`DIV-19`, `DP-30`). **Limite de plataforma registrado em `RSK-36` / `DIV-18`.** **Todas as decisoes do `sync` fechadas.** Nove comandos definidos; `RSK-24` com mitigacao estrutural em vez de aceite. Nenhuma decisao do solicitante em aberto para o `sync`
 
 Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](../requisitos/decisoes-pendentes.md) · [Funcionalidades candidatas](../requisitos/funcionalidades-candidatas.md) · [Riscos e licenciamento](../requisitos/riscos-restricoes-e-licenciamento.md)
@@ -17,6 +17,7 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 | Versao | Mudanca |
 |---|---|
 | v0.1 | Proposta arquitetural inicial |
+| **v1.4** | **Robustez de rede (fase P2, 2026-10-18).** Registrado o comportamento decidido para `lib/http` (timeouts, recuo, `Retry-After`), `lib/transfer` (retomada na mesma execucao) e `commands/sync` (falhas por item), na secao "Robustez de rede (P2)". Sem novo componente; sem estado persistente novo (`RNF-26` intacto). `DIV-22` encerrada |
 | **v1.3** | **Integridade de dados (fase P1, 2026-10-18).** Registrado o comportamento decidido para `lib/sync`, `commands/download`, `lib/transfer` e `lib/http` (secao "Integridade de dados no recebimento e no `sync`"). Sem novo componente; backlog das fases P2 a P5 em `F-23`..`F-27` |
 | **v1.2** | **Correcoes devolvidas pela implementacao de `RF-31`/`RF-08`/`RF-09` (2026-08-19).** 🔴 **`lib/stream` reclassificado como PLANEJADO E NAO MATERIALIZADO** (`DIV-20`): verificado por leitura direta de `lib/`, o arquivo nunca foi criado; `RF-31` ficou em `lib/transfer` + `lib/hash` (API incremental), e `RF-32` segue nao implementado, com o componente **em aberto**. A linha da tabela e o no do diagrama sao **riscados, nao removidos**. **Dimensionamento corrigido:** a celula de estrategia por tamanho de arquivo afirmava tamanho de parte **configuravel** com faixa sugerida de 8 a 32 MiB — **falso em relacao ao implementado e nunca medido**; a parte esta **fixa em 4.194.304 bytes** (`DIV-19`), e o estagio "ajuste fino" do plano de expansao passa a constar como **indisponivel**. **Contrato de conteudo revalidado** contra `files.stone` do ramo **`main`**, incluindo `offset` e `incorrect_offset` como base documentada da retentativa por parte, e a **validade de 7 dias da sessao** (`RES-18`); ⚠️ `DIV-21` registra que o ramo `master` esta **desatualizado** (48 horas, sem `session_type`). **Criterio de aceite de transferencia por fluxo qualificado** por `DIV-18`/`RSK-36`. *(A numeracao salta de v1.1 para v1.2 sem v1.1.x intermediaria; nao ha versao omitida neste registro.)* |
 | v0.2 | Incorpora DP-01 (reimplementacao independente), DP-03 (uso interativo **e** automatizado, exigindo camada de saida com duas apresentacoes) e DP-04 (conta pessoal com acesso amplo, exigindo menor privilegio e confinamento de raiz). Contratos de integracao **revalidados via Context7** sobre `/websites/dropbox_developers_http`, corrigindo hosts, unidades, o requisito de multiplo de 4 MiB, a paginacao de busca e a restricao de concorrencia em listagem. Nota de nao verificacao do Context7 removida por erro factual |
@@ -407,7 +408,15 @@ Decisoes do solicitante (`DP-31`), sem novo componente:
 - **Recebimento (`commands/download`, `commands/sync --receber`)**: escrita em temporario no mesmo diretorio do alvo (mesmo sistema de arquivos, para a renomeacao ser atomica), conferencia de `content_hash` e `mv` atomico; falha descarta o temporario e preserva o alvo (`RF-55`). `download` de pasta recusa destino que seja arquivo regular (`RF-56`).
 - **Envio (`sync --enviar`)**: reutiliza o helper de publicacao e o roteamento por tamanho do `upload` (requisicao unica ate 150 MiB, sessao acima), com `client_modified`; sobrescreve em modo `update` com o `rev` da listagem da execucao e usa `add` para arquivo novo; recusa da Dropbox vira falha do item, sem sobrescrever (`RF-57`, `RF-49`); a origem vence entre execucoes (`DP-27`; `DIV-23` resolvida).
 - **`lib/http`**: `umask 077` restrito a criacao da area temporaria com o token; `umask` do processo preservado; area temporaria de cada requisicao removida sempre, inclusive na reemissao diagnostica, sem gancho armado apos o retorno (`RNF-29`; `RNF-04` emendado, `DIV-24` resolvida). Evolucao estrutural prevista: gestao unica de areas temporarias registradas.
-- **Fora da P1 (registrado, nao implementado)**: skip do upload condicionado ao `content_hash` remoto, com o cache de `lib/db`/`lib/state` reduzido a otimizacao de calculo de hash (`DP-32`, `F-26`); politica `Retry-After` de `lib/http` (`DIV-22`, fase P2).
+- **Fora da P1 (registrado, nao implementado)**: skip do upload condicionado ao `content_hash` remoto, com o cache de `lib/db`/`lib/state` reduzido a otimizacao de calculo de hash (`DP-32`, `F-26`); politica `Retry-After` de `lib/http` (`DIV-22`, tratada na fase P2; ver secao seguinte).
+
+### Robustez de rede (P2, 2026-10-18)
+
+- **`lib/http`, timeouts (`RNF-30`)**: toda requisicao leva `--connect-timeout` (padrao 15 s) e corte por velocidade minima (`--speed-limit` 1024 B/s por `--speed-time` 60 s), ajustaveis por `DBX_HTTP_CONNECT_TIMEOUT_S`, `DBX_HTTP_VELOCIDADE_MINIMA_BPS` e `DBX_HTTP_VELOCIDADE_JANELA_S`; valor invalido e recusado como uso invalido (codigo `2`) antes da rede. Timeout (`cURL` 28) e falha transitoria de rede.
+- **`lib/http`, retentativa (`RNF-07`)**: `DBX_HTTP_TENTATIVAS_MAXIMAS` deixa de ser constante e passa a ser configuravel (padrao 5); `DBX_HTTP_ESPERA_BASE_MS` passa de 250 para 1000 ms; novos `DBX_HTTP_ESPERA_TETO_MS` (60000) e `DBX_HTTP_RETRY_AFTER_TETO_S` (300). O `Retry-After` e lido do cabecalho de resposta (mesmo ponto de captura do identificador de correlacao) e substitui o recuo calculado. A tabela de semantica de erro acima continua valida para `429` e `5xx`.
+- **`lib/transfer`, retomada (`RF-58`)**: diante de `incorrect_offset`, so para arquivo regular, o laco de sessao relê a partir do `correct_offset` validado em `[0, min(tamanho, bytes ja enviados)]`; sessao e deslocamento ficam na memoria do processo. A entrada padrao nao retoma. `F-03` segue fora.
+- **`commands/sync` e `lib/output` (`RF-59`)**: cada item falho emite `falha <caminho>: <classe> <resumo>` no stderr; o `--json` mantem `falhas` (contagem) e ganha o par `falha_caminho`/`falha_classe` por item. Sem segredo nem corpo bruto.
+- **Sinais e suite (`RNF-31`, `RNF-32`)**: a area `dbx-sync.*` e removida em `INT`, `TERM` e `HUP` (direcao: `lib/tmp` com gancho unico e areas registradas, `F-31`); `tests/run.sh` para no primeiro erro; mapa de modulos em `docs/testes/mapa-modulos.md`.
 
 ## Decisoes e trade-offs
 
@@ -635,7 +644,7 @@ flowchart TD
     C -->|Sim| E[upload_session/start]
     E --> F[append_v2 por parte<br/>multiplo de 4 MB]
     F --> G{Parte falhou?}
-    G -->|Sim, transitoria| H[Recuo e reenvio da parte<br/>ate 3 tentativas]
+    G -->|Sim, transitoria| H[Recuo e reenvio da parte<br/>ate 5 tentativas, base 1 s, teto 60 s;<br/>Retry-After prevalece, ate 300 s]
     H --> F
     G -->|Nao| I{Ultima parte?}
     I -->|Nao| F

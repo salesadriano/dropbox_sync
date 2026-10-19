@@ -51,6 +51,11 @@ dbx_carregar_camada_de_credencial() {
   . "$DBX_CLI_RAIZ/lib/auth.sh"
   # shellcheck source=lib/cmd.sh
   . "$DBX_CLI_RAIZ/lib/cmd.sh"
+  # RNF-30(c), RNF-07(e): ajuste de rede invalido para a execucao ANTES de
+  # qualquer chamada, inclusive a renovacao do token, com a variavel e o valor
+  # no diagnostico. `lib/http` repete a guarda em cada requisicao; aqui ela so
+  # ganha a mensagem que o comando nao saberia dar.
+  dbx_http_validar_ambiente || _dbx_falhar uso_invalido "$DBX_HTTP_MOTIVO_AMBIENTE"
 }
 
 _dbx_falhar() {
@@ -161,6 +166,16 @@ case $DBX_CLI_COMANDO in
         printf '  space     Exibe capacidade e uso do espaco da conta\n\n'
         printf 'Opcoes globais: --help --version --json --null --dry-run --progresso --sem-progresso --debug\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
+        # RNF-07, RNF-30: os ajustes de rede sao documentados onde o operador os
+        # procura; valor invalido e recusado com codigo 2 antes da rede.
+        printf 'Variaveis de ambiente de rede (inteiro positivo; invalido sai com codigo 2):\n'
+        printf '  DBX_HTTP_CONNECT_TIMEOUT_S      tempo para conectar, em s (padrao 15)\n'
+        printf '  DBX_HTTP_VELOCIDADE_MINIMA_BPS  corte abaixo desta velocidade, em B/s (padrao 1024)\n'
+        printf '  DBX_HTTP_VELOCIDADE_JANELA_S    ...mantida por esta janela, em s (padrao 60)\n'
+        printf '  DBX_HTTP_TENTATIVAS_MAXIMAS     tentativas, contando a primeira (padrao 5)\n'
+        printf '  DBX_HTTP_ESPERA_BASE_MS         base do recuo exponencial, em ms (padrao 1000)\n'
+        printf '  DBX_HTTP_ESPERA_TETO_MS         teto de cada espera, em ms (padrao 60000)\n'
+        printf '  DBX_HTTP_RETRY_AFTER_TETO_S     teto do Retry-After do servidor, em s (padrao 300)\n\n'
         printf 'Recomendacao para upload de fluxo (RSK-36):\n'
         printf '  Em "dbx upload - <destino>", ative "set -o pipefail" no shell do operador ao usar pipes.\n'
         exit 0

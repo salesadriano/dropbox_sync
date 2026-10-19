@@ -7,5 +7,6 @@ Estrutura documental exigida pelo protocolo de governanca (`.github/agents/AGENT
 | `prompts/` | trilha de auditoria dos prompts, um arquivo por demanda (`prompt-logger`) | todo agent que recebe solicitacao |
 | `reviews/` | registros de entrega (`review-documentation`) e pareceres de gate em arquivo proprio (porte G) | Senior Developer, documentation-writer, Tech Lead |
 | `sources/` | material de origem da demanda: especificacoes, documentos, planilhas, links, sanitizados | Business Analyst, Tech Lead |
+| `testes/` | [`mapa-modulos.md`](testes/mapa-modulos.md): modulos de `lib/`, `commands/` e `bin/` x testes que os exercitam (Regra 8 de `protocolo-tdd`) | QA Expert |
 
 Nada aqui recebe segredo, credencial, token, cookie, chave, dump de producao ou dado pessoal desnecessario: sanitizar antes de gravar, nunca depois.

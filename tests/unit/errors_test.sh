@@ -391,6 +391,18 @@ teste_redacao_de_token_entre_aspas_em_prosa() {
     'token entre aspas em texto corrido'
 }
 
+teste_redacao_de_token_no_formato_sl_u_consome_o_corpo_inteiro() {
+  # QA-P2-04: formato atual `sl.u.<corpo>`. Redigir so ate o primeiro ponto
+  # deixava o corpo em claro.
+  local saida
+  _assert_redige 'CorpoDoTokenNovo42' 'token: sl.u.CorpoDoTokenNovo42 recusado' 'sl.u em prosa'
+  _assert_redige 'CorpoDoTokenNovo42' '{"access_token":"sl.u.CorpoDoTokenNovo42"}' 'sl.u em JSON'
+  _assert_redige 'Parte3' 'x sl.A.B-2.Parte3 y' 'varios pontos'
+  # Ponto final de frase nao e parte do token: a pontuacao e o resto ficam.
+  saida=$(dbx_errors_redigir 'falhou com sl.u.Corpo9. Repita depois')
+  assert_contem '. Repita depois' "$saida" 'o texto depois do token sobrevive'
+}
+
 teste_redacao_ignora_caixa_do_prefixo_de_token() {
   _assert_redige 'SL.TOKENMAIUSCULO' 'valor recebido: SL.TOKENMAIUSCULO' \
     'prefixo de token em caixa alta'

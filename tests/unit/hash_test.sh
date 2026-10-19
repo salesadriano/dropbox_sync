@@ -228,14 +228,20 @@ teste_arquivo_grande_nao_e_carregado_em_memoria() {
   fi
 }
 
+# RNF-32(b), F-33: TMPDIR PRIVADO. Contar `dbx-*` no diretorio compartilhado fazia
+# o caso reprovar por residuo de outro processo, sem relacao com este calculo. O
+# ruido alheio criado durante o caso e a prova de que o resultado nao depende
+# mais do que acontece fora da area do caso.
 teste_nao_deixa_residuo_temporario() {
-  local antes depois caminho valor
+  local area restantes caminho valor ruido
   caminho=$(fixture_criar bloco_mais_um)
-  antes=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'dbx-*' 2>/dev/null | sort)
-  valor=$(dbx_hash_conteudo_arquivo "$caminho")
+  area=$(mktemp -d "$DBX_TESTES_TMP/tmpdir.XXXXXX")
+  ruido=$(mktemp -d "${TMPDIR:-/tmp}/dbx-ruido-alheio.XXXXXX")
+  valor=$(TMPDIR=$area dbx_hash_conteudo_arquivo "$caminho")
+  rmdir -- "$ruido"
   assert_igual "$ESPERADO_BLOCO_MAIS_UM" "$valor" 'calculo precisa ter ocorrido de fato'
-  depois=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'dbx-*' 2>/dev/null | sort)
-  assert_igual "$antes" "$depois" \
+  restantes=$(find "$area" -mindepth 1 | wc -l)
+  assert_igual 0 "$restantes" \
     'o calculo nao pode deixar arquivo temporario para tras (RNF-05, PRJ-DEC-07)'
 }
 

@@ -136,8 +136,7 @@ readonly DBX_TRANSFER_URL_ANEXAR='https://content.dropboxapi.com/2/files/upload_
 readonly DBX_TRANSFER_URL_CONCLUIR='https://content.dropboxapi.com/2/files/upload_session/finish'
 
 DBX_TRANSFER_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
-DBX_TRANSFER_ERRO_NAO_CONCLUIDA=$(dbx_errors_codigo_saida nao_concluida)
-readonly DBX_TRANSFER_ERRO_USO DBX_TRANSFER_ERRO_NAO_CONCLUIDA
+readonly DBX_TRANSFER_ERRO_USO
 
 # Canais publicos, consumidos por `commands/upload` e pela suite.
 # shellcheck disable=SC2034
@@ -165,6 +164,17 @@ DBX_TRANSFER_LIDO=''
 # a limpeza nao removeria nada — defeito ja corrigido em lib/hash e em lib/http,
 # e que voltaria aqui se a disciplina fosse reescrita em vez de reusada.
 DBX_TRANSFER_AREA_TEMP=''
+
+# RF-58 — estado da retomada, SO EM MEMORIA e so durante a sessao: a origem
+# posicionavel (vazia para a entrada padrao), o tamanho medido no inicio, o
+# descritor de onde as partes sao lidas e o deslocamento pedido pelo servico.
+# Nenhum deles e gravado em disco; uma nova execucao recomeca do zero (F-03
+# continua fora de escopo).
+_DBX_TRANSFER_ORIGEM=''
+_DBX_TRANSFER_TAMANHO_INICIAL=0
+_DBX_TRANSFER_FONTE=0
+_DBX_TRANSFER_RETOMAR_EM=''
+_DBX_TRANSFER_EXIBIDO=''
 
 # ---------------------------------------------------------------------------
 # Roteamento por tamanho (RF-08)
@@ -283,10 +293,11 @@ _dbx_transfer_remover_area() {
 # que e literalmente o que aconteceu.
 #
 # ---------------------------------------------------------------------------
-# PALIATIVO DECLARADO: esta funcao remove tambem a area de `lib/http`
+# PALIATIVO DECLARADO: esta funcao faz remover tambem a area de `lib/http`
 # ---------------------------------------------------------------------------
-# Isto VIOLA a disciplina "quem enche o canal de outro componente o esvazia", e a
-# violacao esta escrita aqui em vez de escondida.
+# Desde a fase 2 a remocao e feita por `dbx_http_interrompido`, do proprio
+# `lib/http`, e a disciplina "quem enche o canal o esvazia" deixou de ser
+# violada aqui. O que continua paliativo e o arranjo entre os ciclos de vida.
 #
 # O defeito: `lib/http` remove a propria area quando `_dbx_http_executar`
 # retorna, e so entao. Esta funcao faz `exit`, que encerra o processo sem esse
@@ -310,11 +321,12 @@ _dbx_transfer_remover_area() {
 # antes de o `trap` ser armado, depois de `trap -`, ou durante um `upload` por
 # requisicao unica, que nao passa pelo transfer — continua vazando por
 # `lib/http`. Pendencia aberta.
+#
+# RNF-31: a area de `lib/http` e a de quem chamou a sessao (o `sync`) saem por
+# `dbx_http_interrompido`, que tambem encerra com operacao nao concluida.
 _dbx_transfer_interrompida() {
   _dbx_transfer_remover_area
-  [[ -n ${DBX_HTTP_AREA_TEMP:-} ]] && rm -rf -- "$DBX_HTTP_AREA_TEMP"
-  DBX_HTTP_AREA_TEMP=''
-  exit "$DBX_TRANSFER_ERRO_NAO_CONCLUIDA"
+  dbx_http_interrompido
 }
 
 # ---------------------------------------------------------------------------
@@ -338,8 +350,8 @@ _dbx_transfer_emitir() {
 # RF-09 em duas camadas, e a segunda e a que importa:
 #
 #   1. `idempotente=sim` deixa lib/http repetir a MESMA requisicao, com o MESMO
-#      deslocamento e o MESMO corpo, ate tres vezes. Repetir uma parte nao
-#      reinicia o arquivo — e o que RF-09 pede.
+#      deslocamento e o MESMO corpo, ate o limite de tentativas (5 por padrao,
+#      RNF-07). Repetir uma parte nao reinicia o arquivo — e o que RF-09 pede.
 #
 #   2. RECONCILIACAO DE DESLOCAMENTO. Se o servico recusa com `incorrect_offset`
 #      e informa um `correct_offset` igual ao FIM desta parte, entao esta parte
@@ -353,9 +365,10 @@ _dbx_transfer_emitir() {
 # depende apenas de o servico dizer onde acha que esta.
 #
 # Qualquer outro valor de `correct_offset` significa discordancia real sobre o
-# que ja chegou. Nao ha reposicionamento possivel: a entrada padrao nao e
-# posicionavel e reler nao e opcao. Abortamos, e o diagnostico diz os dois
-# numeros para que a divergencia seja diagnosticavel sem adivinhacao.
+# que ja chegou. Com a entrada padrao nao ha reposicionamento possivel: ela nao
+# e posicionavel e reler nao e opcao. Abortamos, e o diagnostico diz os dois
+# numeros para que a divergencia seja diagnosticavel sem adivinhacao. Com
+# arquivo regular (RF-58) o deslocamento e validado e o laco rele a partir dele.
 #
 # ---------------------------------------------------------------------------
 # QUEM RECONHECE A CONDICAO DE SESSAO: `lib/errors.sh`, E SO ELE
@@ -392,12 +405,22 @@ _dbx_transfer_anexar() {
     retomar)
       if _dbx_transfer_deslocamento_correto; then
         correto=$DBX_TRANSFER_LIDO
-        if [[ $correto =~ ^[0-9]+$ && $correto -eq $esperado ]]; then
+        # Ate 18 digitos a comparacao cabe na aritmetica; `10#` impede a leitura
+        # em octal de um valor com zero a esquerda.
+        if [[ $correto =~ ^[0-9]{1,18}$ ]] && ((10#$correto == esperado)); then
           return 0
         fi
+        # RF-58: arquivo regular e posicionavel, e reler a partir do deslocamento
+        # do servico e possivel. Quem rele e o laco; aqui so se valida e avisa.
+        if [[ -n $_DBX_TRANSFER_ORIGEM ]]; then
+          _dbx_transfer_validar_retomada "$correto" "$deslocamento" || return $?
+          _DBX_TRANSFER_RETOMAR_EM=$((10#$correto))
+          return 0
+        fi
+        _dbx_transfer_exibir "$correto"
         {
           _dbx_transfer_falhar nao_concluida \
-            "deslocamento divergente na parte que comeca em $deslocamento: apos esta parte o deslocamento seria $esperado e o servico informou $correto; a entrada padrao nao e posicionavel e reler nao e opcao"
+            "deslocamento divergente na parte que comeca em $deslocamento: apos esta parte o deslocamento seria $esperado e o servico informou $_DBX_TRANSFER_EXIBIDO; a entrada padrao nao e posicionavel e reler nao e opcao"
           return $?
         }
       fi
@@ -416,11 +439,101 @@ _dbx_transfer_anexar() {
       ;;
   esac
 
+  # RF-09 emendado: falha transitoria que resistiu a todas as tentativas e
+  # operacao NAO CONCLUIDA — a classe original fica no diagnostico.
+  case ${DBX_HTTP_POLITICA:-} in
+    recuo_exponencial | respeitar_retry_after)
+      {
+        _dbx_transfer_falhar nao_concluida \
+          "parte que comeca em $deslocamento recusada em todas as ${DBX_HTTP_EFETIVO[DBX_HTTP_TENTATIVAS_MAXIMAS]} tentativas (${DBX_HTTP_CLASSE:-erro_remoto}: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}); nada foi publicado no destino"
+        return $?
+      }
+      ;;
+  esac
   {
     _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
       "parte que comeca em $deslocamento recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
     return $?
   }
+}
+
+# _dbx_transfer_exibir <valor> — publica em _DBX_TRANSFER_EXIBIDO uma forma do
+# valor vindo do servico que cabe numa linha de diagnostico: digitos passam como
+# estao (truncados), o resto sai citado. Um `correct_offset` com quebra de linha
+# nao pode virar segunda linha no diagnostico.
+_dbx_transfer_exibir() {
+  local valor=${1:0:32}
+  if [[ $valor =~ ^[0-9]+$ ]]; then
+    _DBX_TRANSFER_EXIBIDO=$valor
+    [[ ${#1} -gt 32 ]] && _DBX_TRANSFER_EXIBIDO+='...'
+  else
+    printf -v _DBX_TRANSFER_EXIBIDO '%q' "$valor"
+  fi
+  return 0
+}
+
+# _dbx_transfer_validar_retomada <correct_offset> <enviado> — RF-58(b): so
+# inteiro em [0, bytes ja confirmados pelo servico], que nunca passa do tamanho
+# do arquivo. Acima do confirmado o servico alega ter bytes que nunca mandamos:
+# hostil ou inconsistente, e reler dali publicaria um arquivo com buraco
+# (decisao do Tech Lead, ciclo 2). Fora da faixa o envio aborta antes de
+# qualquer `finish` e a mensagem nomeia o valor recusado.
+_dbx_transfer_validar_retomada() {
+  local correto=$1 enviado=$2
+  [[ $enviado -gt $_DBX_TRANSFER_TAMANHO_INICIAL ]] && enviado=$_DBX_TRANSFER_TAMANHO_INICIAL
+  if [[ $correto =~ ^[0-9]{1,18}$ ]] && ((10#$correto <= enviado)); then
+    return 0
+  fi
+  _dbx_transfer_exibir "$correto"
+  _dbx_transfer_falhar nao_concluida \
+    "deslocamento informado pelo servico recusado: $_DBX_TRANSFER_EXIBIDO; o valido e um inteiro entre 0 e $enviado, o que ja foi confirmado do arquivo de $_DBX_TRANSFER_TAMANHO_INICIAL bytes; nada foi publicado no destino"
+}
+
+# _dbx_transfer_reposicionar <bloco> <deslocamento> — reabre a origem e descarta
+# os primeiros <deslocamento> bytes, uma parte por vez.
+#
+# Por parte, e nao de uma vez, para a ocupacao continuar a de um bloco (RF-31).
+# Cada fatia e CONTADA: um arquivo que encolheu entre o inicio e a retomada
+# faria a releitura comecar no lugar errado sem que nada parecesse falhar.
+_dbx_transfer_reposicionar() {
+  local bloco=$1 restante=$2 fatia lido nova
+  exec {nova}<"$_DBX_TRANSFER_ORIGEM" || {
+    _dbx_transfer_falhar nao_concluida \
+      'a origem nao pode ser reaberta para a retomada; nada foi publicado no destino'
+    return $?
+  }
+  while [[ $restante -gt 0 ]]; do
+    fatia=$DBX_TRANSFER_TAMANHO_PARTE
+    [[ $restante -lt $fatia ]] && fatia=$restante
+    lido=''
+    head -c "$fatia" <&"$nova" >"$bloco" && lido=$(wc -c <"$bloco")
+    lido=${lido//[^0-9]/}
+    if [[ -z $lido || $lido -ne $fatia ]]; then
+      exec {nova}<&-
+      _dbx_transfer_falhar nao_concluida \
+        'a origem terminou antes do deslocamento da retomada; o arquivo mudou durante o envio e nada foi publicado no destino'
+      return $?
+    fi
+    restante=$((restante - lido))
+  done
+  [[ $_DBX_TRANSFER_FONTE -ne 0 ]] && exec {_DBX_TRANSFER_FONTE}<&-
+  _DBX_TRANSFER_FONTE=$nova
+  return 0
+}
+
+# _dbx_transfer_conferir_tamanho <lidos> — arquivo que muda de tamanho durante o
+# envio e recusado (decisao do Tech Lead): o tamanho de agora e o total lido tem
+# de ser os do inicio. Sem origem posicionavel nao ha o que conferir.
+_dbx_transfer_conferir_tamanho() {
+  local lidos=$1
+  [[ -n $_DBX_TRANSFER_ORIGEM ]] || return 0
+  if dbx_transfer_tamanho_de_arquivo "$_DBX_TRANSFER_ORIGEM" &&
+    [[ $DBX_TRANSFER_TAMANHO -eq $_DBX_TRANSFER_TAMANHO_INICIAL &&
+      $lidos -eq $_DBX_TRANSFER_TAMANHO_INICIAL ]]; then
+    return 0
+  fi
+  _dbx_transfer_falhar nao_concluida \
+    "o arquivo mudou de tamanho durante o envio: tinha $_DBX_TRANSFER_TAMANHO_INICIAL bytes no inicio e foram lidos $lidos; nada foi publicado no destino"
 }
 
 # ---------------------------------------------------------------------------
@@ -438,8 +551,13 @@ _dbx_transfer_anexar() {
 # O `argumento_de_commit` chega PRONTO do comando: e o mesmo objeto que a
 # requisicao unica envia a `files/upload`. Monta-lo aqui criaria a segunda copia
 # da regra de publicacao.
+#
+# `origem`, opcional, e o caminho do ARQUIVO REGULAR que o chamador redirecionou
+# para a entrada padrao. So com ele a sessao retoma diante de `incorrect_offset`
+# (RF-58); a entrada padrao e qualquer origem nao posicionavel seguem sem
+# retomada, como antes.
 dbx_transfer_sessao() {
-  local commit=${1-} estado
+  local commit=${1-} origem=${2-} estado
 
   [[ -n $commit ]] || {
     _dbx_transfer_falhar uso_invalido 'envio em partes sem objeto de publicacao'
@@ -472,6 +590,19 @@ dbx_transfer_sessao() {
   # Justificativa: veredito de integridade, publicado na saida do comando.
   DBX_TRANSFER_INTEGRIDADE='nao_aplicavel'
 
+  _DBX_TRANSFER_ORIGEM=''
+  _DBX_TRANSFER_TAMANHO_INICIAL=0
+  _DBX_TRANSFER_FONTE=0
+  _DBX_TRANSFER_RETOMAR_EM=''
+  if [[ -n $origem && -f $origem ]]; then
+    dbx_transfer_tamanho_de_arquivo "$origem" || {
+      _dbx_transfer_falhar nao_encontrado "tamanho do arquivo local indeterminado: $origem"
+      return $?
+    }
+    _DBX_TRANSFER_ORIGEM=$origem
+    _DBX_TRANSFER_TAMANHO_INICIAL=$DBX_TRANSFER_TAMANHO
+  fi
+
   # `umask` SALVA E RESTAURADA, e nao apenas endurecida. A mascara e estado do
   # PROCESSO, nao da funcao: deixa-la em 077 na volta altera a permissao padrao
   # de tudo que o chamador criar depois — medido antes desta correcao, 0022 na
@@ -500,16 +631,20 @@ dbx_transfer_sessao() {
   # muitas portas, e uma limpeza por porta seria a forma de esquecer uma.
   _dbx_transfer_conduzir "$commit"
   estado=$?
+  # O descritor da releitura e estado do processo emprestado pela sessao.
+  [[ $_DBX_TRANSFER_FONTE -ne 0 ]] && exec {_DBX_TRANSFER_FONTE}<&-
+  _DBX_TRANSFER_FONTE=0
+  _DBX_TRANSFER_ORIGEM=''
   _dbx_transfer_remover_area
   # Os tratadores valem SO enquanto a sessao existe. Deixa-los armados faria um
   # sinal recebido depois — durante a apresentacao do resultado, por exemplo —
   # encerrar com "operacao nao concluida" um envio que ja concluiu.
   #
-  # LIMITE DECLARADO: isto REMOVE os tratadores, e nao restaura os que o
-  # chamador porventura tivesse. Hoje ninguem no produto arma INT, TERM, HUP ou
-  # EXIT antes daqui; quando alguem armar, esta linha precisa virar salvar e
-  # restaurar, e nao ser apagada.
-  trap - INT TERM HUP EXIT
+  # INT, TERM e HUP voltam ao tratador de quem chamou a sessao (o `sync` arma o
+  # seu, RNF-31), ou ao padrao. LIMITE DECLARADO: `EXIT` continua so removido —
+  # nenhum chamador o arma antes daqui.
+  trap - EXIT
+  dbx_http_sinais_devolver
   # Ao lado do `trap -`, e pelo mesmo motivo: os dois sao estado do processo
   # emprestado pela sessao, e a sessao os devolve.
   umask "$mascara_anterior"
@@ -520,6 +655,7 @@ _dbx_transfer_conduzir() {
   local commit=$1
   local bloco="$DBX_TRANSFER_AREA_TEMP/parte"
   local sessao deslocamento=0 tamanho=0 argumento remoto parte=1
+  local retomadas=0 maior_confirmado=0 resumo_pelo_arquivo='nao'
 
   : >"$bloco" || {
     _dbx_transfer_falhar configuracao 'area temporaria nao gravavel'
@@ -555,7 +691,7 @@ _dbx_transfer_conduzir() {
   while :; do
     # Sem cano: o status abaixo e o do proprio leitor. Falha de leitura aborta a
     # sessao ANTES de qualquer `finish`, e portanto nada e publicado.
-    head -c "$DBX_TRANSFER_TAMANHO_PARTE" >"$bloco" || {
+    head -c "$DBX_TRANSFER_TAMANHO_PARTE" <&"$_DBX_TRANSFER_FONTE" >"$bloco" || {
       _dbx_transfer_falhar nao_concluida \
         "falha ao ler a origem no deslocamento $deslocamento; nada foi publicado no destino"
       return $?
@@ -570,7 +706,9 @@ _dbx_transfer_conduzir() {
       return $?
     }
 
-    if [[ $tamanho -gt 0 ]]; then
+    # Depois de uma retomada as partes deixam de coincidir com os blocos do
+    # resumo (RF-58(f)); o resumo passa a ser o do arquivo, no fim.
+    if [[ $tamanho -gt 0 && $resumo_pelo_arquivo == 'nao' ]]; then
       dbx_hash_acumular_bloco "$bloco" || {
         _dbx_transfer_falhar nao_concluida \
           "resumo do bloco no deslocamento $deslocamento nao pode ser calculado"
@@ -582,8 +720,32 @@ _dbx_transfer_conduzir() {
     # no `finish`, mesmo quando tem zero bytes.
     [[ $tamanho -lt $DBX_TRANSFER_TAMANHO_PARTE ]] && break
 
+    _DBX_TRANSFER_RETOMAR_EM=''
     _dbx_transfer_anexar "$sessao" "$deslocamento" "$tamanho" "$bloco" || return $?
+    if [[ -n $_DBX_TRANSFER_RETOMAR_EM ]]; then
+      # RF-58: cada retomada consome uma das tentativas (decisao do Tech Lead),
+      # o que limita o laco mesmo diante de um servico que recusa sempre.
+      retomadas=$((retomadas + 1))
+      if [[ $retomadas -ge ${DBX_HTTP_EFETIVO[DBX_HTTP_TENTATIVAS_MAXIMAS]} ]]; then
+        _dbx_transfer_falhar nao_concluida \
+          "deslocamento incorreto repetido: esgotadas as ${DBX_HTTP_EFETIVO[DBX_HTTP_TENTATIVAS_MAXIMAS]} tentativas na parte que comeca em $deslocamento; nada foi publicado no destino"
+        return $?
+      fi
+      _dbx_transfer_reposicionar "$bloco" "$_DBX_TRANSFER_RETOMAR_EM" || return $?
+      deslocamento=$_DBX_TRANSFER_RETOMAR_EM
+      _DBX_TRANSFER_RETOMAR_EM=''
+      resumo_pelo_arquivo='sim'
+      continue
+    fi
     deslocamento=$((deslocamento + tamanho))
+    # QA-P2-01: as tentativas sao DA PARTE (RF-09, RF-58(e)). O contador zera
+    # so quando o confirmado passa do maior ja visto: um servico que manda
+    # voltar e depois aceita de novo o mesmo trecho nao renova as tentativas, e
+    # o laco continua limitado.
+    if [[ $deslocamento -gt $maior_confirmado ]]; then
+      maior_confirmado=$deslocamento
+      retomadas=0
+    fi
     dbx_progress_transferencia 'upload' "$deslocamento" "${DBX_TRANSFER_TAMANHO:-0}" "parte $parte enviada"
     parte=$((parte + 1))
   done
@@ -592,6 +754,8 @@ _dbx_transfer_conduzir() {
   dbx_progress_formatar_bytes "$((deslocamento + tamanho))" str_total_sessao
   dbx_progress_barra_gerar 100 20 str_barra_concluida
   dbx_progress_mensagem "[upload] concluindo sessao em partes ($str_total_sessao)... $str_barra_concluida (100%)"
+
+  _dbx_transfer_conferir_tamanho "$((deslocamento + tamanho))" || return $?
 
   argumento="{\"cursor\":{\"session_id\":\"$sessao\",\"offset\":$deslocamento},\"commit\":$commit}"
   _dbx_transfer_emitir "$DBX_TRANSFER_URL_CONCLUIR" "$argumento" "$bloco" nao || {
@@ -606,11 +770,22 @@ _dbx_transfer_conduzir() {
   # O bloco ja foi enviado: o arquivo vira area de trabalho da cadeia de
   # resumos. Reaproveitar em vez de criar um segundo arquivo e o que mantem o
   # teto de ocupacao.
-  dbx_hash_acumular_encerrar "$bloco" || {
-    _dbx_transfer_falhar integridade \
-      'o resumo local do conteudo enviado nao pode ser calculado; a integridade nao foi conferida'
-    return $?
-  }
+  if [[ $resumo_pelo_arquivo == 'sim' ]]; then
+    # O bloco ja enviado e esvaziado antes: o calculo sobre o arquivo usa area
+    # propria, e os dois juntos passariam do teto de um bloco (RF-31).
+    : >"$bloco"
+    dbx_hash_publicar_arquivo "$_DBX_TRANSFER_ORIGEM" || {
+      _dbx_transfer_falhar integridade \
+        'o resumo local do arquivo enviado nao pode ser calculado; a integridade nao foi conferida'
+      return $?
+    }
+  else
+    dbx_hash_acumular_encerrar "$bloco" || {
+      _dbx_transfer_falhar integridade \
+        'o resumo local do conteudo enviado nao pode ser calculado; a integridade nao foi conferida'
+      return $?
+    }
+  fi
   DBX_TRANSFER_CONTENT_HASH=$DBX_HASH_RESULTADO
 
   if _dbx_transfer_ler_campo content_hash; then
@@ -733,7 +908,8 @@ dbx_transfer_enviar_arquivo() {
   if dbx_transfer_precisa_de_sessao "$DBX_TRANSFER_TAMANHO"; then
     # shellcheck disable=SC2034  # canal publico, lido por commands/upload
     DBX_TRANSFER_POR_SESSAO='sim'
-    dbx_transfer_sessao "$commit" <"$origem"
+    # shellcheck disable=SC2094  # `origem` e so lida: o nome viaja para a retomada
+    dbx_transfer_sessao "$commit" "$origem" <"$origem"
     return $?
   fi
 

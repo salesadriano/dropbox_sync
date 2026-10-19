@@ -35,6 +35,101 @@
 
 dbx_cmd_sync_requisitos() { printf 'credencial'; }
 
+# RNF-31: area temporaria da execucao em curso. Global, e nao `local`, porque o
+# tratador de sinal roda quando o escopo da funcao ja nao existe.
+DBX_CMD_SYNC_AREA=''
+# RF-59: falhas por item, na ordem em que ocorreram, e a classe da ultima.
+DBX_CMD_SYNC_FALHAS_CAMINHOS=()
+DBX_CMD_SYNC_FALHAS_CLASSES=()
+DBX_CMD_SYNC_FALHA_CLASSE=''
+DBX_CMD_SYNC_EXIBIDO=''
+DBX_CMD_SYNC_RESUMO_FALHA=''
+
+# _dbx_cmd_sync_interrompido — tratador de INT, TERM e HUP enquanto a area
+# existe (RNF-31), no estilo do recebimento: remove a area e encerra como
+# operacao nao concluida. Recebimento e sessao de envio armam o proprio
+# tratador por cima deste e, no sinal, chegam aqui por `dbx_http_interrompido`.
+_dbx_cmd_sync_interrompido() {
+  [[ -n $DBX_CMD_SYNC_AREA ]] && rm -rf -- "$DBX_CMD_SYNC_AREA"
+  DBX_CMD_SYNC_AREA=''
+  # Esvaziado antes de delegar: `dbx_http_interrompido` chamaria este mesmo
+  # tratador de novo.
+  DBX_HTTP_TRATADOR_EXTERNO=''
+  dbx_http_interrompido
+}
+
+# _dbx_cmd_sync_encerrar_area — remove a area e devolve os sinais ao padrao.
+# Ponto unico, chamado em TODA saida da execucao depois que a area existe.
+_dbx_cmd_sync_encerrar_area() {
+  [[ -n $DBX_CMD_SYNC_AREA ]] && rm -rf -- "$DBX_CMD_SYNC_AREA"
+  DBX_CMD_SYNC_AREA=''
+  DBX_HTTP_TRATADOR_EXTERNO=''
+  dbx_http_sinais_devolver
+}
+
+# _dbx_cmd_sync_exibir <caminho> — forma do caminho que cabe numa linha
+# (RNF-10, RF-28): com byte de controle ou quebra de linha ele sai citado, e a
+# ambiguidade fica visivel em vez de abrir uma segunda linha — que poderia ate
+# comecar com `falha `. Sem byte de controle, sai como esta.
+_dbx_cmd_sync_exibir() {
+  if [[ $1 == *[$'\001'-$'\037\177']* ]]; then
+    printf -v DBX_CMD_SYNC_EXIBIDO '%q' "$1"
+  else
+    DBX_CMD_SYNC_EXIBIDO=$1
+  fi
+}
+
+# _dbx_cmd_sync_resumo_da_falha <requisicoes_antes_do_item>
+#
+# RF-59(c): o resumo e texto CURTO derivado do prefixo do `error_summary` e
+# nunca do corpo bruto, nem de canal que possa trazer token. So conta o que o
+# servico respondeu A ESTE ITEM: se nenhuma requisicao saiu durante ele, os
+# canais de `lib/http` descrevem o item anterior e a falha e local.
+_dbx_cmd_sync_resumo_da_falha() {
+  local antes=$1 marca
+  DBX_CMD_SYNC_RESUMO_FALHA='falha local'
+  [[ ${DBX_HTTP_REQUISICOES:-0} -gt $antes ]] || return 0
+  if [[ ${DBX_HTTP_CODIGO:-0} == 0 ]]; then
+    DBX_CMD_SYNC_RESUMO_FALHA='sem resposta do servico'
+    return 0
+  fi
+  # So o prefixo no alfabeto de tag da Dropbox — minusculas, `_` e `/` —, sem
+  # o qualificador final. QA-P2-02 (a): ponto, digito, maiuscula e hifen ficam
+  # FORA, porque com eles o prefixo montava um token (`x_sl.<token>` passava
+  # inteiro e a redacao, que espera delimitador antes de `sl.`, nao o via).
+  marca=${DBX_HTTP_RESUMO_DO_SERVICO:-}
+  marca=${marca%%[!a-z_/]*}
+  marca=${marca:0:80}
+  while [[ $marca == */ ]]; do marca=${marca%/}; done
+  if [[ -n $marca ]]; then
+    dbx_errors_redigir "$marca" >/dev/null
+    DBX_CMD_SYNC_RESUMO_FALHA=$DBX_ERRORS_REDIGIDO
+  elif [[ $DBX_HTTP_CODIGO -ge 400 ]]; then
+    DBX_CMD_SYNC_RESUMO_FALHA="HTTP $DBX_HTTP_CODIGO"
+  fi
+  return 0
+}
+
+# _dbx_cmd_sync_falhou <caminho> <requisicoes_antes_do_item> — registra a falha
+# do item (classe em DBX_CMD_SYNC_FALHA_CLASSE) e emite a linha dele no stderr.
+#
+# RF-59(a): uma linha por item, `falha <caminho>: <classe> <resumo>`. A saida
+# das operacoes continua descartada: ela e o que poderia trazer corpo bruto, e a
+# linha montada aqui so tem o que foi saneado.
+_dbx_cmd_sync_falhou() {
+  local caminho=$1 antes=$2 classe=${DBX_CMD_SYNC_FALHA_CLASSE:-erro_remoto}
+  DBX_CMD_SYNC_FALHAS_CAMINHOS+=("$caminho")
+  DBX_CMD_SYNC_FALHAS_CLASSES+=("$classe")
+  _dbx_cmd_sync_resumo_da_falha "$antes"
+  _dbx_cmd_sync_exibir "$caminho"
+  # QA-P2-02 (b): defesa em profundidade, a mesma do diagnostico — todo segredo
+  # em memoria e mascarado pelo valor na linha inteira, antes de sair.
+  local linha
+  printf -v linha 'falha %s: %s %s' "$DBX_CMD_SYNC_EXIBIDO" "$classe" "$DBX_CMD_SYNC_RESUMO_FALHA"
+  dbx_output_mascarar_segredos "$linha"
+  printf '%s\n' "$DBX_OUTPUT_MASCARADO" >&2
+}
+
 _dbx_cmd_sync_carregar_dependencias() {
   # shellcheck source=lib/walk.sh
   . "$DBX_CLI_RAIZ/lib/walk.sh"
@@ -223,10 +318,19 @@ dbx_cmd_sync_executar() {
   fi
 
   local area registros_locais registros_remotos
+  # RNF-31: o tratador e armado ANTES de a area existir, para nao haver janela
+  # entre a criacao e a protecao; sem area, ele so encerra.
+  DBX_CMD_SYNC_FALHAS_CAMINHOS=()
+  DBX_CMD_SYNC_FALHAS_CLASSES=()
+  # shellcheck disable=SC2034  # canal de lib/http, lido por dbx_http_sinais_devolver
+  DBX_HTTP_TRATADOR_EXTERNO=_dbx_cmd_sync_interrompido
+  dbx_http_sinais_devolver
   area=$(mktemp -d "${TMPDIR:-/tmp}/dbx-sync.XXXXXXXX") || {
+    _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar configuracao 'nao foi possivel criar area temporaria'
     return $?
   }
+  DBX_CMD_SYNC_AREA=$area
   registros_locais="$area/local"
   registros_remotos="$area/remoto"
   local revs_remotos="$area/revs"
@@ -245,7 +349,7 @@ dbx_cmd_sync_executar() {
   else
     dbx_progress_mensagem "[sync] analisando arquivos locais em: $raiz_local"
     dbx_walk_local "$raiz_local" "$registros_locais" || {
-      rm -rf -- "$area"
+      _dbx_cmd_sync_encerrar_area
       dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
       return $?
     }
@@ -256,7 +360,7 @@ dbx_cmd_sync_executar() {
     # RF-54(c): colisao de caixa e recusa integral, antes de qualquer escrita e
     # tambem em simulacao — o plano de uma arvore assim nao tem leitura unica.
     if ! dbx_sync_colisao_de_caixa caminhos_locais; then
-      rm -rf -- "$area"
+      _dbx_cmd_sync_encerrar_area
       dbx_cmd_falhar conflito "$DBX_SYNC_MOTIVO"
       return $?
     fi
@@ -289,7 +393,7 @@ dbx_cmd_sync_executar() {
   dbx_progress_mensagem "[sync] consultando arquivos remotos em: $remoto"
   if ! dbx_sync_enumerar_remoto "$remoto" "$registros_remotos" "$revs_remotos"; then
     local estado_remoto=$?
-    rm -rf -- "$area"
+    _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
     return "$estado_remoto"
   fi
@@ -313,7 +417,7 @@ dbx_cmd_sync_executar() {
     [[ ${#ordem_remota[@]} -eq 0 ]] && vazia='sim'
   fi
   if [[ $vazia == 'sim' && ${#DBX_STATE_ENTRADA[@]} -gt 0 ]]; then
-    rm -rf -- "$area"
+    _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar nao_concluida \
       'a origem esta vazia e a memoria registra caminhos de execucao anterior: execucao recusada integralmente'
     return $?
@@ -408,7 +512,7 @@ dbx_cmd_sync_executar() {
     dbx_cmd_iniciar_saida
     dbx_output_campo simulado sim
     dbx_output_render
-    rm -rf -- "$area"
+    _dbx_cmd_sync_encerrar_area
     return 0
   fi
 
@@ -418,12 +522,13 @@ dbx_cmd_sync_executar() {
     total_ops=$((total_ops + ${#DBX_SYNC_APAGAR[@]}))
   fi
 
-  local op_atual=0 alvo rev
+  local op_atual=0 alvo rev antes apagar raiz_do_destino
   local enviados=0 recebidos=0 apagados=0 falhas=0
   for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
     op_atual=$((op_atual + 1))
     # A escrita usa a grafia que o destino ja tem (RF-54(d)).
     alvo=${DBX_SYNC_ALVO[$caminho]:-$caminho}
+    antes=${DBX_HTTP_REQUISICOES:-0}
     if [[ $sentido == 'enviar' ]]; then
       dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
       rev=''
@@ -435,11 +540,16 @@ dbx_cmd_sync_executar() {
           "${mapa_local[$caminho]:-}" || :
       else
         falhas=$((falhas + 1))
+        _dbx_cmd_sync_falhou "$caminho" "$antes"
       fi
     else
       dbx_progress_etapa "$op_atual" "$total_ops" 'recebendo' "$caminho"
-      _dbx_cmd_sync_receber "$remoto/$caminho" "$raiz_local" "$alvo" && recebidos=$((recebidos + 1)) ||
+      if _dbx_cmd_sync_receber "$remoto/$caminho" "$raiz_local" "$alvo"; then
+        recebidos=$((recebidos + 1))
+      else
         falhas=$((falhas + 1))
+        _dbx_cmd_sync_falhou "$caminho" "$antes"
+      fi
     fi
   done
 
@@ -455,12 +565,18 @@ dbx_cmd_sync_executar() {
     for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
       op_atual=$((op_atual + 1))
       dbx_progress_etapa "$op_atual" "$total_ops" 'apagando' "$caminho"
+      antes=${DBX_HTTP_REQUISICOES:-0}
+      apagar=_dbx_cmd_sync_apagar_local
+      raiz_do_destino=$raiz_local
       if [[ $sentido == 'enviar' ]]; then
-        _dbx_cmd_sync_apagar_remoto "$remoto" "$caminho" && apagados=$((apagados + 1)) ||
-          falhas=$((falhas + 1))
+        apagar=_dbx_cmd_sync_apagar_remoto
+        raiz_do_destino=$remoto
+      fi
+      if "$apagar" "$raiz_do_destino" "$caminho"; then
+        apagados=$((apagados + 1))
       else
-        _dbx_cmd_sync_apagar_local "$raiz_local" "$caminho" && apagados=$((apagados + 1)) ||
-          falhas=$((falhas + 1))
+        falhas=$((falhas + 1))
+        _dbx_cmd_sync_falhou "$caminho" "$antes"
       fi
     done
   fi
@@ -478,8 +594,25 @@ dbx_cmd_sync_executar() {
   dbx_output_campo apagados "$apagados"
   dbx_output_campo omitidos "${#DBX_SYNC_IDENTICOS[@]}"
   dbx_output_campo falhas "$falhas"
+  # RF-59(b): no `--json`, cada falha vira o par `falha_caminho`/`falha_classe`,
+  # na ordem das linhas de falha. Acrescimo compativel (RF-35): `falhas`, a
+  # contagem, continua como era, e sem `--json` a saida padrao nao muda.
+  local indice valor
+  if [[ ${DBX_CLI_ESTRUTURADA:-nao} == 'sim' ]]; then
+    for indice in "${!DBX_CMD_SYNC_FALHAS_CAMINHOS[@]}"; do
+      valor=${DBX_CMD_SYNC_FALHAS_CAMINHOS[indice]}
+      # Com `--null` o registro carrega qualquer byte; por linha, vale a mesma
+      # citacao da linha de falha.
+      if [[ ${DBX_CLI_NULO:-nao} != 'sim' ]]; then
+        _dbx_cmd_sync_exibir "$valor"
+        valor=$DBX_CMD_SYNC_EXIBIDO
+      fi
+      dbx_output_campo falha_caminho "$valor"
+      dbx_output_campo falha_classe "${DBX_CMD_SYNC_FALHAS_CLASSES[indice]}"
+    done
+  fi
   dbx_output_render
-  rm -rf -- "$area"
+  _dbx_cmd_sync_encerrar_area
 
   # RF-41(a) exige codigo diferente de zero quando a travessia foi parcial, ainda
   # que nada tenha falhado: o operador precisa saber que o resultado nao e o
@@ -503,31 +636,49 @@ dbx_cmd_sync_executar() {
 # mudanca remota desde a listagem desta execucao e recusada como conflito e o
 # item conta como falha, sem sobrescrever. Sem `rev` o arquivo e novo, e vai em
 # `add` — se alguem o criou nesse intervalo, a recusa tambem protege.
+#
+# As quatro operacoes de item publicam a classe da falha em
+# DBX_CMD_SYNC_FALHA_CLASSE (RF-59); a saida delas continua descartada.
 _dbx_cmd_sync_enviar() {
   local origem=$1 destino=$2 rev=$3
+  DBX_CMD_SYNC_FALHA_CLASSE=''
   dbx_transfer_objeto_de_publicacao "$destino" add "$rev" "$origem" true
-  dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" sync >/dev/null 2>&1
+  dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" sync >/dev/null 2>&1 && return 0
+  DBX_CMD_SYNC_FALHA_CLASSE=${DBX_TRANSFER_CLASSE:-erro_remoto}
+  return 1
 }
 
 # _dbx_cmd_sync_receber <caminho_remoto> <raiz_local> <relativo_local>
 #
 # Recebimento atomico com conferencia de resumo (RF-55(e)), o mesmo do
-# `download`.
+# `download`. Falha local publica a propria classe; a de transporte vem de
+# `lib/http`.
 _dbx_cmd_sync_receber() {
   local remoto=$1 raiz=$2 relativo=$3
   local pasta=${relativo%/*}
+  DBX_CMD_SYNC_FALHA_CLASSE='configuracao'
   [[ $pasta == "$relativo" ]] || mkdir -p -- "$raiz/$pasta" 2>/dev/null || return 1
-  dbx_cmd_receber_arquivo "$remoto" "$raiz/$relativo" >/dev/null 2>&1
+  DBX_CMD_SYNC_FALHA_CLASSE=''
+  dbx_cmd_receber_arquivo "$remoto" "$raiz/$relativo" >/dev/null 2>&1 && return 0
+  DBX_CMD_SYNC_FALHA_CLASSE=${DBX_CMD_FALHA_CLASSE:-${DBX_HTTP_CLASSE:-erro_remoto}}
+  return 1
 }
 
 _dbx_cmd_sync_apagar_remoto() {
   local remoto=$1 relativo=$2
+  DBX_CMD_SYNC_FALHA_CLASSE=''
   dbx_json_escapar_cadeia "$remoto/$relativo"
   dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/delete_v2' \
-    "{\"path\":\"$DBX_JSON_ESCAPADO\"}" nao >/dev/null 2>&1
+    "{\"path\":\"$DBX_JSON_ESCAPADO\"}" nao >/dev/null 2>&1 && return 0
+  DBX_CMD_SYNC_FALHA_CLASSE=${DBX_HTTP_CLASSE:-erro_remoto}
+  return 1
 }
 
+# Sem permissao de escrita no diretorio e o caso comum de `rm` recusar aqui.
 _dbx_cmd_sync_apagar_local() {
   local raiz=$1 relativo=$2
-  rm -f -- "$raiz/$relativo" 2>/dev/null
+  DBX_CMD_SYNC_FALHA_CLASSE=''
+  rm -f -- "$raiz/$relativo" 2>/dev/null && return 0
+  DBX_CMD_SYNC_FALHA_CLASSE='permissao'
+  return 1
 }

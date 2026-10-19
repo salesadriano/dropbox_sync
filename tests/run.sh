@@ -53,12 +53,30 @@ arquivos_falhos=0
 arquivos_executados=0
 problemas_de_integridade=0
 
+# RNF-32(a), Regra 9 de `protocolo-tdd`: o primeiro arquivo com erro interrompe
+# a execucao, e os seguintes nao rodam. O relatorio final continua sendo
+# emitido, com o arquivo que interrompeu e quantos ficaram sem rodar.
+#
+# Nao ha opcao para "rodar tudo": a Regra 9 exige a parada nas duas execucoes,
+# local e pipeline, e um atalho para desliga-la seria o modo proibido a um
+# argumento de distancia; para ver outro arquivo, use o filtro.
+selecionados=()
 for arquivo in "$RAIZ"/tests/unit/*_test.sh "$RAIZ"/tests/integracao/*_test.sh; do
   [[ -e $arquivo ]] || continue
   nome=$(basename -- "$arquivo")
   if [[ -n $filtro && $nome != *"$filtro"* ]]; then
     continue
   fi
+  selecionados+=("$arquivo")
+done
+interrompida_em=''
+
+for arquivo in ${selecionados[@]+"${selecionados[@]}"}; do
+  if [[ $arquivos_falhos -gt 0 ]]; then
+    interrompida_em=$nome
+    break
+  fi
+  nome=$(basename -- "$arquivo")
   arquivos_executados=$((arquivos_executados + 1))
   printf '\n# ===== %s =====\n' "$nome"
 
@@ -89,12 +107,18 @@ for arquivo in "$RAIZ"/tests/unit/*_test.sh "$RAIZ"/tests/integracao/*_test.sh; 
 
   [[ $status -ne 0 ]] && arquivos_falhos=$((arquivos_falhos + 1))
 done
+# O ultimo selecionado tambem pode ter falhado; ai nao sobra nada a interromper.
+[[ -z $interrompida_em && $arquivos_falhos -gt 0 ]] && interrompida_em=$nome
 
 printf '\n# =========================================\n'
 printf '# arquivos executados : %d\n' "$arquivos_executados"
 printf '# casos aprovados     : %d\n' "$total_ok"
 printf '# casos reprovados    : %d\n' "$total_nao_ok"
 printf '# casos pulados       : %d\n' "$total_pulados"
+if [[ -n $interrompida_em ]]; then
+  printf '# interrompida em     : %s (primeiro erro; %d arquivo(s) nao executado(s))\n' \
+    "$interrompida_em" "$((${#selecionados[@]} - arquivos_executados))"
+fi
 
 if [[ $arquivos_executados -eq 0 ]]; then
   if [[ -n $filtro ]]; then

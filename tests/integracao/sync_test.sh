@@ -64,6 +64,23 @@ _cenario() {
     printf 'if [[ $url == *files/download* && -n $cabecalhos && -f "$base/resultado_cabecalho" ]]; then\n'
     printf '  printf "Dropbox-API-Result: %%s\\r\\n" "$(cat "$base/resultado_cabecalho")" >"$cabecalhos"\n'
     printf 'fi\n'
+    # RF-59: token e erros por tipo de item; RNF-31: sinal ao grupo do processo
+    # quando a URL casa, so seguro sob `setsid` (ver `_rodar_em_sessao`).
+    cat <<'FIM'
+if [[ $url == *oauth2/token* && -f "$base/token" ]]; then
+  corpo="{\"access_token\":\"$(cat "$base/token")\",\"expires_in\":14400}"
+fi
+for tipo in upload:files/upload download:files/download delete:files/delete_v2; do
+  if [[ $url == *"${tipo#*:}" && -f "$base/${tipo%%:*}_erro" ]]; then
+    codigo=$(cat "$base/${tipo%%:*}_erro")
+    corpo=$(cat "$base/erro_corpo")
+  fi
+done
+if [[ -f "$base/sinal" && $url == *"$(cat "$base/sinal_url")"* ]]; then
+  kill -s "$(cat "$base/sinal")" 0
+  sleep 5
+fi
+FIM
     printf '[[ -n $saida ]] && printf "%%s" "$corpo" >"$saida"\n'
     printf '[[ -n $escrever ]] && printf "%%s" "$codigo"\n'
     printf 'exit 0\n'
@@ -689,6 +706,198 @@ teste_recebimento_sobre_arquivo_somente_leitura_falha_o_item_e_segue() {
   assert_igual 'antigo' "$(cat "$base/local/a.txt")" 'o arquivo fica intacto'
   assert_igual 444 "$(stat -c %a "$base/local/a.txt")" 'o modo fica intacto'
   assert_igual $'a.txt\nb.txt' "$(_conteudo_do_diretorio "$base/local")" 'nao resta temporario'
+}
+
+# ---------------------------------------------------------------------------
+# RF-59 — falhas por item reportadas uma a uma, sem segredo (TC-FLH-01..04)
+# ---------------------------------------------------------------------------
+
+# _linhas_de_falha <texto> — so as linhas que comecam por `falha `.
+_linhas_de_falha() {
+  local linha
+  while IFS= read -r linha; do
+    [[ $linha == 'falha '* ]] && printf '%s\n' "$linha"
+  done <<<"$1"
+  return 0
+}
+
+teste_falha_de_envio_gera_uma_linha_por_item_e_stdout_inalterado() {
+  # TC-FLH-01.
+  local base linhas
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  printf 'b' >"$base/local/b.txt"
+  printf '409' >"$base/upload_erro"
+  printf '%s' '{"error_summary":"path/conflict/file/..","error":{".tag":"path"}}' >"$base/erro_corpo"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" 'item falho e operacao nao concluida'
+  linhas=$(_linhas_de_falha "$DBX_ERRO")
+  assert_igual $'falha a.txt: conflito path/conflict/file\nfalha b.txt: conflito path/conflict/file' \
+    "$linhas" 'uma linha por item, com caminho, classe e resumo'
+  assert_contem 'falhas=2' "$DBX_SAIDA" 'o contador coincide com as linhas de falha'
+  assert_igual '' "$(_linhas_de_falha "$DBX_SAIDA")" 'nenhuma linha de falha no stdout'
+  assert_nao_contem 'falha_' "$DBX_SAIDA" 'sem --json o stdout nao ganha campo novo'
+}
+
+teste_falha_de_recebimento_e_de_exclusao_tambem_geram_linha() {
+  local base linhas
+  base=$(_cenario)
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' ff 15)" >"$base/listagem"
+  printf '409' >"$base/download_erro"
+  printf '%s' '{"error_summary":"path/not_found/..."}' >"$base/erro_corpo"
+  _rodar "$base" sync --receber --origem /r --destino "$base/local"
+  linhas=$(_linhas_de_falha "$DBX_ERRO")
+  assert_igual 'falha a.txt: nao_encontrado path/not_found' "$linhas" \
+    'o recebimento falho tem linha propria'
+
+  base=$(_cenario)
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' ff 15)" >"$base/listagem"
+  printf 'b' >"$base/local/b.txt"
+  printf '409' >"$base/delete_erro"
+  printf '%s' '{"error_summary":"path_lookup/not_found/..."}' >"$base/erro_corpo"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  linhas=$(_linhas_de_falha "$DBX_ERRO")
+  assert_igual 'falha a.txt: nao_encontrado path_lookup/not_found' "$linhas" \
+    'a exclusao remota falha tem linha propria'
+  assert_contem 'falhas=1' "$DBX_SAIDA" 'o contador coincide'
+}
+
+teste_json_ganha_a_lista_de_falhas_com_caminho_e_classe() {
+  # TC-FLH-02: acrescimo compativel; `falhas` (contagem) continua como era.
+  local base
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_contem 'falhas=0' "$DBX_SAIDA" 'sem falha, o campo existe e e zero'
+  assert_nao_contem 'falha_caminho=' "$DBX_SAIDA" 'sem falha, a lista e vazia'
+  printf '409' >"$base/upload_erro"
+  printf '%s' '{"error_summary":"path/conflict/file/.."}' >"$base/erro_corpo"
+  printf 'x' >"$base/local/a.txt"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_contem $'falhas=1\nfalha_caminho=a.txt\nfalha_classe=conflito' "$DBX_SAIDA" \
+    'cada falha e um par caminho e classe, logo depois da contagem'
+}
+
+teste_linha_de_falha_nunca_carrega_token_nem_corpo_bruto() {
+  # TC-FLH-03: sentinelas no token e no corpo de erro, JSON e texto puro.
+  local base saida
+  base=$(_cenario)
+  printf 'sl.SENTINELAtokenXYZ' >"$base/token"
+  printf 'a' >"$base/local/a.txt"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/so-remoto.txt' ff 15)" >"$base/listagem"
+  printf '409' >"$base/upload_erro"
+  printf '%s' '{"error_summary":"path/conflict/file/..","eco":"SENTINELAcorpoJSON"}' >"$base/erro_corpo"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  saida="$DBX_SAIDA$DBX_ERRO"
+  assert_igual 1 "$(_linhas_de_falha "$DBX_ERRO" | wc -l)" 'a falha foi reportada'
+  assert_segredo_ausente 'SENTINELAtokenXYZ' "$saida" 'o token nunca aparece'
+  assert_segredo_ausente 'SENTINELAcorpoJSON' "$saida" 'o corpo bruto nunca aparece'
+
+  rm -f "$base/upload_erro"
+  printf '500' >"$base/delete_erro"
+  printf '%s' 'SENTINELAcorpoTEXTO Authorization: Bearer sl.SENTINELAtokenXYZ' >"$base/erro_corpo"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  saida="$DBX_SAIDA$DBX_ERRO"
+  assert_igual 1 "$(_linhas_de_falha "$DBX_ERRO" | wc -l)" 'a exclusao falha foi reportada'
+  assert_segredo_ausente 'SENTINELAtokenXYZ' "$saida" 'o token ecoado no corpo nunca aparece'
+  assert_segredo_ausente 'SENTINELAcorpoTEXTO' "$saida" 'o corpo em texto puro nunca aparece'
+}
+
+teste_linha_de_falha_mascara_token_e_refresh_token_pelo_valor() {
+  # QA-P2-02 (b): segredos SEM forma reconhecivel (sem `sl.`, minusculos, no
+  # alfabeto de tag) devolvidos no error_summary. O corte do alfabeto nao os
+  # alcanca; so o mascaramento pelo valor em memoria.
+  local base resumo
+  for resumo in 'tokenqasentinela/..' 'rtqasentinela/..' 'path/rtqasentinela'; do
+    base=$(_cenario)
+    printf 'tokenqasentinela' >"$base/token"
+    printf '%s' '{"versao":1,"app_key":"ak","app_secret":"as","refresh_token":"rtqasentinela","raiz_remota":"/"}' \
+      >"$base/config/dbx/credencial.json"
+    printf 'a' >"$base/local/a.txt"
+    printf '409' >"$base/upload_erro"
+    printf '{"error_summary":"%s"}' "$resumo" >"$base/erro_corpo"
+    _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+    assert_igual 1 "$(_linhas_de_falha "$DBX_ERRO" | wc -l)" "a falha foi reportada ($resumo)"
+    assert_segredo_ausente 'tokenqasentinela' "$DBX_SAIDA$DBX_ERRO" "token de acesso ausente ($resumo)"
+    assert_segredo_ausente 'rtqasentinela' "$DBX_SAIDA$DBX_ERRO" "refresh token ausente ($resumo)"
+  done
+}
+
+teste_caminho_com_quebra_de_linha_nao_forja_linha_de_falha() {
+  # TC-FLH-04.
+  local base linha total=0
+  base=$(_cenario)
+  printf 'a' >"$base/local/"$'a\nfalha forjada.txt: rede x'
+  printf '409' >"$base/upload_erro"
+  printf '%s' '{"error_summary":"path/conflict/file/.."}' >"$base/erro_corpo"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  while IFS= read -r linha; do
+    [[ $linha == 'falha '* ]] && total=$((total + 1))
+  done <<<"$DBX_ERRO"
+  assert_igual 1 "$total" 'uma linha de falha por item falho'
+  assert_nao_contem $'\nfalha forjada' "$DBX_ERRO" 'o caminho nao abre uma segunda linha'
+}
+
+# ---------------------------------------------------------------------------
+# RNF-31 — area `dbx-sync.*` removida em INT, TERM e HUP (TC-SIG-01..03)
+# ---------------------------------------------------------------------------
+
+# _rodar_em_sessao <base> <argumentos...> — sessao propria, para o sinal ao
+# grupo nao alcancar o executor da suite, e TMPDIR PRIVADO do caso: a
+# conferencia nunca olha o diretorio compartilhado.
+_rodar_em_sessao() {
+  local base=$1
+  shift
+  mkdir -p "$base/tmp"
+  DBX_SAIDA=''
+  DBX_ERRO=''
+  setsid -w env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$base/tmp" \
+    bash "$DBX_EXEC" "$@" </dev/null >"$base/out" 2>"$base/err"
+  DBX_ESTADO=$?
+  [[ -r $base/err ]] && IFS= read -r -d '' DBX_ERRO <"$base/err"
+  return 0
+}
+
+teste_int_durante_o_envio_nao_deixa_area_do_sync() {
+  # TC-SIG-01: o sinal chega durante o `files/upload`, com o tratador do sync.
+  local base
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  printf 'INT' >"$base/sinal"
+  printf 'files/upload' >"$base/sinal_url"
+  _rodar_em_sessao "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" 'interrompido e nao concluido'
+  assert_igual 1 "$(_harness_contar 'files/upload' "$base/chamadas")" 'o sinal chegou durante o envio'
+  assert_igual '' "$(find "$base/tmp" -mindepth 1)" 'nenhuma area dbx-sync.* nem dbx-http.* resta'
+}
+
+teste_term_durante_o_recebimento_nao_deixa_area_do_sync() {
+  # TC-SIG-02: o sinal chega com o tratador do RECEBIMENTO armado; ele precisa
+  # entregar ao do sync, e nao encerrar sozinho.
+  local base
+  base=$(_cenario)
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' ff 15)" >"$base/listagem"
+  printf 'TERM' >"$base/sinal"
+  printf 'files/download' >"$base/sinal_url"
+  _rodar_em_sessao "$base" sync --receber --origem /r --destino "$base/local"
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" 'interrompido e nao concluido'
+  assert_igual 1 "$(_harness_contar 'files/download' "$base/chamadas")" 'o sinal chegou durante o recebimento'
+  assert_igual '' "$(find "$base/tmp" -mindepth 1)" 'nenhuma area dbx-sync.* nem dbx-http.* resta'
+  assert_igual '' "$(_conteudo_do_diretorio "$base/local")" 'nem temporario de recebimento'
+}
+
+teste_hup_durante_a_listagem_remota_nao_deixa_area_do_sync() {
+  # TC-SIG-03.
+  local base
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  printf 'HUP' >"$base/sinal"
+  printf 'list_folder' >"$base/sinal_url"
+  _rodar_em_sessao "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" 'interrompido e nao concluido'
+  assert_igual 0 "$(_harness_contar 'files/upload' "$base/chamadas")" 'o sinal chegou antes de qualquer envio'
+  assert_igual '' "$(find "$base/tmp" -mindepth 1)" 'nenhuma area dbx-sync.* nem dbx-http.* resta'
 }
 
 harness_executar "$@"
