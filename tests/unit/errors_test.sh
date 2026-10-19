@@ -854,4 +854,48 @@ teste_valor_sem_delimitador_de_fechamento_e_mascarado_ate_o_fim() {
   done
 }
 
+# ---------------------------------------------------------------------------
+# P3.4 — classificacao e politica publicadas por variavel (fase 3)
+#
+# `lib/http` consulta as duas a cada requisicao. Publicar por variavel permite
+# chamar sem substituicao de comando, isto e, sem subshell; a saida padrao
+# continua a mesma para os demais consumidores.
+# ---------------------------------------------------------------------------
+
+teste_classificacao_publica_a_classe_sem_subshell() {
+  local codigo resumo esperado
+  for codigo in 200 0 503 409 401 403 429 400 418; do
+    for resumo in '' 'path/not_found/..' 'too_many_write_operations/' 'expired_access_token/'; do
+      esperado=$(dbx_errors_classificar "$codigo" "$resumo")
+      DBX_ERRORS_CLASSE='residuo'
+      dbx_errors_classificar "$codigo" "$resumo" >/dev/null
+      assert_igual "$esperado" "$DBX_ERRORS_CLASSE" "classe publicada para $codigo [$resumo]"
+    done
+  done
+}
+
+teste_politica_publica_o_valor_sem_subshell() {
+  local codigo resumo idempotente esperado
+  for codigo in 200 0 503 409 401 429 400; do
+    for resumo in '' 'path/not_found/..' 'too_many_write_operations/' 'reset/' 'incorrect_offset/'; do
+      for idempotente in sim nao; do
+        esperado=$(dbx_errors_politica_retentativa "$codigo" "$resumo" "$idempotente")
+        DBX_ERRORS_POLITICA='residuo'
+        dbx_errors_politica_retentativa "$codigo" "$resumo" "$idempotente" >/dev/null
+        assert_igual "$esperado" "$DBX_ERRORS_POLITICA" \
+          "politica publicada para $codigo [$resumo] idempotente=$idempotente"
+      done
+    done
+  done
+}
+
+teste_classificacao_e_politica_nao_criam_subshell_por_dentro() {
+  # A politica consulta a classificacao, e a classificacao consulta a tabela de
+  # tags: as duas consultas eram substituicoes de comando.
+  local achados
+  achados=$(grep -vE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ/lib/errors.sh" |
+    grep -nE '\$\((dbx_errors_classificar|_dbx_errors_classe_da_tag)' || true)
+  assert_igual '' "$achados" "consulta interna por substituicao de comando: $achados"
+}
+
 harness_executar "$@"

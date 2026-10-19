@@ -537,4 +537,83 @@ teste_nivel_fora_do_vocabulario_e_recusado() {
     'nivel desconhecido e erro de uso, e nao aprovacao'
 }
 
+# ---------------------------------------------------------------------------
+# Fase 3 — sem `sqlite3`/`python3` (RNF-02 emendado) e sem `lib/db` (RNF-33)
+# ---------------------------------------------------------------------------
+
+# _codigo_do_produto — os arquivos que a auditoria cobre (scripts de governanca
+# em `scripts/` ficam fora, RNF-02(a)).
+_codigo_do_produto() {
+  printf '%s\n' "$DBX_HARNESS_RAIZ/bin/dbx" "$DBX_HARNESS_RAIZ"/lib/*.sh "$DBX_HARNESS_RAIZ"/commands/*.sh
+}
+
+# _interpretadores_em <arquivo...> — mencao a `sqlite3` ou `python3` fora de
+# comentario, em QUALQUER posicao (o nome atribuido a variavel conta, porque e
+# a forma de esconder a invocacao), e invocacao de interpretador por variavel
+# com `-c`, que e a forma nao obvia de executar codigo de outra linguagem.
+_interpretadores_em() {
+  grep -nE '(^|[^A-Za-z0-9_])(sqlite3?|python[0-9.]*)([^A-Za-z0-9_]|$)|"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"[[:space:]]+-c([[:space:]]|$)' "$@" |
+    grep -vE '^[0-9]+:[[:space:]]*#' || true
+}
+
+teste_nenhum_codigo_do_produto_invoca_sqlite3_nem_python3() {
+  # TC-DEP-01 (RNF-02(a)), com prova de discriminacao (RSK-27): cada forma nao
+  # obvia precisa ser acusada antes de a varredura valer.
+  local area mutacao arquivo achados=''
+  area=$(mktemp -d "$DBX_TESTES_TMP/dep.XXXXXX")
+  printf '%s\n' 'motor=python3' 'x=$("$motor" -c "print(1)")' >"$area/variavel.sh"
+  printf '%s\n' 'if command -v sqlite3 >/dev/null; then :; fi' >"$area/command_v.sh"
+  printf '%s\n' 'interp=$1' '"$interp" -c "$programa"' >"$area/interp_c.sh"
+  printf '%s\n' 'printf "%s" "$sql" | sqlite3 "$db"' >"$area/direto.sh"
+  for mutacao in variavel command_v interp_c direto; do
+    [[ -n $(_interpretadores_em "$area/$mutacao.sh") ]] ||
+      _harness_falhar "a auditoria nao acusou a forma '$mutacao'"
+  done
+  printf '%s\n' '# sqlite3 em comentario nao e invocacao' 'printf "%s" ok' >"$area/limpo.sh"
+  assert_igual '' "$(_interpretadores_em "$area/limpo.sh")" 'comentario nao e acusado'
+  while IFS= read -r arquivo; do
+    achados+=$(_interpretadores_em "$arquivo" | sed "s|^|${arquivo##*/}:|")
+  done < <(_codigo_do_produto)
+  assert_igual '' "$achados" "interpretador no codigo do produto: $achados"
+}
+
+teste_preflight_nao_lista_nem_sonda_sqlite3_e_python3() {
+  # TC-DEP-02 (RNF-02(b)).
+  case " $DBX_PREFLIGHT_UTILITARIOS " in
+    *' sqlite3 '* | *' python3 '* | *' python '*)
+      _harness_falhar "lista do preflight cita interpretador: $DBX_PREFLIGHT_UTILITARIOS" ;;
+  esac
+  assert_igual '' "$(_interpretadores_em "$DBX_HARNESS_RAIZ/lib/preflight.sh")" 'nem sonda'
+  local utilitario
+  for utilitario in stat readlink find mktemp mv; do
+    case " $DBX_PREFLIGHT_UTILITARIOS " in
+      *" $utilitario "*) ;;
+      *) _harness_falhar "o cache usa $utilitario e ele precisa constar do preflight" ;;
+    esac
+  done
+}
+
+teste_lib_db_e_suas_chamadas_nao_existem_mais() {
+  # TC-LEG-01 (RNF-33(a)).
+  assert_arquivo_ausente "$DBX_HARNESS_RAIZ/lib/db.sh" 'lib/db.sh removido'
+  local achados
+  achados=$(_codigo_do_produto | xargs grep -nE 'dbx_db_|DBX_DB_|dbx\.db|lib/db\.sh' || true)
+  assert_igual '' "$achados" "referencia ao lib/db no codigo do produto: $achados"
+}
+
+teste_instalador_nao_detecta_nem_recomenda_sqlite3() {
+  # TC-LEG-03 (RNF-33(d)).
+  assert_arquivo_existe "$DBX_HARNESS_RAIZ/install.sh" 'sem o instalador a auditoria seria vacua'
+  assert_igual '' "$(grep -niE 'sqlite|python' "$DBX_HARNESS_RAIZ/install.sh" || true)" \
+    'o install.sh nao detecta nem recomenda sqlite3'
+}
+
+teste_canal_de_hash_do_envio_por_sessao_tem_nome_unico() {
+  # RF-61(j), F-29: o canal e DBX_TRANSFER_CONTENT_HASH; o nome antigo, que nao
+  # existia, fazia o hash da sessao nunca chegar ao cache.
+  local achados
+  achados=$(_codigo_do_produto | xargs grep -nE 'DBX_TRANSFER_HASH([^_A-Z]|$)' || true)
+  assert_igual '' "$achados" "canal inexistente referenciado: $achados"
+}
+
 harness_executar "$@"

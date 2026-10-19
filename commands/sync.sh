@@ -137,11 +137,8 @@ _dbx_cmd_sync_carregar_dependencias() {
   . "$DBX_CLI_RAIZ/lib/state.sh"
   # shellcheck source=lib/sync.sh
   . "$DBX_CLI_RAIZ/lib/sync.sh"
-  # shellcheck source=lib/db.sh
-  . "$DBX_CLI_RAIZ/lib/db.sh"
   # shellcheck source=lib/transfer.sh
   . "$DBX_CLI_RAIZ/lib/transfer.sh"
-  dbx_db_inicializar || :
 }
 
 # _dbx_cmd_sync_conta — identificador da conta corrente, para RF-52.
@@ -159,37 +156,34 @@ _dbx_cmd_sync_conta() {
   [[ -n $DBX_CMD_SYNC_CONTA ]]
 }
 
-# _dbx_cmd_sync_resumo_local <raiz> <relativo> <tamanho> <mtime>
+# _dbx_cmd_sync_resumo_local <raiz> <relativo> <identidade>
 #
-# Consulta a memoria antes de reler o arquivo. Quando reler, registra — e o
-# registro so acontece aqui, num lugar so, para que nenhum caminho de calculo
-# deixe de alimentar a memoria e nenhum caminho a alimente com valor que nao
-# calculou.
+# Consulta a memoria antes de reler o arquivo. A identidade e a da travessia
+# (lib/walk), lida ANTES do calculo; a segunda leitura e feita aqui, DEPOIS, e
+# `lib/state` so registra se as duas coincidem (RF-38(e)). O registro so
+# acontece aqui, num lugar so, para que nenhum caminho de calculo deixe de
+# alimentar a memoria e nenhum a alimente com valor que nao calculou. A memoria
+# em `lib/state` e o UNICO cache (RF-38(a)): nao ha segundo nivel.
 _dbx_cmd_sync_resumo_local() {
-  local raiz=$1 relativo=$2 tamanho=$3 mtime=$4
+  local raiz=$1 relativo=$2 identidade=$3 depois=''
   DBX_CMD_SYNC_RESUMO=''
   DBX_CMD_SYNC_ORIGEM_RESUMO=''
-  if dbx_state_consultar "$relativo" "$tamanho" "$mtime"; then
+  if dbx_state_consultar "$relativo" "$identidade"; then
     DBX_CMD_SYNC_RESUMO=$DBX_STATE_HASH
     DBX_CMD_SYNC_ORIGEM_RESUMO='em cache (memoria)'
     return 0
   fi
-  if dbx_db_consultar_metadado "$raiz/$relativo" "$tamanho" "$mtime"; then
-    DBX_CMD_SYNC_RESUMO=$DBX_DB_HASH
-    dbx_state_registrar "$relativo" "$DBX_CMD_SYNC_RESUMO" "$tamanho" "$mtime"
-    DBX_CMD_SYNC_ORIGEM_RESUMO='em cache (sqlite)'
-    return 0
-  fi
-  DBX_CMD_SYNC_RESUMO=$(dbx_hash_conteudo_arquivo "$raiz/$relativo" 2>/dev/null) || {
+  dbx_hash_publicar_arquivo "$raiz/$relativo" 2>/dev/null || {
     DBX_CMD_SYNC_ORIGEM_RESUMO='falha na leitura'
     return 1
   }
+  DBX_CMD_SYNC_RESUMO=$DBX_HASH_RESULTADO
   [[ -n $DBX_CMD_SYNC_RESUMO ]] || {
     DBX_CMD_SYNC_ORIGEM_RESUMO='hash vazio'
     return 1
   }
-  dbx_state_registrar "$relativo" "$DBX_CMD_SYNC_RESUMO" "$tamanho" "$mtime"
-  dbx_db_salvar_metadado "$raiz/$relativo" "$tamanho" "$mtime" "$DBX_CMD_SYNC_RESUMO" || :
+  dbx_hash_identidade "$raiz/$relativo" && depois=$DBX_HASH_IDENTIDADE
+  dbx_state_registrar "$relativo" "$DBX_CMD_SYNC_RESUMO" "$identidade" "$depois" || :
   DBX_CMD_SYNC_ORIGEM_RESUMO='hash calculado'
   return 0
 }
@@ -197,7 +191,7 @@ _dbx_cmd_sync_resumo_local() {
 dbx_cmd_sync_executar() {
   _dbx_cmd_sync_carregar_dependencias
 
-  local origem='' destino='' sentido='' espelhar='nao' confirmado='nao'
+  local origem='' destino='' sentido='' espelhar='nao' confirmado='nao' permitir_origem_vazia='nao'
   local tem_origem='nao' tem_destino='nao'
   while [[ $# -gt 0 ]]; do
     case ${1-} in
@@ -228,6 +222,7 @@ dbx_cmd_sync_executar() {
         ;;
       --espelhar) espelhar='sim' ;;
       --confirmar) confirmado='sim' ;;
+      --permitir-origem-vazia) permitir_origem_vazia='sim' ;;
       --progresso | --progress | -p)
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
         DBX_CLI_PROGRESSO='sim'
@@ -304,9 +299,34 @@ dbx_cmd_sync_executar() {
     return $?
   fi
 
+  # RF-62(c): a raiz local entra na identidade da memoria ja canonizada, para
+  # `./x` e `/abs/x` designarem a mesma memoria e o mesmo "par visto" (RF-48).
+  # So a CHAVE muda: a travessia, o plano e a saida usam as raizes como dadas.
+  local chave_origem=$origem chave_destino=$destino
+  if dbx_path_local_canonico "$raiz_local"; then
+    # shellcheck disable=SC2153  # canal publico de lib/path, carregada por bin/dbx
+    if [[ $sentido == 'enviar' ]]; then
+      chave_origem=$DBX_PATH_RESULTADO
+    else
+      chave_destino=$DBX_PATH_RESULTADO
+    fi
+  fi
+
+  # RF-52(a): sem identidade de conta, sem memoria — nem leitura nem gravacao,
+  # e nunca um identificador substituto. Consequencia aceita (DIV-28): o par
+  # conta como nunca visto, e `--espelhar` pede reconhecimento.
+  # RF-63(a), QA-P3-02: a identificacao da conta falha em silencio por desenho;
+  # credencial incompleta precisa ser recusada antes, com a classe e o motivo.
+  # Gemeo de `commands/upload.sh` (mesmo conjunto, ver `dbx_auth_preparar`).
+  dbx_auth_preparar || {
+    dbx_cmd_falhar "$DBX_AUTH_CLASSE" "${DBX_AUTH_MOTIVO:-nao foi possivel obter o token de acesso}"
+    return $?
+  }
   local conta=''
   _dbx_cmd_sync_conta && conta=$DBX_CMD_SYNC_CONTA
-  dbx_state_carregar "${conta:-sem-identidade}" "$origem" "$destino"
+  if [[ -n $conta ]]; then
+    dbx_state_carregar "$conta" "$chave_origem" "$chave_destino"
+  fi
   local visto=$DBX_STATE_VISTO
 
   # RF-48: reconhecimento obrigatorio na primeira execucao COM espelhamento.
@@ -336,11 +356,12 @@ dbx_cmd_sync_executar() {
   local revs_remotos="$area/revs"
 
   local parcial='nao' motivo_parcial=''
-  local -a caminhos_locais=() tamanhos=() mtimes=()
+  # shellcheck disable=SC2034  # `tamanhos` e preenchido e filtrado por nome (lib/walk, lib/sync)
+  local -a caminhos_locais=() tamanhos=() identidades=()
   # Resumo de cada arquivo local, com reaproveitamento pela memoria.
   local -a ordem_local=()
   # shellcheck disable=SC2034  # ver nota acima: passado por nome a lib/sync
-  local -A mapa_local=() mapa_tamanhos_local=() mapa_mtimes_local=()
+  local -A mapa_local=()
   local falhas_de_resumo=0
 
   if [[ $sentido == 'receber' && ! -d $raiz_local ]]; then
@@ -355,8 +376,8 @@ dbx_cmd_sync_executar() {
     }
     parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
 
-    dbx_walk_ler "$registros_locais" caminhos_locais tamanhos mtimes
-    dbx_sync_sem_temporarios caminhos_locais tamanhos mtimes
+    dbx_walk_ler "$registros_locais" caminhos_locais tamanhos identidades
+    dbx_sync_sem_temporarios caminhos_locais tamanhos identidades
     # RF-54(c): colisao de caixa e recusa integral, antes de qualquer escrita e
     # tambem em simulacao — o plano de uma arvore assim nao tem leitura unica.
     if ! dbx_sync_colisao_de_caixa caminhos_locais; then
@@ -368,12 +389,10 @@ dbx_cmd_sync_executar() {
     local total_locais=${#caminhos_locais[@]}
     for indice in "${!caminhos_locais[@]}"; do
       if _dbx_cmd_sync_resumo_local "$raiz_local" "${caminhos_locais[$indice]}" \
-        "${tamanhos[$indice]}" "${mtimes[$indice]}"; then
+        "${identidades[$indice]}"; then
         ordem_local+=("${caminhos_locais[$indice]}")
         # shellcheck disable=SC2034  # lido por referencia de nome em lib/sync
         mapa_local["${caminhos_locais[$indice]}"]=$DBX_CMD_SYNC_RESUMO
-        mapa_tamanhos_local["${caminhos_locais[$indice]}"]=${tamanhos[$indice]}
-        mapa_mtimes_local["${caminhos_locais[$indice]}"]=${mtimes[$indice]}
         dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-ok}"
       else
         # Arquivo ilegivel e travessia parcial: some da origem sem ter sido
@@ -391,8 +410,11 @@ dbx_cmd_sync_executar() {
   fi
 
   dbx_progress_mensagem "[sync] consultando arquivos remotos em: $remoto"
-  if ! dbx_sync_enumerar_remoto "$remoto" "$registros_remotos" "$revs_remotos"; then
-    local estado_remoto=$?
+  # QA-P3-03: o status e capturado ANTES do teste. Lido dentro de `if ! …`, ele
+  # e o da negacao (0), e uma enumeracao que falhou terminava o `sync` com sucesso.
+  local estado_remoto=0
+  dbx_sync_enumerar_remoto "$remoto" "$registros_remotos" "$revs_remotos" || estado_remoto=$?
+  if [[ $estado_remoto -ne 0 ]]; then
     _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
     return "$estado_remoto"
@@ -416,10 +438,16 @@ dbx_cmd_sync_executar() {
   else
     [[ ${#ordem_remota[@]} -eq 0 ]] && vazia='sim'
   fi
-  if [[ $vazia == 'sim' && ${#DBX_STATE_ENTRADA[@]} -gt 0 ]]; then
+  # Em simulacao, as duas guardas de origem vazia anunciam a recusa no plano em
+  # vez de sair com erro (RF-44); ver a guarda sem memoria, abaixo.
+  local recusaria=''
+  if [[ $vazia == 'sim' && ${#DBX_STATE_ENTRADA[@]} -gt 0 && $permitir_origem_vazia != 'sim' &&
+    ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
+    recusaria='origem vazia'
+  elif [[ $vazia == 'sim' && ${#DBX_STATE_ENTRADA[@]} -gt 0 && $permitir_origem_vazia != 'sim' ]]; then
     _dbx_cmd_sync_encerrar_area
     dbx_cmd_falhar nao_concluida \
-      'a origem esta vazia e a memoria registra caminhos de execucao anterior: execucao recusada integralmente'
+      'a origem esta vazia e a memoria registra caminhos de execucao anterior: execucao recusada integralmente (use --permitir-origem-vazia se a origem foi esvaziada de proposito)'
     return $?
   fi
 
@@ -427,6 +455,30 @@ dbx_cmd_sync_executar() {
     dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
   else
     dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
+  fi
+
+  # RF-41(b) emendado (ciclo 4, memoria `2026-10-18-2243-guarda-origem-vazia`):
+  # a guarda acima depende da memoria, e a memoria pode faltar, estar
+  # descartada, ilegivel ou ter sido regravada vazia — cada uma dessas brechas
+  # ja apagou o destino num caso de teste (QA-P3-01, 05, 06, 07). Esta guarda
+  # NAO depende de memoria: com espelhamento, origem vazia e algo a apagar no
+  # destino e recusa integral, antes de qualquer escrita. So
+  # `--permitir-origem-vazia` libera; `--confirmar` reconhece a primeira
+  # execucao (RF-48), nao uma origem vazia.
+  #
+  # A recusa sai DEPOIS do plano e ANTES de qualquer escrita (RF-41(d)): o plano
+  # registra a recusa (`recusada=origem vazia`) e os motivos de exclusao
+  # desabilitada, sem listar exclusao alguma, e a execucao para ali. Em
+  # SIMULACAO (RF-44, sai com 0) o plano anuncia `recusaria` e nao lista
+  # exclusao: a previa mostra o que a execucao real faria.
+  local recusa_origem_vazia='nao' a_apagar_recusado=0
+  if [[ -n $recusaria || ($espelhar == 'sim' && $vazia == 'sim' && ${#DBX_SYNC_APAGAR[@]} -gt 0 &&
+    $permitir_origem_vazia != 'sim') ]]; then
+    recusa_origem_vazia='sim'
+    a_apagar_recusado=${#DBX_SYNC_APAGAR[@]}
+    recusaria=''
+    [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && recusaria='origem vazia'
+    DBX_SYNC_APAGAR=()
   fi
 
   if dbx_progress_ativo; then
@@ -466,8 +518,30 @@ dbx_cmd_sync_executar() {
   # RF-41(a): travessia parcial desabilita exclusao NA EXECUCAO INTEIRA, e nao
   # apenas no ramo que falhou. Um ramo invisivel produz exatamente a mesma
   # observacao que um ramo apagado, e nao ha como distinguir depois.
-  local exclusao_desabilitada='nao'
+  #
+  # RF-52(a) com RF-41 (DIV-28 revista no ciclo 2): sem identidade de conta nao
+  # ha memoria, e sem memoria a recusa de RF-41(b) — origem vazia com memoria
+  # povoada — nunca dispara. Uma rotina com `--confirmar` e a origem vazia por
+  # engano apagaria o destino inteiro. A exclusao fica desabilitada com a MESMA
+  # semantica da travessia parcial, nos dois sentidos, e `--confirmar` NAO a
+  # reabilita: ele reconhece a primeira execucao (RF-48), nao substitui a
+  # memoria que falta.
+  local exclusao_desabilitada='nao' motivo_exclusao=''
   if [[ $espelhar == 'sim' && $parcial == 'sim' ]]; then
+    motivo_exclusao='travessia parcial'
+  fi
+  if [[ $espelhar == 'sim' && -z $conta ]]; then
+    motivo_exclusao="${motivo_exclusao}${motivo_exclusao:+; }conta nao identificada"
+  fi
+  # QA-P3-01 (decisao do Tech Lead): memoria que existia e foi descartada na
+  # carga deixa o par "visto" sem linha de base — a recusa de RF-41(b) nao atua.
+  # Mesma semantica: exclusao desabilitada nesta execucao; a memoria e regravada
+  # em v2 no fim, e a execucao seguinte volta ao normal.
+  local memoria_descartada=${DBX_STATE_DESCARTADA:-nao}
+  if [[ $espelhar == 'sim' && $memoria_descartada == 'sim' ]]; then
+    motivo_exclusao="${motivo_exclusao}${motivo_exclusao:+; }memoria descartada"
+  fi
+  if [[ -n $motivo_exclusao ]]; then
     exclusao_desabilitada='sim'
     DBX_SYNC_APAGAR=()
   fi
@@ -488,7 +562,12 @@ dbx_cmd_sync_executar() {
   dbx_output_campo espelhar "$espelhar"
   dbx_output_campo travessia_parcial "$parcial"
   [[ $exclusao_desabilitada == 'sim' ]] &&
-    dbx_output_campo exclusao_desabilitada 'travessia parcial'
+    dbx_output_campo exclusao_desabilitada "$motivo_exclusao"
+  if [[ -n $recusaria ]]; then
+    dbx_output_campo recusaria "$recusaria (a execucao real seria recusada; use --permitir-origem-vazia para apagar)"
+  elif [[ $recusa_origem_vazia == 'sim' ]]; then
+    dbx_output_campo recusada 'origem vazia'
+  fi
   dbx_output_campo a_transferir "$total_transferir"
   dbx_output_campo a_apagar "$total_apagar"
   dbx_output_campo identicos "${#DBX_SYNC_IDENTICOS[@]}"
@@ -507,6 +586,15 @@ dbx_cmd_sync_executar() {
   [[ -n $motivo_parcial ]] && dbx_output_campo motivo_parcial "$motivo_parcial"
   [[ -n ${DBX_STATE_MOTIVO:-} ]] && dbx_output_campo memoria "$DBX_STATE_MOTIVO"
   dbx_output_render
+
+  # RF-41(b) emendado: a recusa da origem vazia acontece aqui, com o plano ja
+  # emitido e antes de qualquer escrita.
+  if [[ $recusa_origem_vazia == 'sim' && ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
+    _dbx_cmd_sync_encerrar_area
+    dbx_cmd_falhar nao_concluida \
+      "a origem esta vazia e o espelhamento apagaria $a_apagar_recusado item(ns) no destino: execucao recusada integralmente (se a origem foi esvaziada de proposito, use --permitir-origem-vazia; --confirmar nao basta)"
+    return $?
+  fi
 
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
     dbx_cmd_iniciar_saida
@@ -535,9 +623,6 @@ dbx_cmd_sync_executar() {
       [[ -n ${mapa_remoto[$alvo]+definido} ]] && rev=${mapa_revs[$alvo]:-}
       if _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev"; then
         enviados=$((enviados + 1))
-        dbx_db_salvar_operacao "$raiz_local/$caminho" "$remoto/$alvo" "sync" \
-          "${mapa_tamanhos_local[$caminho]:-0}" "${mapa_mtimes_local[$caminho]:-0}" \
-          "${mapa_local[$caminho]:-}" || :
       else
         falhas=$((falhas + 1))
         _dbx_cmd_sync_falhou "$caminho" "$antes"
@@ -552,14 +637,6 @@ dbx_cmd_sync_executar() {
       fi
     fi
   done
-
-  if [[ $sentido == 'enviar' ]]; then
-    for caminho in ${DBX_SYNC_IDENTICOS[@]+"${DBX_SYNC_IDENTICOS[@]}"}; do
-      dbx_db_salvar_operacao "$raiz_local/$caminho" "$remoto/$caminho" "sync" \
-        "${mapa_tamanhos_local[$caminho]:-0}" "${mapa_mtimes_local[$caminho]:-0}" \
-        "${mapa_local[$caminho]:-}" || :
-    done
-  fi
 
   if [[ $espelhar == 'sim' ]]; then
     for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
@@ -583,9 +660,23 @@ dbx_cmd_sync_executar() {
 
   dbx_progress_mensagem "[sync] sincronizacao concluida: $enviados enviados, $recebidos recebidos, $apagados apagados, ${#DBX_SYNC_IDENTICOS[@]} omitidos"
 
-  # A memoria e gravada mesmo com falha parcial: os resumos calculados continuam
-  # validos, e joga-los fora so faria a proxima execucao reler tudo.
-  dbx_state_gravar "${conta:-sem-identidade}" "$origem" "$destino" || :
+  # A memoria e gravada mesmo com falha parcial de transferencia: os resumos
+  # calculados continuam validos. Grava so as entradas visitadas (RF-38(b)).
+  # Sem conta, nada (RF-52(a)).
+  # Diretorio de estado alheio nao muda o resultado; o operador e avisado.
+  #
+  # QA-P3-06 (ciclo 4): a memoria so e regravada depois de uma travessia
+  # COMPLETA. Com travessia parcial nada e gravado: regravar uma memoria
+  # descartada so com o que se viu deixaria uma base sem os ramos invisiveis, e
+  # a execucao seguinte a leria como valida.
+  if [[ -n $conta && $parcial != 'sim' ]]; then
+    dbx_state_gravar "$conta" "$chave_origem" "$chave_destino" sim
+    if [[ $? -eq $DBX_STATE_ERRO_PERMISSAO ]]; then
+      dbx_cmd_iniciar_saida
+      dbx_output_diagnostico aviso "$DBX_STATE_MOTIVO"
+      dbx_output_render_diagnostico >&2
+    fi
+  fi
 
   dbx_cmd_iniciar_saida
   dbx_output_campo operacao sync
@@ -624,6 +715,16 @@ dbx_cmd_sync_executar() {
   if [[ $parcial == 'sim' ]]; then
     dbx_cmd_falhar nao_concluida \
       'a travessia local foi parcial: a sincronizacao nao cobre a arvore inteira'
+    return $?
+  fi
+  if [[ $espelhar == 'sim' && -z $conta ]]; then
+    dbx_cmd_falhar nao_concluida \
+      'a identificacao da conta falhou: as exclusoes do espelhamento foram desabilitadas nesta execucao (--confirmar nao as reabilita)'
+    return $?
+  fi
+  if [[ $espelhar == 'sim' && $memoria_descartada == 'sim' ]]; then
+    dbx_cmd_falhar nao_concluida \
+      "a memoria deste par foi descartada (${DBX_STATE_MOTIVO:-ilegivel}): as exclusoes foram desabilitadas nesta execucao; a memoria foi refeita e a proxima execucao volta a propaga-las"
     return $?
   fi
   return 0

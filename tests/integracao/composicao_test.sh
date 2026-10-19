@@ -558,6 +558,9 @@ _canal_nao_carrega_credencial() {
   case $1 in
     # Codigos de saida e constantes de classe: valores fixos da taxonomia.
     DBX_ERRORS_STATUS_USO | DBX_ERRORS_CLASSES | DBX_ERRORS_CODIGO) return 0 ;;
+    # Classe e politica publicadas por variavel (P3.4, fase 3): valores tirados
+    # da tabela fixa da taxonomia, os mesmos que DBX_HTTP_CLASSE/POLITICA copiam.
+    DBX_ERRORS_CLASSE | DBX_ERRORS_POLITICA) return 0 ;;
     # Metadados de resposta, nunca conteudo: codigo HTTP, classe, politica e
     # identificador de correlacao emitido pelo servico.
     DBX_HTTP_CODIGO | DBX_HTTP_CLASSE | DBX_HTTP_POLITICA) return 0 ;;

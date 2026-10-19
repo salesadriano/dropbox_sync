@@ -361,6 +361,46 @@ dbx_hash_conteudo_arquivo_com_tamanho() {
   dbx_hash_conteudo_fluxo_com_tamanho <"$1"
 }
 
+# IDENTIDADE FORTE DO ARQUIVO (RF-38(e), RF-61(b); fase 3)
+#
+#   `mtime` em segundos, `mtime` e `ctime` com nanossegundos, dispositivo, inode
+#   e tamanho, separados por `|`. E o que decide se um `content_hash` ja
+#   calculado pode ser REAPROVEITADO sem reler o arquivo — a memoria do `sync` e
+#   o cache do `upload` comparam esta cadeia. `mtime` em segundos nao distingue
+#   reescrita no mesmo segundo com o mesmo tamanho, e o `mtime` pode ser
+#   restaurado por `touch -d`; o `ctime` nao.
+#
+#   O texto de `%y`/`%z`, e nao `%.9Y`, porque e exato nos dois coreutils:
+#   medido no uutils 0.8.0, `%.9Y` arredonda os nanossegundos por ponto
+#   flutuante (`.123456789` vira `.123456700`). O primeiro campo, em segundos,
+#   e o que a regra anti-corrida de `lib/state` compara com o relogio.
+#
+#   DEFINICAO UNICA, no dominio do resumo: a travessia (`lib/walk`) a le na
+#   mesma leitura de `stat` que ja fazia por arquivo, o `upload` e o `sync` a
+#   releem depois do calculo, e `lib/state` so compara cadeias. Morar aqui, e
+#   nao num dos consumidores, mantem as dependencias apontando para o dominio.
+readonly DBX_HASH_FORMATO_IDENTIDADE='%Y|%y|%z|%d|%i|%s'
+DBX_HASH_IDENTIDADE=''
+DBX_HASH_TAMANHO_ARQUIVO=''
+
+# dbx_hash_identidade <arquivo> — publica DBX_HASH_IDENTIDADE e
+# DBX_HASH_TAMANHO_ARQUIVO numa leitura so. Status diferente de zero, com os dois
+# canais vazios, quando o `stat` falha.
+dbx_hash_identidade() {
+  [[ $# -eq 1 ]] || return "$DBX_HASH_ERRO_USO"
+  local leitura
+  DBX_HASH_IDENTIDADE=''
+  DBX_HASH_TAMANHO_ARQUIVO=''
+  leitura=$(stat -c "%s"$'\t'"$DBX_HASH_FORMATO_IDENTIDADE" -- "$1" 2>/dev/null) ||
+    return "$DBX_HASH_ERRO_ORIGEM"
+  [[ $leitura == *$'\t'* ]] || return "$DBX_HASH_ERRO_ORIGEM"
+  # shellcheck disable=SC2034  # canais publicos, lidos por lib/walk e pelos comandos
+  DBX_HASH_TAMANHO_ARQUIVO=${leitura%%$'\t'*}
+  # shellcheck disable=SC2034
+  DBX_HASH_IDENTIDADE=${leitura#*$'\t'}
+  return "$DBX_HASH_OK"
+}
+
 # dbx_hash_formato_valido <valor> — 0 se for um content_hash bem formado.
 dbx_hash_formato_valido() {
   local valor=${1:-}

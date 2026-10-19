@@ -682,8 +682,12 @@ _dbx_http_conduzir() {
 
     # A decisao de repetir CONSULTA a taxonomia; reimplementa-la por codigo HTTP
     # foi defeito real, em que classe e politica se contradiziam.
-    DBX_HTTP_CLASSE=$(dbx_errors_classificar "$codigo" "$DBX_HTTP_RESUMO_DE_ERRO")
-    politica=$(dbx_errors_politica_retentativa "$codigo" "$DBX_HTTP_RESUMO_DE_ERRO" "$idempotente")
+    # P3.4: por variavel, sem substituicao de comando — eram dois subshells
+    # (tres, com o da politica por dentro) a cada tentativa de cada requisicao.
+    dbx_errors_classificar "$codigo" "$DBX_HTTP_RESUMO_DE_ERRO" >/dev/null
+    DBX_HTTP_CLASSE=$DBX_ERRORS_CLASSE
+    dbx_errors_politica_retentativa "$codigo" "$DBX_HTTP_RESUMO_DE_ERRO" "$idempotente" >/dev/null
+    politica=$DBX_ERRORS_POLITICA
     # shellcheck disable=SC2034  # canal publico, ver nota no topo
     DBX_HTTP_POLITICA=$politica
 
@@ -774,8 +778,11 @@ _dbx_http_conduzir() {
   fi
 
   [[ $DBX_HTTP_CLASSE == 'sucesso' ]] && return 0
-  dbx_errors_codigo_saida "$DBX_HTTP_CLASSE" >/dev/null
-  return "$(dbx_errors_codigo_saida "$DBX_HTTP_CLASSE")"
+  # P3.4: o codigo vem da tabela da taxonomia, numa consulta so; antes eram duas
+  # chamadas, uma delas em subshell. Classe fora da tabela mantem o status de
+  # uso que a consulta devolvia.
+  dbx_errors_classe_valida "$DBX_HTTP_CLASSE" || return "$DBX_ERRORS_STATUS_USO"
+  return "${DBX_ERRORS_CODIGO[$DBX_HTTP_CLASSE]}"
 }
 
 # dbx_http_colecao <metodo> <url> <token> <corpo> <limite>

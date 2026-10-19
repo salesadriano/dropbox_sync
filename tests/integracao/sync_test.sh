@@ -70,6 +70,14 @@ _cenario() {
 if [[ $url == *oauth2/token* && -f "$base/token" ]]; then
   corpo="{\"access_token\":\"$(cat "$base/token")\",\"expires_in\":14400}"
 fi
+# RF-52(a): a identificacao da conta falha, sem retentativa (400).
+if [[ $url == *get_current_account* && -f "$base/conta_falha" ]]; then
+  codigo=400; corpo='{"error_summary":"other/"}'
+fi
+# QA-P3-03: a enumeracao remota responde com o codigo e o corpo dados.
+if [[ $url == *list_folder* && -f "$base/listagem_codigo" ]]; then
+  codigo=$(cat "$base/listagem_codigo")
+fi
 for tipo in upload:files/upload download:files/download delete:files/delete_v2; do
   if [[ $url == *"${tipo#*:}" && -f "$base/${tipo%%:*}_erro" ]]; then
     codigo=$(cat "$base/${tipo%%:*}_erro")
@@ -86,6 +94,13 @@ FIM
     printf 'exit 0\n'
   } >"$base/bin/curl"
   chmod +x "$base/bin/curl"
+  # RNF-02, TC-DEP-03: sentinelas no lugar de `sqlite3` e `python3`.
+  local proibido
+  for proibido in sqlite3 python3 python; do
+    printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "%s" "$*" >>%q\nexit 1\n' \
+      "$proibido" "$base/proibido" >"$base/bin/$proibido"
+    chmod +x "$base/bin/$proibido"
+  done
   printf '%s' "$base"
 }
 
@@ -898,6 +913,427 @@ teste_hup_durante_a_listagem_remota_nao_deixa_area_do_sync() {
   assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" 'interrompido e nao concluido'
   assert_igual 0 "$(_harness_contar 'files/upload' "$base/chamadas")" 'o sinal chegou antes de qualquer envio'
   assert_igual '' "$(find "$base/tmp" -mindepth 1)" 'nenhuma area dbx-sync.* nem dbx-http.* resta'
+}
+
+# ---------------------------------------------------------------------------
+# Fase 3 — memoria do sync no cache unico (RF-38, RF-52(a), RF-62(c), RNF-02)
+# ---------------------------------------------------------------------------
+
+_hash_de() {
+  bash -c '. "$1/lib/errors.sh"; . "$1/lib/hash.sh"; dbx_hash_conteudo_arquivo "$2"' _ "$DBX_HARNESS_RAIZ" "$1"
+}
+
+# _antigo <arquivo> <conteudo> — `mtime` fora da janela anti-corrida de 2 s.
+_antigo() {
+  printf '%s' "$2" >"$1"
+  touch -d '@1700000000.250000000' "$1"
+}
+
+_memoria_do_sync() { # <base> — registros da unica memoria-*, um por linha
+  local -a lista=()
+  shopt -s nullglob
+  lista=("$1/estado/dbx"/memoria-*)
+  shopt -u nullglob
+  [[ ${#lista[@]} -eq 1 ]] || { printf 'memorias:%s' "${#lista[@]}"; return 0; }
+  tr '\0' '\n' <"${lista[0]}"
+}
+
+_quantas_memorias() { # <base>
+  local -a lista=()
+  shopt -s nullglob
+  lista=("$1/estado/dbx"/memoria-*)
+  shopt -u nullglob
+  printf '%s' "${#lista[@]}"
+}
+
+_esperar_tique_do_ctime() { # ver a nota em tests/unit/walk_test.sh
+  local arquivo=$1 sonda=$1.sonda referencia
+  referencia=$(stat -c '%z' -- "$arquivo")
+  : >"$sonda"
+  while [[ $(stat -c '%z' -- "$sonda") == "$referencia" ]]; do
+    chmod 600 "$sonda"
+  done
+  rm -f -- "$sonda"
+}
+
+teste_travessia_completa_grava_so_os_arquivos_visitados() {
+  # TC-MEM-04 (RF-38(b)).
+  local base
+  base=$(_cenario)
+  _antigo "$base/local/a.txt" 'aaaa'
+  _antigo "$base/local/b.txt" 'bbbb'
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_contem 'b.txt' "$(_memoria_do_sync "$base")" 'primeira execucao registra b.txt'
+  rm -f "$base/local/b.txt"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "segunda execucao conclui; diagnostico: $DBX_ERRO"
+  assert_nao_contem 'b.txt' "$(_memoria_do_sync "$base")" 'arquivo apagado na origem sai da memoria'
+  assert_contem 'a.txt' "$(_memoria_do_sync "$base")" 'o visitado permanece'
+}
+
+teste_travessia_parcial_preserva_a_memoria_do_ramo_nao_visitado() {
+  # TC-MEM-05 (RF-38(b)).
+  [[ $EUID -ne 0 ]] || pular 'root le diretorio sem permissao'
+  local base
+  base=$(_cenario)
+  mkdir -p "$base/local/ramo"
+  _antigo "$base/local/a.txt" 'aaaa'
+  _antigo "$base/local/ramo/b.txt" 'bbbb'
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  chmod 000 "$base/local/ramo"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  chmod 755 "$base/local/ramo"
+  assert_contem 'ramo/b.txt' "$(_memoria_do_sync "$base")" 'travessia parcial nao descarta o ramo invisivel'
+}
+
+teste_reescrita_no_mesmo_segundo_com_remoto_antigo_e_enviada() {
+  # TC-MEM-06 (RF-38(e), DIV-26): mutacao que volte a `mtime` em segundos
+  # reprova aqui.
+  local base hash
+  base=$(_cenario)
+  _antigo "$base/local/a.txt" 'aaaa'
+  hash=$(_hash_de "$base/local/a.txt")
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' "$hash" 4)" >"$base/listagem"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$(_escritas "$base")" 'conteudo igual ao remoto: nada a enviar'
+  assert_contem "$hash" "$(_memoria_do_sync "$base")" 'e o resumo vai a memoria'
+  _esperar_tique_do_ctime "$base/local/a.txt"
+  printf 'bbbb' >"$base/local/a.txt"
+  touch -d '@1700000000.250000000' "$base/local/a.txt"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual 1 "$(_harness_contar 'files/upload' "$base/chamadas")" \
+    'mesmo segundo, mesmo tamanho e mtime restaurado: o sync envia'
+}
+
+teste_sem_identidade_de_conta_o_sync_segue_sem_memoria() {
+  # TC-CONTA-02 (RF-52(a)).
+  local base primeira
+  base=$(_cenario)
+  : >"$base/conta_falha"
+  _antigo "$base/local/a.txt" 'aaaa'
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sem conta o sync segue; diagnostico: $DBX_ERRO"
+  primeira=$(grep '^transferir=' <<<"$DBX_SAIDA")
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$(_quantas_memorias "$base")" 'nenhum memoria-* criado'
+  assert_igual "$primeira" "$(grep '^transferir=' <<<"$DBX_SAIDA")" 'as mesmas operacoes de uma execucao sem memoria'
+  assert_igual '' "$(grep -rl 'sem-identidade' "$base/estado" 2>/dev/null)" 'nenhum identificador substituto'
+}
+
+teste_sem_identidade_de_conta_espelhar_pede_reconhecimento_e_a_ajuda_avisa() {
+  # TC-CONTA-04 (RF-52(a), DIV-28): falha segura documentada.
+  local base
+  base=$(_cenario)
+  : >"$base/conta_falha"
+  _antigo "$base/local/a.txt" 'aaaa'
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar
+  assert_igual "$(dbx_errors_codigo_saida nao_concluida)" "$DBX_ESTADO" \
+    'sem memoria o par conta como nunca visto'
+  assert_contem '--confirmar' "$DBX_ERRO" 'o diagnostico oferece a confirmacao'
+  _rodar "$base" help sync
+  assert_contem 'identificacao da conta' "$DBX_SAIDA" 'a ajuda do sync avisa a contrapartida'
+  assert_contem '--confirmar' "$DBX_SAIDA" 'e nomeia o sinalizador que a rotina precisa'
+  assert_contem 'exclusoes ficam DESABILITADAS' "$DBX_SAIDA" 'ciclo 2: a ajuda descreve as exclusoes desabilitadas'
+  assert_contem 'NAO reabilita' "$DBX_SAIDA" 'e que --confirmar nao as reabilita'
+  assert_contem 'identificação da conta falhar' "$(cat "$DBX_HARNESS_RAIZ/README.md")" 'o README tambem'
+  assert_contem 'exclusões ficam desabilitadas' "$(cat "$DBX_HARNESS_RAIZ/README.md")" 'com o comportamento do ciclo 2'
+}
+
+# Ciclo 2 (DIV-28 revista, RF-41): sem identidade de conta nao ha memoria, e
+# sem memoria a recusa de RF-41(b) nao protege. A exclusao fica DESABILITADA na
+# execucao, com a semantica de RF-41(a), e `--confirmar` nao a reabilita.
+
+teste_sem_conta_origem_vazia_com_confirmar_nao_apaga_nada() {
+  local base
+  base=$(_cenario)
+  : >"$base/conta_falha"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/valioso.txt' 'ff' 1)" >"$base/listagem"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$(_exclusoes "$base")" 'conta nao identificada: zero exclusoes'
+  assert_diferente 0 "$DBX_ESTADO" 'a execucao nao e o espelho pedido'
+  # MUDANCA DECLARADA (ciclo 4, RF-41(b) emendado): origem vazia com algo a
+  # apagar agora e recusada inteira pela guarda sem memoria, antes do plano; a
+  # protecao do caso (zero exclusoes, saida diferente de 0) continua afirmada.
+  # A afirmacao de `exclusao_desabilitada` sem conta segue no caso de origem
+  # povoada, logo abaixo.
+  assert_contem 'origem esta vazia' "$DBX_ERRO" 'recusada pela guarda de origem vazia'
+}
+
+teste_sem_conta_origem_povoada_transfere_e_nao_apaga() {
+  local base
+  base=$(_cenario)
+  : >"$base/conta_falha"
+  printf 'novo' >"$base/local/novo.txt"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/orfao.txt' 'ff' 1)" >"$base/listagem"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 1 "$(_harness_contar 'files/upload' "$base/chamadas")" 'a transferencia acontece'
+  assert_igual 0 "$(_exclusoes "$base")" 'zero exclusoes'
+  assert_diferente 0 "$DBX_ESTADO" 'codigo de saida diferente de 0'
+  assert_contem 'exclusao_desabilitada=' "$DBX_SAIDA" 'motivo na saida estruturada'
+}
+
+teste_sem_conta_receber_espelhar_nao_apaga_local() {
+  local base
+  base=$(_cenario)
+  : >"$base/conta_falha"
+  printf 'meu' >"$base/local/so_local.txt"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota '/r/remoto.txt' 'ff' 15)" >"$base/listagem"
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local" --espelhar --confirmar
+  assert_contem 'transferir=remoto.txt' "$DBX_SAIDA" "o recebimento segue; diagnostico: $DBX_ERRO"
+  assert_arquivo_existe "$base/local/remoto.txt" 'o arquivo remoto foi recebido'
+  assert_arquivo_existe "$base/local/so_local.txt" 'no sentido receber o arquivo local fica'
+  assert_contem 'exclusao_desabilitada=' "$DBX_SAIDA" 'motivo na saida estruturada'
+  assert_diferente 0 "$DBX_ESTADO" 'codigo de saida diferente de 0'
+}
+
+# Ciclo 3 (QA-P3-01, decisao do Tech Lead): memoria que EXISTE mas e descartada
+# na carga mantem o par "visto" e zera a linha de base — a guarda de origem
+# vazia (RF-41(b)) nao atua. A exclusao fica desabilitada naquela execucao, e a
+# memoria e regravada em v2 para a execucao seguinte voltar ao normal.
+
+# _memoria_v1 <base> — troca a memoria do par pela do formato anterior (v1).
+_memoria_v1() {
+  local memoria
+  memoria=$(find "$1/estado/dbx" -name 'memoria-*' -print -quit)
+  [[ -n $memoria ]] || _harness_falhar 'sem memoria-* para rebaixar'
+  printf '1\0dbid:CONTA\0%s\0/r\0%s\t4\t1700000000\ta.txt\0' "$1/local" \
+    "$(_hash_de "$1/local/a.txt")" >"$memoria"
+}
+
+teste_memoria_descartada_desabilita_a_exclusao_e_a_seguinte_volta_ao_normal() {
+  local base
+  base=$(_cenario)
+  _antigo "$base/local/a.txt" 'aaaa'
+  _antigo "$base/local/b.txt" 'bbbb'
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "semeadura; diagnostico: $DBX_ERRO"
+  _memoria_v1 "$base"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/orfao.txt' 'ff' 1)" >"$base/listagem"
+  : >"$base/chamadas"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar
+  assert_igual 0 "$(_exclusoes "$base")" 'memoria descartada: nenhuma exclusao'
+  assert_diferente 0 "$DBX_ESTADO" 'a execucao nao e o espelho pedido'
+  assert_contem 'exclusao_desabilitada=memoria descartada' "$DBX_SAIDA" 'motivo na saida estruturada'
+  assert_igual 2 "$(tr '\0' '\n' <"$(find "$base/estado/dbx" -name 'memoria-*' -print -quit)" | head -1)" \
+    'a memoria foi regravada em v2'
+  : >"$base/chamadas"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar
+  assert_igual 0 "$DBX_ESTADO" "a execucao seguinte volta ao normal; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_exclusoes "$base")" 'e volta a propagar a exclusao'
+}
+
+teste_enumeracao_remota_que_falha_sai_com_o_codigo_da_classe() {
+  # QA-P3-03: o status era lido dentro de `if !`, onde vale 0.
+  local base
+  base=$(_cenario)
+  _antigo "$base/local/a.txt" 'aaaa'
+  # `path/not_found` na raiz remota e destino ainda vazio, e nao falha; uma
+  # recusa de permissao (nao retentavel) e falha da enumeracao.
+  printf '403' >"$base/listagem_codigo"
+  printf '%s' '{"error_summary":"no_permission/.."}' >"$base/listagem"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_diferente 0 "$DBX_ESTADO" "enumeracao recusada nunca sai com sucesso; diagnostico: $DBX_ERRO"
+  assert_igual "$(dbx_errors_codigo_saida "$(dbx_errors_classificar 403 'no_permission/..')")" "$DBX_ESTADO" \
+    "enumeracao recusada sai com o codigo da classe; diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_escritas "$base")" 'nada escrito sem a listagem remota'
+}
+
+teste_sync_com_segredo_vazio_recusa_antes_da_rede_na_classe_de_rf03() {
+  # QA-P3-02: RF-63(a) ponta a ponta.
+  local base
+  base=$(_cenario)
+  printf '%s' '{"versao":1,"app_key":"ak","app_secret":"","refresh_token":"rt","raiz_remota":"/"}' \
+    >"$base/config/dbx/credencial.json"
+  _antigo "$base/local/a.txt" 'aaaa'
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$DBX_ESTADO" "classe de RF-03; diagnostico: $DBX_ERRO"
+  assert_arquivo_ausente "$base/chamadas" 'nenhuma chamada de rede'
+  assert_contem 'segredo' "$DBX_ERRO" 'o motivo nomeia o segredo'
+}
+
+# ---------------------------------------------------------------------------
+# Ciclo 4 — guarda de origem vazia SEM depender da memoria (RF-41(b) emendado,
+# memoria `2026-10-18-2243-guarda-origem-vazia`; QA-P3-05..07)
+# ---------------------------------------------------------------------------
+
+# _par_semeado <base> <sentido> <memoria> — prepara origem vazia com algo a
+# apagar no destino e a memoria do par no estado pedido:
+# valida | descartada | ilegivel | ausente.
+_par_semeado() {
+  local base=$1 sentido=$2 memoria=$3 arquivo
+  if [[ $sentido == enviar ]]; then
+    _antigo "$base/local/a.txt" 'aaaa'
+    printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' 'ff' 4)" >"$base/listagem"
+    if [[ $memoria != ausente ]]; then
+      _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+    fi
+    rm -f -- "$base/local/a.txt"
+  else
+    printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/a.txt' 'ff' 15)" >"$base/listagem"
+    if [[ $memoria != ausente ]]; then
+      _rodar "$base" sync --receber --origem /r --destino "$base/local" --espelhar --confirmar
+    else
+      printf 'local' >"$base/local/a.txt"
+    fi
+    printf '%s' '{"entries":[],"has_more":false}' >"$base/listagem"
+  fi
+  arquivo=$(find "$base/estado/dbx" -name 'memoria-*' -print -quit 2>/dev/null)
+  case $memoria in
+    descartada) printf '1\0dbid:CONTA\0x\0y\0' >"$arquivo" ;;
+    ilegivel) chmod 000 "$arquivo" ;;
+  esac
+  : >"$base/chamadas"
+}
+
+teste_origem_vazia_com_algo_a_apagar_e_recusada_em_toda_combinacao() {
+  [[ $EUID -ne 0 ]] || pular 'root le memoria sem permissao'
+  local sentido memoria confirmar base recusa
+  recusa=$(dbx_errors_codigo_saida nao_concluida)
+  for sentido in enviar receber; do
+    for memoria in valida descartada ilegivel ausente; do
+      for confirmar in '' --confirmar; do
+        base=$(_cenario)
+        _par_semeado "$base" "$sentido" "$memoria"
+        if [[ $sentido == enviar ]]; then
+          _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar $confirmar
+        else
+          _rodar "$base" sync --receber --origem /r --destino "$base/local" --espelhar $confirmar
+        fi
+        assert_igual "$recusa" "$DBX_ESTADO" "$sentido/$memoria/${confirmar:-sem}: recusa; diagnostico: $DBX_ERRO"
+        assert_igual 0 "$(_escritas "$base")" "$sentido/$memoria/${confirmar:-sem}: nenhuma escrita remota"
+        [[ $sentido == receber ]] && assert_arquivo_existe "$base/local/a.txt" \
+          "$sentido/$memoria/${confirmar:-sem}: o arquivo local fica"
+      done
+    done
+  done
+}
+
+teste_origem_vazia_com_algo_a_apagar_traz_o_motivo_mesmo_com_confirmar() {
+  local base
+  base=$(_cenario)
+  _par_semeado "$base" enviar ausente
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_contem 'origem esta vazia' "$DBX_ERRO" 'o motivo nomeia a origem vazia'
+  assert_contem '--permitir-origem-vazia' "$DBX_ERRO" 'e a unica opcao que libera'
+}
+
+teste_permitir_origem_vazia_libera_a_exclusao_nos_dois_sentidos() {
+  local base
+  base=$(_cenario)
+  _par_semeado "$base" enviar valida
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --permitir-origem-vazia
+  assert_igual 0 "$DBX_ESTADO" "com a opcao a execucao segue; diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_exclusoes "$base")" 'e apaga no destino'
+  base=$(_cenario)
+  _par_semeado "$base" receber valida
+  _rodar "$base" sync --receber --origem /r --destino "$base/local" --espelhar --permitir-origem-vazia
+  assert_igual 0 "$DBX_ESTADO" "receber com a opcao segue; diagnostico: $DBX_ERRO"
+  assert_arquivo_ausente "$base/local/a.txt" 'e apaga o local'
+}
+
+teste_simulacao_com_origem_vazia_anuncia_a_recusa_e_nao_lista_exclusao() {
+  # RF-44 com RF-41(b) emendado: a previa sai com 0 e mostra que a execucao
+  # real seria recusada.
+  local base
+  base=$(_cenario)
+  _par_semeado "$base" enviar valida
+  _rodar "$base" --json --dry-run sync --enviar --origem "$base/local" --destino /r --espelhar
+  assert_igual 0 "$DBX_ESTADO" "a simulacao sai com 0; diagnostico: $DBX_ERRO"
+  assert_contem 'recusaria=origem vazia' "$DBX_SAIDA" 'o plano anuncia a recusa'
+  assert_nao_contem 'apagar=a.txt' "$DBX_SAIDA" 'nenhuma exclusao listada'
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'total de exclusoes zero'
+  _rodar "$base" --dry-run sync --enviar --origem "$base/local" --destino /r --espelhar
+  assert_contem 'recusaria' "$DBX_SAIDA" 'e o relatorio legivel tambem'
+  assert_igual 0 "$(_escritas "$base")" 'simulacao nao escreve'
+}
+
+teste_simulacao_com_permitir_origem_vazia_lista_as_exclusoes() {
+  local base
+  base=$(_cenario)
+  _par_semeado "$base" enviar valida
+  _rodar "$base" --json --dry-run sync --enviar --origem "$base/local" --destino /r --espelhar \
+    --permitir-origem-vazia
+  assert_igual 0 "$DBX_ESTADO" "a simulacao sai com 0; diagnostico: $DBX_ERRO"
+  assert_contem 'apagar=a.txt' "$DBX_SAIDA" 'com a opcao, a exclusao e listada'
+  assert_nao_contem 'recusaria' "$DBX_SAIDA" 'e nada e recusado'
+}
+
+teste_origem_vazia_com_destino_vazio_nao_e_recusada() {
+  local base
+  base=$(_cenario)
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "nada a apagar: nao ha o que recusar; diagnostico: $DBX_ERRO"
+}
+
+teste_travessia_parcial_nao_regrava_a_memoria() {
+  # QA-P3-06: so a travessia COMPLETA regrava; com memoria descartada e um ramo
+  # ilegivel, a v1 continua la, e a proxima execucao continua sem base.
+  [[ $EUID -ne 0 ]] || pular 'root le diretorio sem permissao'
+  local base memoria antes
+  base=$(_cenario)
+  mkdir -p "$base/local/ramo"
+  _antigo "$base/local/a.txt" 'aaaa'
+  _antigo "$base/local/ramo/b.txt" 'bbbb'
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  memoria=$(find "$base/estado/dbx" -name 'memoria-*' -print -quit)
+  printf '1\0dbid:CONTA\0x\0y\0' >"$memoria"
+  antes=$(tr '\0' '|' <"$memoria")
+  chmod 000 "$base/local/ramo"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r --espelhar
+  chmod 755 "$base/local/ramo"
+  assert_diferente 0 "$DBX_ESTADO" 'travessia parcial nao e espelho completo'
+  assert_igual "$antes" "$(tr '\0' '|' <"$memoria")" 'com travessia parcial nada e gravado'
+}
+
+teste_raiz_relativa_e_absoluta_usam_a_mesma_memoria() {
+  # TC-CAN-03 (RF-62(c)): o mesmo estado de "par visto" (RF-48).
+  local base
+  base=$(_cenario)
+  _antigo "$base/local/a.txt" 'aaaa'
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  (cd "$base" && _rodar "$base" sync --enviar --origem ./local --destino /r --espelhar &&
+    printf '%s' "$DBX_ESTADO" >"$base/estado_relativo")
+  assert_igual 0 "$(cat "$base/estado_relativo")" 'a raiz relativa ja conta como vista'
+  assert_igual 1 "$(_quantas_memorias "$base")" 'uma unica memoria para as duas grafias'
+}
+
+teste_diretorio_de_estado_alheio_avisa_e_nao_muda_o_resultado() {
+  # TC-EST-04 (RNF-25(b1)) ponta a ponta: nada e lido nem escrito no diretorio
+  # alheio, o operador e avisado e o sync conclui com o codigo de sempre.
+  [[ $EUID -ne 0 ]] || pular 'como root todo diretorio pertence ao usuario'
+  local base
+  base=$(_cenario)
+  _antigo "$base/local/a.txt" 'aaaa'
+  mkdir -p "$base/estado"
+  ln -s /usr "$base/estado/dbx"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "o sync conclui; diagnostico: $DBX_ERRO"
+  assert_contem 'outro usuario' "$DBX_ERRO" 'o operador e avisado'
+  assert_igual 0 "$(_quantas_memorias "$base")" 'nenhuma memoria gravada no diretorio alheio'
+}
+
+teste_sync_usa_a_memoria_sem_sqlite_nem_python_e_preserva_o_legado() {
+  # TC-DEP-03 (RNF-02(c)) e TC-LEG-02 (RNF-33(b)).
+  local base legado antes depois
+  base=$(_cenario)
+  _antigo "$base/local/a.txt" 'aaaa'
+  mkdir -p "$base/estado/dbx"
+  chmod 700 "$base/estado/dbx"
+  for legado in dbx.db dbx.db-wal dbx.db-shm; do
+    printf 'legado %s' "$legado" >"$base/estado/dbx/$legado"
+    touch -d '@1600000000' "$base/estado/dbx/$legado"
+  done
+  antes=$(cd "$base/estado/dbx" && stat -c '%n %s %Y' dbx.db dbx.db-wal dbx.db-shm && cat dbx.db dbx.db-wal dbx.db-shm)
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  _rodar "$base" --progresso sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "sync conclui; diagnostico: $DBX_ERRO"
+  assert_contem 'em cache (memoria)' "$DBX_ERRO" 'a segunda execucao reaproveita a memoria'
+  assert_nao_contem 'sqlite' "$DBX_ERRO" 'nenhum segundo nivel de cache'
+  assert_arquivo_ausente "$base/proibido" 'nenhuma invocacao de sqlite3, python3 ou python'
+  depois=$(cd "$base/estado/dbx" && stat -c '%n %s %Y' dbx.db dbx.db-wal dbx.db-shm && cat dbx.db dbx.db-wal dbx.db-shm)
+  assert_igual "$antes" "$depois" 'dbx.db* intactos: conteudo e mtime'
 }
 
 harness_executar "$@"

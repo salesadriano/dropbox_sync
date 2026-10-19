@@ -68,6 +68,9 @@ DBX_AUTH_CARREGADO=1
 DBX_AUTH_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 DBX_AUTH_ERRO_AUTENTICACAO=$(dbx_errors_codigo_saida autenticacao)
 DBX_AUTH_ERRO_REMOTO=$(dbx_errors_codigo_saida erro_remoto)
+# RF-63(a): segredo ausente e credencial incompleta, com a classe e o codigo de
+# RF-03 (`configuracao`) — manda reconfigurar, e nao revisar a linha de comando.
+DBX_AUTH_ERRO_CONFIGURACAO=$(dbx_errors_codigo_saida configuracao)
 
 readonly DBX_AUTH_URL_TOKEN='https://api.dropbox.com/oauth2/token'
 readonly DBX_AUTH_URL_AUTORIZAR='https://www.dropbox.com/oauth2/authorize'
@@ -189,6 +192,13 @@ dbx_auth_renovar() {
     _dbx_auth_falhar "$DBX_AUTH_ERRO_USO" 'credencial ausente ou incompleta'
     return $?
   }
+  # RF-63: o segredo do aplicativo e obrigatorio tambem aqui, e nao so no
+  # `config`. Sem PKCE, nao ha caminho de token sem ele; a recusa vem antes da
+  # rede e nomeia o que falta, sem valor algum.
+  [[ -n ${DBX_CONFIG_APP_SECRET:-} ]] || {
+    _dbx_auth_falhar "$DBX_AUTH_ERRO_CONFIGURACAO" 'credencial incompleta: segredo do aplicativo (app secret) ausente'
+    return $?
+  }
 
   # Campos por NOME, e nunca por argv. `client_secret` no corpo evita a
   # autenticacao basica, que exigiria codificacao em base64 — utilitario externo
@@ -198,8 +208,8 @@ dbx_auth_renovar() {
     "grant_type=refresh_token"
     "refresh_token=$DBX_CONFIG_REFRESH_TOKEN"
     "client_id=$DBX_CONFIG_APP_KEY"
+    "client_secret=$DBX_CONFIG_APP_SECRET"
   )
-  [[ -n ${DBX_CONFIG_APP_SECRET:-} ]] && campos+=("client_secret=$DBX_CONFIG_APP_SECRET")
 
   local estado
   dbx_http_formulario "$DBX_AUTH_URL_TOKEN" campos
@@ -247,6 +257,31 @@ dbx_auth_renovar() {
 dbx_auth_token() {
   dbx_auth_expirado || return 0
   dbx_auth_renovar
+}
+
+# dbx_auth_preparar — `dbx_auth_token` que, na falha, publica tambem a CLASSE da
+# taxonomia em DBX_AUTH_CLASSE (o motivo ja esta em DBX_AUTH_MOTIVO).
+#
+# Conjunto onde incide: comando cuja primeira chamada falha em SILENCIO por
+# desenho — o `get_metadata` do `upload` (RF-60(d): falha leva ao envio) e a
+# identificacao de conta do `sync` (RF-52(a): falha segue sem memoria). Sem a
+# preparacao explicita, credencial incompleta (RF-63(a)) chegava ao operador
+# como `erro_remoto` sem motivo, ou como sucesso (QA-P3-02). A classe sai da
+# MESMA tabela da taxonomia, percorrida aqui sem substituicao de comando.
+DBX_AUTH_CLASSE=''
+dbx_auth_preparar() {
+  DBX_AUTH_CLASSE=''
+  dbx_auth_token && return 0
+  local estado=$? candidata
+  DBX_AUTH_CLASSE='desconhecido'
+  for candidata in "${DBX_ERRORS_CLASSES[@]}"; do
+    if [[ ${DBX_ERRORS_CODIGO[$candidata]} == "$estado" ]]; then
+      # shellcheck disable=SC2034  # canal publico, lido por commands/upload e commands/sync
+      DBX_AUTH_CLASSE=$candidata
+      break
+    fi
+  done
+  return "$estado"
 }
 
 # dbx_auth_requisitar <metodo> <url> <corpo> <idempotente>
@@ -367,13 +402,19 @@ dbx_auth_trocar_codigo() {
     _dbx_auth_falhar "$DBX_AUTH_ERRO_USO" 'chave de aplicativo ou codigo ausente'
     return $?
   }
+  # RF-63: gemea da renovacao, a mesma recusa antes da rede.
+  [[ -n $segredo ]] || {
+    _dbx_auth_falhar "$DBX_AUTH_ERRO_CONFIGURACAO" 'credencial incompleta: segredo do aplicativo (app secret) ausente'
+    return $?
+  }
 
+  # shellcheck disable=SC2034  # passado por nome a dbx_http_formulario
   local -a campos=(
     "grant_type=authorization_code"
     "code=$codigo"
     "client_id=$chave"
+    "client_secret=$segredo"
   )
-  [[ -n $segredo ]] && campos+=("client_secret=$segredo")
 
   local estado
   dbx_http_formulario "$DBX_AUTH_URL_TOKEN" campos
