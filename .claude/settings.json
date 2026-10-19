@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "autoresearch@autoresearch": true
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -26,5 +23,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "autoresearch@autoresearch": true,
+    "ai-team@ai-team": true
   }
 }
