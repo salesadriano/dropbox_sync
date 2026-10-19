@@ -20,6 +20,10 @@ _dbx_cmd_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_cmd_diretorio=$(cd -P -- "$_dbx_cmd_diretorio" && pwd -P)
 # shellcheck source=lib/hash.sh
 . "$_dbx_cmd_diretorio/hash.sh"
+# shellcheck source=lib/tmp.sh
+. "$_dbx_cmd_diretorio/tmp.sh"
+# shellcheck source=lib/state.sh
+. "$_dbx_cmd_diretorio/state.sh"
 unset _dbx_cmd_diretorio
 
 # shellcheck disable=SC2034
@@ -31,8 +35,6 @@ DBX_CMD_SIMULADO='nao'
 # Marca do temporario de recebimento: `.<nome>.dbx-part.XXXXXX`. E por ela que o
 # `sync` reconhece um temporario orfao e o deixa fora da arvore local.
 readonly DBX_CMD_MARCA_RECEBIMENTO='.dbx-part.'
-# Temporario em curso, global para o tratador de sinal o alcancar.
-DBX_CMD_TEMPORARIO_RECEBIMENTO=''
 # shellcheck disable=SC2034
 # Justificativa: canais publicos de `dbx_cmd_receber_arquivo`, lidos pelos comandos.
 DBX_CMD_INTEGRIDADE='nao_aplicavel'
@@ -360,18 +362,6 @@ dbx_cmd_content_hash_do_resultado() {
   return 0
 }
 
-# _dbx_cmd_recebimento_interrompido — tratador de INT, TERM e HUP do recebimento.
-#
-# Encerra o PROCESSO: o alvo continua o anterior, e seguir depois de um sinal
-# trataria como concluido um recebimento que nao terminou. `exit` nao passa
-# pela limpeza de `_dbx_http_executar`; a area dela, e a de quem chamou o
-# recebimento (o `sync`, RNF-31), saem por `dbx_http_interrompido`.
-_dbx_cmd_recebimento_interrompido() {
-  [[ -n $DBX_CMD_TEMPORARIO_RECEBIMENTO ]] && rm -f -- "$DBX_CMD_TEMPORARIO_RECEBIMENTO"
-  DBX_CMD_TEMPORARIO_RECEBIMENTO=''
-  dbx_http_interrompido
-}
-
 # _dbx_cmd_alvo_somente_leitura <alvo> — 0 quando o alvo e arquivo existente sem
 # escrita para o usuario; publica a recusa nos canais de falha local.
 _dbx_cmd_alvo_somente_leitura() {
@@ -450,25 +440,21 @@ dbx_cmd_receber_arquivo() {
   [[ -z $diretorio ]] && diretorio=/
   nome=${alvo##*/}
   # O nome do temporario precisa caber no limite de 255 bytes por componente.
-  temporario=$(mktemp -- "$diretorio/.${nome:0:200}${DBX_CMD_MARCA_RECEBIMENTO}XXXXXX" 2>/dev/null) || {
+  # Registrado em `lib/tmp` desde a criacao: sinal em qualquer ponto encerra o
+  # processo (o alvo continua o anterior) e remove o temporario junto com a area
+  # da requisicao, que tem o token. Depois do `mv` ele sai do registro.
+  dbx_tmp_arquivo "$diretorio/.${nome:0:200}${DBX_CMD_MARCA_RECEBIMENTO}XXXXXX" || {
     DBX_CMD_FALHA_CLASSE='configuracao'
     DBX_CMD_FALHA_MOTIVO="nao foi possivel criar o temporario de recebimento em: $diretorio"
     return "$(dbx_errors_codigo_saida configuracao)"
   }
+  temporario=$DBX_TMP_CAMINHO
 
-  # Sinal durante a escrita encerra o processo sem passar pelo retorno abaixo;
-  # o tratador remove o temporario e a area da requisicao, que tem o token.
-  DBX_CMD_TEMPORARIO_RECEBIMENTO=$temporario
-  trap '_dbx_cmd_recebimento_interrompido' INT TERM HUP
   dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
     "$argumento" "$temporario"
   estado=$?
-  # Os sinais voltam a quem chamou o recebimento — o `sync` arma o seu antes
-  # (RNF-31) —, e ao padrao quando ninguem armou.
-  dbx_http_sinais_devolver
-  DBX_CMD_TEMPORARIO_RECEBIMENTO=''
   if [[ $estado -ne 0 ]]; then
-    rm -f -- "$temporario"
+    dbx_tmp_remover "$temporario"
     return "$estado"
   fi
 
@@ -479,7 +465,7 @@ dbx_cmd_receber_arquivo() {
     dbx_hash_publicar_arquivo "$temporario" 2>/dev/null && obtido=$DBX_HASH_RESULTADO
     # Resumo local ilegivel nunca e lido como conferido: sem prova, o alvo fica.
     if ! dbx_hash_iguais "$obtido" "$DBX_CMD_CONTENT_HASH"; then
-      rm -f -- "$temporario"
+      dbx_tmp_remover "$temporario"
       DBX_CMD_FALHA_CLASSE='integridade'
       DBX_CMD_FALHA_MOTIVO="o conteudo recebido nao confere com o resumo publicado pelo servico; o destino foi preservado: $alvo"
       return "$(dbx_errors_codigo_saida integridade)"
@@ -489,7 +475,7 @@ dbx_cmd_receber_arquivo() {
   fi
 
   if _dbx_cmd_alvo_somente_leitura "$alvo"; then
-    rm -f -- "$temporario"
+    dbx_tmp_remover "$temporario"
     return "$(dbx_errors_codigo_saida permissao)"
   fi
   # O modo entra so na troca: aplicado antes, um alvo 0444 deixaria o
@@ -500,13 +486,82 @@ dbx_cmd_receber_arquivo() {
   [[ -n ${modo:-} ]] || printf -v modo '%o' $((0666 & ~$(umask)))
   chmod "$modo" -- "$temporario" 2>/dev/null || :
   mv -f -- "$temporario" "$alvo" 2>/dev/null || {
-    rm -f -- "$temporario"
+    dbx_tmp_remover "$temporario"
     # shellcheck disable=SC2034  # canais publicos, ver nota no topo
     DBX_CMD_FALHA_CLASSE='configuracao'
     # shellcheck disable=SC2034
     DBX_CMD_FALHA_MOTIVO="nao foi possivel substituir o destino: $alvo"
     return "$(dbx_errors_codigo_saida configuracao)"
   }
+  dbx_tmp_esquecer "$temporario"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Ciclo comum do `sync` e do `verificar` (RF-69, RNF-35, RNF-36)
+# ---------------------------------------------------------------------------
+
+# Area da execucao em curso (`dbx-sync.*`, nome mantido por DIV-42).
+DBX_CMD_CICLO_AREA=''
+
+# dbx_cmd_ciclo_iniciar <comando> <raiz_local> <raiz_remota> <espera_s>
+#
+# UM ciclo para os dois comandos, e nao duas copias (C-1): trava do par,
+# depois area temporaria registrada em `lib/tmp`. Chamado depois da validacao
+# de argumentos e da recusa de caminho, e ANTES de qualquer chamada a API,
+# escrita ou leitura de memoria (RF-69(b)). A liberacao da trava e a remocao da
+# area ficam com `lib/tmp`, em toda saida.
+#
+# Trava ocupada, de outro host, ilegivel ou `.r` presa: recusa `conflito` (7)
+# com a mensagem da trava (RF-69(d)). Diretorio de estado alheio ou sem
+# escrita: a execucao segue SEM trava e o operador e avisado — a memoria ja
+# trata esse diretorio assim (RNF-25(b1)), e recusar faria um artefato que nao
+# decide nada travar o comando.
+dbx_cmd_ciclo_iniciar() {
+  local comando=$1 raiz_local=$2 remoto=$3 espera=$4 chave_local=$2 estado
+  DBX_CMD_CICLO_AREA=''
+  # A raiz local entra pelo caminho fisico canonico (RF-62), que existe mesmo
+  # para a raiz que o `--receber` ainda vai criar.
+  dbx_path_local_canonico "$raiz_local" && chave_local=$DBX_PATH_RESULTADO
+  dbx_config_identidade
+  dbx_state_trava_adquirir "$DBX_CONFIG_IDENTIDADE" "$chave_local" "$remoto" "$comando" "$espera"
+  estado=$?
+  # DIV-53: quem removeu uma orfa avisa, qualquer que seja o desfecho (ate o
+  # conflito, se outra aquisicao venceu o `ln`).
+  if [[ -n $DBX_STATE_AVISO ]]; then
+    dbx_cmd_iniciar_saida
+    dbx_output_diagnostico aviso "$DBX_STATE_AVISO"
+    dbx_output_render_diagnostico >&2
+  fi
+  # DIV-50: SO o diretorio de estado alheio ou sem escrita (permissao) segue
+  # sem trava, com aviso. Uso invalido e qualquer outra falha recusam com o
+  # proprio codigo; ocupada (inclusive nome instavel) e conflito.
+  case $estado in
+    0) ;;
+    "$DBX_STATE_ERRO_CONFLITO")
+      dbx_cmd_falhar conflito "$DBX_STATE_MOTIVO"
+      return $?
+      ;;
+    "$DBX_STATE_ERRO_PERMISSAO")
+      dbx_cmd_iniciar_saida
+      dbx_output_diagnostico aviso "sem trava de concorrencia nesta execucao: ${DBX_STATE_MOTIVO:-diretorio de estado inacessivel}"
+      dbx_output_render_diagnostico >&2
+      ;;
+    "$DBX_STATE_ERRO_USO")
+      dbx_cmd_falhar uso_invalido "aquisicao da trava recusou os argumentos (defeito interno): ${DBX_STATE_MOTIVO:-uso invalido}"
+      return $?
+      ;;
+    *)
+      dbx_cmd_falhar configuracao "nao foi possivel obter a trava de concorrencia: ${DBX_STATE_MOTIVO:-falha local}"
+      return $?
+      ;;
+  esac
+  dbx_tmp_area sync || {
+    dbx_cmd_falhar configuracao 'nao foi possivel criar area temporaria'
+    return $?
+  }
+  # shellcheck disable=SC2034  # canal publico, lido por commands/sync e commands/verificar
+  DBX_CMD_CICLO_AREA=$DBX_TMP_CAMINHO
   return 0
 }
 
@@ -544,8 +599,7 @@ _dbx_cmd_inteiro() { [[ ${1-} =~ ^[0-9]+$ ]]; }
 dbx_cmd_espaco_consultar() {
   DBX_CMD_ESPACO_USADO='' DBX_CMD_ESPACO_ALOCADO='' DBX_CMD_ESPACO_LIVRE=''
   DBX_CMD_FALHA_CLASSE='' DBX_CMD_FALHA_MOTIVO=''
-  dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/users/get_space_usage' 'null' sim \
-    >/dev/null 2>&1 || {
+  dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/users/get_space_usage' 'null' sim >/dev/null 2>&1 || {
     DBX_CMD_FALHA_CLASSE=${DBX_HTTP_CLASSE:-erro_remoto}
     DBX_CMD_FALHA_MOTIVO="consulta de espaco recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
     return 1

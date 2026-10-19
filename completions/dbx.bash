@@ -37,7 +37,7 @@ _dbx_completar() {
     else
       case $palavra in
         --modo | --mode | --rev | --limite | --limit | --raiz | --root | \
-          --origem | --source | --destino | --dest) valor='sim' ;;
+          --origem | --source | --destino | --dest | --esperar | --wait) valor='sim' ;;
         -?*) ;;
         *) posicionais=$((posicionais + 1)) ;;
       esac
@@ -67,8 +67,8 @@ _dbx_completar() {
     space) lista='--humano --human -H' ;;
     config) lista='--substituir --replace --raiz --root --debug' ;;
     unlink) lista='--confirmar --yes --manter-aplicativo --keep-app' ;;
-    sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --progresso --progress -p --sem-progresso --no-progress' ;;
-    verificar) lista='--enviar --push --receber --pull --origem --source --destino --dest --progresso --progress -p --sem-progresso --no-progress' ;;
+    sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --progresso --progress -p --sem-progresso --no-progress' ;;
+    verificar) lista='--enviar --push --receber --pull --origem --source --destino --dest --esperar --wait --progresso --progress -p --sem-progresso --no-progress' ;;
   esac
 
   if [[ $atual == -* ]]; then
@@ -82,7 +82,7 @@ _dbx_completar() {
       return 0
       ;;
     # `--raiz` do `config` e a raiz REMOTA gravada na credencial.
-    --rev | --limite | --limit | --raiz | --root) return 0 ;;
+    --rev | --limite | --limit | --raiz | --root | --esperar | --wait) return 0 ;;
     --origem | --source) [[ $sentido == 'enviar' ]] && local_='sim' ;;
     --destino | --dest) [[ $sentido == 'receber' ]] && local_='sim' ;;
     *)

@@ -165,7 +165,11 @@ _qa_retrato() {
     printf 'ausente'
     return 0
   }
-  find "$1" -printf '%P|%y|%m|%s|%T@\n' | LC_ALL=C sort
+  # O `mtime` vale para arquivo, nao para diretorio: desde a fase 2 (RF-69(e),
+  # DIV-39) o `verificar` cria e remove o arquivo de trava, o que toca o
+  # `mtime` do diretorio de estado; "byte a byte" e mesmos arquivos, bytes e
+  # modos.
+  find "$1" \( -type d -printf '%P|%y|%m|-\n' \) -o -printf '%P|%y|%m|%s|%T@\n' | LC_ALL=C sort
   (cd -- "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum)
 }
 
@@ -371,7 +375,7 @@ _qa_bin_sem() {
   local alvo origem dir="$BASE/bin-sem-$1"
   rm -rf "$dir"
   mkdir -p "$dir"
-  for alvo in mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df \
+  for alvo in mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir \
     sha256sum shasum locale; do
     [[ $alvo == "$1" ]] && continue
     origem=$(command -v "$alvo" 2>/dev/null) || continue

@@ -64,6 +64,10 @@ _dbx_config_diretorio=$(cd -P -- "$_dbx_config_diretorio" && pwd -P)
 . "$_dbx_config_diretorio/errors.sh"
 # shellcheck source=lib/json.sh
 . "$_dbx_config_diretorio/json.sh"
+# shellcheck source=lib/tmp.sh
+. "$_dbx_config_diretorio/tmp.sh"
+# shellcheck source=lib/hash.sh
+. "$_dbx_config_diretorio/hash.sh"
 unset _dbx_config_diretorio
 
 DBX_CONFIG_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -85,6 +89,8 @@ DBX_CONFIG_APP_KEY=''
 DBX_CONFIG_APP_SECRET=''
 DBX_CONFIG_REFRESH_TOKEN=''
 DBX_CONFIG_RAIZ_REMOTA=''
+# Resumo local da credencial, por `dbx_config_identidade`.
+DBX_CONFIG_IDENTIDADE=''
 
 _dbx_config_limpar_credencial() {
   DBX_CONFIG_APP_KEY=''
@@ -171,6 +177,27 @@ dbx_config_caminho_de_estado() {
   DBX_CONFIG_RESULTADO="$base/dbx"
 }
 
+# dbx_config_identidade — identificador LOCAL da conta vinculada, para a chave da
+# trava de concorrencia (RF-69(a)), em DBX_CONFIG_IDENTIDADE.
+#
+# Por que nao o `account_id` (RF-52): ele so vem da API, e a trava precisa ser
+# adquirida antes de qualquer chamada (RF-69(d)), antes da colisao de caixa do
+# `verificar` (RF-65(c)) e sem mudar o conjunto de chamadas dele (RF-65(b)). O
+# refresh token pertence a UMA conta e a um aplicativo: o resumo dele separa
+# contas sem sair da maquina. O segredo so atravessa um cano ate o resumo; o
+# que sai e hexadecimal truncado, do qual o token nao se recupera. Sem
+# credencial carregada, vazio (a trava usa o marcador `sem-conta`).
+dbx_config_identidade() {
+  local resumo
+  DBX_CONFIG_IDENTIDADE=''
+  [[ -n $DBX_CONFIG_REFRESH_TOKEN ]] || return 0
+  resumo=$(printf 'identidade\n%s\n%s' "$DBX_CONFIG_APP_KEY" "$DBX_CONFIG_REFRESH_TOKEN" |
+    dbx_hash_conteudo_fluxo 2>/dev/null) || return 0
+  # shellcheck disable=SC2034  # canal publico, lido por lib/cmd
+  [[ $resumo =~ ^[0-9a-f]{64}$ ]] && DBX_CONFIG_IDENTIDADE="cred-${resumo:0:32}"
+  return 0
+}
+
 # dbx_config_gravar <app_key> <app_secret> <refresh_token> <raiz_remota>
 #
 # Gravacao atomica: escreve num temporario do MESMO diretorio, com permissao
@@ -224,32 +251,31 @@ dbx_config_gravar() {
 
   _dbx_config_varrer_orfaos "$diretorio"
 
-  temporario=''
-  local saida_mktemp
-  if ! saida_mktemp=$(mktemp "$diretorio/.credencial.$$.XXXXXXXX" 2>&1); then
+  # O temporario e registrado em `lib/tmp` desde a criacao (RNF-35): sinal
+  # interceptavel durante a gravacao o remove, sem `trap` proprio. `SIGKILL`
+  # continua fora de alcance por definicao, e e a varredura de orfaos que cobre
+  # esse caso.
+  dbx_tmp_arquivo "$diretorio/.credencial.$$.XXXXXXXX" || {
     umask "$mascara_anterior"
-    _dbx_config_falhar gravacao "${saida_mktemp:-falha ao criar arquivo temporario}"
+    _dbx_config_falhar gravacao "nao foi possivel criar o arquivo temporario em: $diretorio"
     return $?
-  fi
-  temporario=$saida_mktemp
+  }
+  temporario=$DBX_TMP_CAMINHO
+  # Canal alheio lido por componente que lida com o segredo: esvaziado aqui.
+  DBX_TMP_CAMINHO=''
 
-  # A escrita ocorre em subshell com `trap` proprio, para que sinal
-  # interceptavel durante a gravacao remova o temporario sem alterar os `trap`
-  # do processo chamador. `SIGKILL` continua fora de alcance por definicao, e e
-  # a varredura de orfaos que cobre esse caso.
-  local saida_subshell
-  if ! saida_subshell=$(
-    trap 'rm -f -- "$1" 2>/dev/null' EXIT INT TERM HUP
-    set -- "$temporario"
-    printf '%s\n' "$corpo" >"$1" &&
-      chmod 600 "$1" &&
-      mv -f -- "$1" "$DBX_CONFIG_RESULTADO"
+  local saida_gravacao
+  if ! saida_gravacao=$(
+    printf '%s\n' "$corpo" >"$temporario" &&
+      chmod 600 -- "$temporario" &&
+      mv -f -- "$temporario" "$DBX_CONFIG_RESULTADO"
   ) 2>&1; then
-    rm -f -- "$temporario" 2>/dev/null
+    dbx_tmp_remover "$temporario"
     umask "$mascara_anterior"
-    _dbx_config_falhar gravacao "${saida_subshell:-falha ao gravar ou mover credencial}"
+    _dbx_config_falhar gravacao "${saida_gravacao:-falha ao gravar ou mover credencial}"
     return $?
   fi
+  dbx_tmp_esquecer "$temporario"
 
   umask "$mascara_anterior"
   # shellcheck disable=SC2034  # canal publico, ver nota no topo

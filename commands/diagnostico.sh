@@ -49,6 +49,52 @@ _dbx_cmd_diag_remedio_da_classe() {
   esac
 }
 
+# _dbx_cmd_diag_travas <diretorio_de_estado> — checagem `trava` (RF-71) e o
+# aviso de diretorio de estado em NFS (RF-69(q)).
+_dbx_cmd_diag_travas() {
+  local estado=$1 indice arquivo quem tipo
+  dbx_state_travas_listar
+  if [[ ${#DBX_STATE_TRAVAS_ARQUIVO[@]} -eq 0 ]]; then
+    _dbx_cmd_diag trava ok 'sem travas'
+  fi
+  for indice in "${!DBX_STATE_TRAVAS_ARQUIVO[@]}"; do
+    arquivo=${DBX_STATE_TRAVAS_ARQUIVO[indice]}
+    dbx_state_trava_descrever "$indice"
+    quem=$DBX_STATE_RESULTADO
+    case ${DBX_STATE_TRAVAS_ESTADO[indice]} in
+      viva)
+        _dbx_cmd_diag trava ok "viva: $quem: $arquivo"
+        ;;
+      orfa)
+        if [[ $arquivo == *.r ]]; then
+          _dbx_cmd_diag trava aviso "orfa: retomada interrompida ($quem), nunca retomada automaticamente: $arquivo" \
+            "confirme que nenhum sync ou verificar deste par esta em curso e remova $arquivo com rm"
+        else
+          _dbx_cmd_diag trava aviso "orfa: $quem, terminou sem liberar: $arquivo" \
+            "sera retomada na proxima execucao; ou remova $arquivo"
+        fi
+        ;;
+      outro-host)
+        _dbx_cmd_diag trava aviso "outro-host: $quem: $arquivo" \
+          "confirme que a execucao em ${DBX_STATE_TRAVAS_HOST[indice]%%:*} (pid ${DBX_STATE_TRAVAS_PID[indice]}) terminou e remova $arquivo com rm"
+        ;;
+      *)
+        _dbx_cmd_diag trava aviso "ilegivel: $arquivo" \
+          "confirme que nenhum sync ou verificar deste par esta em curso e remova $arquivo com rm"
+        ;;
+    esac
+  done
+  # Exclusao entre hosts em NFS e melhor esforco (RSK-49): avisa, nunca bloqueia.
+  # Sem `stat -f`, nao ha o que dizer.
+  [[ -n $estado && -d $estado ]] && _dbx_cmd_diag_tem stat || return 0
+  tipo=$(stat -f -c %T -- "$estado" 2>/dev/null) || return 0
+  if [[ ${tipo,,} == nfs* ]]; then
+    _dbx_cmd_diag trava aviso "o diretorio de estado esta em NFS ($tipo): a exclusao da trava entre hosts e melhor esforco: $estado" \
+      'aponte XDG_STATE_HOME para um disco local'
+  fi
+  return 0
+}
+
 dbx_cmd_diagnostico_executar() {
   dbx_carregar_camada_de_credencial
   # shellcheck source=lib/preflight.sh
@@ -246,6 +292,10 @@ dbx_cmd_diagnostico_executar() {
       _dbx_cmd_diag estado ok "$estado com permissao 700"
     fi
   fi
+
+  # 8. trava — uma linha por `trava-*`, so lendo (RF-71): nada e criado,
+  # removido ou retomado, e trava nunca leva a `falha`.
+  _dbx_cmd_diag_travas "$estado"
 
   local indice texto ok=0 avisos=0 falhas=0
   dbx_cmd_iniciar_saida

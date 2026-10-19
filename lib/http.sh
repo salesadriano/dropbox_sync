@@ -39,12 +39,13 @@ _dbx_http_diretorio=$(cd -P -- "$_dbx_http_diretorio" && pwd -P)
 . "$_dbx_http_diretorio/json.sh"
 # shellcheck source=lib/progress.sh
 . "$_dbx_http_diretorio/progress.sh"
+# shellcheck source=lib/tmp.sh
+. "$_dbx_http_diretorio/tmp.sh"
 unset _dbx_http_diretorio
 
 DBX_HTTP_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 DBX_HTTP_ERRO_REDE=$(dbx_errors_codigo_saida rede)
-DBX_HTTP_ERRO_NAO_CONCLUIDA=$(dbx_errors_codigo_saida nao_concluida)
-readonly DBX_HTTP_ERRO_USO DBX_HTTP_ERRO_REDE DBX_HTTP_ERRO_NAO_CONCLUIDA
+readonly DBX_HTTP_ERRO_USO DBX_HTTP_ERRO_REDE
 
 # RNF-23: teto de itens por pagina, para a pagina caber com folga no teto de
 # entrada de `lib/json` (256 KiB).
@@ -92,8 +93,6 @@ declare -gA DBX_HTTP_EFETIVO=(
 # lido por `bin/dbx` para o diagnostico.
 DBX_HTTP_MOTIVO_AMBIENTE=''
 
-DBX_HTTP_AREA_TEMP=''
-
 # Modo de autorizacao da chamada corrente e nome do vetor de campos do modo
 # formulario. Internos: nao fazem parte do contrato publico do componente.
 _DBX_HTTP_MODO='bearer'
@@ -140,14 +139,6 @@ DBX_HTTP_RESUMO_DO_SERVICO=''
 # acima descrevem uma operacao SUA compara o valor antes e depois dela (RF-59).
 DBX_HTTP_REQUISICOES=0
 
-# Tratador de INT, TERM e HUP de quem esta POR FORA de um recebimento ou de uma
-# sessao de envio — hoje o `sync` (RNF-31). Nome de funcao, ou vazio.
-#
-# Os tratadores internos (`lib/cmd` no recebimento, `lib/transfer` na sessao)
-# encerram o processo passando por `dbx_http_interrompido`, que entrega a este
-# tratador a limpeza da area de quem os chamou, e no fim devolvem os sinais por
-# `dbx_http_sinais_devolver`, sem desarmar o tratador de fora.
-DBX_HTTP_TRATADOR_EXTERNO=''
 # shellcheck disable=SC2034
 # Corpo do cabecalho `Dropbox-API-Result`, que o modo de conteudo usa para
 # devolver metadado quando o corpo da resposta e o proprio arquivo.
@@ -192,34 +183,6 @@ dbx_http_validar_ambiente() {
   return 0
 }
 
-# _dbx_http_tratador_externo_valido — 0 quando o canal nomeia funcao existente.
-# Nome que nao e funcao nunca vira acao de `trap`: seria texto executado no
-# sinal.
-_dbx_http_tratador_externo_valido() {
-  [[ -n $DBX_HTTP_TRATADOR_EXTERNO ]] && declare -F -- "$DBX_HTTP_TRATADOR_EXTERNO" >/dev/null
-}
-
-# dbx_http_sinais_devolver — fim de um tratador interno: INT, TERM e HUP voltam
-# ao tratador externo, ou ao padrao quando nao ha.
-dbx_http_sinais_devolver() {
-  if _dbx_http_tratador_externo_valido; then
-    trap -- "$DBX_HTTP_TRATADOR_EXTERNO" INT TERM HUP
-  else
-    trap - INT TERM HUP
-  fi
-}
-
-# dbx_http_interrompido — parte comum dos tratadores internos de sinal, depois de
-# cada um limpar o que e seu: remove a area da requisicao em curso (o `exit` nao
-# passa pelo retorno de `_dbx_http_executar`) e entrega ao tratador externo, que
-# limpa o dele e encerra. Sem tratador externo, encerra como operacao nao
-# concluida.
-dbx_http_interrompido() {
-  [[ -n ${DBX_HTTP_AREA_TEMP:-} ]] && rm -rf -- "$DBX_HTTP_AREA_TEMP"
-  DBX_HTTP_AREA_TEMP=''
-  _dbx_http_tratador_externo_valido && "$DBX_HTTP_TRATADOR_EXTERNO"
-  exit "$DBX_HTTP_ERRO_NAO_CONCLUIDA"
-}
 
 # _dbx_http_esperar <tentativa> — espera antes da tentativa seguinte (RNF-07).
 #
@@ -518,17 +481,13 @@ dbx_http_formulario() {
 # continua armado depois do retorno e, na reemissao diagnostica (chamada
 # recursiva), apontaria para a area do nivel interno e deixaria a externa.
 #
-# O `umask 077` vale so para a criacao da area, dentro da substituicao de
-# comando: a mascara e estado do processo, e o arquivo que o usuario recebe
-# precisa nascer com a mascara dele.
-#
-# `DBX_HTTP_AREA_TEMP` e global porque `_dbx_transfer_interrompida` a remove
-# quando um sinal encerra o processo no meio da sessao; o valor do nivel
-# externo e restaurado no retorno do interno. `exit` e sinal fora dessa janela
-# continuam sem cobertura ate o componente `lib/tmp` do backlog.
+# A area e de `lib/tmp` (RNF-35): nasce 0700 sem mexer na mascara do processo
+# (o arquivo que o usuario recebe nasce com a dele) e fica registrada desde a
+# criacao, entao sinal em qualquer ponto — inclusive na renovacao do token,
+# OBS-02 — a remove. Cada nivel da reemissao registra e remove a sua.
 _dbx_http_executar() {
   local metodo=$1 url=$2 corpo=$3 idempotente=$4
-  local area area_externa=$DBX_HTTP_AREA_TEMP estado
+  local area estado
 
   case $idempotente in
     sim | nao) ;;
@@ -541,13 +500,13 @@ _dbx_http_executar() {
   dbx_http_validar_ambiente || return "$DBX_HTTP_ERRO_USO"
 
   DBX_HTTP_REQUISICOES=$((DBX_HTTP_REQUISICOES + 1))
-  area=$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/dbx-http.XXXXXXXX") ||
-    return "$DBX_HTTP_ERRO_REDE"
-  DBX_HTTP_AREA_TEMP=$area
+  dbx_tmp_area http || return "$DBX_HTTP_ERRO_REDE"
+  area=$DBX_TMP_CAMINHO
+  # Canal alheio lido por componente que lida com o segredo: esvaziado aqui.
+  DBX_TMP_CAMINHO=''
   _dbx_http_conduzir "$area" "$metodo" "$url" "$corpo" "$idempotente"
   estado=$?
-  rm -rf -- "$area"
-  DBX_HTTP_AREA_TEMP=$area_externa
+  dbx_tmp_remover "$area"
   return "$estado"
 }
 
@@ -568,11 +527,22 @@ _dbx_http_conduzir() {
   # comportam como a saida padrao; arquivo regular e reaberto do inicio e
   # truncado, e socket nao reabre. Por isso `download` recusa saida padrao em
   # arquivo nao vazio (o `>>` sobre conteudo existente).
+  local rele='' pid_rele='' estado_rele=0
   if [[ $_DBX_HTTP_CANAL == 'fluxo' && ($destino == '-' || $destino == '/dev/stdout') ]]; then
     exec {saida_padrao}>&1
     destino="/dev/fd/$saida_padrao"
     # Teste de tipo, sem captura: e o que distingue consumidor de disco.
     [[ -p /dev/stdout ]] && saida_e_cano='sim'
+    # SOCKET (DIV-51, OBS-04): o cliente nao reabre socket por `/dev/fd`. Ele
+    # escreve num cano, que reabre, e um `cat` repassa ao socket. Socket vivo
+    # recebe tudo e o comando sai 0; so a falha de escrita do repasse (EPIPE ou
+    # SIGPIPE: o consumidor encerrou de fato) vira `consumidor_encerrou`.
+    if [[ -S /dev/stdout ]]; then
+      saida_e_cano='sim'
+      exec {rele}> >(exec cat >&"$saida_padrao")
+      pid_rele=$!
+      destino="/dev/fd/$rele"
+    fi
   fi
 
   while :; do
@@ -721,6 +691,20 @@ _dbx_http_conduzir() {
         ;;
     esac
   done
+  if [[ -n $rele ]]; then
+    # Fim do repasse: fechado o cano, o `cat` termina, e o status dele diz se o
+    # socket aceitou tudo.
+    exec {rele}>&-
+    wait "$pid_rele" 2>/dev/null || estado_rele=$?
+    if [[ $estado_rele -ne 0 ]]; then
+      # shellcheck disable=SC2034  # canais publicos, ver nota no topo
+      DBX_HTTP_CLASSE='consumidor_encerrou'
+      # shellcheck disable=SC2034
+      DBX_HTTP_POLITICA='nenhuma'
+      # Sem codigo HTTP a diagnosticar: nenhuma reemissao (nada se repete).
+      DBX_HTTP_CODIGO=0
+    fi
+  fi
   [[ -n $saida_padrao ]] && exec {saida_padrao}>&-
 
   # DIAGNOSTICO DO CANAL DE FLUXO: reemissao sem fluxo para obter o corpo do erro.

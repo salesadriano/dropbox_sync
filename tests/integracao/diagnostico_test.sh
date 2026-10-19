@@ -41,7 +41,7 @@ _cenario() {
   printf '{"access_token":"%s","expires_in":14400,"scope":"%s"}' "$SENTINELA_TOKEN" "$ESCOPOS" \
     >"$base/token"
   printf '%s' '{"used":100,"allocation":{".tag":"individual","allocated":1000}}' >"$base/espaco"
-  for alvo in curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df \
+  for alvo in curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir \
     sha256sum; do
     origem=$(command -v "$alvo" 2>/dev/null) || continue
     ln -s "$origem" "$base/bin/$alvo"
@@ -125,10 +125,11 @@ teste_dia01_ambiente_sao_tem_todas_as_checagens_ok() {
   base=$(_cenario)
   _rodar "$base" diagnostico
   assert_igual 0 "$DBX_ESTADO" "ambiente sao sai com 0; diagnostico: $DBX_ERRO"
-  for id in dependencias credencial conectividade escopos espaco localidade estado; do
+  # RF-66(a) emendado por RF-71 (v1.12): a checagem `trava` e a oitava.
+  for id in dependencias credencial conectividade escopos espaco localidade estado trava; do
     assert_contem "$id=ok" "$DBX_SAIDA" "checagem $id ok"
   done
-  assert_contem $'ok=7\navisos=0\nfalhas=0' "$DBX_SAIDA" 'contagens'
+  assert_contem $'ok=8\navisos=0\nfalhas=0' "$DBX_SAIDA" 'contagens'
   _rodar "$base" doctor
   assert_igual 0 "$DBX_ESTADO" 'o alias doctor e o mesmo comando'
 }

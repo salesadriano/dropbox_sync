@@ -19,32 +19,14 @@
 #   identico e nenhuma memoria pode decidir o resultado (RF-65(b)); a raiz local
 #   ausente no `--receber` e arvore vazia e nao e criada. A unica area criada e
 #   a temporaria `dbx-sync.*` de RNF-31, removida em toda saida.
+#
+# TRAVA E AREA PELO MESMO CICLO DO `sync` (RF-69, RNF-36)
+#
+#   `dbx_cmd_ciclo_iniciar` (lib/cmd) trava o par e cria a area; `lib/tmp`
+#   libera e remove em toda saida. O arquivo de trava e a unica escrita, e o
+#   diretorio de estado termina como estava (DIV-39).
 
 dbx_cmd_verificar_requisitos() { printf 'credencial'; }
-
-# Area temporaria da execucao (RNF-31). Global porque o tratador de sinal roda
-# fora do escopo da funcao.
-DBX_CMD_VERIFICAR_AREA=''
-
-_dbx_cmd_verificar_interrompido() {
-  [[ -n $DBX_CMD_VERIFICAR_AREA ]] && rm -rf -- "$DBX_CMD_VERIFICAR_AREA"
-  DBX_CMD_VERIFICAR_AREA=''
-  DBX_HTTP_TRATADOR_EXTERNO=''
-  dbx_http_interrompido
-}
-
-_dbx_cmd_verificar_encerrar_area() {
-  [[ -n $DBX_CMD_VERIFICAR_AREA ]] && rm -rf -- "$DBX_CMD_VERIFICAR_AREA"
-  DBX_CMD_VERIFICAR_AREA=''
-  DBX_HTTP_TRATADOR_EXTERNO=''
-  dbx_http_sinais_devolver
-}
-
-# _dbx_cmd_verificar_falhar <classe> <texto> — encerra a area e recusa.
-_dbx_cmd_verificar_falhar() {
-  _dbx_cmd_verificar_encerrar_area
-  dbx_cmd_falhar "$1" "$2"
-}
 
 dbx_cmd_verificar_executar() {
   # shellcheck source=lib/walk.sh
@@ -53,6 +35,7 @@ dbx_cmd_verificar_executar() {
   . "$DBX_CLI_RAIZ/lib/sync.sh"
 
   local origem='' destino='' sentido='' tem_origem='nao' tem_destino='nao'
+  local espera=0 opcao_espera='' valor_espera=''
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
@@ -73,6 +56,12 @@ dbx_cmd_verificar_executar() {
         }
         sentido='enviar'
         [[ $1 == '--receber' || $1 == '--pull' ]] && sentido='receber'
+        ;;
+      # RF-70: espera pela trava do par; validada depois do laco (ultimo vence).
+      --esperar | --wait)
+        opcao_espera=$1
+        shift
+        valor_espera=${1-}
         ;;
       --progresso | --progress | -p)
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
@@ -114,6 +103,13 @@ dbx_cmd_verificar_executar() {
       'informe o sentido: --enviar ou --push (origem local, destino remoto), --receber ou --pull (origem remota, destino local)'
     return $?
   }
+  if [[ -n $opcao_espera ]]; then
+    dbx_cli_validar_espera "$opcao_espera" "$valor_espera" || {
+      dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+      return $?
+    }
+    espera=$((10#$valor_espera))
+  fi
   local lado
   for lado in origem destino; do
     if [[ ${!lado} == '-' ]]; then
@@ -153,13 +149,10 @@ dbx_cmd_verificar_executar() {
     local_ausente='sim'
   fi
 
-  # shellcheck disable=SC2034  # canal de lib/http, lido por dbx_http_sinais_devolver
-  DBX_HTTP_TRATADOR_EXTERNO=_dbx_cmd_verificar_interrompido
-  dbx_http_sinais_devolver
-  DBX_CMD_VERIFICAR_AREA=$(mktemp -d "${TMPDIR:-/tmp}/dbx-sync.XXXXXXXX") || {
-    _dbx_cmd_verificar_falhar configuracao 'nao foi possivel criar area temporaria'
-    return $?
-  }
+  # RF-69(b): trava e area, antes da travessia, de qualquer chamada e de
+  # qualquer leitura de memoria.
+  dbx_cmd_ciclo_iniciar verificar "$raiz_local" "$remoto" "$espera" || return $?
+  local area=$DBX_CMD_CICLO_AREA
 
   # Travessia local e colisao de caixa ANTES de qualquer acesso remoto
   # (RF-54(c)): o relatorio de uma arvore assim nao tem leitura unica.
@@ -167,31 +160,30 @@ dbx_cmd_verificar_executar() {
   # shellcheck disable=SC2034  # preenchidos e filtrados por nome (lib/walk, lib/sync)
   local -a caminhos_locais=() tamanhos=() identidades=()
   if [[ $local_ausente == 'sim' ]]; then
-    : >"$DBX_CMD_VERIFICAR_AREA/local"
+    : >"$area/local"
   else
     dbx_progress_mensagem "[verificar] analisando arquivos locais em: $raiz_local"
-    dbx_walk_local "$raiz_local" "$DBX_CMD_VERIFICAR_AREA/local" || {
-      _dbx_cmd_verificar_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
+    dbx_walk_local "$raiz_local" "$area/local" || {
+      dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
       return $?
     }
     parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
-    dbx_walk_ler "$DBX_CMD_VERIFICAR_AREA/local" caminhos_locais tamanhos identidades
+    dbx_walk_ler "$area/local" caminhos_locais tamanhos identidades
     dbx_sync_sem_temporarios caminhos_locais tamanhos identidades
     if ! dbx_sync_colisao_de_caixa caminhos_locais; then
-      _dbx_cmd_verificar_falhar conflito "$DBX_SYNC_MOTIVO"
+      dbx_cmd_falhar conflito "$DBX_SYNC_MOTIVO"
       return $?
     fi
   fi
 
   dbx_auth_preparar || {
-    _dbx_cmd_verificar_falhar "$DBX_AUTH_CLASSE" "${DBX_AUTH_MOTIVO:-nao foi possivel obter o token de acesso}"
+    dbx_cmd_falhar "$DBX_AUTH_CLASSE" "${DBX_AUTH_MOTIVO:-nao foi possivel obter o token de acesso}"
     return $?
   }
   dbx_progress_mensagem "[verificar] consultando arquivos remotos em: $remoto"
   local estado_remoto=0
-  dbx_sync_enumerar_remoto "$remoto" "$DBX_CMD_VERIFICAR_AREA/remoto" || estado_remoto=$?
+  dbx_sync_enumerar_remoto "$remoto" "$area/remoto" || estado_remoto=$?
   if [[ $estado_remoto -ne 0 ]]; then
-    _dbx_cmd_verificar_encerrar_area
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
     return "$estado_remoto"
   fi
@@ -199,7 +191,7 @@ dbx_cmd_verificar_executar() {
   local -a ordem_remota=()
   # shellcheck disable=SC2034  # idem
   local -A mapa_remoto=()
-  dbx_sync_ler_resumos "$DBX_CMD_VERIFICAR_AREA/remoto" ordem_remota mapa_remoto
+  dbx_sync_ler_resumos "$area/remoto" ordem_remota mapa_remoto
 
   # Resumo local sempre calculado: a memoria nao e consultada (RF-65(b)).
   local -a ordem_local=()
@@ -217,7 +209,6 @@ dbx_cmd_verificar_executar() {
       motivo_parcial="${motivo_parcial}${motivo_parcial:+; }nao foi possivel calcular o resumo de: ${caminhos_locais[$indice]}"
     fi
   done
-  _dbx_cmd_verificar_encerrar_area
 
   if [[ $sentido == 'enviar' ]]; then
     dbx_sync_comparar ordem_local mapa_local ordem_remota mapa_remoto

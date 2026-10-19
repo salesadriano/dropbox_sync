@@ -51,9 +51,30 @@ dbx_cmd_unlink_requisitos() { printf 'ambiente'; }
 #   - NAO ligacao simbolica — apagar a ligacao deixaria o alvo intacto e
 #     reportaria remocao que nao houve, e apagar atraves dela alcancaria arvore
 #     que nao e nossa.
+#
+# TRAVA NAO VIVA FICA (RF-69(h2), RF-51(f) emendado, DIV-44/DIV-45). A viva ja
+# recusou o comando antes daqui; a orfa, a ilegivel e a de outro host nao sao
+# apagadas — a de outro host pode ser de execucao viva noutra maquina, e a
+# ilegivel nunca e apagada por ninguem. Cada uma sai em DBX_CMD_UNLINK_MANTIDAS,
+# e o diretorio so some se ficar vazio.
+#
+# QA-B2-02 e QA-B2-09: a lista de travas e refeita IMEDIATAMENTE antes da
+# remocao, com a impressao de cada uma (estado, pid, host, inicio). Antes de
+# CADA entrada apagada, e mais uma vez no fim, toda `trava-*` e relida e
+# reclassificada: trava nova, trava viva ou trava cujo conteudo mudou (uma orfa
+# conhecida retomada no meio, com o mesmo nome) para a remocao com `conflito`
+# (7). So travas que continuam iguais e nao vivas sao descritas como mantidas.
+#
+# JANELA RESIDUAL, DECLARADA: entre a ultima conferencia e o `rm` de uma
+# entrada (microssegundos), um `sync` pode adquirir a trava e ler a memoria que
+# em seguida some. O efeito e o de memoria ausente — a execucao recalcula e
+# regrava ao fim —, nunca decisao errada (RF-38: a memoria nao decide).
 _dbx_cmd_unlink_remover_estado() {
-  local estado entrada
+  local estado entrada falhou='nao' indice
+  # shellcheck disable=SC2034  # lido por referencia de nome na conferencia
+  local -A impressoes=()
   DBX_CMD_UNLINK_BASES=()
+  DBX_CMD_UNLINK_MANTIDAS=()
 
   dbx_config_caminho_de_estado || return 0
   estado=$DBX_CONFIG_RESULTADO
@@ -62,12 +83,83 @@ _dbx_cmd_unlink_remover_estado() {
   [[ -L $estado ]] && return 0
   [[ -d $estado ]] || return 0
 
-  for entrada in "$estado"/* "$estado"/.[!.]*; do
-    [[ -e $entrada ]] || continue
-    DBX_CMD_UNLINK_BASES+=("${entrada##*/}")
+  _dbx_cmd_unlink_recusar_se_trava_viva depois || return $?
+  for indice in "${!DBX_STATE_TRAVAS_ARQUIVO[@]}"; do
+    dbx_state_trava_examinar "${DBX_STATE_TRAVAS_ARQUIVO[indice]}"
+    # shellcheck disable=SC2034  # lido por referencia de nome na conferencia
+    impressoes["${DBX_STATE_TRAVAS_ARQUIVO[indice]}"]="$DBX_STATE_TRAVA_ESTADO|$DBX_STATE_RESULTADO"
   done
 
-  rm -rf -- "$estado" 2>/dev/null || return 1
+  for entrada in "$estado"/* "$estado"/.[!.]* "$estado"/..?*; do
+    [[ -e $entrada || -L $entrada ]] || continue
+    if [[ ${entrada##*/} == trava-* ]]; then
+      DBX_CMD_UNLINK_MANTIDAS+=("$entrada")
+      continue
+    fi
+    _dbx_cmd_unlink_travas_inalteradas "$estado" impressoes || return $?
+    DBX_CMD_UNLINK_BASES+=("${entrada##*/}")
+    rm -rf -- "$entrada" 2>/dev/null || falhou='sim'
+  done
+  # Ultima conferencia: nenhuma trava descrita como mantida pode estar viva.
+  _dbx_cmd_unlink_travas_inalteradas "$estado" impressoes || return $?
+
+  [[ $falhou == 'nao' ]] || return 1
+  [[ ${#DBX_CMD_UNLINK_MANTIDAS[@]} -gt 0 ]] && return 0
+  rmdir -- "$estado" 2>/dev/null || return 1
+  return 0
+}
+
+# _dbx_cmd_unlink_travas_inalteradas <estado> <nome_do_mapa> — 0 quando cada
+# `trava-*` presente e uma das listadas, com a MESMA impressao (estado, pid,
+# host, inicio) e nao viva. Trava que sumiu nao impede (ninguem a detem mais).
+_dbx_cmd_unlink_travas_inalteradas() {
+  local estado=$1 trava
+  local -n _conhecidas=$2
+  for trava in "$estado"/trava-*; do
+    [[ -e $trava || -L $trava ]] || continue
+    [[ -n ${_conhecidas[$trava]:-} ]] || {
+      _dbx_cmd_unlink_trava_nova "$trava"
+      return $?
+    }
+    dbx_state_trava_examinar "$trava"
+    if [[ $DBX_STATE_TRAVA_ESTADO == 'viva' ||
+      "$DBX_STATE_TRAVA_ESTADO|$DBX_STATE_RESULTADO" != "${_conhecidas[$trava]}" ]]; then
+      _dbx_cmd_unlink_trava_nova "$trava"
+      return $?
+    fi
+  done
+  return 0
+}
+
+# _dbx_cmd_unlink_trava_nova <arquivo> — trava que surgiu durante a remocao:
+# uma execucao comecou; para tudo com `conflito`.
+_dbx_cmd_unlink_trava_nova() {
+  dbx_cmd_caminho_exibivel "$1"
+  dbx_cmd_falhar conflito \
+    "uma execucao de sync ou verificar comecou durante o desvinculo (trava $DBX_CMD_EXIBIDO): a remocao do estado parou; rode dbx unlink de novo quando ela terminar"
+}
+
+# _dbx_cmd_unlink_recusar_se_trava_viva [depois] — RF-69(h2): execucao viva de
+# `sync` ou `verificar` neste host recusa o desvinculo com `conflito`. Chamada
+# ANTES da confirmacao e da revogacao e de novo (`depois`) logo antes de apagar
+# a credencial e o estado (QA-B2-02): a revogacao e uma chamada de rede, e uma
+# execucao pode comecar durante ela.
+_dbx_cmd_unlink_recusar_se_trava_viva() {
+  local indice depois=${1:-}
+  dbx_state_travas_listar
+  for indice in "${!DBX_STATE_TRAVAS_ARQUIVO[@]}"; do
+    [[ ${DBX_STATE_TRAVAS_ESTADO[indice]} == 'viva' ]] || continue
+    dbx_state_trava_descrever "$indice"
+    dbx_cmd_caminho_exibivel "${DBX_STATE_TRAVAS_ARQUIVO[indice]}"
+    if [[ -n $depois ]]; then
+      dbx_cmd_falhar conflito \
+        "execucao em curso: $DBX_STATE_RESULTADO, detem a trava $DBX_CMD_EXIBIDO; o desvinculo parou antes de apagar a credencial e o estado (a revogacao remota, se emitida, ja vale): rode dbx unlink de novo quando ela terminar"
+    else
+      dbx_cmd_falhar conflito \
+        "execucao em curso: $DBX_STATE_RESULTADO, detem a trava $DBX_CMD_EXIBIDO; o desvinculo apagaria o estado dela e foi recusado sem apagar nada: rode de novo quando ela terminar"
+    fi
+    return $?
+  done
   return 0
 }
 
@@ -98,6 +190,8 @@ dbx_cmd_unlink_executar() {
     return $?
   }
   local arquivo=$DBX_CONFIG_RESULTADO
+
+  _dbx_cmd_unlink_recusar_se_trava_viva || return $?
 
   # ADVERTENCIA DE CASCATA (RF-06a, RES-12). Ela e dita ANTES da confirmacao, e
   # nao depois: advertencia que chega depois da decisao nao e advertencia.
@@ -157,13 +251,19 @@ dbx_cmd_unlink_executar() {
     printf 'aviso: credencial ilegivel; --manter-aplicativo nao se aplica e a remocao sera integral\n' >&2
   fi
 
+  # QA-B2-02: segunda conferencia, logo antes de apagar qualquer coisa.
+  _dbx_cmd_unlink_recusar_se_trava_viva depois || return $?
+
   local remocao='concluida'
   dbx_config_remover "$modo" || remocao='falhou'
 
-  local bases='concluida'
+  local bases='concluida' estado_bases=0
   # shellcheck disable=SC2034  # canal publico preenchido pelo auxiliar
   DBX_CMD_UNLINK_BASES=()
-  _dbx_cmd_unlink_remover_estado || bases='falhou'
+  _dbx_cmd_unlink_remover_estado || estado_bases=$?
+  # Terceira conferencia, dentro da remocao: execucao que comecou no meio.
+  [[ $estado_bases -eq $(dbx_errors_codigo_saida conflito) ]] && return "$estado_bases"
+  [[ $estado_bases -eq 0 ]] || bases='falhou'
 
   dbx_cmd_iniciar_saida
   dbx_output_campo operacao unlink
@@ -176,6 +276,16 @@ dbx_cmd_unlink_executar() {
     dbx_output_campo base_removida "$base"
   done
   dbx_output_render
+
+  # Uma linha por trava mantida, com o caminho exibivel (sem byte cru).
+  local mantida
+  for mantida in ${DBX_CMD_UNLINK_MANTIDAS[@]+"${DBX_CMD_UNLINK_MANTIDAS[@]}"}; do
+    dbx_cmd_caminho_exibivel "$mantida"
+    dbx_cmd_iniciar_saida
+    dbx_output_diagnostico aviso \
+      "trava mantida (orfa, ilegivel ou de outro host): $DBX_CMD_EXIBIDO; confirme que nenhum sync ou verificar deste par esta em curso e remova-a com rm"
+    dbx_output_render_diagnostico >&2
+  done
 
   # CODIGO DE SAIDA — cada caso diz uma coisa diferente ao operador.
   if [[ $remocao == 'falhou' || $bases == 'falhou' ]]; then

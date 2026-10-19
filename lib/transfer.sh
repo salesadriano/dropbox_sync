@@ -45,7 +45,7 @@
 # TETO DE OCUPACAO EM DISCO (RF-31)
 # ---------------------------------------------------------------------------
 # Um unico arquivo de bloco, reaproveitado a cada volta, em area propria criada
-# com `mktemp -d` sob `umask 077`. A ocupacao nao acompanha o tamanho do
+# por `lib/tmp` (0700) e usada sob `umask 077`. A ocupacao nao acompanha o tamanho do
 # conteudo: ela e a de uma parte, seja o fluxo de 8 MiB ou de 800 GiB.
 #
 # LIMITE DECLARADO, herdado de lib/hash: no encerramento o mesmo arquivo recebe
@@ -101,6 +101,8 @@ _dbx_transfer_diretorio=$(cd -P -- "$_dbx_transfer_diretorio" && pwd -P)
 . "$_dbx_transfer_diretorio/hash.sh"
 # shellcheck source=lib/progress.sh
 . "$_dbx_transfer_diretorio/progress.sh"
+# shellcheck source=lib/tmp.sh
+. "$_dbx_transfer_diretorio/tmp.sh"
 unset _dbx_transfer_diretorio
 
 # Parte de 4 MiB — a MESMA grandeza do bloco do `content_hash`. A igualdade e
@@ -139,9 +141,8 @@ DBX_TRANSFER_INTEGRIDADE='nao_aplicavel'
 DBX_TRANSFER_TAMANHO=0
 DBX_TRANSFER_LIDO=''
 
-# DELIBERADAMENTE global, e nao `local`: a acao do `trap` e avaliada quando o
-# escopo da funcao ja nao existe, e com variavel local a limpeza nao removeria
-# nada.
+# Area da sessao em curso, registrada em `lib/tmp`; global porque as funcoes da
+# sessao a compartilham.
 DBX_TRANSFER_AREA_TEMP=''
 
 # RF-58 — estado da retomada, SO EM MEMORIA e so durante a sessao: a origem
@@ -253,33 +254,18 @@ _dbx_transfer_deslocamento_correto() {
 # ---------------------------------------------------------------------------
 
 _dbx_transfer_remover_area() {
-  [[ -n ${DBX_TRANSFER_AREA_TEMP:-} ]] && rm -rf -- "$DBX_TRANSFER_AREA_TEMP"
+  dbx_tmp_remover "${DBX_TRANSFER_AREA_TEMP:-}"
   DBX_TRANSFER_AREA_TEMP=''
   return 0
 }
 
-# _dbx_transfer_interrompida — sinal no meio da sessao.
-#
-# Encerra o PROCESSO, e nao apenas a funcao: sem `finish` nada foi publicado, a
-# sessao abandonada expira sozinha e continuar depois de um sinal produziria
-# envio parcial travestido de sucesso. O codigo e o de operacao nao concluida,
-# que e literalmente o que aconteceu.
-#
-# RNF-31: a area de `lib/http` e a de quem chamou a sessao (o `sync`) saem por
-# `dbx_http_interrompido`, que tambem encerra com operacao nao concluida. O
-# `exit` nao passa pelo retorno de `_dbx_http_executar`, que e onde `lib/http`
-# remove a propria area; `lib/http` nao arma `trap` proprio porque `trap` e
-# global e atropelaria o `EXIT` desta sessao.
-#
-# PALIATIVO DECLARADO, ate o componente `lib/tmp` (dono unico de area
-# temporaria, no backlog): sinal fora da janela deste tratador — antes do
-# `trap`, depois do `trap -`, ou num `upload` por requisicao unica — ainda deixa
-# a area de `lib/http` para tras. Historico em
+# Sinal no meio da sessao encerra o PROCESSO, e nao apenas a funcao, pelo
+# tratador unico de `lib/tmp` (RNF-35): sem `finish` nada foi publicado, a
+# sessao abandonada expira sozinha, e continuar depois de um sinal produziria
+# envio parcial travestido de sucesso. O codigo e o de operacao nao concluida, e
+# as areas desta sessao, de `lib/http` e de quem chamou saem juntas. Historico
+# do paliativo anterior em
 # docs/registros/2026-10-19-historico-comentarios-http-transfer.md.
-_dbx_transfer_interrompida() {
-  _dbx_transfer_remover_area
-  dbx_http_interrompido
-}
 
 # ---------------------------------------------------------------------------
 # Emissao
@@ -537,16 +523,15 @@ dbx_transfer_sessao() {
   local mascara_anterior
   mascara_anterior=$(umask)
   umask 077
-  DBX_TRANSFER_AREA_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/dbx-transfer.XXXXXXXX") || {
+  # Area temporaria indisponivel e problema do HOST, e nao recurso remoto
+  # ausente: classificar como `nao_encontrado` mandaria investigar a Dropbox por
+  # falha de disco local.
+  dbx_tmp_area transfer || {
     umask "$mascara_anterior"
     _dbx_transfer_falhar configuracao 'area temporaria indisponivel para o envio em partes'
     return $?
   }
-  # Area temporaria indisponivel e problema do HOST, e nao recurso remoto
-  # ausente: classificar como `nao_encontrado` mandaria investigar a Dropbox por
-  # falha de disco local.
-  trap '_dbx_transfer_interrompida' INT TERM HUP
-  trap '_dbx_transfer_remover_area' EXIT
+  DBX_TRANSFER_AREA_TEMP=$DBX_TMP_CAMINHO
 
   # Ponto UNICO de limpeza no caminho normal: o corpo da sessao pode sair por
   # muitas portas, e uma limpeza por porta seria a forma de esquecer uma.
@@ -557,17 +542,7 @@ dbx_transfer_sessao() {
   _DBX_TRANSFER_FONTE=0
   _DBX_TRANSFER_ORIGEM=''
   _dbx_transfer_remover_area
-  # Os tratadores valem SO enquanto a sessao existe. Deixa-los armados faria um
-  # sinal recebido depois — durante a apresentacao do resultado, por exemplo —
-  # encerrar com "operacao nao concluida" um envio que ja concluiu.
-  #
-  # INT, TERM e HUP voltam ao tratador de quem chamou a sessao (o `sync` arma o
-  # seu, RNF-31), ou ao padrao. LIMITE DECLARADO: `EXIT` continua so removido —
-  # nenhum chamador o arma antes daqui.
-  trap - EXIT
-  dbx_http_sinais_devolver
-  # Ao lado do `trap -`, e pelo mesmo motivo: os dois sao estado do processo
-  # emprestado pela sessao, e a sessao os devolve.
+  # A mascara e estado do processo emprestado pela sessao, e a sessao a devolve.
   umask "$mascara_anterior"
   return $estado
 }
