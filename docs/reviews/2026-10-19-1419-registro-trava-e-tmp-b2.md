@@ -90,7 +90,7 @@ Mudanca ampla em `lib/` (13 modulos) e `commands/`: a selecao foi a suite inteir
 | `diagnostico_test` (ciclo 3) | `commands/diagnostico.sh` | `bash tests/run.sh diagnostico` | 14 | 14 | 0 | nao informada |
 | `qa_consulta_diagnostico_b1_test.sh` (ciclo 3) | `lib/preflight.sh` | `bash tests/run.sh qa_consulta_diagnostico_b1` | 21 | 21 | 0 | nao informada |
 
-- Lacuna: a suite inteira so foi rodada no ciclo 1 (1159 aprovados, 0 reprovados, 2 pulados; base 37 arquivos, 1098, 5 min 23 s). Os ciclos 2 e 3 reexecutaram por filtro, sem duracao informada; a suite completa oficial fica **PENDENTE** abaixo.
+- Lacuna: a suite inteira so foi rodada no ciclo 1 (1159 aprovados, 0 reprovados, 2 pulados; base 37 arquivos, 1098, 5 min 23 s). Os ciclos 2 e 3 reexecutaram por filtro, sem duracao informada; a suite completa oficial, depois do ciclo 3, esta abaixo.
 - Casos novos do developer: 61 no ciclo 1 (`tmp_test` 16, `state_trava_test` 22, `trava_test` 23). Suite do QA: 23 casos.
 - Red observado: contra a base (`git archive HEAD` com os testes novos copiados caso a caso), 59 dos 61 casos vermelhos; 2 neutros por desenho (autoteste do detector da auditoria e "comandos avulsos nao travam"). `lib/tmp` com modulo ausente; `dbx_state_trava_adquirir` inexistente. Dois casos vacuos na base foram endurecidos (`termino_do_processo_libera_a_trava`, `trv04`). Ciclo 2: `c2_qualquer_byte_depois_da_quebra_final_e_ilegivel`, `c2_mesma_grafia_mesma_chave_em_c_e_em_c_utf8`, `c2_estado_sem_escrita...`, `c2_div51_download_para_socket_vivo_sai_0` e TC-TRV-39, todos vermelhos antes do conserto. Ciclo 3: `c3_qa_b2_09_orfa_conhecida_retomada_no_meio_do_unlink_para_com_7` saiu 0 contra o ciclo 2b; auditoria do preflight vermelha antes de `rmdir` entrar na lista.
 - Parada no primeiro erro (Regra 9): atendida pelo runner (`Bail out!`). Interrupcoes corrigidas e reexecutadas do inicio: `config_test` (palavra `conta`), `harness_test` (funcao redefinida), `json_test` (massa por `$(printf`), `composicao` (canal alheio, contagem), `tmp_test` (auditoria lia literal), `diagnostico_test` (TC-DIA-01) e `qa_consulta_diagnostico_b1` (retrato com `mtime` de diretorio).
@@ -102,7 +102,7 @@ Mudanca ampla em `lib/` (13 modulos) e `commands/`: a selecao foi a suite inteir
   - Concorrencia real: 20 processos com barreira (1 vence, 19 recebem 7); 2 e 20 retomadores da mesma orfa (1 vence); leitor concorrente (0 leituras ilegiveis); `kill -9` entre o `mv` e a liberacao (memoria integra, trava retomada com aviso).
   - Sinais: `INT`/`TERM`/`HUP` em 6 fases (token, conta, listagem, espaco, envio, recebimento) e na espera: 14, sem `dbx-*` no `TMPDIR` e sem trava; OBS-03 por dobro de `mktemp` que se auto-sinaliza; `verificar` e `sync --dry-run` byte a byte apos cada sinal.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: projeto e CLI em shell, sem formulario.
-- Suite completa local no push para a PR de `develop` (Regra 8): **PENDENTE** (o Tech Lead roda `sh scripts/suite-completa.sh` e preenche comando, total, aprovados, falhos, duracao e sha do commit testado).
+- Suite completa local no push para a PR de `develop` (Regra 8), pelo comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`): **verde** em `8fb84b0`, 41 arquivos, 1197 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 584 s; `--conferir` com saida 0. Guarda de remocao de casos: 1209 -> 1209, sem reducao. O commit de documentacao que preenche este registro reexecuta a suite antes do proprio push.
 
 ## 5. Gates
 
@@ -149,13 +149,13 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer, nesta
   - A auditoria do preflight estava cega havia fases: o salto de "literal de vetor", iniciado em `segmentos=() resto=$campo`, so terminava numa linha com `)` e deixava de olhar o resto do arquivo; um rotulo de `case` novo o encerrou e expos `>/dev/null` e o `rmdir`. Ver a licao de selecao de auditorias (`2026-10-18-1745-selecao-inclui-auditorias-lib`). Regra a reter: toda auditoria nova precisa de autoteste que prove que ela ainda enxerga o arquivo inteiro.
   - O QA reprovou tres vezes por janelas de concorrencia no `unlink` (QA-B2-02, QA-B2-09 e as janelas residuais): conferir nomes nao basta; e preciso reler o conteudo imediatamente antes de cada `rm` e declarar a janela que sobra.
 - Impacto: contrato. Novas flags `--esperar N` e `--wait N` em `sync` e `verificar` (e no `download` de pasta); trava ocupada sai 7 com mensagem propria; `unlink` recusa com 7 se houver execucao viva; `diagnostico` mostra a trava e passa a ter 8 checagens; `ln` e `rmdir` passam a ser utilitarios exigidos no preflight (README); sinal depois de envio concluido sai 14; stdout em socket vivo funciona. Sem schema nem dependencia nova. Removidos `DBX_HTTP_TRATADOR_EXTERNO`, `dbx_http_sinais_devolver`, `dbx_http_interrompido` e os tratadores gemeos.
-- Rollback: `git revert <sha do commit>` basta. Travas e temporarios sao transitorios; nao ha migracao de dado nem de credencial.
+- Rollback: `git revert 7222cf9` (e do commit de documentacao) basta; `8fb84b0` (plugin) e independente. Travas e temporarios sao transitorios; nao ha migracao de dado nem de credencial.
 
 ## 8. Links e aceites
 
 - Entradas de memoria: `2026-10-19-1419-trava-de-concorrencia`.
 - Documentacao sincronizada: [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md), [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md), [decisoes-pendentes.md](../requisitos/decisoes-pendentes.md), [system-design.md](../arquitetura/system-design.md), [mapa-modulos.md](../testes/mapa-modulos.md), [parecer do DBA](2026-10-19-1419-parecer-dba-trava.md), `README.md`.
-- Commit(s): PENDENTE.
-- PR: PENDENTE.
-- Tech Lead: PENDENTE (fecha depois da suite completa local verde).
-- Solicitante: aceite dos `qa-*` por sha256 (regra 12): `tests/integracao/qa_trava_tmp_b2_test.sh` (23 casos, `e875416e...6b8`) e a mudanca na auditoria de `tests/unit/preflight_test.sh` (`5ae77af7...ff84`).
+- Commit(s): `7222cf9` (fase 2), `8fb84b0` (`chore(claude)`: habilita o plugin `ai-team` em `.claude/settings.json`, alteracao externa acusada pela regra 48 e incluida por decisao do solicitante) e o commit de documentacao que preenche este registro.
+- PR: [#42](https://github.com/salesadriano/dropbox_sync/pull/42) para `develop`, labels `review` e `enhancement`.
+- Tech Lead: aceite com a suite completa local verde em `8fb84b0` e a validacao independente do QA aprovada no ciclo 3; QA-B2-11 corrigido pelo Tech Lead em `tests/integracao/trava_test.sh` (TC-TRV-36 volta a ver o nome da trava no texto cru, conferido por amostra com as tres formas).
+- Solicitante: aceite dos `qa-*` por sha256 (regra 12): `tests/integracao/qa_trava_tmp_b2_test.sh` (23 casos, `e875416e...6b8`) e a mudanca na auditoria de `tests/unit/preflight_test.sh` (`5ae77af7...ff84`); e, em confirmacao separada, a inclusao de `rmdir` nas listas de PATH reduzido de `preflight_test`, `diagnostico_test` e `qa_consulta_diagnostico_b1_test`.

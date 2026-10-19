@@ -36,3 +36,13 @@ registro_de_entrega: "docs/reviews/2026-10-19-1419-registro-trava-e-tmp-b2.md"
 > Aprovo
 
 **Intenção:** o solicitante aprova a inclusão de `rmdir` nas listas de utilitários do PATH reduzido de três suítes já aprovadas: `preflight_test`, `diagnostico_test` e `qa_consulta_diagnostico_b1_test`. É a mesma manutenção de fixture feita para o `ln`, e o QA confirmou que não enfraquece nenhuma delas.
+
+## Prompt 4 — 2026-10-19 (depois do merge da PR #42)
+
+> gh pr merge 42 --merge
+>
+> /ai-team:tech-lead check all tasks
+
+**Intenção:** o solicitante quer um levantamento do estado de todas as tarefas. É consulta, sem alteração de código, então não tem porte próprio.
+
+**Inferência:** a PR #42 foi mesclada antes do push do commit de documentação `d745789`. Esse commit segue numa PR de acompanhamento.
