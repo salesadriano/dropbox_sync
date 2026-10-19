@@ -113,7 +113,7 @@ Selecao por arquivo de teste, so dos itens afetados (Regra 8 de `protocolo-tdd`)
   - Raiz malformada (`raiz`, `/..`, com controle): 3, sem rede, inclusive `list` sem argumento.
   - Dobra de caixa (ciclo 2): U+0130, U+0131, U+017F, Kelvin U+212A, `ß`, `ẞ`, `ﬁ`, sosias de `/`, `.` e `R`, NFC e NFD recusados com 13 sob `C`, `C.UTF-8` e so `LANG=C.UTF-8`; a localidade nao vaza para o processo.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: projeto e CLI em shell, sem formulario.
-- Suite completa local no push para a PR de `develop` (Regra 8): **PENDENTE**.
+- Suite completa local no push para a PR de `develop` (Regra 8), pelo comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`): **verde** em `4b13baf`, 37 arquivos, 1098 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 345 s; `--conferir` com saida 0. O commit de documentacao que preenche este registro reexecuta a suite antes do proprio push.
 
 ## 5. Gates
 
@@ -146,13 +146,13 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer, nesta
   - C-3: `SC2034` sobre a funcao inteira, mesmo padrao do projeto.
 - Licao do ciclo (honesta, do Tech Lead): o Senior Developer apontou o risco de localidade ja no ciclo 1 (C-2, item 5 do parecer) e o Tech Lead o classificou por engano como o risco antigo F-32, sem notar que a comparacao passara a ser barreira de seguranca. A classificacao anterior valia quando a dobra so servia a comparacao do `sync`; com o confinamento, um erro de dobra e escape. O QA reproduziu o achado como escape (QA-B1B-01) e a correcao veio no ciclo 2. Regra a reter: ao reaproveitar uma funcao preexistente como barreira de seguranca, reavaliar as ressalvas antigas dela como achados de seguranca, e tratar como bloqueante qualquer dependencia de localidade em comparacao de fronteira.
 - Impacto: contrato. Com `raiz_remota` diferente de `/`, caminhos fora dela passam a ser recusados em todos os comandos que recebem caminho remoto (`upload`, `download`, `list`, `delete`, `info`, `sync`, `verificar`, `config --raiz`), com codigo 13 e antes de qualquer rede; `list` sem argumento lista a raiz configurada; byte de controle em caminho remoto e recusado (13); raiz malformada na credencial sai 3; a mensagem do `config --raiz` mudou. Sem schema, sem dependencia nova, sem pipeline. Nomes de itens vindos da arvore no `sync` seguem preservados (RNF-10(a)).
-- Rollback: `git revert <sha>` basta. Nao ha migracao de dado nem de credencial.
+- Rollback: `git revert 4b13baf` (e do commit de documentacao) basta. Nao ha migracao de dado nem de credencial.
 
 ## 8. Links e aceites
 
 - Entradas de memoria: `2026-10-19-1243-confinamento-remoto`, `2026-10-19-1243-aceite-testes-qa-b1b-parcial`, `2026-10-19-1243-aceite-testes-qa-b1b`.
 - Documentacao sincronizada: [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md), [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md), [system-design.md](../arquitetura/system-design.md), [mapa-modulos.md](../testes/mapa-modulos.md).
-- Commit(s): PENDENTE
-- PR: PENDENTE
+- Commit(s): `4b13baf` e o commit de documentacao que preenche este registro.
+- PR: [#41](https://github.com/salesadriano/dropbox_sync/pull/41) para `develop`, labels `review` e `bug`.
 - Tech Lead: **Aprovado com ressalvas — Tech Lead, 2026-10-19**, valida so com a suite completa local verde.
 - Solicitante: aceite dos `qa-*` registrado em [2026-10-19-1243-aceite-testes-qa-b1b-parcial](../../.github/agents/memoria/entradas/2026-10-19-1243-aceite-testes-qa-b1b-parcial.md) (`qa_consulta_diagnostico_b1_test.sh`, comentario) e [2026-10-19-1243-aceite-testes-qa-b1b](../../.github/agents/memoria/entradas/2026-10-19-1243-aceite-testes-qa-b1b.md) (suite nova, `qa_confinamento_remoto_b1b_test.sh`, sha256 `235b95e2...0c62`).
