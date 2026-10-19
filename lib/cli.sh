@@ -86,14 +86,30 @@ DBX_CLI_MOTIVO=''
 
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
 #
-# Conjunto FECHADO e agora COMPLETO: os nove comandos de `DP-06` e `DP-25`.
+# Conjunto FECHADO: os nove comandos de `DP-06` e `DP-25` e os tres da fase 1
+# do backlog (RF-65 a RF-68), mais os aliases em ingles destes ultimos.
 dbx_cli_comando_valido() {
   case ${1-} in
     upload | download | list | delete | info | space) return 0 ;;
     config | unlink | sync) return 0 ;;
+    verificar | diagnostico | completar) return 0 ;;
+    verify | doctor | completion) return 0 ;;
     help | version) return 0 ;;
   esac
   return 1
+}
+
+# dbx_cli_canonico <nome> — nome canonico em DBX_CLI_CANONICO: o alias em
+# ingles vira o nome em portugues, que e o do arquivo de comando e o das
+# funcoes `dbx_cmd_<nome>_*`. Os demais nomes passam como estao.
+DBX_CLI_CANONICO=''
+dbx_cli_canonico() {
+  case ${1-} in
+    verify) DBX_CLI_CANONICO='verificar' ;;
+    doctor) DBX_CLI_CANONICO='diagnostico' ;;
+    completion) DBX_CLI_CANONICO='completar' ;;
+    *) DBX_CLI_CANONICO=${1-} ;;
+  esac
 }
 
 # _dbx_cli_arquivo_do_comando <nome> — caminho LITERAL, nunca composto.
@@ -113,6 +129,9 @@ _dbx_cli_arquivo_do_comando() {
     config) printf '%s' "$raiz/commands/config.sh" ;;
     unlink) printf '%s' "$raiz/commands/unlink.sh" ;;
     sync) printf '%s' "$raiz/commands/sync.sh" ;;
+    verificar) printf '%s' "$raiz/commands/verificar.sh" ;;
+    diagnostico) printf '%s' "$raiz/commands/diagnostico.sh" ;;
+    completar) printf '%s' "$raiz/commands/completar.sh" ;;
     *) return 1 ;;
   esac
 }
@@ -177,7 +196,8 @@ dbx_cli_analisar() {
           _dbx_cli_recusar "comando desconhecido: $1"
           return $?
         }
-        DBX_CLI_COMANDO=$1
+        dbx_cli_canonico "$1"
+        DBX_CLI_COMANDO=$DBX_CLI_CANONICO
         shift
         DBX_CLI_ARGS=("$@")
         return 0

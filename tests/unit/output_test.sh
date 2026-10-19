@@ -391,6 +391,17 @@ teste_diagnostico_mascara_os_segredos_em_memoria_pelo_valor() {
   assert_contem 'x_' "$valor" 'o restante do diagnostico continua legivel'
 }
 
+teste_mascara_pelo_valor_cobre_a_chave_do_aplicativo() {
+  # D-2 (QA, fase 1 do backlog): o `diagnostico` repete o resumo de erro do
+  # servico, que pode ecoar a app key; ela e campo da credencial e e mascarada
+  # pelo valor como os demais.
+  # shellcheck disable=SC2034  # canal de lib/config, lido por lib/output
+  DBX_CONFIG_APP_KEY='chaveappqasentinela'
+  dbx_output_mascarar_segredos 'invalid_client/chaveappqasentinela x'
+  assert_segredo_ausente 'chaveappqasentinela' "$DBX_OUTPUT_MASCARADO" 'app key mascarada'
+  assert_contem 'invalid_client/' "$DBX_OUTPUT_MASCARADO" 'o restante continua legivel'
+}
+
 teste_diagnostico_redige_token_sl_u_fora_da_memoria_pela_forma() {
   # QA-P2-04: token de OUTRA conta num corpo de erro nao esta em memoria; so a
   # forma `sl.u.<corpo>` o alcanca, e o corpo inteiro precisa sumir.

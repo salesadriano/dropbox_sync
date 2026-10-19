@@ -24,7 +24,7 @@ Conferido por `grep -l 'lib/\*.sh' tests/unit/*.sh tests/integracao/*.sh`: apena
 
 ## Regra 2: testes `qa_*`
 
-Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os sete de uma vez; para um so, use o filtro proprio da tabela. O filtro `state` casa tambem `qa_state_p3` (substring), o que e desejado: diff em `lib/state.sh` seleciona os dois.
+Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os oito de uma vez; para um so, use o filtro proprio da tabela. O filtro `state` casa tambem `qa_state_p3` (substring), o que e desejado: diff em `lib/state.sh` seleciona os dois.
 
 | Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
 |---|---|---|---|
@@ -35,6 +35,7 @@ Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os sete de 
 | `tests/integracao/qa_docs_aliases_p4_test.sh` (fase 4) | `qa_docs_aliases` | `bin/dbx` (sync nos dois sentidos, unlink, config, upload, help); carrega `lib/errors.sh`, `lib/hash.sh`; em processo isolado carrega `lib/errors`, `progress`, `json`, `sync`, `preflight`; audita o texto de `README.md`, `lib/`, `commands/`, `bin/dbx`, `install.sh` e `docs/arquitetura/system-design.md` | `bin/dbx`, `commands/sync.sh`, `commands/unlink.sh`, `commands/config.sh`, `commands/upload.sh`, `lib/sync.sh`, `lib/preflight.sh`, `lib/json.sh`, `lib/output.sh`, `lib/http.sh`, `lib/auth.sh`, `lib/config.sh`, `lib/state.sh`, `lib/hash.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/cmd.sh`, `lib/errors.sh`, `lib/progress.sh`, `install.sh`, `README.md`, `docs/arquitetura/system-design.md` |
 | `tests/unit/qa_state_p3_test.sh` (fase 3) | `qa_state` | carrega `lib/errors`, `json`, `config`, `state` (e `hash` por ele), `http`, `auth` | `lib/state.sh`, `lib/hash.sh`, `lib/config.sh`, `lib/json.sh`, `lib/http.sh`, `lib/auth.sh`, `lib/errors.sh`, `lib/progress.sh` |
 | `tests/integracao/qa_pendencias_p0_test.sh` (fase 0) | `qa_pendencias_p0` | `bin/dbx` (upload com `get_metadata` de corpo vazio, truncado, sem campo, hash malformado, pasta e 5xx); carrega `lib/errors.sh`, `lib/hash.sh`; em processo isolado carrega `lib/errors`, `progress`, `json`, `hash`, `http`, `auth`, `cmd`; roda em copia um mutante de `tests/unit/identidade_gnustat_test.sh` | `bin/dbx`, `commands/upload.sh`, `lib/cmd.sh`, `lib/json.sh`, `lib/http.sh`, `lib/auth.sh`, `lib/hash.sh`, `lib/errors.sh`, `lib/progress.sh`, `tests/unit/identidade_gnustat_test.sh` |
+| `tests/integracao/qa_consulta_diagnostico_b1_test.sh` (fase 1 do backlog) | `qa_consulta_diagnostico` | `bin/dbx` (verificar e verify nos dois sentidos, diagnostico com cada utilitario do preflight fora do `PATH` por `bin/dbx` direto e por vinculo simbolico, info, upload, upload -, sync, completar e completion); carrega `lib/errors.sh` e, em processo isolado, `lib/hash.sh`; carrega `completions/dbx.bash` num bash limpo; executa `install.sh` e `uninstall.sh` num `HOME` temporario | `bin/dbx`, `commands/verificar.sh`, `commands/diagnostico.sh`, `commands/completar.sh`, `commands/upload.sh`, `commands/sync.sh`, `completions/dbx.bash`, `install.sh`, `uninstall.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/cmd.sh`, `lib/auth.sh`, `lib/preflight.sh`, `lib/config.sh`, `lib/output.sh`, `lib/http.sh`, `lib/path.sh`, `lib/state.sh`, `lib/hash.sh`, `lib/errors.sh`, `lib/cli.sh` |
 
 ## Regra 3: `scripts/tests/*.bats`
 
@@ -67,16 +68,16 @@ Pares sem referencia textual ao script no corpo do `.bats` foram ligados pelo no
 | `lib/path.sh` | errors | output; **chamado por** commands/upload e commands/sync (`dbx_path_local_canonico`) | `path`, `output`, `cli`, `cabecalho`, `cmd` | `comandos`, `sync` |
 | `lib/output.sh` | errors, path; **le canais de** auth e config por nome (`DBX_AUTH_TOKEN`, `DBX_AUTH_REFRESH_TOKEN`, `DBX_CONFIG_REFRESH_TOKEN`, `DBX_CONFIG_APP_SECRET`) | bin/dbx; **chamado por** commands/sync (`dbx_output_mascarar_segredos`) | `output`, `cli`, `composicao`, `cmd` | `comandos`, `sync`, `qa_robustez` (fase P2: todo diagnostico passa pela mascaracao por valor) |
 | `lib/progress.sh` | | http, sync, transfer, bin/dbx | `progress`, `transfer`, `http`, `cmd` | `comandos`, `sync`, `qa_` |
-| `lib/cli.sh` | | bin/dbx | `cli` | `comandos` |
+| `lib/cli.sh` | | bin/dbx (tabela de comandos e aliases `verify`, `doctor`, `completion`, fase 1 do backlog) | `cli` | `comandos`, `verificar`, `diagnostico`, `completar` |
 | `lib/config.sh` | errors, json | bin/dbx; **chamado por** state (`dbx_config_caminho_de_estado`) | `config`, `state`, `cmd` | `comandos` |
 | `lib/http.sh` | errors, json, progress | bin/dbx; **chamado (sem `source`) por** cmd e transfer; canais lidos por commands/sync | `http`, `auth`, `cabecalho`, `transfer`, `qa_rede`, `cmd` | `comandos`, `sync`, `qa_` |
-| `lib/auth.sh` | | bin/dbx | `auth`, `transfer`, `cmd`, `qa_state` (RF-63) | `comandos`, `qa_cache_unico` |
-| `lib/cmd.sh` | hash; **chama** http (`dbx_http_interrompido`, `dbx_http_sinais_devolver`) | bin/dbx | `cmd` (fase 3, RNF-32(d)); auditado por `composicao`. Auxiliar `dbx_cmd_ler_corpo_silencioso` (fase 0, O-5), usado por `commands/upload.sh`: `cmd` (unidade), `comandos` e `qa_pendencias_p0` (ponta a ponta) | `comandos`, `sync`, `cli`, `qa_robustez` |
-| `lib/preflight.sh` | errors | bin/dbx (linha 185) | `preflight` | `comandos` |
+| `lib/auth.sh` | | bin/dbx; **le canais** `DBX_AUTH_ESCOPOS*` commands/diagnostico (DIV-35) | `auth`, `transfer`, `cmd`, `qa_state` (RF-63) | `comandos`, `qa_cache_unico`, `diagnostico`, `verificar` |
+| `lib/cmd.sh` | hash; **chama** http (`dbx_http_interrompido`, `dbx_http_sinais_devolver`) | bin/dbx | `cmd` (fase 3, RNF-32(d)); auditado por `composicao`. Auxiliar `dbx_cmd_ler_corpo_silencioso` (fase 0, O-5), usado por `commands/upload.sh`: `cmd` (unidade), `comandos` e `qa_pendencias_p0` (ponta a ponta). Espaco livre (`dbx_cmd_espaco_*`) e `dbx_cmd_caminho_exibivel` (fase 1 do backlog): `cmd` (unidade) | `comandos`, `sync`, `cli`, `qa_robustez`, `espaco`, `verificar`, `diagnostico`, `completar` |
+| `lib/preflight.sh` | errors | bin/dbx (linha 185); commands/diagnostico (`dbx_preflight_ausentes`) | `preflight` | `comandos`, `diagnostico` |
 | `lib/transfer.sh` | errors, hash, progress; **chama** http (`dbx_http_interrompido`, `dbx_http_sinais_devolver`, `DBX_HTTP_EFETIVO`) | commands/sync, commands/upload | `transfer`, `qa_rede` | `comandos`, `sync`, `qa_` |
 | `lib/walk.sh` | errors, hash | commands/sync | `walk`, `identidade_gnustat` | `sync` |
 | `lib/state.sh` | errors, hash; **chama** config (`dbx_config_caminho_de_estado`) | commands/sync, commands/upload | `state` (fase 3, RNF-32(d)), `qa_state`, `identidade_gnustat` | `sync`, `comandos`, `qa_cache_unico` |
-| `lib/sync.sh` | progress | commands/sync | `sync` (so audita o texto, nao carrega) | `sync` |
+| `lib/sync.sh` | progress | commands/sync, commands/verificar, commands/diagnostico (`dbx_sync_localidade_disponivel`) | `sync_plano` (fase 1 do backlog: carrega errors, hash, sync; `dbx_sync_comparar`), `sync` (le o texto) | `sync`, `verificar`, `diagnostico` |
 
 ## Mapa por modulo: `commands/` e `bin/`
 
@@ -84,7 +85,7 @@ Nenhum comando tem teste unitario: todos sao exercitados por `bin/dbx` em testes
 
 | Modulo | Carrega | Teste direto | Transitivo (executa `bin/dbx <cmd>`) |
 |---|---|---|---|
-| `bin/dbx` | errors, path, output, progress, cli; sob demanda json, config, http, auth, cmd, preflight; **chama** `dbx_http_validar_ambiente` | `comandos` (`DBX_EXEC`) | `sync`, `qa_` |
+| `bin/dbx` | errors, path, output, progress, cli; sob demanda json, config, http, auth, cmd, preflight; **chama** `dbx_http_validar_ambiente` | `comandos` (`DBX_EXEC`), `completar` (ajuda como fonte unica das opcoes) | `sync`, `verificar`, `diagnostico`, `espaco`, `qa_` |
 | `commands/config.sh` | | | `comandos`, `qa_docs_aliases` |
 | `commands/delete.sh` | | `comandos` (le o fonte) | `comandos` |
 | `commands/download.sh` | | | `comandos`, `qa_integridade`, `qa_robustez` |
@@ -92,8 +93,19 @@ Nenhum comando tem teste unitario: todos sao exercitados por `bin/dbx` em testes
 | `commands/list.sh` | | | `comandos` |
 | `commands/space.sh` | | | `comandos` |
 | `commands/unlink.sh` | | | `comandos`, `qa_docs_aliases` |
-| `commands/upload.sh` | transfer, state; **chama** path (`dbx_path_local_canonico`) e hash (`dbx_hash_identidade`) | | `comandos`, `qa_` |
-| `commands/sync.sh` | walk, state, sync, transfer; **chama** path (`dbx_path_local_canonico`); **le canais de** http (`DBX_HTTP_REQUISICOES`, `DBX_HTTP_RESUMO_DO_SERVICO`, `DBX_HTTP_CODIGO`, `DBX_HTTP_CLASSE`, `DBX_HTTP_TRATADOR_EXTERNO`) | `sync` (le o fonte) | `sync`, `qa_robustez`, `qa_cache_unico`, `qa_docs_aliases` |
+| `commands/upload.sh` | transfer, state; **chama** path (`dbx_path_local_canonico`), hash (`dbx_hash_identidade`) e cmd (`dbx_cmd_espaco_checar`, fase 1 do backlog) | | `comandos`, `espaco`, `completar`, `qa_` |
+| `commands/sync.sh` | walk, state, sync, transfer; **chama** path (`dbx_path_local_canonico`) e cmd (`dbx_cmd_espaco_checar`, `dbx_cmd_caminho_exibivel`, fase 1 do backlog); **le canais de** http (`DBX_HTTP_REQUISICOES`, `DBX_HTTP_RESUMO_DO_SERVICO`, `DBX_HTTP_CODIGO`, `DBX_HTTP_CLASSE`, `DBX_HTTP_TRATADOR_EXTERNO`) | `sync` (le o fonte) | `sync`, `espaco`, `completar` (ajuda e opcoes), `qa_robustez`, `qa_cache_unico`, `qa_docs_aliases` |
+| `commands/verificar.sh` (fase 1 do backlog, RF-65) | walk, sync; **chama** cmd, auth e http (`dbx_http_interrompido`, `dbx_http_sinais_devolver`) | | `verificar`, `completar`, `qa_consulta_diagnostico` |
+| `commands/diagnostico.sh` (fase 1 do backlog, RF-66) | preflight, sync; camada de credencial por `dbx_carregar_camada_de_credencial` (bin/dbx); **le canais de** auth (`DBX_AUTH_ESCOPOS*`) e preflight (`DBX_PREFLIGHT_AUSENTES`) | | `diagnostico`, `completar`, `qa_consulta_diagnostico` |
+| `commands/completar.sh` (fase 1 do backlog, RF-68) | cmd; **le** `completions/dbx.bash` | | `completar`, `qa_consulta_diagnostico` |
+
+## Mapa por modulo: autocompletar e instalacao (fase 1 do backlog)
+
+| Modulo | Teste direto | Observacao |
+|---|---|---|
+| `completions/dbx.bash` | `completar`, `qa_consulta_diagnostico` | Opcoes conferidas contra `dbx help <comando>` nos dois sentidos: diff em `bin/dbx` (ajuda) ou em qualquer `commands/*.sh` com opcao nova seleciona `completar` |
+| `install.sh`, `uninstall.sh` | `completar` (TC-CPL-06), `qa_consulta_diagnostico` | Alem de `qa_cache_unico` e `qa_docs_aliases` (auditoria de texto do `install.sh`) |
+| `scripts/empacotar.sh` | `completar` (TC-CPL-07, roda numa copia do projeto) | Fora da Regra 3: nao tem `.bats` |
 
 ## Como usar
 

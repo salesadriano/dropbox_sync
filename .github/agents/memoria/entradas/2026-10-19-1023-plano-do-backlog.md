@@ -14,6 +14,7 @@ ref: docs/prompts/2026-10-19_1023_backlog-fase-0-pendencias.md
 Por decisão do solicitante (2026-10-19), o backlog é implementado em fases sequenciais, cada uma com branch, gates, QA e PR próprios:
 0. Pendências técnicas.
 1. Consulta e diagnóstico (F-11, F-22, F-21, F-19).
+1b. Confinamento remoto (F-36, `raiz_remota` aplicada a todo caminho remoto) e recusa de quebra de linha em caminho remoto (F-37). Fase extra decidida pelo solicitante em 2026-10-19, depois de um achado do QA da fase 1.
 2. Trava de concorrência (F-12) e `lib/tmp` (o restante do F-31: OBS-02, OBS-03, OBS-04).
 3. Recuperação (F-07, F-20).
 4. Filtros e banda (F-13, F-17).

@@ -926,7 +926,9 @@ teste_qa_segredo_ausente_recusa_antes_da_rede_com_o_codigo_de_rf03() {
 
 teste_qa_segredo_preparo_nao_vaza_e_nao_incide_onde_nao_ha_rede() {
   # `dbx_auth_preparar` (ciclo 3): nenhum valor de credencial no diagnostico;
-  # simulacao de upload nao obtem token; o preparo nao duplica a renovacao.
+  # simulacao de upload nao escreve (desde a fase 1 do backlog, so renova, le
+  # o content_hash remoto e consulta o espaco); o preparo nao duplica a
+  # renovacao.
   _qa_cenario
   _qa_credencial '{"versao":1,"app_key":"ak_qa_p3","app_secret":"","refresh_token":"RT_QA_P3_SENTINELA","raiz_remota":"/"}'
   _qa_antigo "$BASE/local/a.txt" 'aaaa'
@@ -944,8 +946,20 @@ teste_qa_segredo_preparo_nao_vaza_e_nao_incide_onde_nao_ha_rede() {
   : >"$BASE/chamadas"
   _qa_rodar --dry-run upload "$BASE/local/a.txt" /r/a.txt
   assert_igual 0 "$ESTADO" "simulacao conclui; diagnostico: $ERRO"
-  assert_igual 0 "$(_qa_contar .)" 'simulacao de upload: nenhuma chamada, nem de token'
+  # RF-15/RF-44 (v1.10) e RF-67(f): simulacao proibe ESCRITA; leituras sao
+  # permitidas. Decisao do Tech Lead (O-3, fase 1): a simulacao do upload le o
+  # `content_hash` remoto antes da checagem de espaco, na ordem da execucao
+  # real. Revisao do QA: o conjunto de leituras fica FECHADO, cada uma com
+  # contagem exata (o preparo nao duplica a renovacao), e nada mais.
+  assert_igual 0 "$(_qa_escritas)" 'simulacao de upload: nenhuma chamada de escrita'
+  assert_igual 1 "$(_qa_contar 'oauth2/token')" 'simulacao de upload: uma unica renovacao'
+  assert_igual 1 "$(_qa_contar 'files/get_metadata')" 'simulacao de upload: uma leitura do content_hash remoto'
+  assert_igual 1 "$(_qa_contar 'get_space_usage')" 'simulacao de upload: uma consulta de espaco (RF-67(f))'
+  assert_igual 3 "$(_qa_contar .)" 'simulacao de upload: nenhuma chamada alem das tres leituras'
   _qa_remoto_arquivo "$(_qa_hash "$BASE/local/a.txt")"
+  # A simulacao agora renova o token para consultar o espaco: a contagem do
+  # upload real comeca do zero.
+  : >"$BASE/chamadas"
   _qa_rodar upload "$BASE/local/a.txt" /r/a.txt
   assert_igual 1 "$(_qa_contar 'oauth2/token')" 'upload real: uma unica renovacao'
 }

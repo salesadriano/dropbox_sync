@@ -154,10 +154,20 @@ dbx_cmd_ler_corpo_silencioso() {
     DBX_CMD_FALHA_CLASSE='erro_remoto'
     DBX_CMD_FALHA_MOTIVO="resposta nao interpretavel: ${DBX_JSON_MOTIVO:-sem detalhe}"
   else
+    local resto
+    local -a segmentos
     for campo in "$@"; do
       DBX_CMD_CAMPOS[indice]=''
+      # Campo aninhado vem como segmentos separados por espaco (`allocation
+      # allocated`); a separacao e por expansao, sem `IFS` nem utilitario.
+      segmentos=() resto=$campo
+      while [[ $resto == *' '* ]]; do
+        segmentos+=("${resto%% *}")
+        resto=${resto#* }
+      done
+      segmentos+=("$resto")
       # shellcheck disable=SC2034  # canal publico lido pelos comandos
-      dbx_json_valor "$campo" >/dev/null 2>&1 && DBX_CMD_CAMPOS[indice]=$DBX_JSON_RESULTADO
+      dbx_json_valor "${segmentos[@]}" >/dev/null 2>&1 && DBX_CMD_CAMPOS[indice]=$DBX_JSON_RESULTADO
       indice=$((indice + 1))
     done
   fi
@@ -457,6 +467,140 @@ dbx_cmd_receber_arquivo() {
     return "$(dbx_errors_codigo_saida configuracao)"
   }
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# Espaco livre da conta (RF-66 `espaco`, RF-67)
+# ---------------------------------------------------------------------------
+#
+# Conjunto onde incide: a checagem previa do `upload` e do `sync --enviar`
+# (RF-67) e a checagem `espaco` do `diagnostico` (RF-66). A folga e calculada
+# AQUI, uma vez; calcula-la em cada comando faria a regra da conta de equipe
+# valer para um lado so.
+
+# shellcheck disable=SC2034  # canais publicos, lidos pelos comandos
+DBX_CMD_ESPACO_USADO=''
+# shellcheck disable=SC2034
+DBX_CMD_ESPACO_ALOCADO=''
+DBX_CMD_ESPACO_LIVRE=''
+# shellcheck disable=SC2034
+DBX_CMD_ESPACO_NECESSARIO=''
+# shellcheck disable=SC2034
+DBX_CMD_ESPACO_VERIFICADO='nao'
+DBX_CMD_ESPACO_MOTIVO=''
+
+# _dbx_cmd_inteiro <valor> — 0 quando e inteiro nao negativo.
+_dbx_cmd_inteiro() { [[ ${1-} =~ ^[0-9]+$ ]]; }
+
+# dbx_cmd_espaco_consultar — uma chamada `get_space_usage`, sem emitir nada.
+#
+# Status 0 quando a consulta foi lida; a folga vai em DBX_CMD_ESPACO_LIVRE e
+# fica VAZIA quando a alocacao e ausente, de tipo desconhecido ou nao numerica
+# (RF-67(c): nao recusa). Conta individual: alocado menos usado. Conta de
+# equipe: a menor entre a folga da equipe e, quando ha limite do membro, a do
+# membro. DBX_CMD_ESPACO_USADO e DBX_CMD_ESPACO_ALOCADO sao os da folga que
+# prevaleceu. Status 1 na falha, com DBX_CMD_FALHA_CLASSE e DBX_CMD_FALHA_MOTIVO.
+dbx_cmd_espaco_consultar() {
+  DBX_CMD_ESPACO_USADO='' DBX_CMD_ESPACO_ALOCADO='' DBX_CMD_ESPACO_LIVRE=''
+  DBX_CMD_FALHA_CLASSE='' DBX_CMD_FALHA_MOTIVO=''
+  dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/users/get_space_usage' 'null' sim \
+    >/dev/null 2>&1 || {
+    DBX_CMD_FALHA_CLASSE=${DBX_HTTP_CLASSE:-erro_remoto}
+    DBX_CMD_FALHA_MOTIVO="consulta de espaco recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+    return 1
+  }
+  dbx_cmd_ler_corpo_silencioso used 'allocation .tag' 'allocation allocated' \
+    'allocation used' 'allocation user_within_team_space_allocated' || return 1
+  local usado=${DBX_CMD_CAMPOS[0]} tag=${DBX_CMD_CAMPOS[1]} alocado=${DBX_CMD_CAMPOS[2]}
+  local usado_equipe=${DBX_CMD_CAMPOS[3]} limite_membro=${DBX_CMD_CAMPOS[4]}
+  _dbx_cmd_inteiro "$usado" && _dbx_cmd_inteiro "$alocado" || return 0
+  local livre
+  case $tag in
+    individual)
+      DBX_CMD_ESPACO_USADO=$usado DBX_CMD_ESPACO_ALOCADO=$alocado
+      ;;
+    team)
+      _dbx_cmd_inteiro "$usado_equipe" || return 0
+      DBX_CMD_ESPACO_USADO=$usado_equipe DBX_CMD_ESPACO_ALOCADO=$alocado
+      if _dbx_cmd_inteiro "$limite_membro" && [[ $limite_membro -gt 0 ]] &&
+        ((limite_membro - usado < alocado - usado_equipe)); then
+        DBX_CMD_ESPACO_USADO=$usado DBX_CMD_ESPACO_ALOCADO=$limite_membro
+      fi
+      ;;
+    *) return 0 ;;
+  esac
+  livre=$((DBX_CMD_ESPACO_ALOCADO - DBX_CMD_ESPACO_USADO))
+  [[ $livre -lt 0 ]] && livre=0
+  DBX_CMD_ESPACO_LIVRE=$livre
+  return 0
+}
+
+# _dbx_cmd_avisar <texto> — um aviso em stderr, pelo canal de diagnostico.
+_dbx_cmd_avisar() {
+  dbx_cmd_iniciar_saida
+  dbx_output_diagnostico aviso "$1"
+  dbx_output_render_diagnostico
+}
+
+# dbx_cmd_espaco_checar <total_em_bytes> [pular] — checagem previa de RF-67.
+#
+# Status 0 quando o envio pode seguir: cabe (igual a folga cabe), nada a enviar
+# (sem consulta), `pular` = `sim` (`--forcar`, sem consulta), folga desconhecida
+# ou consulta que falhou — os dois ultimos com UM aviso em stderr (RF-67(c)(g)).
+# Status 1 quando nao cabe, com a mensagem em DBX_CMD_ESPACO_MOTIVO. Quem chama
+# decide entre recusar (`espaco`, 12) e, em simulacao, so anunciar.
+#
+# Reinicia o modelo de saida quando avisa: chamar ANTES de montar o resultado.
+dbx_cmd_espaco_checar() {
+  local total=${1:-0} pular=${2:-nao}
+  DBX_CMD_ESPACO_NECESSARIO=$total
+  DBX_CMD_ESPACO_VERIFICADO='nao'
+  DBX_CMD_ESPACO_LIVRE=''
+  DBX_CMD_ESPACO_MOTIVO=''
+  if [[ $pular == 'sim' ]]; then
+    DBX_CMD_ESPACO_VERIFICADO='pulado'
+    return 0
+  fi
+  _dbx_cmd_inteiro "$total" && [[ $total -gt 0 ]] || return 0
+  if ! dbx_cmd_espaco_consultar; then
+    _dbx_cmd_avisar "nao foi possivel consultar o espaco livre (${DBX_CMD_FALHA_MOTIVO:-sem detalhe}): o envio segue sem a checagem"
+    return 0
+  fi
+  if [[ -z $DBX_CMD_ESPACO_LIVRE ]]; then
+    _dbx_cmd_avisar 'alocacao de espaco da conta nao informada ou nao interpretavel: o envio segue sem a checagem'
+    return 0
+  fi
+  DBX_CMD_ESPACO_VERIFICADO='sim'
+  [[ $total -gt $DBX_CMD_ESPACO_LIVRE ]] || return 0
+  # shellcheck disable=SC2034  # canal publico, lido por commands/upload e sync
+  DBX_CMD_ESPACO_MOTIVO="espaco insuficiente na conta: necessario $total bytes, livre $DBX_CMD_ESPACO_LIVRE bytes, faltam $((total - DBX_CMD_ESPACO_LIVRE)) bytes (use --forcar ou --force para enviar sem esta checagem)"
+  return 1
+}
+
+# dbx_cmd_espaco_campos — os campos `espaco_*` no resultado em montagem
+# (RF-67(i)): acrescimo, contrato inalterado.
+dbx_cmd_espaco_campos() {
+  dbx_output_campo espaco_necessario "$DBX_CMD_ESPACO_NECESSARIO"
+  dbx_output_campo espaco_livre "$DBX_CMD_ESPACO_LIVRE"
+  dbx_output_campo espaco_verificado "$DBX_CMD_ESPACO_VERIFICADO"
+}
+
+# dbx_cmd_caminho_exibivel <caminho> — forma do caminho que cabe numa linha
+# (RNF-10, RF-28), em DBX_CMD_EXIBIDO: com byte de controle ou quebra de linha
+# ele sai citado, e a ambiguidade fica visivel em vez de abrir uma segunda
+# linha. Sem byte de controle, sai como esta.
+#
+# Conjunto onde incide: toda emissao de caminho por linha de `sync` e de
+# `verificar`; com `--null` o registro carrega qualquer byte e o caminho sai
+# integro.
+DBX_CMD_EXIBIDO=''
+dbx_cmd_caminho_exibivel() {
+  if [[ $1 == *[$'\001'-$'\037\177']* ]]; then
+    printf -v DBX_CMD_EXIBIDO '%q' "$1"
+  else
+    # shellcheck disable=SC2034  # canal publico, lido por commands/sync e verificar
+    DBX_CMD_EXIBIDO=$1
+  fi
 }
 
 # dbx_cmd_bytes_legiveis <n> — apresentacao humana, sem utilitario externo.

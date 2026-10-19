@@ -159,7 +159,11 @@ dbx_cmd_upload_executar() {
     dbx_progress_mensagem "[upload] iniciando envio de diretorio: $origem -> $alvo_remoto"
     # shellcheck source=commands/sync.sh
     . "${BASH_SOURCE[0]%/*}/sync.sh"
-    dbx_cmd_sync_executar --enviar --origem "$origem" --destino "$alvo_remoto"
+    # RF-67(e): no diretorio, `--forcar` chega ao `sync`, onde so pula o espaco.
+    local -a forcar_sync=()
+    [[ $forcar == 'sim' ]] && forcar_sync=(--forcar)
+    dbx_cmd_sync_executar --enviar ${forcar_sync[@]+"${forcar_sync[@]}"} \
+      --origem "$origem" --destino "$alvo_remoto"
     return $?
   fi
 
@@ -172,11 +176,32 @@ dbx_cmd_upload_executar() {
   # forma exata das nove ocorrencias da familia de gemeos.
 
   # RF-15 — GATE UNICO, ANTES DA BIFURCACAO. Ver a nota no cabecalho.
+  # RF-67(f): em simulacao a consulta de espaco e feita (e leitura) e, se nao
+  # couber, o plano so anuncia que recusaria; o codigo continua 0.
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
+    # O-3 (RF-15/RF-44 emendados): mesma ordem da execucao real — primeiro a
+    # leitura do `content_hash` remoto (RF-60), e so sem dispensa a checagem
+    # de espaco. Leitura e permitida em simulacao; o cache nao e gravado.
+    local recusaria='' dispensado='nao'
+    if [[ $forcar != 'sim' && $origem != '-' && -z $rev ]] &&
+      _dbx_cmd_upload_hash_remoto "$remoto" &&
+      dbx_hash_publicar_arquivo "$origem" 2>/dev/null &&
+      dbx_hash_iguais "$DBX_HASH_RESULTADO" "$DBX_CMD_UPLOAD_HASH_REMOTO"; then
+      dispensado='sim'
+    else
+      _dbx_cmd_upload_checar_espaco "$origem" "$forcar" || recusaria=$DBX_CMD_ESPACO_MOTIVO
+    fi
     dbx_cmd_iniciar_saida
     dbx_output_campo operacao upload
     dbx_output_campo origem "$origem"
     dbx_output_campo caminho "$remoto"
+    if [[ $dispensado == 'sim' ]]; then
+      dbx_output_campo status dispensado
+      dbx_output_campo motivo inalterado
+    else
+      dbx_cmd_espaco_campos
+    fi
+    [[ -n $recusaria ]] && dbx_output_campo recusaria "$recusaria"
     dbx_output_campo simulado sim
     dbx_output_render
     return 0
@@ -234,6 +259,14 @@ dbx_cmd_upload_executar() {
     fi
   fi
 
+  # RF-67: a recusa por espaco vem antes de qualquer escrita, inclusive da
+  # abertura de sessao, e depois da dispensa por conteudo identico (que nao
+  # envia nada e por isso nao consulta).
+  _dbx_cmd_upload_checar_espaco "$origem" "$forcar" || {
+    dbx_cmd_falhar espaco "$DBX_CMD_ESPACO_MOTIVO"
+    return $?
+  }
+
   dbx_progress_mensagem "[upload] iniciando envio: $origem -> $remoto"
 
   local por_sessao='nao'
@@ -279,6 +312,7 @@ dbx_cmd_upload_executar() {
   else
     dbx_output_campo modo_de_envio requisicao_unica
   fi
+  dbx_cmd_espaco_campos
   _dbx_cmd_metadado_em
 
   # RF-61(g), (j): o resumo do que foi enviado. Por sessao, o calculado sobre os
@@ -335,6 +369,25 @@ _dbx_cmd_upload_hash_remoto() {
   fi
   DBX_CMD_UPLOAD_HASH_REMOTO=${DBX_CMD_CAMPOS[1]}
   return 0
+}
+
+# _dbx_cmd_upload_checar_espaco <origem> <forcar> — RF-67 no `upload`.
+#
+# O total e o tamanho MEDIDO do arquivo de origem. A entrada padrao (`-`) tem
+# tamanho desconhecido e nao e checada nem consulta a API (RF-67(h)); `--forcar`
+# pula a consulta (RF-67(e)). Status 1 quando nao cabe, com a mensagem em
+# DBX_CMD_ESPACO_MOTIVO.
+_dbx_cmd_upload_checar_espaco() {
+  local origem=$1 forcar=$2
+  if [[ $origem == '-' ]]; then
+    dbx_cmd_espaco_checar 0
+    # shellcheck disable=SC2034  # canal de lib/cmd, emitido por dbx_cmd_espaco_campos
+    DBX_CMD_ESPACO_NECESSARIO=''
+    return 0
+  fi
+  local tamanho=0
+  dbx_transfer_tamanho_de_arquivo "$origem" && tamanho=$DBX_TRANSFER_TAMANHO
+  dbx_cmd_espaco_checar "$tamanho" "$forcar"
 }
 
 # _dbx_cmd_upload_gravar_cache <chave> <resumo> <identidade_antes> <origem>

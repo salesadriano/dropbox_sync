@@ -29,7 +29,7 @@ _sem() {
   # `timeout` e os utilitarios usados pela propria sonda precisam existir no
   # PATH reduzido, senao a sonda mede a si mesma em vez do componente.
   for alvo in bash curl sha256sum shasum openssl timeout env head wc mktemp stat \
-    readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od tail df; do
+    readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od tail df sleep; do
     for faltante in "${ausentes[@]}"; do
       [[ $alvo == "$faltante" ]] && continue 2
     done
@@ -227,6 +227,38 @@ teste_todo_utilitario_ausente_reprova_e_e_nomeado() {
     assert_contem "$utilitario" "$saida" \
       "RNF-02 exige nomear o utilitario ausente: $utilitario"
   done
+}
+
+teste_inspecao_sem_parada_nomeia_cada_ausente() {
+  # RF-66(a)(e): o `diagnostico` nao para no primeiro item. A lista e a MESMA do
+  # preflight, perguntada a ele, e a inspecao so usa o proprio shell.
+  local caminho saida
+  caminho=$(_sem stat mktemp readlink)
+  saida=$(PATH="$caminho" timeout 30 bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
+    dbx_preflight_ausentes
+    printf "%s|%s" "$?" "${DBX_PREFLIGHT_AUSENTES[*]}"
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  assert_igual "$DBX_PREFLIGHT_ERRO_CONFIGURACAO|mktemp stat readlink" "$saida" \
+    'cada ausente nomeado, na ordem da lista do preflight'
+  caminho=$(_sem)
+  saida=$(PATH="$caminho" timeout 30 bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
+    dbx_preflight_ausentes
+    printf "%s|%s" "$?" "${DBX_PREFLIGHT_AUSENTES[*]}"
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  assert_igual '0|' "$saida" 'ambiente completo: nada ausente'
+}
+
+teste_inspecao_sem_parada_inclui_o_resumo_sha256() {
+  local caminho saida
+  caminho=$(_sem sha256sum shasum openssl)
+  saida=$(PATH="$caminho" timeout 30 bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
+    dbx_preflight_ausentes
+    printf "%s" "${DBX_PREFLIGHT_AUSENTES[*]}"
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  assert_contem 'sha256sum' "$saida" 'a falta do utilitario de resumo e nomeada'
 }
 
 # _comandos_externos_de <arquivo...> — candidatos a comando externo, extraidos

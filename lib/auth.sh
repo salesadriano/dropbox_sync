@@ -102,6 +102,11 @@ DBX_AUTH_REFRESH_TOKEN=''
 DBX_AUTH_CONTA=''
 # shellcheck disable=SC2034  # canal publico
 DBX_AUTH_RENOVOU='nao'
+# Escopos declarados pela ultima renovacao (DIV-35), lidos pelo `diagnostico`.
+# shellcheck disable=SC2034  # canais publicos, lidos por commands/diagnostico
+DBX_AUTH_ESCOPOS=''
+# shellcheck disable=SC2034  # idem
+DBX_AUTH_ESCOPOS_INFORMADOS='nao'
 DBX_AUTH_LIDO=''
 
 # dbx_auth_esquecer — descarta o token curto da memoria.
@@ -245,6 +250,18 @@ dbx_auth_renovar() {
   local validade=0
   _dbx_auth_interpretar "$DBX_HTTP_CORPO" expires_in && validade=$DBX_AUTH_LIDO
   [[ $validade =~ ^[0-9]+$ ]] || validade=0
+
+  # DIV-35: escopos que a resposta declara, lidos aqui porque o corpo e limpo
+  # logo abaixo. Sem o campo, `nao`: quem consome trata como nao informado, e
+  # nunca como "nenhum escopo".
+  DBX_AUTH_ESCOPOS=''
+  DBX_AUTH_ESCOPOS_INFORMADOS='nao'
+  if _dbx_auth_interpretar "$DBX_HTTP_CORPO" scope; then
+    # shellcheck disable=SC2034  # canais publicos, lidos por commands/diagnostico
+    DBX_AUTH_ESCOPOS=$DBX_AUTH_LIDO
+    # shellcheck disable=SC2034  # idem
+    DBX_AUTH_ESCOPOS_INFORMADOS='sim'
+  fi
 
   DBX_AUTH_TOKEN=$token
   DBX_AUTH_EXPIRA_EM=$((SECONDS + validade - DBX_AUTH_MARGEM_SEGUNDOS))

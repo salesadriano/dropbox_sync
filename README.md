@@ -80,10 +80,13 @@ tar -xzf dropbox_sync-1.2.0-linux.tar.gz
 ./install.sh
 ```
 
+> **Vínculo de instalação e utilitários:** o `install.sh` cria `~/.local/bin/dbx` como vínculo simbólico para `~/.local/share/dropbox_sync/bin/dbx`. O ponto de entrada acha a própria raiz só com recursos do shell, mas o bash não lê o alvo de um vínculo: chamado pelo vínculo, o `dbx` usa `readlink` e, se ele faltar, `find -printf %l`; sem os dois, recusa com código `3` e diz o que instalar. Chamar `~/.local/share/dropbox_sync/bin/dbx` pelo caminho real não depende de nenhum deles. O `dbx diagnostico` aponta essa dependência na linha `dependencias`.
+
 #### Desinstalação
 ```bash
-./uninstall.sh            # Remove o executável e bibliotecas (preserva credenciais)
+./uninstall.sh            # Remove o executável, bibliotecas e o autocompletar (preserva credenciais)
 ./uninstall.sh --purge    # Remove executável, bibliotecas e credenciais locais
+./install.sh --uninstall  # Equivalente pelo instalador; com --prefix <DIR>, remove dali
 ```
 
 ### 2. Autenticação Inicial (`config`)
@@ -180,7 +183,7 @@ dbx upload -p /mnt/h/Bkps/PeOuro /PeOuro
 # Upload dispensado automaticamente se o arquivo local estiver inalterado
 dbx upload ./relatorio.pdf /documentos/relatorio.pdf
 
-# Forçar envio mesmo se inalterado no banco local
+# Forçar envio mesmo se inalterado (pula também a checagem de espaço livre)
 dbx upload --forcar ./relatorio.pdf /documentos/relatorio.pdf
 
 # Upload forçando sobrescrita remota
@@ -191,6 +194,8 @@ tar czf - /dados | dbx upload - /backups/dados.tar.gz
 ```
 
 > **Importante para Streaming (`RSK-36`):** Ao encadear comandos em pipes (`tar ... | dbx upload - ...`), ative **`set -o pipefail`** no seu shell para garantir que falhas no processo produtor sejam capturadas pelo encadeamento.
+
+> **Espaço livre (`RF-67`):** antes de enviar, o `upload` consulta uma vez o espaço da conta (`users/get_space_usage`). Se o arquivo não cabe na folga (alocado menos usado; em conta de equipe, a menor folga entre equipe e membro), o envio é **recusado com código `12`, sem escrever nada**, e a mensagem traz o necessário, o livre e a diferença. `--forcar` (`--force`) pula a checagem; com `--dry-run` o resultado só anuncia `recusaria=...`; a entrada padrão (`-`) não é checada; e falha na consulta (ou alocação desconhecida) só gera um aviso em `stderr`. A saída estruturada ganha `espaco_necessario`, `espaco_livre` e `espaco_verificado` (`sim`, `nao` ou `pulado`).
 
 ---
 
@@ -239,6 +244,9 @@ Cada opção do `sync` tem um nome em português e um alias em inglês, com o me
 | `--espelhar` | `--mirror` | Apaga no destino o que não existe na origem |
 | `--confirmar` | `--yes` | Reconhece a primeira execução com espelhamento |
 | `--permitir-origem-vazia` | `--allow-empty-source` | Permite espelhar uma origem vazia |
+| `--forcar` | `--force` | Só com `--enviar`: pula a checagem de espaço livre (com `--receber` é uso inválido, código `2`) |
+
+No `--enviar`, a soma dos arquivos a transferir (omitidos e exclusões não contam; sobrescrita conta o arquivo novo inteiro) é conferida com o espaço livre da conta numa única consulta: se não cabe, o plano sai e a execução é recusada com código `12` **antes de qualquer escrita**, inclusive das exclusões do `--espelhar` e da gravação da memória. Com `--dry-run`, o plano só anuncia `recusaria=...`. O `--forcar` não muda a decisão por `content_hash`: arquivo idêntico continua omitido.
 
 Repetir uma opção, ainda que pelos dois nomes, segue a mesma regra: opção com valor vale o último valor dado (`--origem a --source b` usa `b`); opção sem valor é idempotente; um segundo sentido (`--enviar --push`, `--push --pull`) é recusado como uso inválido.
 
@@ -300,6 +308,39 @@ dbx space
 
 # Exibição legível para humanos (--humano ou -H)
 dbx space --humano
+```
+
+---
+
+### 8. `verificar` (`verify`) — Auditoria sem Transferência
+Compara a árvore local e a remota por `content_hash`, com os mesmos papéis e sentido do `sync` (`--origem`/`--source`, `--destino`/`--dest`, `--enviar`/`--push`, `--receber`/`--pull`), sem transferir nem gravar nada — nem a memória de `~/.local/state/dbx/`:
+
+```bash
+dbx verificar --enviar --origem /dados --destino /backup
+dbx verify --pull --source /backup --dest /dados
+```
+
+Cada arquivo sai uma vez como `igual`, `diferente` (com `motivo=conteudo` ou `motivo=tipo`, quando é arquivo de um lado e pasta do outro), `so_origem` ou `so_destino`, na ordem do caminho sem caixa, com as contagens `iguais`, `diferentes`, `so_origem`, `so_destino` e `total` ao fim. Código de saída: `0` só quando tudo é igual; `11` quando há divergência (mensagem própria, nada foi transferido); `14` com travessia local parcial; erro de execução (rede `9`, autenticação `5`, limite de taxa `8`, ...) prevalece. `--espelhar`, `--confirmar`, `--permitir-origem-vazia` e `--forcar` (e os aliases) são recusados com `2`.
+
+---
+
+### 9. `diagnostico` (`doctor`) — Checagem do Ambiente
+Checa, sem parar no primeiro item e sem passar pela verificação prévia, sete pontos: `dependencias`, `credencial`, `conectividade` (`check/user`), `escopos`, `espaco`, `localidade` e `estado`. Cada checagem sai numa linha, com `ok`, `aviso` ou `falha`, a mensagem e o remédio sugerido:
+
+```bash
+dbx diagnostico
+dbx --json doctor
+```
+
+Os escopos exigidos são `account_info.read`, `files.metadata.read`, `files.content.read` e `files.content.write`; se a resposta de renovação do token não os informar, a checagem é `aviso`. O comando nunca imprime segredo (a credencial é conferida por nome de campo), não cria nem corrige nada e só chama a renovação do token, `check/user` e `get_space_usage`. Código de saída: `0` sem falha (aviso não reprova) e `3` com ao menos uma falha.
+
+---
+
+### 10. `completar` (`completion`) — Autocompletar do Bash
+O `install.sh` instala o autocompletar em `~/.local/share/bash-completion/completions/dbx` (sem `sudo` e sem alterar o `.bashrc`; com `--prefix <DIR>`, em `<DIR>/share/bash-completion/completions/dbx`). Ele completa comandos, aliases, opções de cada comando em português e inglês e caminhos **locais**; não usa rede nem credencial. Para ativar na sessão corrente:
+
+```bash
+source <(dbx completar bash)
 ```
 
 ---
