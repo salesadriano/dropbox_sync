@@ -5,7 +5,7 @@
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
 | Data | 2026-10-18 |
-| Versao | **v0.3** — fase 3 (`DP-34`): `F-25`, `F-26` e `F-29` em andamento com rastreio para `RF-60` a `RF-63` e `RNF-33`; `F-34` (paralelismo e APIs em lote, com medicao previa) e `F-35` (PKCE) criados. *Registro anterior:* **v0.2 — DECIDIDO** |
+| Versao | **v0.4** — pendencias da fase 0 (2026-10-19): `F-23` a `F-33` conferidos contra os registros de `docs/reviews/` e marcados como entregues (PRs #35 a #38), com `F-31` parcial; `F-06` entregue; `F-35` fora; `F-03`, `F-07` a `F-22`, `F-34` planejados por fase (memoria `2026-10-19-1023-plano-do-backlog`). *Registro anterior:* **v0.3** — fase 3 (`DP-34`): `F-25`, `F-26` e `F-29` em andamento com rastreio para `RF-60` a `RF-63` e `RNF-33`; `F-34` (paralelismo e APIs em lote, com medicao previa) e `F-35` (PKCE) criados. *Registro anterior:* **v0.2 — DECIDIDO** |
 | Status | ✅ **DP-02 resolvida.** Escopo do MVP aprovado pelo solicitante. Este documento passa de proposta a **registro da decisao e do backlog** |
 | Origem | Resposta a DP-02 |
 | Documentos relacionados | [Escopo e requisitos](escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](decisoes-pendentes.md) · [System Design](../arquitetura/system-design.md) |
@@ -316,26 +316,26 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 | Bloco 0 | Base endurecida | ✅ Aprovado | RNF-03, 05, 10, 11, 12, 13, 14, 16 |
 | F-01 | Transferencia por fluxo (`stdin`/`stdout`) | ✅ Aprovada | RF-31, RF-32 |
 | F-02 | Transferencia incremental por `content_hash` | ✅ Aprovada | RF-33, RF-34 |
-| F-03 | Retomada de transferencia interrompida | ❌ Backlog | — |
+| F-03 | Retomada de transferencia interrompida | 📅 Planejado, fase 7 | — |
 | F-04 | Contrato de automacao | ✅ Aprovada | RF-15, RF-28, RF-29, RF-35 |
 | F-05 | Relatorio de execucao | ✅ Aprovada | RF-36 |
-| F-06 | Espelhamento com remocao de orfaos | ❌ Backlog | — |
-| F-07 | Revisoes e restauracao | ❌ Backlog | — |
-| F-08 | Operacoes em lote | ❌ Backlog | — |
-| F-09 | Paralelismo controlado | ❌ Backlog | — |
-| F-10 | Retencao e rotacao de backup | ❌ Backlog | — |
-| F-11 | Comando de verificacao | ❌ Backlog | — |
-| F-12 | Trava de execucao concorrente | ❌ Backlog | — |
-| F-13 | Filtros avancados | ❌ Backlog | — |
-| F-14 | Deteccao de mudancas por cursor | ❌ Backlog | — |
-| F-15 | Link temporario de download | ❌ Backlog | — |
-| F-16 | Link compartilhado com expiracao ou senha | ❌ Backlog | — |
-| F-17 | Limitacao de banda | ❌ Backlog | — |
-| F-18 | Perfis nomeados de credencial | ❌ Backlog | — |
-| F-19 | Autocompletar de shell | ❌ Backlog | — |
-| F-20 | Lixeira: listar, restaurar, excluir permanentemente | ❌ Backlog | — |
-| F-21 | Verificacao previa de espaco | ❌ Backlog | — |
-| F-22 | Comando de diagnostico de ambiente | ❌ Backlog | — |
+| F-06 | Espelhamento com remocao de orfaos | ✅ Entregue (`sync --espelhar`, `DP-06`/`DP-27`) | `RF-37`..`RF-48` |
+| F-07 | Revisoes e restauracao | 📅 Planejado, fase 3 | — |
+| F-08 | Operacoes em lote | 📅 Planejado, fase 9 | — |
+| F-09 | Paralelismo controlado | 📅 Planejado, fase 9 | — |
+| F-10 | Retencao e rotacao de backup | 📅 Planejado, fase 6 | — |
+| F-11 | Comando de verificacao | 📅 Planejado, fase 1 | — |
+| F-12 | Trava de execucao concorrente | 📅 Planejado, fase 2 | — |
+| F-13 | Filtros avancados | 📅 Planejado, fase 4 | — |
+| F-14 | Deteccao de mudancas por cursor | 📅 Planejado, fase 7 | — |
+| F-15 | Link temporario de download | 📅 Planejado, fase 5 | — |
+| F-16 | Link compartilhado com expiracao ou senha | 📅 Planejado, fase 5 | — |
+| F-17 | Limitacao de banda | 📅 Planejado, fase 4 | — |
+| F-18 | Perfis nomeados de credencial | 📅 Planejado, fase 8 | — |
+| F-19 | Autocompletar de shell | 📅 Planejado, fase 1 | — |
+| F-20 | Lixeira: listar, restaurar, excluir permanentemente | 📅 Planejado, fase 3 | — |
+| F-21 | Verificacao previa de espaco | 📅 Planejado, fase 1 | — |
+| F-22 | Comando de diagnostico de ambiente | 📅 Planejado, fase 1 | — |
 
 **Nenhum acrescimo foi solicitado alem das candidatas propostas.**
 
@@ -350,16 +350,16 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 
 | ID | Item | Fase | Estado | Requisitos / riscos |
 |---|---|---|---|---|
-| F-23 | Integridade de dados no `sync`/`download`: caixa de caminho, recebimento atomico com hash, `download` sem `rm`, `sync --enviar` por sessao com `client_modified`, `umask` e area temporaria | **P1** | 🔧 Em implementacao (`bugfix/integridade-de-dados-p1`) | `RF-54`..`RF-57`, `RNF-29`, `DP-31`, `RSK-39` |
-| F-24 | Robustez de rede: timeout (`connect-timeout`, `speed-limit`), `Retry-After`, 5 tentativas com base 1 s e teto 60 s, upload por sessao retomavel, falhas por arquivo no `sync` | **P2** | 🔧 Em andamento na fase 2 (`feature/robustez-de-rede-p2`) | `RNF-30`, `RNF-07` (emendado; `DIV-22` encerrada, `RSK-38`), `RF-09` (emendado), `RF-58`, `RF-59`, `RF-36`, `DP-33` |
-| F-25 | Cache e SQL: gravacao em lote numa transacao, escolha de um unico cache (`lib/state` x `lib/db`), chave canonica (`realpath`), SQL com validacao/parametros, erros do fallback Python visiveis; PKCE (S256) ou `client_secret` obrigatorio | **P3+P4** | 🔧 Em andamento na fase 3 (`feature/cache-unico-p3`, `DP-34`): cache unico em `lib/state` e `lib/db` removido, o que deixa sem objeto os itens de SQL (transacao, parametros, erros do recuo `python3`); chave canonica → `RF-62`; `client_secret` obrigatorio → `RF-63`; PKCE para o backlog (`F-35`) | `RF-38`, `RF-42`, `RF-61`, `RF-62`, `RF-63`, `RNF-02`, `RNF-26`, `RNF-33` |
-| F-26 | Skip do upload condicionado ao `content_hash` remoto (`get_metadata`); cache apenas otimiza o hash | **Fase 3 (junto de P3+P4)** | 🔧 Em andamento na fase 3 → `RF-60` (`DP-34`) | `DP-32`, `RF-33`, `RF-60`, `RSK-23`, `RSK-37` |
-| F-27 | Documentacao e manutencao: contradicao "sem estado local / cURL unica dependencia", `sqlite3`/`python3` no `preflight`, comentarios longos para registros/ADRs, aliases em ingles no `sync`, testes faltantes | **P5** | ⬜ Backlog. *(v0.3)* A parte de `sqlite3`/`python3` e os testes diretos de `lib/state.sh` e `lib/cmd.sh` foram absorvidos pela fase 3 (`RNF-02`, `RNF-32(d)`, `RNF-33`) | `RNF-02`, `RNF-26`, `DP-15` |
-| F-28 | **Achado QA-01(a), anterior a P1:** `dbx download <remoto>` sem destino (saida para o terminal) sai com codigo 9 no duplo de teste, no HEAD e na branch; confirmar se o defeito e do duplo ou do comando | **P2** | 🔧 Em andamento na fase 2 — investigar duplo x comando antes de corrigir | `RF-11`, `RF-32(b)` |
-| F-29 | **Achado QA-01(b), anterior a P1:** `commands/upload.sh` le `DBX_TRANSFER_HASH`, variavel inexistente; o canal correto e `DBX_TRANSFER_CONTENT_HASH`, entao o upload por sessao pode deixar de gravar o hash no cache | **Fase 3 (P3+P4)** | 🔧 Em andamento na fase 3: o hash do envio por sessao vai ao cache do `upload` pelo canal correto → `RF-61(j)` | `RF-08`, `RF-38`, `RF-61`, `DP-32`, `DP-34` |
-| F-30 | **Achado QA-01(c), anterior a P1:** `tests/run.sh` nao para no primeiro erro, como exige a Regra 9 de `protocolo-tdd` | **P2** | 🔧 Em andamento na fase 2 | `RNF-32(a)`, protocolo de testes |
-| F-31 | **Achado QA-01(d):** sinal durante `sync --receber` deixa `dbx-sync.XXXX` (listagens e revs, sem token) em `TMPDIR`; depende do `lib/tmp` (trap `EXIT` unico com areas registradas) | **P2/estrutural** | 🔧 Em andamento na fase 2 | `RNF-29(c)` (escopo atual cobre so a area HTTP), `RF-54`..`RF-57` |
-| F-33 | **Achado da P1:** o teste `nao_deixa_residuo_temporario` de `tests/unit/hash_test.sh` conta o `/tmp` compartilhado e falha por ruido alheio; usar `TMPDIR` privado. Junto: `QA-05`, mapa de modulos em `docs/testes/mapa-modulos.md` (dono: QA Expert) | **P2** | 🔧 Em andamento na fase 2 | `RNF-32(b)`, `RNF-32(c)` |
-| F-32 | **Achado QA-01(e):** a comparacao sem caixa fora do ASCII depende de `C.UTF-8` no host; documentar a dependencia ou tornar a comparacao independente de locale | **P5** | ⬜ Backlog | `RF-54` |
-| F-34 | **Paralelismo limitado e APIs em lote** (achado P3.3; ex.: `get_metadata` e envios em lote, varias transferencias simultaneas com limite). **Adiado por decisao do solicitante (`DP-34`)**; so entra com **medicao previa**: tempo de `sync`/`upload` sequencial em volume representativo (`DP-12`) e taxa de `429` observada, para comparar com a versao paralela | **Backlog (apos fase 3)** | ⬜ Backlog — exige medicao antes de especificar | `F-09`, `RNF-21` (padrao `1`, limite configuravel), `RES-11`, `RSK-22` |
-| F-35 | **PKCE como alternativa futura ao `client_secret`** (`code_challenge` S256 na autorizacao e `code_verifier` na troca), para aplicativo publico sem segredo. **Nao implementado** por decisao do solicitante (`DP-34`); hoje o segredo e obrigatorio (`RF-63`) | **Backlog** | ⬜ Backlog | `RF-01`, `RF-63`, `RNF-03` |
+| F-23 | Integridade de dados no `sync`/`download`: caixa de caminho, recebimento atomico com hash, `download` sem `rm`, `sync --enviar` por sessao com `client_modified`, `umask` e area temporaria | **P1** | ✅ **Entregue** na PR #35 (fase 1, `RF-54`..`RF-57`, `RNF-29`) | `RF-54`..`RF-57`, `RNF-29`, `DP-31`, `RSK-39` |
+| F-24 | Robustez de rede: timeout (`connect-timeout`, `speed-limit`), `Retry-After`, 5 tentativas com base 1 s e teto 60 s, upload por sessao retomavel, falhas por arquivo no `sync` | **P2** | ✅ **Entregue** na PR #36 (fase 2): `RNF-30`, `RNF-07`/`Retry-After` (`DIV-22` encerrada), `RF-58`, `RF-59` | `RNF-30`, `RNF-07` (emendado; `DIV-22` encerrada, `RSK-38`), `RF-09` (emendado), `RF-58`, `RF-59`, `RF-36`, `DP-33` |
+| F-25 | Cache e SQL: gravacao em lote numa transacao, escolha de um unico cache (`lib/state` x `lib/db`), chave canonica (`realpath`), SQL com validacao/parametros, erros do fallback Python visiveis; PKCE (S256) ou `client_secret` obrigatorio | **P3+P4** | ✅ **Entregue** na PR #37 (fase 3): cache unico em `lib/state`, `lib/db` removido (itens de SQL sem objeto), `RF-62`, `RF-63`. PKCE nao entregue: `F-35`, **fora por decisao do solicitante** | `RF-38`, `RF-42`, `RF-61`, `RF-62`, `RF-63`, `RNF-02`, `RNF-26`, `RNF-33` |
+| F-26 | Skip do upload condicionado ao `content_hash` remoto (`get_metadata`); cache apenas otimiza o hash | **Fase 3 (junto de P3+P4)** | ✅ **Entregue** na PR #37 (fase 3): `RF-60`, `RSK-37` encerrado | `DP-32`, `RF-33`, `RF-60`, `RSK-23`, `RSK-37` |
+| F-27 | Documentacao e manutencao: contradicao "sem estado local / cURL unica dependencia", `sqlite3`/`python3` no `preflight`, comentarios longos para registros/ADRs, aliases em ingles no `sync`, testes faltantes | **P5** | ✅ **Entregue** na PR #38 (fase 4): `RF-64` (aliases em ingles), `RNF-34` (coerencia doc x codigo), poda do pacote, comentarios enxutos; `sqlite3`/`python3` e testes diretos de `lib/state`/`lib/cmd` ja absorvidos pela PR #37 | `RNF-02`, `RNF-26`, `DP-15` |
+| F-28 | **Achado QA-01(a), anterior a P1:** `dbx download <remoto>` sem destino (saida para o terminal) sai com codigo 9 no duplo de teste, no HEAD e na branch; confirmar se o defeito e do duplo ou do comando | **P2** | ✅ **Entregue** na PR #36 (fase 2): causa era o canal de fluxo do `lib/http`, nao o duplo; `RF-32(b)` | `RF-11`, `RF-32(b)` |
+| F-29 | **Achado QA-01(b), anterior a P1:** `commands/upload.sh` le `DBX_TRANSFER_HASH`, variavel inexistente; o canal correto e `DBX_TRANSFER_CONTENT_HASH`, entao o upload por sessao pode deixar de gravar o hash no cache | **Fase 3 (P3+P4)** | ✅ **Entregue** na PR #37 (fase 3): `RF-61(j)` | `RF-08`, `RF-38`, `RF-61`, `DP-32`, `DP-34` |
+| F-30 | **Achado QA-01(c), anterior a P1:** `tests/run.sh` nao para no primeiro erro, como exige a Regra 9 de `protocolo-tdd` | **P2** | ✅ **Entregue** na PR #36 (fase 2): `RNF-32(a)` | `RNF-32(a)`, protocolo de testes |
+| F-31 | **Achado QA-01(d):** sinal durante `sync --receber` deixa `dbx-sync.XXXX` (listagens e revs, sem token) em `TMPDIR`; depende do `lib/tmp` (trap `EXIT` unico com areas registradas) | **P2/estrutural** | 🟡 **Parcial**, PR #36 (fase 2): `RNF-31` entregue (canal `DBX_HTTP_TRATADOR_EXTERNO`, area do `sync` limpa em `INT`/`TERM`/`HUP`). **Restante: 📅 planejado, fase 2**, junto da trava (`F-12`), por decisao do Tech Lead: `lib/tmp` com `OBS-02` (`TERM` durante `oauth2/token` deixa `dbx-http.*`), `OBS-03` (janela entre `mktemp` e o registro da area) e `OBS-04` (stdout em socket que fecha cedo) | `RNF-29(c)` (escopo atual cobre so a area HTTP), `RF-54`..`RF-57` |
+| F-33 | **Achado da P1:** o teste `nao_deixa_residuo_temporario` de `tests/unit/hash_test.sh` conta o `/tmp` compartilhado e falha por ruido alheio; usar `TMPDIR` privado. Junto: `QA-05`, mapa de modulos em `docs/testes/mapa-modulos.md` (dono: QA Expert) | **P2** | ✅ **Entregue** nas PRs #36 (fase 2) e #37 (fase 3): `RNF-32(b)`, `RNF-32(c)`, mapa de modulos (`QA-05`); a ressalva do mapa foi fechada na #37 com os testes diretos `tests/unit/state_test.sh` e `tests/unit/cmd_test.sh` (`RNF-32(d)`) | `RNF-32(b)`, `RNF-32(c)` |
+| F-32 | **Achado QA-01(e):** a comparacao sem caixa fora do ASCII depende de `C.UTF-8` no host; documentar a dependencia ou tornar a comparacao independente de locale | **P5** | ✅ **Entregue** na PR #38 (fase 4): `RF-54(e)`..`(g)`, `DIV-32` (`C.UTF-8` so na comparacao, com aviso unico) | `RF-54` |
+| F-34 | **Paralelismo limitado e APIs em lote** (achado P3.3; ex.: `get_metadata` e envios em lote, varias transferencias simultaneas com limite). **Adiado por decisao do solicitante (`DP-34`)**; so entra com **medicao previa**: tempo de `sync`/`upload` sequencial em volume representativo (`DP-12`) e taxa de `429` observada, para comparar com a versao paralela | **Fase 9 do plano de 2026-10-19** | 📅 Planejado, fase 9 (com `F-08` e `F-09`), com medicao antes e depois | `F-09`, `RNF-21` (padrao `1`, limite configuravel), `RES-11`, `RSK-22` |
+| F-35 | **PKCE como alternativa futura ao `client_secret`** (`code_challenge` S256 na autorizacao e `code_verifier` na troca), para aplicativo publico sem segredo. **Nao implementado** por decisao do solicitante (`DP-34`); hoje o segredo e obrigatorio (`RF-63`) | **Fora** | ❌ Fora por decisao do solicitante (2026-10-19) | `RF-01`, `RF-63`, `RNF-03` |

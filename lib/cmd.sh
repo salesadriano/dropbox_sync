@@ -126,6 +126,50 @@ _dbx_cmd_analisar_corpo() {
   return 0
 }
 
+# dbx_cmd_ler_corpo_silencioso <campo>... — le campos da ultima resposta SEM
+# emitir nada: quem chama decide se o diagnostico aparece. O contexto de analise
+# e literal (`leitura_silenciosa`): a auditoria de `composicao` proibe nome de
+# contexto vindo de variavel.
+#
+# Conjunto onde incide: TODA leitura de resposta cuja falha NAO aborta o comando
+# (hoje a consulta de comparacao do `upload`); a leitura que aborta usa
+# `_dbx_cmd_analisar_corpo`. As duas compartilham a mesma redacao do motivo.
+# Sucesso: campos em DBX_CMD_CAMPOS, na ordem pedida (ausente = vazio). Falha:
+# status 1 com DBX_CMD_FALHA_CLASSE e DBX_CMD_FALHA_MOTIVO. Em ambos os casos o
+# documento, o corpo bruto e o contexto de analise sao descartados.
+# shellcheck disable=SC2034
+# Justificativa: canal publico consumido pelos arquivos de `commands/`.
+DBX_CMD_CAMPOS=()
+dbx_cmd_ler_corpo_silencioso() {
+  local campo indice=0
+  DBX_CMD_CAMPOS=()
+  DBX_CMD_FALHA_CLASSE=''
+  DBX_CMD_FALHA_MOTIVO=''
+  dbx_json_contexto leitura_silenciosa || {
+    DBX_CMD_FALHA_CLASSE='erro_remoto'
+    DBX_CMD_FALHA_MOTIVO='contexto de analise indisponivel'
+    return 1
+  }
+  if ! dbx_json_analisar "$DBX_HTTP_CORPO" 2>/dev/null; then
+    DBX_CMD_FALHA_CLASSE='erro_remoto'
+    DBX_CMD_FALHA_MOTIVO="resposta nao interpretavel: ${DBX_JSON_MOTIVO:-sem detalhe}"
+  else
+    for campo in "$@"; do
+      DBX_CMD_CAMPOS[indice]=''
+      # shellcheck disable=SC2034  # canal publico lido pelos comandos
+      dbx_json_valor "$campo" >/dev/null 2>&1 && DBX_CMD_CAMPOS[indice]=$DBX_JSON_RESULTADO
+      indice=$((indice + 1))
+    done
+  fi
+  dbx_json_descartar leitura_silenciosa
+  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  # shellcheck disable=SC2034  # canais publicos alheios, limpos aqui
+  DBX_JSON_RESULTADO=''
+  # shellcheck disable=SC2034
+  DBX_HTTP_CORPO=''
+  [[ -z $DBX_CMD_FALHA_CLASSE ]]
+}
+
 # _dbx_cmd_caminho_remoto <caminho> — normaliza sem poluir a saida padrao.
 #
 # Conjunto onde incide: TODO comando que recebe caminho remoto. A funcao de

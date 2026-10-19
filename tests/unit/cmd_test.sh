@@ -178,4 +178,34 @@ teste_receber_arquivo_nao_substitui_alvo_somente_leitura() {
   assert_igual 444 "$(stat -c '%a' "$area/alvo.txt")" 'modo intacto'
 }
 
+# ---------------------------------------------------------------------------
+# dbx_cmd_ler_corpo_silencioso (O-5)
+# ---------------------------------------------------------------------------
+
+teste_ler_corpo_silencioso_publica_campos_sem_emitir_nada() {
+  local area
+  area=$(mktemp -d "$DBX_TESTES_TMP/silencioso.XXXXXX")
+  DBX_HTTP_CORPO='{".tag":"file","content_hash":"abc"}'
+  dbx_cmd_ler_corpo_silencioso .tag content_hash ausente >"$area/out" 2>"$area/err"
+  assert_igual 0 $? 'corpo valido le sem falha'
+  assert_igual '' "$(cat "$area/out")$(cat "$area/err")" 'nada e emitido'
+  assert_igual 'file' "${DBX_CMD_CAMPOS[0]}" 'primeiro campo'
+  assert_igual 'abc' "${DBX_CMD_CAMPOS[1]}" 'segundo campo'
+  assert_igual '' "${DBX_CMD_CAMPOS[2]}" 'campo ausente fica vazio, sem falha'
+  assert_igual '' "$DBX_CMD_FALHA_CLASSE" 'sem classe de falha'
+}
+
+teste_ler_corpo_silencioso_nomeia_classe_e_motivo_na_falha() {
+  local area anterior=$DBX_JSON_CONTEXTO
+  area=$(mktemp -d "$DBX_TESTES_TMP/silencioso.XXXXXX")
+  DBX_HTTP_CORPO='{"name":'
+  dbx_cmd_ler_corpo_silencioso .tag >"$area/out" 2>"$area/err"
+  assert_igual 1 $? 'corpo ilegivel falha'
+  assert_igual '' "$(cat "$area/out")$(cat "$area/err")" 'a falha tambem nao emite'
+  assert_igual 'erro_remoto' "$DBX_CMD_FALHA_CLASSE" 'classe nomeada'
+  assert_contem 'resposta nao interpretavel:' "$DBX_CMD_FALHA_MOTIVO" 'motivo nomeado'
+  assert_igual "$anterior" "$DBX_JSON_CONTEXTO" 'contexto anterior restaurado'
+  assert_igual '' "$DBX_HTTP_CORPO" 'corpo bruto descartado'
+}
+
 harness_executar "$@"
