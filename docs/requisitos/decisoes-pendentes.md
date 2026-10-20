@@ -5,7 +5,7 @@
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
 | Data | 2026-10-18 |
-| Versao | **v1.3** — `DP-37` registrada e resolvida (fase 3: revisoes, restauracao e lixeira). *Registro anterior:* **v1.2** — `DP-36` registrada e resolvida (fase 2: trava de concorrencia e `lib/tmp`). *Registro anterior:* **v1.1** — `DP-35` registrada e resolvida (fase 4: aliases em ingles, `O-1`, `F-32`, `P5.1`). *Registro anterior:* **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
+| Versao | **v1.4** — `DP-18` (compartilhamento) resolvida (fase 5, 2026-10-20, `DIV-116`). *Registro anterior:* **v1.3** — `DP-37` registrada e resolvida (fase 3: revisoes, restauracao e lixeira). *Registro anterior:* **v1.2** — `DP-36` registrada e resolvida (fase 2: trava de concorrencia e `lib/tmp`). *Registro anterior:* **v1.1** — `DP-35` registrada e resolvida (fase 4: aliases em ingles, `O-1`, `F-32`, `P5.1`). *Registro anterior:* **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
 | Status | 🔴 **Duas decisoes novas, devolvidas pela implementacao de `RF-31`/`RF-08`: `DP-29` e `DP-30`.** Nenhuma delas bloqueia a validacao da entrega atual; ambas bloqueiam declarar o requisito correspondente **integralmente** atendido. 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
@@ -72,7 +72,7 @@
 | DP-15 | Idioma da interface | ⬜ Em aberto | P2 |
 | DP-16 | Monitoramento de alteracoes | ⬜ Em aberto | P2 |
 | DP-17 | Rede corporativa | ⬜ Em aberto | P2 |
-| DP-18 | Compartilhamento | ⬜ Em aberto | P2 |
+| DP-18 | Compartilhamento | ✅ **Resolvida** *(fase 5, 2026-10-20)* | — |
 | DP-19 | Governanca do repositorio | ✅ **Resolvida** *(consumada na pratica)* | — |
 | DP-20 | Titular do copyright e licenca | ✅ **Resolvida — MIT, Adriano Sales Santos** | — |
 | DIV-16b | Formato de saida para nomes com quebra de linha | ✅ **Resolvida** — destrava `lib/output` | — |
@@ -739,6 +739,11 @@ Ha proxy HTTP obrigatorio, inspecao TLS corporativa com autoridade certificadora
 ### DP-18 — Compartilhamento
 
 Links compartilhados precisam de controle de expiracao, senha ou restricao de audiencia (F-16)? Esses recursos dependem do plano Dropbox contratado.
+
+✅ **Resolvida em 2026-10-20 (fase 5, DIV-116):** sim, os tres controles estao no escopo:
+- `dbx compartilhar` exige visibilidade explicita (`--publico`, `--equipe` ou `--senha`) e aceita `--expira`;
+- a restricao do plano contratado sai com o codigo 6;
+- ver RF-85..90 e a memoria `2026-10-20-1110-compartilhamento`.
 
 ---
 

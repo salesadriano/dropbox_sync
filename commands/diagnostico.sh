@@ -25,6 +25,8 @@ dbx_cmd_diagnostico_requisitos() { printf 'nenhum'; }
 readonly DBX_CMD_DIAGNOSTICO_ESCOPOS='account_info.read files.metadata.read files.content.read files.content.write'
 # RF-77: so `dbx lixeira --excluir` o usa; nunca reprova o diagnostico.
 readonly DBX_CMD_DIAGNOSTICO_OPCIONAL='files.permanent_delete'
+# RF-91: so `dbx compartilhar` os usa; informados na mesma linha, nunca reprovam.
+readonly DBX_CMD_DIAGNOSTICO_COMPARTILHAMENTO='sharing.write sharing.read'
 
 DBX_CMD_DIAG_IDS=()
 DBX_CMD_DIAG_RESULTADOS=()
@@ -236,6 +238,20 @@ dbx_cmd_diagnostico_executar() {
     if [[ " $DBX_AUTH_ESCOPOS " == *" $DBX_CMD_DIAGNOSTICO_OPCIONAL "* ]]; then
       opcional="opcional $DBX_CMD_DIAGNOSTICO_OPCIONAL concedido: exclusao permanente habilitada"
       remedio_opcional=''
+    fi
+    # RF-91 (fase 5): `sharing.write` e `sharing.read`, do mesmo jeito.
+    local ausentes_compartilhamento=''
+    for escopo in $DBX_CMD_DIAGNOSTICO_COMPARTILHAMENTO; do
+      [[ " $DBX_AUTH_ESCOPOS " == *" $escopo "* ]] || ausentes_compartilhamento+="${ausentes_compartilhamento:+ }$escopo"
+    done
+    if [[ -z $ausentes_compartilhamento ]]; then
+      opcional+='; opcionais sharing.write e sharing.read concedidos (dbx compartilhar habilitado)'
+    else
+      [[ " $ausentes_compartilhamento " == *' sharing.write '* ]] &&
+        opcional+='; opcional sharing.write ausente: dbx compartilhar criar, modificar e --revogar indisponivel'
+      [[ " $ausentes_compartilhamento " == *' sharing.read '* ]] &&
+        opcional+='; opcional sharing.read ausente: dbx compartilhar --listar, reuso de link existente e --revogar indisponivel'
+      remedio_opcional+="${remedio_opcional:+; }para o compartilhamento, habilite $ausentes_compartilhamento no App Console do aplicativo e reautorize com dbx unlink seguido de dbx config"
     fi
     if [[ -n $faltantes ]]; then
       _dbx_cmd_diag escopos falha "escopo(s) faltante(s): $faltantes; $opcional" \

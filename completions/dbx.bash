@@ -41,7 +41,8 @@ _dbx_completar() {
           --antes-de | --before | --excluir | --purge | --confirmar-caminho | \
           --exclude | --incluir | --include | --modificado-desde | --modified-since | \
           --modificado-ate | --modified-until | --tamanho-min | --min-size | --tamanho-max | \
-          --max-size | --limite-banda | --bwlimit) valor='sim' ;;
+          --max-size | --limite-banda | --bwlimit | --expira | --expires | --revogar | \
+          --revoke) valor='sim' ;;
         -?*) ;;
         *) posicionais=$((posicionais + 1)) ;;
       esac
@@ -54,13 +55,15 @@ _dbx_completar() {
     revisions) comando='revisoes' ;;
     restore) comando='restaurar' ;;
     trash) comando='lixeira' ;;
+    link-temporario | temp-link) comando='link_temporario' ;;
+    share) comando='compartilhar' ;;
   esac
 
   if [[ -z $comando || $comando == 'help' ]]; then
     if [[ -z $comando && $atual == -* ]]; then
       lista='--help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug'
     elif [[ -z $comando || $posicionais -eq 0 ]]; then
-      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion revisoes revisions restaurar restore lixeira trash help'
+      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion revisoes revisions restaurar restore lixeira trash link-temporario temp-link compartilhar share help'
     fi
     mapfile -t COMPREPLY < <(compgen -W "$lista" -- "$atual")
     return 0
@@ -79,6 +82,8 @@ _dbx_completar() {
     revisoes) lista='--limite --limit --por-id --by-id' ;;
     restaurar) lista='--rev --antes-de --before' ;;
     lixeira) lista='--recursivo --recursive -R --limite --limit --excluir --purge --confirmar-caminho' ;;
+    link_temporario) lista='' ;;
+    compartilhar) lista='--publico --public --equipe --team --senha --password --senha-stdin --password-stdin --expira --expires --listar --list --revogar --revoke' ;;
   esac
 
   if [[ $atual == -* ]]; then
@@ -95,7 +100,8 @@ _dbx_completar() {
     --rev | --limite | --limit | --raiz | --root | --esperar | --wait | --antes-de | --before | \
       --excluir | --purge | --confirmar-caminho | --exclude | --incluir | --include | \
       --modificado-desde | --modified-since | --modificado-ate | --modified-until | \
-      --tamanho-min | --min-size | --tamanho-max | --max-size | --limite-banda | --bwlimit) return 0 ;;
+      --tamanho-min | --min-size | --tamanho-max | --max-size | --limite-banda | --bwlimit | \
+      --expira | --expires | --revogar | --revoke) return 0 ;;
     --origem | --source) [[ $sentido == 'enviar' ]] && local_='sim' ;;
     --destino | --dest) [[ $sentido == 'receber' ]] && local_='sim' ;;
     *)

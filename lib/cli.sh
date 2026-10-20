@@ -87,8 +87,12 @@ DBX_CLI_MOTIVO=''
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
 #
 # Conjunto FECHADO: os nove comandos de `DP-06` e `DP-25`, os tres da fase 1
-# do backlog (RF-65 a RF-68) e os tres da fase 3 (RF-72 a RF-76), mais os
-# aliases em ingles destes ultimos.
+# do backlog (RF-65 a RF-68), os tres da fase 3 (RF-72 a RF-76) e os dois da
+# fase 5 (RF-84, RF-85), mais os aliases em ingles destes ultimos.
+#
+# `link_temporario` e o nome do ARQUIVO do comando (DIV-117): entra na tabela
+# porque a auditoria de despacho exige que todo arquivo de `commands/` tenha
+# nome valido; o nome documentado e `link-temporario`.
 dbx_cli_comando_valido() {
   case ${1-} in
     upload | download | list | delete | info | space) return 0 ;;
@@ -97,6 +101,8 @@ dbx_cli_comando_valido() {
     verify | doctor | completion) return 0 ;;
     revisoes | restaurar | lixeira) return 0 ;;
     revisions | restore | trash) return 0 ;;
+    link-temporario | link_temporario | compartilhar) return 0 ;;
+    temp-link | share) return 0 ;;
     help | version) return 0 ;;
   esac
   return 1
@@ -114,6 +120,8 @@ dbx_cli_canonico() {
     revisions) DBX_CLI_CANONICO='revisoes' ;;
     restore) DBX_CLI_CANONICO='restaurar' ;;
     trash) DBX_CLI_CANONICO='lixeira' ;;
+    link-temporario | temp-link) DBX_CLI_CANONICO='link_temporario' ;;
+    share) DBX_CLI_CANONICO='compartilhar' ;;
     *) DBX_CLI_CANONICO=${1-} ;;
   esac
 }
@@ -141,6 +149,8 @@ _dbx_cli_arquivo_do_comando() {
     revisoes) printf '%s' "$raiz/commands/revisoes.sh" ;;
     restaurar) printf '%s' "$raiz/commands/restaurar.sh" ;;
     lixeira) printf '%s' "$raiz/commands/lixeira.sh" ;;
+    link_temporario) printf '%s' "$raiz/commands/link_temporario.sh" ;;
+    compartilhar) printf '%s' "$raiz/commands/compartilhar.sh" ;;
     *) return 1 ;;
   esac
 }
@@ -204,6 +214,33 @@ dbx_cli_validar_taxa() {
     DBX_CLI_MOTIVO="valor invalido para $nome: [$exibido]; use inteiro positivo de bytes por segundo, com sufixo opcional K, M ou G (base 1024)"
   fi
   return "$DBX_CLI_ERRO_USO"
+}
+
+# dbx_cli_ler_oculto <pergunta> <nome_da_variavel> — PONTO UNICO da leitura de
+# segredo do terminal sem eco (DIV-117): `config` (app secret) e `compartilhar`
+# (senha do link) passam por aqui.
+#
+# A pergunta vai para stderr; o valor vai para a variavel NOMEADA do chamador,
+# por escopo dinamico do `read`, sem substituicao de comando (que rodaria em
+# subshell e cortaria a quebra final) e sem exportar nada (RNF-03, DIV-110).
+# Os locais tem prefixo proprio para nao sombrear o nome pedido.
+#
+# ECO DO TERMINAL: `read -s` desliga o eco so durante a leitura e o religa ao
+# terminar, inclusive quando INT, TERM ou HUP chegam durante a leitura e o
+# tratador de `lib/tmp` encerra o processo (o `read` e desfeito antes do
+# tratador rodar; medido, TC-SNH-13). Por isso nao ha `stty` aqui: ele nao esta
+# entre os utilitarios do preflight (RNF-02) e nao acrescentaria garantia.
+# Status: o do `read` (nao zero no fim da entrada); quem chama decide pelo valor.
+dbx_cli_ler_oculto() {
+  local _dbx_cli_pergunta=$1 _dbx_cli_destino=$2 _dbx_cli_estado
+  [[ $_dbx_cli_destino =~ ^[a-z_][a-z0-9_]*$ ]] || return "$DBX_CLI_ERRO_USO"
+  printf '%s' "$_dbx_cli_pergunta" >&2
+  # shellcheck disable=SC2229  # o nome e o mecanismo: o valor volta ao chamador
+  IFS= read -r -s "$_dbx_cli_destino"
+  _dbx_cli_estado=$?
+  # Sob `-s` o terminal nao mostra a quebra de linha digitada.
+  printf '\n' >&2
+  return "$_dbx_cli_estado"
 }
 
 _dbx_cli_recusar() {

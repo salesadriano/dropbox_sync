@@ -440,6 +440,40 @@ env -u DBX_LIMITE_BANDA dbx sync --enviar --origem ./a --destino /a   # sem o pa
 
 O piso é **2 × `DBX_HTTP_VELOCIDADE_MINIMA_BPS`** (2048 bytes/s no padrão): abaixo dele o corte por velocidade mínima abortaria a transferência, e o valor é recusado com `2`. A variável `DBX_LIMITE_BANDA` vale quando a opção está ausente; a opção vence. Variável presente e inválida (inclusive vazia) sai com `2` em `upload`, `download` e `sync` sem a opção; os demais comandos a ignoram. O resultado (bytes, `content_hash`, código) não muda; a saída ganha `limite_banda` (vazio sem limite).
 
+## Compartilhamento
+
+Dois comandos expõem arquivo ou pasta para fora da conta. Os dois recusam caminho fora da `raiz_remota` (`13`) antes de qualquer chamada, não gravam nada em `lib/state` e não usam trava.
+
+**`dbx link-temporario <arquivo>`** (alias `temp-link`): URL direta de download (`files/get_temporary_link`). **O link temporário vale 4 horas, não pode ser revogado e dá acesso a quem o tiver.** Só arquivo (pasta sai com `2`). A saída traz `link`, `validade_segundos=14400` e `expira_em_estimado` (relógio local mais 4 h, em UTC: o serviço não informa a hora exata). Com `--dry-run` o link **não** é gerado. Usa o escopo `files.content.read`, já exigido.
+
+```bash
+dbx link-temporario /docs/relatorio.pdf
+```
+
+**`dbx compartilhar <caminho>`** (alias `share`): link compartilhado, com a visibilidade **sempre explícita** — **nada é publicado por omissão**: sem `--publico`, `--equipe` ou `--senha`, o comando sai com `2`.
+
+| Opção | Quem acessa | Pedido à API |
+|---|---|---|
+| `--publico` (`--public`) | qualquer pessoa com o link | `audience public`, sem senha |
+| `--equipe` (`--team`) | só membros da equipe | `audience team`, sem senha |
+| `--senha` (`--password`) / `--senha-stdin` (`--password-stdin`) | quem tiver o link **e** a senha | `audience public` + `require_password` |
+
+> **Atenção:** com `--publico`, qualquer pessoa que receba o link acessa o item, sem login. Prefira `--equipe` ou `--senha` quando possível, e `--expira` para limitar o tempo.
+
+- **Senha:** nunca na linha de comando nem em variável de ambiente. `--senha` pergunta no terminal, sem eco, duas vezes (diferentes: `14`, nada feito); `--senha-stdin` lê a primeira linha da entrada (`pass show dbx/link | dbx compartilhar --senha-stdin /docs`). Senha vazia, com caractere de controle (inclusive o `\r` de fim de linha CRLF), acima de 1024 bytes ou fora do UTF-8 é recusada com `2`. A senha só vai no corpo da requisição, por arquivo temporário `0700` removido no fim e em sinal, e nunca aparece em saída, erro ou `--debug`.
+- **`--expira`** (`--expires`): `AAAA-MM-DD` (fim do dia UTC), `AAAA-MM-DDTHH:MM:SSZ` ou duração `<N>h` (1 a 8760) / `<N>d` (1 a 3650), ao menos 60 s no futuro.
+- **Link existente:** igual ao pedido, é devolvido sem escrita (`situacao=existente`); diferente, é modificado (`situacao=modificado`) com `antes_*` e `depois_*`. Com senha pedida a senha é sempre redefinida; exposição ampliada gera aviso em `stderr`. Mais de um link para o mesmo item sai com `7` e as URLs.
+- **`--listar [pasta]`** (`--list`): os links dentro da pasta (padrão: a `raiz_remota`), confinados pelo `path_lower` que o serviço devolve; o que está fora da raiz ou fora da sua Dropbox é omitido (`omitidos`).
+- **`dbx compartilhar --revogar <url>`** (`--revoke`): **revogação confinada** — só revoga link cujo `path_lower`, lido do próprio link na mesma execução, está dentro da `raiz_remota`; ausente ou fora sai com `13` sem revogar, inclusive com a raiz `/`. Não pede confirmação (revogar reduz a exposição e o link pode ser recriado). Link temporário não é revogável.
+
+```bash
+dbx compartilhar --equipe --expira 7d /docs/relatorio.pdf
+dbx compartilhar --listar /docs
+dbx compartilhar --revogar 'https://www.dropbox.com/scl/fi/...'
+```
+
+**Escopos e plano.** Criar, modificar e revogar exigem o escopo opcional `sharing.write`; listar, reusar link existente e revogar exigem `sharing.read`. Sem eles o comando sai com `5` nomeando o escopo: habilite-o no **App Console** do aplicativo e reautorize com `dbx unlink` seguido de `dbx config`. O `dbx diagnostico` mostra os dois na linha `escopos`, sem reprovar. **Senha, equipe e expiração dependem do plano da conta:** no plano Basic só há link público, sem senha e sem expiração, e o pedido sai com `6`.
+
 ---
 
 ## Testes e Qualidade
