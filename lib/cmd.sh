@@ -142,6 +142,8 @@ _dbx_cmd_analisar_corpo() {
 # shellcheck disable=SC2034
 # Justificativa: canal publico consumido pelos arquivos de `commands/`.
 DBX_CMD_CAMPOS=()
+# Chaves repetidas no documento lido (QA-B3-05); quem decide e quem chama.
+DBX_CMD_DUPLICADAS=0
 dbx_cmd_ler_corpo_silencioso() {
   local campo indice=0
   DBX_CMD_CAMPOS=()
@@ -152,10 +154,13 @@ dbx_cmd_ler_corpo_silencioso() {
     DBX_CMD_FALHA_MOTIVO='contexto de analise indisponivel'
     return 1
   }
+  DBX_CMD_DUPLICADAS=0
   if ! dbx_json_analisar "$DBX_HTTP_CORPO" 2>/dev/null; then
     DBX_CMD_FALHA_CLASSE='erro_remoto'
     DBX_CMD_FALHA_MOTIVO="resposta nao interpretavel: ${DBX_JSON_MOTIVO:-sem detalhe}"
   else
+    # shellcheck disable=SC2034  # canal publico, lido por commands/lixeira
+    DBX_CMD_DUPLICADAS=$DBX_JSON_DUPLICADAS
     local resto
     local -a segmentos
     for campo in "$@"; do
@@ -292,8 +297,18 @@ _dbx_cmd_metadado_em() {
 #          "deu certo".
 #
 #   O corpo de erro alimenta a taxonomia, e nunca a apresentacao de resultado.
+#
+#   Fase 3: `restore` e `permanently_delete` sao o quarto e o quinto pontos. O
+#   terceiro argumento `silencioso` nao emite o diagnostico: publica a classe e
+#   o motivo em DBX_CMD_FALHA_CLASSE e DBX_CMD_FALHA_MOTIVO e devolve o codigo,
+#   para quem relata por item (RF-74) ou traduz a recusa (RF-76(f)(g)). O
+#   `in_progress` que sobra das tentativas (DIV-58) e `nao_concluida` nos
+#   pontos que passam por AQUI (`delete`, `restore`, `permanently_delete`); o
+#   envio de conteudo (`upload`, por lib/transfer) nao passa e mantem `10`.
 _dbx_cmd_escrita_remota() {
-  local url=$1 corpo=$2 estado
+  local url=$1 corpo=$2 modo=${3:-} estado
+  DBX_CMD_FALHA_CLASSE=''
+  DBX_CMD_FALHA_MOTIVO=''
 
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
     # shellcheck disable=SC2034  # canal publico, consumido pelos comandos
@@ -340,10 +355,150 @@ _dbx_cmd_escrita_remota() {
   # fabricar contrato.
   case ${DBX_HTTP_RESUMO_DE_ERRO:-} in
     *conflict*) classe='conflito' ;;
+    in_progress | in_progress/* | in_progress.* | */in_progress | */in_progress/* | */in_progress.*)
+      classe='nao_concluida'
+      ;;
   esac
+  if [[ $modo == 'silencioso' ]]; then
+    DBX_CMD_FALHA_CLASSE=$classe
+    DBX_CMD_FALHA_MOTIVO="escrita recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+    return "$(dbx_errors_codigo_saida "$classe")"
+  fi
   dbx_cmd_falhar "$classe" \
     "escrita recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
   return $?
+}
+
+# dbx_cmd_remoto_confinado <caminho> [pasta] — 0 quando o caminho que a API
+# DEVOLVEU (`path_display` de listagem ou de revisao) esta dentro da
+# `raiz_remota` ou, com <pasta>, dentro dela (DIV-78), sem emitir nada
+# (RNF-20(b); RF-72(b), RF-74(b), RF-75(e)).
+#
+# O argumento do operador passa pelo ponto unico `_dbx_cmd_caminho_remoto`; o
+# caminho que vem da resposta nao e argumento e pode trazer byte de controle
+# valido na Dropbox, entao aqui so a normalizacao e a fronteira de componente
+# decidem. Caminho relativo, vazio ou que sobe acima da conta: fora (falha
+# fechada).
+dbx_cmd_remoto_confinado() {
+  local caminho=${1-} raiz=${2-${DBX_CONFIG_RAIZ_REMOTA:-/}}
+  [[ $caminho == /* ]] || return 1
+  [[ -n $raiz ]] || raiz='/'
+  dbx_path_remoto_confinar "$raiz" "$caminho" sim >/dev/null 2>&1
+}
+
+# dbx_cmd_chave_ascii <caminho> — chave de comparacao em DBX_CMD_CHAVE: o
+# caminho com a caixa dobrada SO no ASCII (LC_ALL=C), como o confinamento.
+DBX_CMD_CHAVE=''
+dbx_cmd_chave_ascii() {
+  local LC_ALL=C
+  DBX_CMD_CHAVE=${1,,}
+}
+
+# dbx_cmd_descendente_estrito <caminho> <pasta> — 0 quando <caminho>, depois
+# de normalizado, esta ESTRITAMENTE abaixo de <pasta> por componente (a propria
+# pasta, um ancestral ou outra arvore nao sao). Normalizado em DBX_CMD_LIDO e
+# a chave em DBX_CMD_CHAVE. Conjunto onde incide: toda descida remota da fase 3
+# (QA-B3-06); pasta vazia e a raiz da conta.
+dbx_cmd_descendente_estrito() {
+  local caminho=${1-} pasta=${2:-/} normal base
+  DBX_CMD_LIDO='' DBX_CMD_CHAVE=''
+  [[ $caminho == /* ]] || return 1
+  dbx_path_remoto_confinar "$pasta" "$caminho" sim >/dev/null 2>&1 || return 1
+  normal=$DBX_PATH_RESULTADO
+  dbx_path_remoto_normalizar "$pasta" >/dev/null 2>&1 || return 1
+  base=$DBX_PATH_RESULTADO
+  dbx_cmd_chave_ascii "$base"
+  base=$DBX_CMD_CHAVE
+  dbx_cmd_chave_ascii "$normal"
+  [[ $DBX_CMD_CHAVE != "$base" ]] || return 1
+  DBX_CMD_LIDO=$normal
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Descida remota com itens apagados (fase 3: RF-74(b), RF-75, RF-76(d))
+# ---------------------------------------------------------------------------
+#
+# Conjunto onde incide: `lixeira` (listagem e contagem do expurgo) e `restaurar`
+# de pasta. Um NIVEL por chamada (RNF-28: sem `recursive=true`), `limit`
+# explicito (RNF-23), paginacao por cursor e `include_deleted` com
+# `include_restorable_info`. Quem desce e o chamador, que decide em quais
+# subpastas entrar.
+
+# shellcheck disable=SC2034  # canais publicos, lidos por commands/lixeira e restaurar
+declare -ga DBX_CMD_NIVEL_TAGS=() DBX_CMD_NIVEL_NOMES=() DBX_CMD_NIVEL_CAMINHOS=() DBX_CMD_NIVEL_RESTAURAVEIS=()
+
+# dbx_cmd_listar_nivel <caminho_api> <limite> — as entradas diretas da pasta,
+# na ordem da API, nos quatro vetores acima (`restauravel`: `sim`, `nao` ou
+# vazio quando a API nao informa). Nao emite nada. Falha: status da classe,
+# com DBX_CMD_FALHA_CLASSE e DBX_CMD_FALHA_MOTIVO; os canais de lib/http ficam
+# como a chamada os deixou (o resumo decide `not_found` e `not_folder`).
+dbx_cmd_listar_nivel() {
+  local caminho=$1 limite=$2 corpo url estado quantidade indice tag valor restauravel mais cursor
+  DBX_CMD_NIVEL_TAGS=() DBX_CMD_NIVEL_NOMES=() DBX_CMD_NIVEL_CAMINHOS=() DBX_CMD_NIVEL_RESTAURAVEIS=()
+  DBX_CMD_FALHA_CLASSE='' DBX_CMD_FALHA_MOTIVO=''
+  dbx_json_escapar_cadeia "$caminho"
+  corpo="{\"path\":\"$DBX_JSON_ESCAPADO\",\"include_deleted\":true,\"include_restorable_info\":true}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  url='https://api.dropboxapi.com/2/files/list_folder'
+  while :; do
+    dbx_auth_colecao POST "$url" "$corpo" "$limite"
+    estado=$?
+    if [[ $estado -ne 0 ]]; then
+      DBX_CMD_FALHA_CLASSE=${DBX_HTTP_CLASSE:-erro_remoto}
+      DBX_CMD_FALHA_MOTIVO="listagem recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+      dbx_errors_classe_valida "$DBX_CMD_FALHA_CLASSE" || DBX_CMD_FALHA_CLASSE='erro_remoto'
+      return "${DBX_ERRORS_CODIGO[$DBX_CMD_FALHA_CLASSE]}"
+    fi
+    dbx_json_contexto nivel || {
+      DBX_CMD_FALHA_CLASSE='erro_remoto' DBX_CMD_FALHA_MOTIVO='contexto de analise indisponivel'
+      return "${DBX_ERRORS_CODIGO[erro_remoto]}"
+    }
+    if ! dbx_json_analisar "$DBX_HTTP_CORPO" 2>/dev/null; then
+      DBX_CMD_FALHA_CLASSE='erro_remoto'
+      DBX_CMD_FALHA_MOTIVO="resposta nao interpretavel: ${DBX_JSON_MOTIVO:-sem detalhe}"
+      dbx_json_descartar nivel
+      dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+      return "${DBX_ERRORS_CODIGO[erro_remoto]}"
+    fi
+    quantidade=$(dbx_json_tamanho_arranjo entries) || quantidade=0
+    for ((indice = 0; indice < quantidade; indice++)); do
+      tag=''
+      dbx_json_valor entries "$indice" '.tag' >/dev/null 2>&1 && tag=$DBX_JSON_RESULTADO
+      DBX_CMD_NIVEL_TAGS+=("$tag")
+      valor=''
+      dbx_json_valor entries "$indice" name >/dev/null 2>&1 && valor=$DBX_JSON_RESULTADO
+      DBX_CMD_NIVEL_NOMES+=("$valor")
+      valor=''
+      dbx_json_valor entries "$indice" path_display >/dev/null 2>&1 && valor=$DBX_JSON_RESULTADO
+      DBX_CMD_NIVEL_CAMINHOS+=("$valor")
+      restauravel=''
+      if dbx_json_valor entries "$indice" is_restorable >/dev/null 2>&1; then
+        case $DBX_JSON_RESULTADO in
+          true) restauravel='sim' ;;
+          false) restauravel='nao' ;;
+        esac
+      fi
+      DBX_CMD_NIVEL_RESTAURAVEIS+=("$restauravel")
+    done
+    mais='' cursor=''
+    dbx_json_valor has_more >/dev/null 2>&1 && mais=$DBX_JSON_RESULTADO
+    dbx_json_valor cursor >/dev/null 2>&1 && cursor=$DBX_JSON_RESULTADO
+    dbx_json_descartar nivel
+    dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+    # shellcheck disable=SC2034  # canais publicos alheios, limpos aqui
+    DBX_JSON_RESULTADO=''
+    # shellcheck disable=SC2034
+    DBX_HTTP_CORPO=''
+    [[ $mais == 'true' && -n $cursor ]] || break
+    dbx_json_escapar_cadeia "$cursor"
+    corpo="{\"cursor\":\"$DBX_JSON_ESCAPADO\"}"
+    # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+    DBX_JSON_ESCAPADO=''
+    url='https://api.dropboxapi.com/2/files/list_folder/continue'
+  done
+  return 0
 }
 
 # dbx_cmd_content_hash_do_resultado — le o `content_hash` que o servico publicou
@@ -695,6 +850,19 @@ dbx_cmd_caminho_exibivel() {
   else
     # shellcheck disable=SC2034  # canal publico, lido por commands/sync e verificar
     DBX_CMD_EXIBIDO=$1
+  fi
+}
+
+# dbx_cmd_campo_caminho <chave> <caminho> — campo de caminho no resultado em
+# montagem: integro com `--null`, citado por `dbx_cmd_caminho_exibivel` na
+# saida por linha (RF-28, RNF-10). Conjunto onde incide: os caminhos que
+# `revisoes`, `restaurar` e `lixeira` emitem fora de `_dbx_cmd_metadado_em`.
+dbx_cmd_campo_caminho() {
+  if [[ ${DBX_CLI_NULO:-nao} == 'sim' ]]; then
+    dbx_output_campo "$1" "$2"
+  else
+    dbx_cmd_caminho_exibivel "$2"
+    dbx_output_campo "$1" "$DBX_CMD_EXIBIDO"
   fi
 }
 

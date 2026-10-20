@@ -5,7 +5,7 @@
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
 | Data | 2026-10-18 |
-| Versao | **v0.7** — fase 2 (2026-10-19): `F-12` e o restante de `F-31` "em andamento, fase 2", formalizados em `RF-69` a `RF-71`, `RNF-35` e `RNF-36`; o `C-1` da fase 1 entra como `RNF-36`. **v0.6** — fase 1b (2026-10-19): `F-36` e `F-37` "em andamento, fase 1b"; `F-38` (raiz local configuravel) criado no backlog. **v0.5** — fase 1 (2026-10-19): `F-11`, `F-19`, `F-21` e `F-22` formalizados em `RF-65` a `RF-68` e marcados "em andamento, fase 1". **v0.4** — pendencias da fase 0 (2026-10-19): `F-23` a `F-33` conferidos contra os registros de `docs/reviews/` e marcados como entregues (PRs #35 a #38), com `F-31` parcial; `F-06` entregue; `F-35` fora; `F-03`, `F-07` a `F-22`, `F-34` planejados por fase (memoria `2026-10-19-1023-plano-do-backlog`). *Registro anterior:* **v0.3** — fase 3 (`DP-34`): `F-25`, `F-26` e `F-29` em andamento com rastreio para `RF-60` a `RF-63` e `RNF-33`; `F-34` (paralelismo e APIs em lote, com medicao previa) e `F-35` (PKCE) criados. *Registro anterior:* **v0.2 — DECIDIDO** |
+| Versao | **v0.8** — fase 3 (2026-10-19): `F-07` e `F-20` "em andamento, fase 3", formalizados em `RF-72` a `RF-78` (porte G; escopo novo `files.permanent_delete`); `F-39` (filtro por data na restauracao de pasta) criado no backlog (`DIV-62`). **v0.7** — fase 2 (2026-10-19): `F-12` e o restante de `F-31` "em andamento, fase 2", formalizados em `RF-69` a `RF-71`, `RNF-35` e `RNF-36`; o `C-1` da fase 1 entra como `RNF-36`. **v0.6** — fase 1b (2026-10-19): `F-36` e `F-37` "em andamento, fase 1b"; `F-38` (raiz local configuravel) criado no backlog. **v0.5** — fase 1 (2026-10-19): `F-11`, `F-19`, `F-21` e `F-22` formalizados em `RF-65` a `RF-68` e marcados "em andamento, fase 1". **v0.4** — pendencias da fase 0 (2026-10-19): `F-23` a `F-33` conferidos contra os registros de `docs/reviews/` e marcados como entregues (PRs #35 a #38), com `F-31` parcial; `F-06` entregue; `F-35` fora; `F-03`, `F-07` a `F-22`, `F-34` planejados por fase (memoria `2026-10-19-1023-plano-do-backlog`). *Registro anterior:* **v0.3** — fase 3 (`DP-34`): `F-25`, `F-26` e `F-29` em andamento com rastreio para `RF-60` a `RF-63` e `RNF-33`; `F-34` (paralelismo e APIs em lote, com medicao previa) e `F-35` (PKCE) criados. *Registro anterior:* **v0.2 — DECIDIDO** |
 | Status | ✅ **DP-02 resolvida.** Escopo do MVP aprovado pelo solicitante. Este documento passa de proposta a **registro da decisao e do backlog** |
 | Origem | Resposta a DP-02 |
 | Documentos relacionados | [Escopo e requisitos](escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](decisoes-pendentes.md) · [System Design](../arquitetura/system-design.md) |
@@ -320,7 +320,7 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 | F-04 | Contrato de automacao | ✅ Aprovada | RF-15, RF-28, RF-29, RF-35 |
 | F-05 | Relatorio de execucao | ✅ Aprovada | RF-36 |
 | F-06 | Espelhamento com remocao de orfaos | ✅ Entregue (`sync --espelhar`, `DP-06`/`DP-27`) | `RF-37`..`RF-48` |
-| F-07 | Revisoes e restauracao | 📅 Planejado, fase 3 | — |
+| F-07 | Revisoes e restauracao | 🔧 Em andamento, fase 3 | `RF-72`, `RF-73`, `RF-78` |
 | F-08 | Operacoes em lote | 📅 Planejado, fase 9 | — |
 | F-09 | Paralelismo controlado | 📅 Planejado, fase 9 | — |
 | F-10 | Retencao e rotacao de backup | 📅 Planejado, fase 6 | — |
@@ -333,7 +333,7 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 | F-17 | Limitacao de banda | 📅 Planejado, fase 4 | — |
 | F-18 | Perfis nomeados de credencial | 📅 Planejado, fase 8 | — |
 | F-19 | Autocompletar de shell | 🔧 Em andamento, fase 1 | `RF-68` |
-| F-20 | Lixeira: listar, restaurar, excluir permanentemente | 📅 Planejado, fase 3 | — |
+| F-20 | Lixeira: listar, restaurar, excluir permanentemente | 🔧 Em andamento, fase 3 | `RF-73(e)`, `RF-74`, `RF-75`, `RF-76`, `RF-77`, `RF-78` |
 | F-21 | Verificacao previa de espaco | 🔧 Em andamento, fase 1 | `RF-67` |
 | F-22 | Comando de diagnostico de ambiente | 🔧 Em andamento, fase 1 | `RF-66` |
 
@@ -366,3 +366,4 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 | F-36 | **Achado O-1 do QA da fase 1, anterior a ela - severidade ALTA (confinamento):** o campo `raiz_remota` da credencial nunca e aplicado por nenhum comando; quem configurou o `dbx` (`config --raiz`) esperando confinamento a uma pasta do Dropbox nao o tem. **Viola `RNF-20(b)`** (operacao fora da raiz remota recusada antes de qualquer chamada a API) e o que `config --raiz` promete. **Status: em andamento, fase 1b** (decisao do solicitante de 2026-10-19): aplicado a todo comando com caminho remoto, `RNF-20(b1..b6)`, `TC-SEC-18..27`. |
 | F-37 | **Achado O-2 do QA da fase 1, anterior a ela - severidade MEDIA:** caminho remoto com quebra de linha e aceito como argumento. **Contraria `RNF-10`** (nenhum caminho contendo nova linha pode ser aceito como valido) e, por consequencia, a saida orientada a linha (`RNF-22`, `RF-28`). **Status: em andamento, fase 1b** (decisao do solicitante de 2026-10-19): recusa `caminho_recusado`/`13`, `RNF-10(b)`, `TC-SEC-28..29`. |
 | F-38 | **Raiz local configuravel** (`RNF-20(c)`): opcao de configuracao que restringe o caminho local alcancavel, com recusa antes de qualquer acesso a disco e resolucao fisica de symlinks. **Nao implementado**, por decisao do solicitante de 2026-10-19. **Nota:** o `sync` e o `walk` ja nao seguem symlink para fora da raiz da operacao; isso reduz o risco mas nao substitui a raiz local configuravel | **Backlog** | ⏳ Nao iniciado (adiado na fase 1b) | `RNF-20(c)`, `RSK-24`, `RSK-19` |
+| F-39 | **Filtro por data na restauracao de pasta apagada** (`DIV-62`): opcao como `--apagados-desde DATA` em `dbx restaurar <pasta>`, que restaura so os arquivos apagados a partir da data (por `server_deleted` de `list_revisions`, ja consultado por item), para nao ressuscitar arquivos apagados de proposito antes da pasta. Na fase 3 a restauracao traz tudo o que estiver apagado sob a pasta e mostra `apagado_em` | **Backlog** | ⏳ Nao iniciado (decisao do Tech Lead, 2026-10-19) | `RF-74`, `DIV-62` |

@@ -407,6 +407,21 @@ _dbx_sync_ordenar_por_chave() {
   DBX_SYNC_ORDEM=(${ordem[@]+"${ordem[@]}"})
 }
 
+# dbx_sync_ordem_sem_caixa <nome_do_vetor_de_caminhos> — indices do vetor em
+# DBX_SYNC_ORDEM, pela MESMA chave sem caixa do `verificar` (RF-54). Ponto de
+# uso fora daqui: a ordem dos itens da restauracao de pasta (RF-74(d)).
+dbx_sync_ordem_sem_caixa() {
+  [[ $# -eq 1 ]] || return "$DBX_SYNC_ERRO_USO"
+  local -n _osc_caminhos=$1
+  local -a chaves=()
+  local caminho
+  for caminho in ${_osc_caminhos[@]+"${_osc_caminhos[@]}"}; do
+    _dbx_sync_chave "$caminho"
+    chaves+=("$DBX_SYNC_CHAVE")
+  done
+  _dbx_sync_ordenar_por_chave chaves
+}
+
 # dbx_sync_comparar <vetor_origem> <mapa_origem> <vetor_destino> <mapa_destino>
 #
 # A MESMA tabela do `sync` (`dbx_sync_planejar`), lida como relatorio: o que o

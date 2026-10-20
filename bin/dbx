@@ -267,6 +267,64 @@ case $DBX_CLI_COMANDO in
         printf 'trava e a unica escrita e sai no fim.\n'
         exit 0
         ;;
+      revisoes)
+        printf 'Uso: dbx revisoes [--limite <n>] [--por-id] <arquivo_remoto>\n\n'
+        printf 'Lista as revisoes de um arquivo, da mais recente para a mais antiga, inclusive\n'
+        printf 'de arquivo apagado. Alias em ingles: revisions. So leitura.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --limite, --limit <n>           Revisoes pedidas, de 1 a 100 (padrao 10)\n'
+        printf '  --por-id, --by-id               Segue o arquivo atraves de movimentos (mode=id)\n\n'
+        printf 'Cada revisao traz os campos de dbx info; ao fim, apagado, apagado_em, mais e\n'
+        printf 'total. Com --por-id, revisao fora da raiz remota e omitida e contada.\n'
+        printf 'Pasta: codigo 2 (para pasta apagada use dbx restaurar <pasta>).\n\n'
+        printf 'Exemplo: dbx revisoes --limite 20 /docs/relatorio.txt\n'
+        exit 0
+        ;;
+      restaurar)
+        printf 'Uso: dbx restaurar [--rev <rev> | --antes-de <data>] <caminho_remoto>\n\n'
+        printf 'Restaura uma revisao de arquivo, inclusive de arquivo apagado, ou uma pasta\n'
+        printf 'apagada inteira, arquivo por arquivo. Alias em ingles: restore.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --rev <rev>                     Revisao do proprio arquivo (veja dbx revisoes)\n'
+        printf '  --antes-de, --before <data>     A revisao mais recente ate a data (UTC):\n'
+        printf '                                  AAAA-MM-DD (fim do dia) ou AAAA-MM-DDTHH:MM:SSZ\n\n'
+        printf 'Arquivo apagado sem --rev nem --antes-de volta na ultima revisao; arquivo vivo\n'
+        printf 'exige um dos dois. Restaurar sobre arquivo existente e direto: a versao atual\n'
+        printf 'vira revisao anterior, e a saida mostra rev_substituida e como desfazer:\n'
+        printf '  dbx restaurar <caminho> --rev <rev_substituida>\n'
+        printf 'Revisao igual a vigente: ja_atual, nada a fazer. --dry-run so le.\n\n'
+        printf 'Pasta apagada: tudo o que esta apagado sob ela volta na ultima revisao, um\n'
+        printf 'arquivo por vez, com resumo (restaurados, falhas, sem_revisao, total). Falha\n'
+        printf 'de item ou listagem parcial sai com 14 e diz o que faltou; rodar de novo\n'
+        printf 'restaura so o que falta. Pasta apagada vazia nao e recriada.\n\n'
+        printf 'Exemplos:\n'
+        printf '  dbx restaurar --antes-de 2026-10-01 /docs/relatorio.txt\n'
+        printf '  dbx --dry-run restaurar /docs/pasta-apagada\n'
+        exit 0
+        ;;
+      lixeira)
+        printf 'Uso: dbx lixeira [--recursivo] [--limite <n>] [pasta_remota]\n'
+        printf '     dbx lixeira --excluir <caminho_remoto> [--confirmar-caminho <caminho_remoto>]\n\n'
+        printf 'Lista os itens apagados da pasta (padrao: a raiz remota). Alias em ingles: trash.\n'
+        printf 'Cada item traz name, path_display e restauravel; a API nao informa tipo nem\n'
+        printf 'data de exclusao, e a saida nao os inventa.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --recursivo, --recursive, -R    Desce nas subpastas vivas, um nivel por vez\n'
+        printf '  --limite, --limit <n>           Itens por pagina pedidos ao servico (1 a 100)\n'
+        printf '  --excluir, --purge <caminho>    Exclusao PERMANENTE de um item ja apagado\n'
+        printf '  --confirmar-caminho <caminho>   Confirma o expurgo sem terminal (identico ao alvo)\n\n'
+        printf 'Exclusao permanente:\n'
+        printf '  a exclusao permanente e irreversivel e so existe em Dropbox Business; exige o\n'
+        printf '  escopo files.permanent_delete. Habilite-o no App Console do aplicativo e\n'
+        printf '  reautorize com dbx unlink seguido de dbx config. So item ja apagado e aceito\n'
+        printf '  (apague antes com dbx delete); a raiz nunca e alvo. Com terminal, digite o\n'
+        printf '  caminho para confirmar; sem terminal, --confirmar-caminho repete o alvo. Nao\n'
+        printf '  ha --yes. Conta pessoal: codigo 6; escopo ausente: codigo 5.\n\n'
+        printf 'Exemplos:\n'
+        printf '  dbx lixeira -R /docs\n'
+        printf '  dbx lixeira --excluir /docs/velho.txt --confirmar-caminho /docs/velho.txt\n'
+        exit 0
+        ;;
       diagnostico)
         printf 'Uso: dbx diagnostico\n\n'
         printf 'Checa dependencias, credencial, conectividade, escopos, espaco, localidade, o\n'
@@ -299,7 +357,10 @@ case $DBX_CLI_COMANDO in
         printf '  space        Exibe capacidade e uso do espaco da conta\n'
         printf '  verificar    Compara local e remoto por content_hash, so leitura (alias: verify)\n'
         printf '  diagnostico  Checa o ambiente e sugere o remedio (alias: doctor)\n'
-        printf '  completar    Imprime o autocompletar do bash (alias: completion)\n\n'
+        printf '  completar    Imprime o autocompletar do bash (alias: completion)\n'
+        printf '  revisoes     Lista as revisoes de um arquivo (alias: revisions)\n'
+        printf '  restaurar    Restaura revisao de arquivo ou pasta apagada (alias: restore)\n'
+        printf '  lixeira      Lista apagados; --excluir expurga em definitivo (alias: trash)\n\n'
         printf 'Opcoes globais: --help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
         # RNF-07, RNF-30: os ajustes de rede sao documentados onde o operador os

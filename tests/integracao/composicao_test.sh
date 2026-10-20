@@ -816,6 +816,19 @@ teste_todo_caminho_remoto_de_comando_passa_pelo_ponto_unico() {
   done
 }
 
+# Fase 3 (RF-72(b), RF-73(g), RF-75(e), RF-76(b)): os tres comandos novos entram
+# no conjunto derivado; caso proprio para nao reescrever a lista aprovada acima.
+teste_comandos_da_recuperacao_passam_pelo_ponto_unico() {
+  local nome arquivo
+  for nome in revisoes restaurar lixeira; do
+    arquivo="$DBX_HARNESS_RAIZ/commands/$nome.sh"
+    assert_arquivo_existe "$arquivo" "comando $nome"
+    grep -q '_dbx_cmd_caminho_remoto' "$arquivo" ||
+      _harness_falhar "$nome.sh nao passa pelo ponto unico"
+    assert_igual '' "$(_auditar_caminho_remoto "$nome.sh" "$(<"$arquivo")")" "auditoria de $nome.sh"
+  done
+}
+
 teste_auditoria_do_ponto_unico_discrimina() {
   local base=$'dbx_cmd_x_executar() {\n  local c=$1\n'
   local fim=$'\n  dbx_json_escapar_cadeia "$r"\n  _dbx_cmd_consultar u "{\\"path\\":\\"$r\\"}"\n}'

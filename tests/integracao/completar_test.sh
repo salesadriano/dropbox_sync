@@ -131,6 +131,31 @@ teste_cpl02_toda_opcao_da_ajuda_existe_no_codigo_do_comando() {
   assert_igual '' "$faltando" "opcao documentada que o comando nao reconhece:$faltando"
 }
 
+# ---------------------------------------------------------------------------
+# TC-CPL-08 (RF-78) — os tres comandos da fase 3 e os aliases
+# ---------------------------------------------------------------------------
+
+teste_cpl08_revisoes_restaurar_lixeira_coincidem_com_a_ajuda() {
+  local comando opcao faltando=''
+  for comando in revisoes restaurar lixeira; do
+    [[ -n $(_opcoes_da_ajuda "$comando") ]] || _harness_falhar "ajuda de $comando sem secao Opcoes"
+    assert_igual "$(_opcoes_da_ajuda "$comando")" "$(_completar "$comando" -)" \
+      "opcoes de $comando: script e ajuda divergem"
+    while IFS= read -r opcao; do
+      _opcoes_do_codigo "$DBX_HARNESS_RAIZ/commands/$comando.sh" | grep -qxF -- "$opcao" ||
+        faltando+=" $comando:$opcao"
+    done < <(_opcoes_da_ajuda "$comando")
+  done
+  assert_igual '' "$faltando" "opcao documentada que o comando nao reconhece:$faltando"
+  assert_igual $'restaurar\nrestore\nrevisions\nrevisoes' "$(_completar re)" 'comandos e aliases'
+  assert_contem 'trash' "$(_completar t)" 'alias trash'
+  assert_contem '--purge' "$(_completar trash --p)" 'opcoes pelo alias'
+  assert_contem '--before' "$(_completar restore --b)" 'ingles completado'
+  assert_contem '--by-id' "$(_completar revisions --b)" 'ingles completado'
+  assert_nao_contem '--yes' "$(_completar lixeira --)" 'lixeira nao tem --yes (DIV-55)'
+  assert_igual '' "$(_completar restaurar --rev '')" 'valor de --rev nao e completado'
+}
+
 teste_cpl02_a_conferencia_reprova_opcao_de_um_lado_so() {
   # Prova de discriminacao: um script mutante com uma opcao a mais e outro com
   # uma a menos precisam divergir da ajuda.
