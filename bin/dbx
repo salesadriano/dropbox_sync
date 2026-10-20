@@ -98,6 +98,49 @@ _dbx_falhar() {
   exit "$(dbx_errors_codigo_saida "$classe")"
 }
 
+# Trechos de ajuda comuns a mais de um comando (RF-83): uma fonte so, para o
+# texto de `sync`, `verificar`, `download` e `upload` nao divergir.
+_dbx_ajuda_filtros() {
+  printf '%s\n' \
+    'Filtros de caminho (RF-79, RF-80; sintaxe do .gitignore, sem caixa):' \
+    '  O padrao e comparado com o caminho relativo a raiz, nos dois lados. Sem /, casa' \
+    '  o nome em qualquer nivel (*.log); / no inicio ou no meio ancora na raiz' \
+    '  (/build, doc/a.txt); / no fim casa so pasta e tudo abaixo dela (cache/).' \
+    '  * nao cruza /; ? e um caractere; [abc], [a-z], [!0-9]; ** no inicio (**/tmp),' \
+    '  no fim (build/**) ou no meio (a/**/b) cruza pastas; \ torna literal o seguinte.' \
+    '  --excluir e --incluir sao repetiveis e acumulam; a exclusao vence a inclusao;' \
+    '  com algum --incluir, so o que casa entra. Pasta excluida nao e percorrida.' \
+    '  Desvios do gitignore: sem ! (use --incluir), # e espaco final sao literais,' \
+    '  classe [[:alpha:]] e recusada; ate 64 padroes de ate 1024 bytes.' \
+    '  item filtrado nunca e apagado no espelhamento; remover um filtro devolve os itens ao escopo' \
+    '  (e eles voltam a seguir a regra normal, inclusive a exclusao do --espelhar).' \
+    '  A comparacao NAO normaliza Unicode: NFC e NFD sao grafias distintas (um e' \
+    '  acentuado composto nao casa o decomposto), e o item numa grafia que o padrao' \
+    '  nao casa fica no escopo, inclusive para a exclusao do --espelhar (RF-79(h)).' \
+    '  Exemplos: --excluir '"'"'*.tmp'"'"' --excluir cache/   |   --incluir '"'"'*.pdf'"'"''
+}
+
+_dbx_ajuda_data_tamanho() {
+  printf '%s\n' \
+    'Filtros de data e tamanho (RF-81; so arquivos da ORIGEM, pastas sempre percorridas):' \
+    '  Data AAAA-MM-DD ou AAAA-MM-DDTHH:MM:SSZ (UTC), limites inclusivos; o dia sozinho' \
+    '  vale 00:00:00 no --modificado-desde e 23:59:59 no --modificado-ate. Local: mtime;' \
+    '  remoto: server_modified (quando o Dropbox recebeu a versao). Tamanho em bytes ou' \
+    '  com K, M ou G (base 1024), limites inclusivos. Junto de --espelhar sao recusados' \
+    '  (codigo 2): avaliam so a origem e fariam o espelhamento apagar no destino.'
+}
+
+_dbx_ajuda_banda() {
+  printf '%s\n' \
+    'Limite de banda (RF-82):' \
+    '  --limite-banda TAXA (alias --bwlimit) em bytes/s (numero sem sufixo e bytes/s,' \
+    '  nao KiB/s como no rsync), com K, M ou G em base 1024. Piso: 2 x' \
+    '  DBX_HTTP_VELOCIDADE_MINIMA_BPS (2048 bytes/s no padrao). Sem a opcao, vale a' \
+    '  variavel DBX_LIMITE_BANDA; a opcao vence. Para desligar o padrao numa chamada:' \
+    '  env -u DBX_LIMITE_BANDA dbx ... O limite vale por transferencia (so conteudo);' \
+    '  duas execucoes simultaneas somam.'
+}
+
 dbx_cli_analisar "$@" || _dbx_falhar uso_invalido "$DBX_CLI_MOTIVO"
 
 if [[ ${#DBX_CLI_ARGS[@]} -gt 0 ]]; then
@@ -121,7 +164,7 @@ case $DBX_CLI_COMANDO in
     _dbx_subcomando=$DBX_CLI_CANONICO
     case $_dbx_subcomando in
       upload)
-        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--progresso] <origem> <destino>\n\n'
+        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--limite-banda | --bwlimit <taxa>] [--progresso] <origem> <destino>\n\n'
         printf 'Envia arquivo local ou conteudo da entrada padrao (-) para o caminho remoto.\n\n'
         printf 'Argumentos:\n'
         printf '  origem   Caminho de arquivo local ou "-" para entrada padrao (stdin)\n'
@@ -131,8 +174,12 @@ case $DBX_CLI_COMANDO in
         printf '  --rev <rev>                     Revisao esperada para controle de conflito\n'
         printf '  --forcar, --force               Pula as checagens previas: comparacao por\n'
         printf '                                  content_hash e espaco livre da conta\n'
+        printf '  --limite-banda, --bwlimit <taxa>\n'
+        printf '                                  Limite de banda por transferencia, em bytes/s\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        _dbx_ajuda_banda
+        printf '\n'
         printf 'Espaco livre (RF-67):\n'
         printf '  Antes de enviar, uma consulta ao espaco da conta; se o arquivo nao cabe, o\n'
         printf '  envio e recusado com codigo 12, sem escrever nada. Com --dry-run, so avisa.\n'
@@ -164,7 +211,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       sync)
-        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--esperar | --wait <s>] [--progresso]\n\n'
+        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--esperar | --wait <s>] [--excluir <padrao>]... [--incluir <padrao>]... [--modificado-desde <data>] [--modificado-ate <data>] [--tamanho-min <tam>] [--tamanho-max <tam>] [--limite-banda <taxa>] [--progresso]\n\n'
         printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n\n'
         printf 'Opcoes (o nome em ingles e alias do nome em portugues; podem ser misturados):\n'
         printf '  --enviar, --push                Origem local, destino remoto\n'
@@ -177,8 +224,25 @@ case $DBX_CLI_COMANDO in
         printf '                                  Permite espelhar uma origem VAZIA (apaga o destino)\n'
         printf '  --forcar, --force               So com --enviar: pula a checagem de espaco livre\n'
         printf '  --esperar, --wait <s>           Espera ate <s> segundos (0 a 3600) pela trava do par\n'
+        printf '  --excluir, --exclude <padrao>   Tira do escopo o que casa (repetivel; veja Filtros)\n'
+        printf '  --incluir, --include <padrao>   So o que casa entra no escopo (repetivel)\n'
+        printf '  --modificado-desde, --modified-since <data>\n'
+        printf '                                  So arquivos da origem modificados desde a data\n'
+        printf '  --modificado-ate, --modified-until <data>\n'
+        printf '                                  So arquivos da origem modificados ate a data\n'
+        printf '  --tamanho-min, --min-size <tam> So arquivos da origem com ao menos <tam>\n'
+        printf '  --tamanho-max, --max-size <tam> So arquivos da origem com no maximo <tam>\n'
+        printf '  --limite-banda, --bwlimit <taxa>\n'
+        printf '                                  Limite de banda por transferencia, em bytes/s\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        _dbx_ajuda_filtros
+        printf '  O plano traz filtros=sim, os padroes e filtrados_origem/filtrados_destino\n'
+        printf '  (pasta excluida conta 1); origem toda filtrada conta como vazia (RF-41).\n\n'
+        _dbx_ajuda_data_tamanho
+        printf '\n'
+        _dbx_ajuda_banda
+        printf '\n'
         printf 'Trava de concorrencia (RF-69):\n'
         printf '  Um sync ou verificar por vez para o mesmo par (conta, raiz local, raiz remota,\n'
         printf '  em qualquer sentido), inclusive com --dry-run. Ocupada, a execucao e recusada\n'
@@ -211,12 +275,30 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       download)
-        printf 'Uso: dbx download [--progresso] <caminho_remoto> [destino_local]\n\n'
-        printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n\n'
+        printf 'Uso: dbx download [--excluir <padrao>]... [--incluir <padrao>]... [--limite-banda <taxa>] [--progresso] <caminho_remoto> [destino_local]\n\n'
+        printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n'
+        printf 'Pasta remota e recebida recursivamente (o sync --receber interno).\n\n'
         printf 'Opcoes:\n'
+        printf '  --excluir, --exclude <padrao>   So pasta: tira do escopo o que casa (repetivel)\n'
+        printf '  --incluir, --include <padrao>   So pasta: so o que casa e recebido (repetivel)\n'
+        printf '  --modificado-desde, --modified-since <data>\n'
+        printf '                                  So pasta: arquivos modificados desde a data\n'
+        printf '  --modificado-ate, --modified-until <data>\n'
+        printf '                                  So pasta: arquivos modificados ate a data\n'
+        printf '  --tamanho-min, --min-size <tam> So pasta: arquivos com ao menos <tam>\n'
+        printf '  --tamanho-max, --max-size <tam> So pasta: arquivos com no maximo <tam>\n'
+        printf '  --limite-banda, --bwlimit <taxa>\n'
+        printf '                                  Limite de banda por transferencia, em bytes/s\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
-        printf '  --forcar, --force               Aceita e sem efeito, por paridade com o upload\n'
+        printf '  --forcar, --force               Aceita e sem efeito, por paridade com o upload\n\n'
+        printf 'Os filtros valem so para pasta: com um arquivo remoto, a recusa e codigo 2,\n'
+        printf 'sem nenhuma escrita (o tipo e consultado antes, por get_metadata).\n\n'
+        _dbx_ajuda_filtros
+        printf '\n'
+        _dbx_ajuda_data_tamanho
+        printf '\n'
+        _dbx_ajuda_banda
         exit 0
         ;;
       list)
@@ -248,7 +330,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       verificar)
-        printf 'Uso: dbx verificar (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--esperar | --wait <s>] [--progresso]\n\n'
+        printf 'Uso: dbx verificar (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--esperar | --wait <s>] [--excluir <padrao>]... [--incluir <padrao>]... [--progresso]\n\n'
         printf 'Compara a arvore local e a remota por content_hash, sem transferir nem gravar nada.\n'
         printf 'Alias em ingles: verify.\n\n'
         printf 'Opcoes (as mesmas do sync; o nome em ingles e alias do nome em portugues):\n'
@@ -257,8 +339,13 @@ case $DBX_CLI_COMANDO in
         printf '  --origem, --source <dir>        Lado de referencia (obrigatorio)\n'
         printf '  --destino, --dest <dir>         Lado comparado (obrigatorio)\n'
         printf '  --esperar, --wait <s>           Espera ate <s> segundos (0 a 3600) pela trava do par\n'
+        printf '  --excluir, --exclude <padrao>   Nao compara o que casa (repetivel; veja Filtros)\n'
+        printf '  --incluir, --include <padrao>   So compara o que casa (repetivel)\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        _dbx_ajuda_filtros
+        printf '  Filtrado nao e comparado e nunca conta como divergencia. Filtros de data e\n'
+        printf '  tamanho e --limite-banda sao recusados (codigo 2): o verificar so le.\n\n'
         printf 'Cada arquivo sai uma vez como igual, diferente, so_origem ou so_destino, com as\n'
         printf 'contagens ao fim. Codigo de saida: 0 tudo igual; 11 ha divergencia; 14 travessia\n'
         printf 'parcial; erro de execucao (rede, autenticacao, ...) prevalece. As opcoes do sync que\n'
@@ -313,6 +400,8 @@ case $DBX_CLI_COMANDO in
         printf '  --limite, --limit <n>           Itens por pagina pedidos ao servico (1 a 100)\n'
         printf '  --excluir, --purge <caminho>    Exclusao PERMANENTE de um item ja apagado\n'
         printf '  --confirmar-caminho <caminho>   Confirma o expurgo sem terminal (identico ao alvo)\n\n'
+        printf 'Aqui --excluir e o expurgo definitivo: nao e o filtro --excluir de sync,\n'
+        printf 'verificar e download (DIV-86), e a lixeira nao aceita filtros.\n\n'
         printf 'Exclusao permanente:\n'
         printf '  a exclusao permanente e irreversivel e so existe em Dropbox Business; exige o\n'
         printf '  escopo files.permanent_delete. Habilite-o no App Console do aplicativo e\n'

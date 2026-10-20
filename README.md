@@ -388,6 +388,58 @@ dbx lixeira --excluir /docs/velho.txt --confirmar-caminho /docs/velho.txt
 
 A tabela de códigos de saída não muda: os três comandos usam só os códigos já existentes.
 
+> O `--excluir` da `lixeira` é o **expurgo definitivo**, e não o filtro `--excluir` de `sync`, `verificar` e `download` descrito abaixo; a `lixeira` não aceita filtros.
+
+---
+
+## Filtros
+
+`--excluir PADRAO` (`--exclude`) e `--incluir PADRAO` (`--include`) valem em `sync` (os dois sentidos, com ou sem `--espelhar` e `--dry-run`), `verificar` e `download` de **pasta**. São **repetíveis** e acumulam; a ordem na linha de comando não importa. Com um arquivo remoto, o `download` com filtro sai com `2` sem escrever nada. É também por `sync --enviar --excluir` que se faz o envio recursivo com padrões de exclusão (RF-12).
+
+```bash
+dbx sync --enviar --origem ./projeto --destino /backup/projeto --excluir '*.tmp' --excluir 'node_modules/'
+dbx sync --receber --origem /fotos --destino ./fotos --incluir '*.jpg' --modificado-desde 2026-10-01
+dbx verificar --enviar --origem ./projeto --destino /backup/projeto --excluir 'build/'
+dbx download /docs ./docs --exclude '*.bak'
+```
+
+Sintaxe do `.gitignore`, comparada **sem caixa** (como o `sync`) com o caminho relativo à raiz, nos dois lados:
+
+| Padrão | Casa |
+|---|---|
+| `*.log` (sem `/`) | o nome em qualquer nível: `a.log`, `x/y/a.log` |
+| `/build`, `doc/a.txt` (`/` no início ou no meio) | ancorado na raiz: só `build`, só `doc/a.txt` |
+| `logs/` (`/` no fim) | só a **pasta** `logs`, em qualquer nível, e tudo abaixo dela |
+| `*`, `?`, `[a-c]`, `[!0-9]` | `*` e `?` nunca cruzam `/`; conjunto com faixa e negação por `!` ou `^` |
+| `**/tmp`, `build/**`, `a/**/b` | `**` cruza pastas no início, no fim (descendentes, não a pasta) e no meio |
+| `\*`, `\[`, `\!`, `\ ` | `\` torna literal o caractere seguinte |
+
+**Exclusão vence inclusão**: `--incluir '*.pdf' --excluir 'velho/'` deixa `velho/a.pdf` de fora. Com algum `--incluir`, só o que casa entra (as pastas são percorridas para achar o arquivo incluído em qualquer nível; pasta sem arquivo no escopo não é criada). Pasta excluída **não é percorrida**: erro dentro dela não torna a travessia parcial.
+
+**Desvios do gitignore:** sem negação `!` (recusada com `2`: use `--incluir`); `#` inicial e espaços finais são literais; `[` sem `]`, `[]`, faixa invertida e classe `[[:alpha:]]` são malformados. Até 64 padrões de até 1024 bytes. Padrão malformado sai com `2` antes da trava, da rede e de qualquer escrita. Padrão que não casou nada e origem toda filtrada geram aviso em stderr.
+
+**Com `--espelhar`, item filtrado nunca é apagado**, nem no remoto nem no local: fica fora do escopo dos dois lados. Um filtro novo não apaga o que deixou de fora; **remover um filtro devolve os itens ao escopo**, e eles voltam a seguir a regra normal, inclusive a exclusão do espelhamento. Origem com arquivos todos filtrados conta como **origem vazia** e cai na recusa de `--permitir-origem-vazia`.
+
+> **Sem normalização Unicode:** a comparação não normaliza NFC e NFD. `é` composto (NFC) e `e` + acento combinante (NFD) são grafias distintas, então `--excluir 'café'` (NFC) **não** protege um `café` local gravado em NFD: ele fica no escopo e, com `--espelhar`, pode ser apagado. Escreva o padrão na mesma forma do nome ou use curinga (`caf*`).
+
+> **Atenção:** um backup com filtro é parcial — o que ficou de fora não está no destino.
+
+**Data e tamanho** (`sync` e `download` de pasta): `--modificado-desde`/`--modified-since` e `--modificado-ate`/`--modified-until` (`AAAA-MM-DD` ou `AAAA-MM-DDTHH:MM:SSZ`, UTC, inclusivos; local pelo `mtime`, remoto pelo `server_modified`), `--tamanho-min`/`--min-size` e `--tamanho-max`/`--max-size` (bytes ou `K`, `M`, `G` em base 1024, inclusivos). Avaliam **só a origem** e são **recusados com `--espelhar`** (`2`), porque fariam o espelhamento apagar no destino. O `verificar` também os recusa.
+
+O plano (inclusive no `--dry-run`) e o resumo trazem `filtros=sim|nao`, os padrões ativos e `filtrados_origem`/`filtrados_destino` (pasta excluída conta `1`), como acréscimo compatível da saída.
+
+## Limite de banda
+
+`--limite-banda TAXA` (alias `--bwlimit`) em `upload`, `download` e `sync`, em **bytes/s** (número sem sufixo é bytes/s, não KiB/s como no `rsync`), com sufixo `K`, `M` ou `G` em base 1024. O limite vale **por transferência**, só nas requisições de conteúdo (envio, partes de sessão, recebimento), e não nas de metadado; duas execuções simultâneas somam.
+
+```bash
+dbx upload --limite-banda 512K backup.tar.gz /backups/backup.tar.gz
+export DBX_LIMITE_BANDA=2M   # padrão quando a opção não é dada
+env -u DBX_LIMITE_BANDA dbx sync --enviar --origem ./a --destino /a   # sem o padrão numa chamada
+```
+
+O piso é **2 × `DBX_HTTP_VELOCIDADE_MINIMA_BPS`** (2048 bytes/s no padrão): abaixo dele o corte por velocidade mínima abortaria a transferência, e o valor é recusado com `2`. A variável `DBX_LIMITE_BANDA` vale quando a opção está ausente; a opção vence. Variável presente e inválida (inclusive vazia) sai com `2` em `upload`, `download` e `sync` sem a opção; os demais comandos a ignoram. O resultado (bytes, `content_hash`, código) não muda; a saída ganha `limite_banda` (vazio sem limite).
+
 ---
 
 ## Testes e Qualidade

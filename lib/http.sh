@@ -103,6 +103,10 @@ _DBX_HTTP_ARG=''
 _DBX_HTTP_ARQUIVO_CORPO=''
 _DBX_HTTP_TOKEN=''
 _DBX_HTTP_CAMPOS_NOME=''
+# Limite de banda das requisicoes de CONTEUDO (RF-82(d)(e)), inteiro de bytes
+# por segundo, ou vazio. Interno, iniciado aqui para o ambiente nao o trazer:
+# so `dbx_http_limite_banda` o escreve.
+_DBX_HTTP_LIMITE_BANDA=''
 
 # Status do cliente que denuncia defeito NOSSO, e nao da rede; e a mensagem que
 # o cliente emitiu, ja redigida. Canais publicos.
@@ -345,12 +349,27 @@ _dbx_http_opcoes() {
       local _arg_escapado=${_DBX_HTTP_ARG//\\/\\\\}
       _arg_escapado=${_arg_escapado//\"/\\\"}
       printf 'header = "Dropbox-API-Arg: %s"\n' "$_arg_escapado"
+      # RF-82(e)(f): so o conteudo, por requisicao — cada parte de sessao e cada
+      # retentativa passam por aqui. Metadado e controle ficam sem limite.
+      if [[ -n $_DBX_HTTP_LIMITE_BANDA ]]; then
+        printf 'limit-rate = %s\n' "$_DBX_HTTP_LIMITE_BANDA"
+      fi
       ;;
     *)
       printf 'header = "Authorization: Bearer %s"\n' "$_DBX_HTTP_TOKEN"
       printf 'header = "Content-Type: application/json"\n'
       ;;
   esac
+}
+
+# dbx_http_limite_banda <bytes_por_segundo|vazio> — RF-82(d).
+#
+# So aceita o INTEIRO ja convertido (`lib/cli`): o texto do operador nunca chega
+# a configuracao do cliente nem ao `argv`. Vazio desliga.
+dbx_http_limite_banda() {
+  [[ ${1-} =~ ^([1-9][0-9]{0,18})?$ ]] || return "$DBX_HTTP_ERRO_USO"
+  _DBX_HTTP_LIMITE_BANDA=${1-}
+  return 0
 }
 
 # dbx_http_cabecalho_valido <valor> — status 0 aceita, uso invalido recusa.
@@ -454,6 +473,11 @@ dbx_http_requisitar() {
   _DBX_HTTP_MODO=bearer
   _DBX_HTTP_CANAL=padrao
   _DBX_HTTP_TOKEN=$3
+  # DIV-95: o arquivo de corpo do modo de conteudo e da chamada ANTERIOR. Sem
+  # esta limpeza, toda chamada JSON depois de um envio levava o arquivo enviado
+  # como corpo (o `delete_v2` do espelhamento, por exemplo).
+  _DBX_HTTP_ARQUIVO_CORPO=''
+  _DBX_HTTP_DESTINO=''
   _dbx_http_executar "$1" "$2" "$4" "$5"
 }
 
@@ -468,6 +492,10 @@ dbx_http_formulario() {
   _DBX_HTTP_MODO=formulario
   _DBX_HTTP_CANAL=padrao
   _DBX_HTTP_CAMPOS_NOME=$2
+  # DIV-95: idem ao modo bearer; a renovacao no meio de um envio nao pode
+  # levar o arquivo da chamada anterior.
+  _DBX_HTTP_ARQUIVO_CORPO=''
+  _DBX_HTTP_DESTINO=''
   # Sem corpo em arquivo: os campos vao pela entrada padrao.
   # Nao idempotente: uma troca de token repetida as cegas nao e desejavel.
   _dbx_http_executar POST "$1" '' nao

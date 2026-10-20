@@ -172,6 +172,40 @@ dbx_cli_validar_espera() {
   return "$DBX_CLI_ERRO_USO"
 }
 
+# dbx_cli_validar_taxa <nome> <valor> <piso> [opcao|variavel] — RF-82(b)(c)(g).
+#
+# `[1-9][0-9]{0,8}` com sufixo opcional K, M ou G (base 1024, como o cURL), em
+# BYTES por segundo (DIV-87). O inteiro vai a DBX_CLI_TAXA; o texto do operador
+# nunca sai daqui. Abaixo do piso (2 x a velocidade minima efetiva, DIV-88) o
+# corte por velocidade de RNF-30 abortaria a transferencia: recusa nomeando a
+# variavel. `nome` e a opcao como digitada ou a variavel DBX_LIMITE_BANDA.
+DBX_CLI_TAXA=''
+dbx_cli_validar_taxa() {
+  local nome=$1 valor=${2-} piso=$3 origem=${4:-opcao} exibido fator=1
+  { local LC_ALL=C; } 2>/dev/null
+  DBX_CLI_MOTIVO=''
+  DBX_CLI_TAXA=''
+  exibido=${valor:0:64}
+  [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+  if [[ $valor =~ ^([1-9][0-9]{0,8})([KkMmGg]?)$ ]]; then
+    case ${BASH_REMATCH[2]} in
+      [Kk]) fator=1024 ;;
+      [Mm]) fator=1048576 ;;
+      [Gg]) fator=1073741824 ;;
+    esac
+    if ((BASH_REMATCH[1] * fator >= piso)); then
+      DBX_CLI_TAXA=$((BASH_REMATCH[1] * fator))
+      return 0
+    fi
+    DBX_CLI_MOTIVO="$nome [$exibido] abaixo do piso de $piso bytes/s (2 x DBX_HTTP_VELOCIDADE_MINIMA_BPS): abaixo disso o corte por velocidade minima abortaria a transferencia"
+  elif [[ $origem == 'variavel' ]]; then
+    DBX_CLI_MOTIVO="variavel de ambiente $nome invalida: [$exibido]; use inteiro positivo com sufixo opcional K, M ou G, ou remova-a (unset $nome)"
+  else
+    DBX_CLI_MOTIVO="valor invalido para $nome: [$exibido]; use inteiro positivo de bytes por segundo, com sufixo opcional K, M ou G (base 1024)"
+  fi
+  return "$DBX_CLI_ERRO_USO"
+}
+
 _dbx_cli_recusar() {
   DBX_CLI_MOTIVO=$1
   return "$DBX_CLI_ERRO_USO"

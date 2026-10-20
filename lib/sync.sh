@@ -39,6 +39,8 @@ _dbx_sync_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_sync_diretorio=$(cd -P -- "$_dbx_sync_diretorio" && pwd -P)
 # shellcheck source=lib/progress.sh
 . "$_dbx_sync_diretorio/progress.sh"
+# shellcheck source=lib/filtro.sh
+. "$_dbx_sync_diretorio/filtro.sh"
 unset _dbx_sync_diretorio
 
 DBX_SYNC_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -82,27 +84,130 @@ dbx_sync_relativo() {
   [[ -n $DBX_SYNC_LIDO ]]
 }
 
-# Localidade da comparacao sem caixa (RF-54(e)). O nome so e lido do ambiente
-# para a suite simular a ausencia sem depender da maquina (TC-CX-05); fora do
-# alfabeto de nome de localidade, vale o padrao.
-DBX_SYNC_LOCALIDADE=${DBX_SYNC_LOCALIDADE:-C.UTF-8}
-[[ $DBX_SYNC_LOCALIDADE =~ ^[A-Za-z0-9_.@-]+$ ]] || DBX_SYNC_LOCALIDADE=C.UTF-8
+# Localidade da comparacao sem caixa (RF-54(e)): a MESMA de `lib/filtro`, que e
+# dono da chave (padrao de filtro e caminho passam pela mesma dobra, RF-79(h)).
+DBX_SYNC_LOCALIDADE=$DBX_FILTRO_LOCALIDADE
 readonly DBX_SYNC_LOCALIDADE
 
 # _dbx_sync_chave <caminho> — chave de comparacao em DBX_SYNC_CHAVE (RF-54).
 #
 # A Dropbox nao diferencia caixa, entao dois caminhos que so diferem nela sao o
-# MESMO arquivo. Sob `C`, `${x,,}` so converte ASCII e um `É` local nao casaria
-# com o `é` remoto; por isso a conversao roda sob a localidade UTF-8.
-#
-# A localidade e fixada SO aqui, em `LC_ALL` local a funcao (DIV-32): `LC_ALL`
-# tem precedencia sobre o que o operador exportou (inclusive `LC_ALL=C`), e o
-# escopo local a desfaz no retorno, para nenhuma medida em bytes (`${#x}`,
-# fatiamento) do resto do processo passar a contar caracteres. Sem a
-# localidade, a atribuicao falha em silencio e a conversao fica no ASCII.
+# MESMO arquivo. A dobra e a de `dbx_filtro_chave` (lib/filtro): a localidade
+# UTF-8 fixada SO dentro dela, em `LC_ALL` local (DIV-32), sem vazar para
+# nenhuma medida em bytes do resto do processo. Uma copia aqui seria o codigo
+# gemeo de RNF-36, e o filtro poderia dobrar diferente da comparacao.
 _dbx_sync_chave() {
-  { local LC_ALL=$DBX_SYNC_LOCALIDADE; } 2>/dev/null
-  DBX_SYNC_CHAVE=${1,,}
+  dbx_filtro_chave "$1"
+  DBX_SYNC_CHAVE=$DBX_FILTRO_CHAVE
+}
+
+# ---------------------------------------------------------------------------
+# Escopo filtrado (RF-80)
+# ---------------------------------------------------------------------------
+
+# Itens filtrados do lado corrente, contados uma vez cada pela chave sem caixa:
+# pasta excluida conta 1 e o conteudo dela nao conta (RF-80(i)). Zerado por
+# `dbx_sync_filtrados_zerar` antes de cada lado; o total em DBX_SYNC_FILTRADOS.
+declare -gA DBX_SYNC_FILTRADOS_CHAVES=()
+DBX_SYNC_FILTRADOS=0
+
+dbx_sync_filtrados_zerar() {
+  DBX_SYNC_FILTRADOS_CHAVES=()
+  DBX_SYNC_FILTRADOS=0
+}
+
+_dbx_sync_contar_filtrado() {
+  _dbx_sync_chave "$1"
+  DBX_SYNC_FILTRADOS_CHAVES[$DBX_SYNC_CHAVE]=1
+  # shellcheck disable=SC2034  # canal publico, lido por commands/sync e verificar
+  DBX_SYNC_FILTRADOS=${#DBX_SYNC_FILTRADOS_CHAVES[@]}
+}
+
+# dbx_sync_no_escopo <origem|destino> <relativo> <arquivo|pasta>
+#
+# PREDICADO UNICO do escopo de caminho, para os dois lados e as duas pontas
+# (local e remota): o mesmo padrao vale nas duas pontas, sobre o mesmo caminho
+# relativo (RF-79(b)). 0 no escopo; 1 filtrado, e o item que conta e contado.
+#
+# Pasta so e filtrada por `--excluir`: com `--incluir`, toda pasta nao excluida
+# e percorrida para alcancar o arquivo incluido em qualquer profundidade
+# (RF-80(c)), e a pasta existe so pelo arquivo que contem.
+dbx_sync_no_escopo() {
+  [[ $# -eq 3 && ($1 == 'origem' || $1 == 'destino') ]] || return "$DBX_SYNC_ERRO_USO"
+  if [[ $3 == 'pasta' ]]; then
+    dbx_filtro_classificar "$2" sim && return 0
+    [[ $DBX_FILTRO_RAZAO == 'excluido' ]] || return 0
+  else
+    dbx_filtro_classificar "$2" nao && return 0
+  fi
+  _dbx_sync_contar_filtrado "$DBX_FILTRO_FILTRADO"
+  return 1
+}
+
+# dbx_sync_filtrar_caminhos <origem|destino> <vetor_caminhos> <vetor_tamanhos>
+#   <vetor_identidades> — retira da arvore LOCAL o que esta fora do escopo de
+# caminho e conta, junto com as pastas e entradas que a descida podou
+# (`DBX_WALK_PODADAS`, RF-80(b)). Sem padrao de caminho, nao mexe em nada.
+dbx_sync_filtrar_caminhos() {
+  [[ $# -eq 4 ]] || return "$DBX_SYNC_ERRO_USO"
+  local lado=$1
+  local -n _fc_c=$2 _fc_t=$3 _fc_i=$4
+  dbx_filtro_ativo || return 0
+  local podada indice
+  # A poda roda no subshell da travessia, onde a marca de "padrao casou" se
+  # perde; reclassificar aqui a refaz e conta a pasta como 1.
+  for podada in ${DBX_WALK_PODADAS[@]+"${DBX_WALK_PODADAS[@]}"}; do
+    if ! dbx_sync_no_escopo "$lado" "$podada" pasta; then continue; fi
+    dbx_sync_no_escopo "$lado" "$podada" arquivo || :
+  done
+  local -a c=() t=() i=()
+  for indice in "${!_fc_c[@]}"; do
+    dbx_sync_no_escopo "$lado" "${_fc_c[$indice]}" arquivo || continue
+    c+=("${_fc_c[$indice]}") t+=("${_fc_t[$indice]}") i+=("${_fc_i[$indice]}")
+  done
+  _fc_c=(${c[@]+"${c[@]}"}) _fc_t=(${t[@]+"${t[@]}"}) _fc_i=(${i[@]+"${i[@]}"})
+  return 0
+}
+
+# dbx_sync_filtrar_meta <vetor_caminhos> <vetor_tamanhos> <vetor_identidades>
+#
+# RF-81(c): data e tamanho, so na origem LOCAL. A data e o `mtime` da identidade
+# lida pela travessia (primeiro campo, `%Y`), convertido em UTC sem utilitario;
+# sem identidade (sem `stat -c`), o arquivo nao passa num filtro de data.
+dbx_sync_filtrar_meta() {
+  [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
+  local -n _fm_c=$1 _fm_t=$2 _fm_i=$3
+  dbx_filtro_meta_ativo || return 0
+  local indice
+  local -a c=() t=() i=()
+  for indice in "${!_fm_c[@]}"; do
+    dbx_filtro_carimbo_de_epoca "${_fm_i[$indice]%%|*}" || :
+    if ! dbx_filtro_meta_passa "$DBX_FILTRO_CARIMBO" "${_fm_t[$indice]}"; then
+      _dbx_sync_contar_filtrado "${_fm_c[$indice]}"
+      continue
+    fi
+    c+=("${_fm_c[$indice]}") t+=("${_fm_t[$indice]}") i+=("${_fm_i[$indice]}")
+  done
+  _fm_c=(${c[@]+"${c[@]}"}) _fm_t=(${t[@]+"${t[@]}"}) _fm_i=(${i[@]+"${i[@]}"})
+  return 0
+}
+
+# Avisos de filtro mal escrito (DIV-91), em DBX_SYNC_AVISOS, uma frase cada.
+declare -ga DBX_SYNC_AVISOS=()
+
+# dbx_sync_avisos_de_filtro <arquivos_da_origem_antes> <arquivos_da_origem_depois>
+dbx_sync_avisos_de_filtro() {
+  local antes=${1:-0} depois=${2:-0} padrao
+  DBX_SYNC_AVISOS=()
+  dbx_filtro_avisos
+  for padrao in ${DBX_FILTRO_SEM_CASAMENTO[@]+"${DBX_FILTRO_SEM_CASAMENTO[@]}"}; do
+    dbx_filtro_citar "$padrao"
+    DBX_SYNC_AVISOS+=("padrao $DBX_FILTRO_CITADO nao casou nenhum item")
+  done
+  if { dbx_filtro_ativo || dbx_filtro_meta_ativo; } && [[ $antes -gt 0 && $depois -eq 0 ]]; then
+    DBX_SYNC_AVISOS+=('nenhum item da origem passou pelos filtros')
+  fi
+  return 0
 }
 
 # dbx_sync_localidade_disponivel — 0 quando a comparacao sem caixa vale fora do
@@ -172,11 +277,19 @@ dbx_sync_sem_temporarios() {
 # Raiz remota INEXISTENTE nao e erro: e arvore vazia. A distincao importa porque
 # `--enviar` para um destino que ainda nao existe e o caso normal da primeira
 # execucao, e recusar ali obrigaria o operador a criar a pasta a mao.
+#
+# Com `lado` (`origem` ou `destino`), aplica o escopo filtrado (RF-80): a
+# listagem e recursiva, entao a pasta excluida VEM listada e as entradas dela
+# sao descartadas sem uso (DIV-82), contando a pasta como 1. Na `origem`, data
+# (`server_modified`, DIV-84) e tamanho tambem (RF-81). Em DBX_SYNC_REMOTOS_ANTES
+# fica quantos arquivos a listagem trouxe antes de qualquer filtro.
+DBX_SYNC_REMOTOS_ANTES=0
 dbx_sync_enumerar_remoto() {
-  [[ $# -ge 2 && $# -le 3 ]] || return "$DBX_SYNC_ERRO_USO"
-  local raiz=$1 destino=$2 revs=${3:-}
-  local corpo url estado quantidade indice tag caminho resumo tamanho rev
+  [[ $# -ge 2 && $# -le 4 ]] || return "$DBX_SYNC_ERRO_USO"
+  local raiz=$1 destino=$2 revs=${3:-} lado=${4:-}
+  local corpo url estado quantidade indice tag caminho resumo tamanho rev carimbo
   local total_remotos=0 pagina=1
+  DBX_SYNC_REMOTOS_ANTES=0
 
   : >"$destino"
   [[ -n $revs ]] && : >"$revs"
@@ -217,16 +330,35 @@ dbx_sync_enumerar_remoto() {
       tag=''
       _dbx_cmd_campo entries "$indice" '.tag' && tag=$DBX_CMD_LIDO
       # Pasta nao e transferivel e nao entra na tabela. Ver o limite declarado no
-      # topo: enviar arquivo cria as intermediarias sozinho.
+      # topo: enviar arquivo cria as intermediarias sozinho. A pasta EXCLUIDA
+      # conta 1 entre os filtrados (RF-80(i)).
+      if [[ $tag == 'folder' && -n $lado ]] && dbx_filtro_ativo; then
+        _dbx_cmd_campo entries "$indice" path_display &&
+          dbx_sync_relativo "$raiz" "$DBX_CMD_LIDO" &&
+          { dbx_sync_no_escopo "$lado" "$DBX_SYNC_LIDO" pasta || :; }
+        continue
+      fi
       [[ $tag == 'file' ]] || continue
       caminho=''
       _dbx_cmd_campo entries "$indice" path_display && caminho=$DBX_CMD_LIDO
       dbx_sync_relativo "$raiz" "$caminho" || continue
       caminho=$DBX_SYNC_LIDO
+      DBX_SYNC_REMOTOS_ANTES=$((DBX_SYNC_REMOTOS_ANTES + 1))
+      if [[ -n $lado ]]; then
+        dbx_sync_no_escopo "$lado" "$caminho" arquivo || continue
+      fi
       resumo=''
       _dbx_cmd_campo entries "$indice" content_hash && resumo=$DBX_CMD_LIDO
       tamanho=0
       _dbx_cmd_campo entries "$indice" size && tamanho=$DBX_CMD_LIDO
+      if [[ $lado == 'origem' ]] && dbx_filtro_meta_ativo; then
+        carimbo=''
+        _dbx_cmd_campo entries "$indice" "$DBX_FILTRO_CAMPO_DATA_REMOTA" && carimbo=$DBX_CMD_LIDO
+        if ! dbx_filtro_meta_passa "$carimbo" "$tamanho"; then
+          _dbx_sync_contar_filtrado "$caminho"
+          continue
+        fi
+      fi
       printf '%s\t%s\t%s\0' "$resumo" "$tamanho" "$caminho" >>"$destino"
       if [[ -n $revs ]]; then
         rev=''

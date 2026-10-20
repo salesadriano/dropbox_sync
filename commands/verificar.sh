@@ -35,10 +35,31 @@ dbx_cmd_verificar_executar() {
   . "$DBX_CLI_RAIZ/lib/sync.sh"
 
   local origem='' destino='' sentido='' tem_origem='nao' tem_destino='nao'
-  local espera=0 opcao_espera='' valor_espera=''
+  local espera=0 opcao_espera='' valor_espera='' opcao
+  # shellcheck disable=SC2034  # `filtros_meta` fica vazio (DIV-83) e vai por nome
+  local -a filtros_caminho=() filtros_meta=()
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
+      # RF-79, RF-65(a) emendado: os filtros de caminho do `sync`, repetiveis.
+      --excluir | --exclude | --incluir | --include)
+        opcao=$1
+        shift
+        filtros_caminho+=("$opcao" "${1-}")
+        ;;
+      # DIV-83: data e tamanho avaliam so a origem; aqui, o item do destino sem
+      # par viraria divergencia falsa.
+      --modificado-desde | --modified-since | --modificado-ate | --modified-until | \
+        --tamanho-min | --min-size | --tamanho-max | --max-size)
+        dbx_cmd_falhar uso_invalido \
+          "filtros de data e tamanho nao valem no verificar: avaliam so a origem e o destino sem par viraria divergencia falsa ($1); use --excluir/--incluir"
+        return $?
+        ;;
+      # RF-82(a): o `verificar` so le metadado.
+      --limite-banda | --bwlimit)
+        dbx_cmd_falhar uso_invalido "o verificar nao transfere conteudo: $1 nao se aplica"
+        return $?
+        ;;
       --origem | --source)
         shift
         origem=${1-}
@@ -117,6 +138,11 @@ dbx_cmd_verificar_executar() {
       return $?
     fi
   done
+  # RF-79(j): padrao malformado antes da trava, da rede e de qualquer escrita.
+  dbx_cmd_filtros_preparar filtros_caminho filtros_meta || {
+    dbx_cmd_falhar uso_invalido "$DBX_CMD_FILTRO_MOTIVO"
+    return $?
+  }
 
   if ! dbx_sync_localidade_disponivel; then
     dbx_cmd_iniciar_saida
@@ -159,6 +185,12 @@ dbx_cmd_verificar_executar() {
   local parcial='nao' motivo_parcial=''
   # shellcheck disable=SC2034  # preenchidos e filtrados por nome (lib/walk, lib/sync)
   local -a caminhos_locais=() tamanhos=() identidades=()
+  # RF-80(k): filtrado nao e comparado; as contagens vao ao resumo.
+  local lado_local='origem' lado_remoto='destino' filtrados_local=0 filtrados_remoto=0 locais_antes=0
+  if [[ $sentido == 'receber' ]]; then
+    lado_local='destino'
+    lado_remoto='origem'
+  fi
   if [[ $local_ausente == 'sim' ]]; then
     : >"$area/local"
   else
@@ -170,6 +202,10 @@ dbx_cmd_verificar_executar() {
     parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
     dbx_walk_ler "$area/local" caminhos_locais tamanhos identidades
     dbx_sync_sem_temporarios caminhos_locais tamanhos identidades
+    locais_antes=${#caminhos_locais[@]}
+    dbx_sync_filtrados_zerar
+    dbx_sync_filtrar_caminhos "$lado_local" caminhos_locais tamanhos identidades
+    filtrados_local=$DBX_SYNC_FILTRADOS
     if ! dbx_sync_colisao_de_caixa caminhos_locais; then
       dbx_cmd_falhar conflito "$DBX_SYNC_MOTIVO"
       return $?
@@ -182,11 +218,13 @@ dbx_cmd_verificar_executar() {
   }
   dbx_progress_mensagem "[verificar] consultando arquivos remotos em: $remoto"
   local estado_remoto=0
-  dbx_sync_enumerar_remoto "$remoto" "$area/remoto" || estado_remoto=$?
+  dbx_sync_filtrados_zerar
+  dbx_sync_enumerar_remoto "$remoto" "$area/remoto" '' "$lado_remoto" || estado_remoto=$?
   if [[ $estado_remoto -ne 0 ]]; then
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
     return "$estado_remoto"
   fi
+  filtrados_remoto=$DBX_SYNC_FILTRADOS
   # shellcheck disable=SC2034  # vetor e mapa lidos por referencia de nome em lib/sync
   local -a ordem_remota=()
   # shellcheck disable=SC2034  # idem
@@ -216,6 +254,16 @@ dbx_cmd_verificar_executar() {
     dbx_sync_comparar ordem_remota mapa_remoto ordem_local mapa_local
   fi
 
+  local filtrados_origem=$filtrados_local filtrados_destino=$filtrados_remoto
+  local origem_antes=$locais_antes origem_depois=${#caminhos_locais[@]}
+  if [[ $sentido == 'receber' ]]; then
+    filtrados_origem=$filtrados_remoto filtrados_destino=$filtrados_local
+    origem_antes=$DBX_SYNC_REMOTOS_ANTES origem_depois=${#ordem_remota[@]}
+  fi
+  # DIV-91: avisos em stderr, sem mudar stdout nem codigo.
+  dbx_sync_avisos_de_filtro "$origem_antes" "$origem_depois"
+  dbx_cmd_avisos_de_filtro
+
   local -A contagem=([igual]=0 [diferente]=0 [so_origem]=0 [so_destino]=0)
   local estado valor
   dbx_cmd_iniciar_saida
@@ -224,6 +272,7 @@ dbx_cmd_verificar_executar() {
   dbx_output_campo origem "$origem"
   dbx_output_campo destino "$destino"
   dbx_output_campo travessia_parcial "$parcial"
+  dbx_cmd_campos_de_filtro "$filtrados_origem" "$filtrados_destino"
   for indice in "${!DBX_SYNC_COMPARADOS_CAMINHOS[@]}"; do
     estado=${DBX_SYNC_COMPARADOS_ESTADOS[indice]}
     valor=${DBX_SYNC_COMPARADOS_CAMINHOS[indice]}

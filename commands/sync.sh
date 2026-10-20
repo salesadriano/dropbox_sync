@@ -165,9 +165,36 @@ dbx_cmd_sync_executar() {
 
   local origem='' destino='' sentido='' espelhar='nao' confirmado='nao' permitir_origem_vazia='nao'
   local tem_origem='nao' tem_destino='nao' forcar='nao' espera=0 opcao_espera='' valor_espera=''
+  local tem_limite='nao' opcao_limite='' valor_limite='' opcao
+  local -a filtros_caminho=() filtros_meta=()
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
+      # RF-79: repetiveis, cada ocorrencia ACRESCENTA um padrao (excecao a
+      # RF-64(e)); validados depois do laco, antes da trava (RF-79(j)).
+      --excluir | --exclude | --incluir | --include)
+        opcao=$1
+        shift
+        filtros_caminho+=("$opcao" "${1-}")
+        ;;
+      # RF-81: data e tamanho, so na origem; o ultimo valor de cada um vence.
+      --modificado-desde | --modified-since | --modificado-ate | --modified-until)
+        opcao=$1
+        shift
+        filtros_meta+=("$opcao" "${1-}")
+        ;;
+      --tamanho-min | --min-size | --tamanho-max | --max-size)
+        opcao=$1
+        shift
+        filtros_meta+=("$opcao" "${1-}")
+        ;;
+      # RF-82: limite de banda das requisicoes de conteudo; o ultimo vence.
+      --limite-banda | --bwlimit)
+        opcao_limite=$1
+        shift
+        valor_limite=${1-}
+        tem_limite='sim'
+        ;;
       # RF-64: o alias em ingles e a MESMA opcao, com o mesmo efeito, as mesmas
       # recusas e a mesma regra de repeticao (RF-64(e)).
       --origem | --source)
@@ -251,6 +278,21 @@ dbx_cmd_sync_executar() {
       '--forcar (--force) so vale com --enviar: ele pula a checagem de espaco da conta, que o --receber nao faz'
     return $?
   fi
+  # RF-81(b): data e tamanho avaliam so a origem; com espelhamento, o item do
+  # destino sem par na origem filtrada seria APAGADO. Recusa antes de tudo.
+  if [[ $espelhar == 'sim' && ${#filtros_meta[@]} -gt 0 ]]; then
+    dbx_cmd_falhar uso_invalido \
+      'filtros de data e tamanho avaliam so a origem e fariam o espelhamento apagar no destino; use --excluir/--incluir'
+    return $?
+  fi
+  dbx_cmd_filtros_preparar filtros_caminho filtros_meta || {
+    dbx_cmd_falhar uso_invalido "$DBX_CMD_FILTRO_MOTIVO"
+    return $?
+  }
+  dbx_cmd_limite_banda "$tem_limite" "$opcao_limite" "$valor_limite" || {
+    dbx_cmd_falhar uso_invalido "$DBX_CMD_LIMITE_MOTIVO"
+    return $?
+  }
 
   # RF-54(f)(g): sem a localidade da comparacao, `É` e `é` viram caminhos
   # distintos. O operador e avisado uma vez, so no `sync` (o unico comando que
@@ -362,6 +404,13 @@ dbx_cmd_sync_executar() {
   # shellcheck disable=SC2034  # ver nota acima: passado por nome a lib/sync
   local -A mapa_local=()
   local falhas_de_resumo=0
+  # RF-80: o lado de cada ponta, para o predicado unico do escopo
+  # (`dbx_sync_no_escopo`), e as contagens de filtrados por lado.
+  local lado_local='destino' lado_remoto='origem' filtrados_local=0 filtrados_remoto=0 locais_antes=0
+  if [[ $sentido == 'enviar' ]]; then
+    lado_local='origem'
+    lado_remoto='destino'
+  fi
 
   if [[ $sentido == 'receber' && ! -d $raiz_local ]]; then
     # Em simulacao com destino local inexistente, nao ha itens locais
@@ -376,12 +425,20 @@ dbx_cmd_sync_executar() {
 
     dbx_walk_ler "$registros_locais" caminhos_locais tamanhos identidades
     dbx_sync_sem_temporarios caminhos_locais tamanhos identidades
+    locais_antes=${#caminhos_locais[@]}
+    # RF-80(a): o escopo de caminho vale nos DOIS lados, com os mesmos padroes.
+    dbx_sync_filtrados_zerar
+    dbx_sync_filtrar_caminhos "$lado_local" caminhos_locais tamanhos identidades
     # RF-54(c): colisao de caixa e recusa integral, antes de qualquer escrita e
     # tambem em simulacao — o plano de uma arvore assim nao tem leitura unica.
+    # Verificada no escopo de CAMINHO, antes de data e tamanho (DIV-93).
     if ! dbx_sync_colisao_de_caixa caminhos_locais; then
         dbx_cmd_falhar conflito "$DBX_SYNC_MOTIVO"
       return $?
     fi
+    # RF-81(c): data e tamanho so na origem, e so em arquivo.
+    [[ $sentido == 'enviar' ]] && dbx_sync_filtrar_meta caminhos_locais tamanhos identidades
+    filtrados_local=$DBX_SYNC_FILTRADOS
     local indice
     local total_locais=${#caminhos_locais[@]}
     for indice in "${!caminhos_locais[@]}"; do
@@ -410,11 +467,13 @@ dbx_cmd_sync_executar() {
   # QA-P3-03: o status e capturado ANTES do teste. Lido dentro de `if ! …`, ele
   # e o da negacao (0), e uma enumeracao que falhou terminava o `sync` com sucesso.
   local estado_remoto=0
-  dbx_sync_enumerar_remoto "$remoto" "$registros_remotos" "$revs_remotos" || estado_remoto=$?
+  dbx_sync_filtrados_zerar
+  dbx_sync_enumerar_remoto "$remoto" "$registros_remotos" "$revs_remotos" "$lado_remoto" || estado_remoto=$?
   if [[ $estado_remoto -ne 0 ]]; then
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
     return "$estado_remoto"
   fi
+  filtrados_remoto=$DBX_SYNC_FILTRADOS
 
   local -a ordem_remota=()
   # shellcheck disable=SC2034  # preenchido e lido por referencia de nome nas
@@ -428,18 +487,33 @@ dbx_cmd_sync_executar() {
   # `--receber`, listagem remota sem arquivo. Uma raiz que ficou vazia por
   # engano (ponto de montagem que nao subiu) e indistinguivel de uma esvaziada
   # de proposito.
-  local vazia='nao'
+  # RF-80(e), DIV-81: a origem e contada NO ESCOPO — origem com arquivos, todos
+  # filtrados, e vazia para a guarda.
+  local vazia='nao' origem_antes origem_depois filtrados_origem filtrados_destino
   if [[ $sentido == 'enviar' ]]; then
     [[ ${#caminhos_locais[@]} -eq 0 ]] && vazia='sim'
+    origem_antes=$locais_antes origem_depois=${#caminhos_locais[@]}
+    filtrados_origem=$filtrados_local filtrados_destino=$filtrados_remoto
   else
     [[ ${#ordem_remota[@]} -eq 0 ]] && vazia='sim'
+    origem_antes=$DBX_SYNC_REMOTOS_ANTES origem_depois=${#ordem_remota[@]}
+    filtrados_origem=$filtrados_remoto filtrados_destino=$filtrados_local
   fi
+
+  # DIV-91: filtro mal escrito avisa em stderr, sem mudar stdout nem codigo.
+  dbx_sync_avisos_de_filtro "$origem_antes" "$origem_depois"
+  dbx_cmd_avisos_de_filtro
 
   if [[ $sentido == 'enviar' ]]; then
     dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
   else
     dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
   fi
+
+  # RF-80(d): item filtrado NUNCA e apagado. O destino ja chega ao plano so com
+  # o escopo; esta e a segunda barreira, SEM ESTADO: refaz a conta pelos
+  # padroes desta linha de comando, e nada da memoria entra nela.
+  _dbx_cmd_sync_sem_protegidos
 
   # RF-41(b) com O-1 (memorias `2026-10-18-2243-guarda-origem-vazia` e
   # `2026-10-19-0829-aliases-poda-e-comentarios`): com espelhamento, origem vazia
@@ -562,6 +636,8 @@ dbx_cmd_sync_executar() {
   dbx_output_campo destino "$destino"
   dbx_output_campo espelhar "$espelhar"
   dbx_output_campo travessia_parcial "$parcial"
+  dbx_cmd_campos_de_filtro "$filtrados_origem" "$filtrados_destino"
+  dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
   [[ $exclusao_desabilitada == 'sim' ]] &&
     dbx_output_campo exclusao_desabilitada "$motivo_exclusao"
   if [[ -n $recusaria ]]; then
@@ -596,8 +672,13 @@ dbx_cmd_sync_executar() {
   # RF-41(b) emendado: a recusa da origem vazia acontece aqui, com o plano ja
   # emitido e antes de qualquer escrita.
   if [[ $recusa_origem_vazia == 'sim' && ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
+    local vazia_texto='a origem esta vazia'
+    if dbx_filtro_ativo; then
+      dbx_filtro_descrever
+      vazia_texto="origem vazia depois dos filtros ($DBX_FILTRO_DESCRICAO)"
+    fi
     dbx_cmd_falhar nao_concluida \
-      "a origem esta vazia e o espelhamento apagaria $a_apagar_recusado item(ns) no destino: execucao recusada integralmente (se a origem foi esvaziada de proposito, use --permitir-origem-vazia ou --allow-empty-source; --confirmar ou --yes nao basta)"
+      "$vazia_texto e o espelhamento apagaria $a_apagar_recusado item(ns) no destino: execucao recusada integralmente (se a origem foi esvaziada de proposito, use --permitir-origem-vazia ou --allow-empty-source; --confirmar ou --yes nao basta)"
     return $?
   fi
 
@@ -650,6 +731,8 @@ dbx_cmd_sync_executar() {
 
   if [[ $espelhar == 'sim' ]]; then
     for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+      # RF-80(d), no ponto da escrita: a mesma conta sem estado, de novo.
+      _dbx_cmd_sync_protegido "$caminho" && continue
       op_atual=$((op_atual + 1))
       dbx_progress_etapa "$op_atual" "$total_ops" 'apagando' "$caminho"
       antes=${DBX_HTTP_REQUISICOES:-0}
@@ -712,6 +795,9 @@ dbx_cmd_sync_executar() {
       dbx_output_campo falha_classe "${DBX_CMD_SYNC_FALHAS_CLASSES[indice]}"
     done
   fi
+  # RF-80(j), RF-82(i): acrescimo compativel ao resumo (RF-35).
+  dbx_cmd_campos_de_filtro "$filtrados_origem" "$filtrados_destino"
+  dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
   dbx_output_render
 
   # RF-41(a) exige codigo diferente de zero quando a travessia foi parcial, ainda
@@ -737,6 +823,28 @@ dbx_cmd_sync_executar() {
     return $?
   fi
   return 0
+}
+
+# _dbx_cmd_sync_protegido <caminho_do_destino> — 0 quando o item esta FORA do
+# escopo dos filtros desta execucao e por isso NUNCA pode ser apagado (RF-80(d)).
+#
+# Guarda sem estado (memoria `guarda-de-seguranca-sem-estado`): le so os padroes
+# da linha de comando, nunca a memoria do sync, a trava ou qualquer arquivo.
+_dbx_cmd_sync_protegido() {
+  dbx_filtro_ativo || return 1
+  dbx_filtro_classificar "$1" nao && return 1
+  return 0
+}
+
+# _dbx_cmd_sync_sem_protegidos — tira do plano de exclusao todo item protegido.
+_dbx_cmd_sync_sem_protegidos() {
+  local caminho
+  local -a manter=()
+  for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+    _dbx_cmd_sync_protegido "$caminho" && continue
+    manter+=("$caminho")
+  done
+  DBX_SYNC_APAGAR=(${manter[@]+"${manter[@]}"})
 }
 
 # _dbx_cmd_sync_enviar <arquivo_local> <caminho_remoto> <rev>

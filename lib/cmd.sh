@@ -880,3 +880,148 @@ dbx_cmd_bytes_legiveis() {
   done
   printf '%s %s' "$valor" "${nomes[unidade]}"
 }
+
+# ---------------------------------------------------------------------------
+# Filtros (RF-79, RF-81) — ponto unico para `sync`, `verificar` e `download`
+# ---------------------------------------------------------------------------
+
+# dbx_cmd_filtros_preparar <vetor_de_caminho> <vetor_de_data_e_tamanho>
+#
+# Os dois vetores trazem pares `opcao valor` na ordem da linha de comando. Os de
+# caminho ACUMULAM (RF-79(a), excecao a RF-64(e)); os de data e tamanho seguem
+# RF-64(e), o ultimo valor de cada um vence e so ele e validado. Recusa com uso
+# invalido e a mensagem em DBX_CMD_FILTRO_MOTIVO, antes da trava, da memoria, da
+# rede e de qualquer escrita (RF-79(j)).
+DBX_CMD_FILTRO_MOTIVO=''
+# shellcheck disable=SC2034  # DBX_CMD_FILTRO_MOTIVO: canal publico, lido pelos comandos
+dbx_cmd_filtros_preparar() {
+  local -n _fp_caminho=$1 _fp_meta=$2
+  local i opcao tipo
+  local -A ultimo=() valores=()
+  DBX_CMD_FILTRO_MOTIVO=''
+  dbx_filtro_limpar
+  for ((i = 0; i + 1 < ${#_fp_caminho[@]}; i += 2)); do
+    opcao=${_fp_caminho[i]}
+    tipo='incluir'
+    [[ $opcao == '--excluir' || $opcao == '--exclude' ]] && tipo='excluir'
+    dbx_filtro_adicionar "$tipo" "$opcao" "${_fp_caminho[i + 1]}" || {
+      DBX_CMD_FILTRO_MOTIVO=$DBX_FILTRO_MOTIVO
+      return "$DBX_CLI_ERRO_USO"
+    }
+  done
+  for ((i = 0; i + 1 < ${#_fp_meta[@]}; i += 2)); do
+    opcao=${_fp_meta[i]}
+    case $opcao in
+      --modificado-desde | --modified-since) tipo=desde ;;
+      --modificado-ate | --modified-until) tipo=ate ;;
+      --tamanho-min | --min-size) tipo=min ;;
+      *) tipo=max ;;
+    esac
+    ultimo[$tipo]=$opcao
+    valores[$tipo]=${_fp_meta[i + 1]}
+  done
+  local desde='' ate='' min='' max=''
+  if [[ -n ${ultimo[desde]+x} ]]; then
+    dbx_filtro_validar_data "${ultimo[desde]}" "${valores[desde]}" desde || {
+      DBX_CMD_FILTRO_MOTIVO=$DBX_FILTRO_MOTIVO
+      return "$DBX_CLI_ERRO_USO"
+    }
+    # shellcheck disable=SC2153  # canal publico de lib/filtro
+    desde=$DBX_FILTRO_DATA
+  fi
+  if [[ -n ${ultimo[ate]+x} ]]; then
+    dbx_filtro_validar_data "${ultimo[ate]}" "${valores[ate]}" ate || {
+      DBX_CMD_FILTRO_MOTIVO=$DBX_FILTRO_MOTIVO
+      return "$DBX_CLI_ERRO_USO"
+    }
+    ate=$DBX_FILTRO_DATA
+  fi
+  for tipo in min max; do
+    [[ -n ${ultimo[$tipo]+x} ]] || continue
+    dbx_filtro_validar_tamanho "${ultimo[$tipo]}" "${valores[$tipo]}" || {
+      DBX_CMD_FILTRO_MOTIVO=$DBX_FILTRO_MOTIVO
+      return "$DBX_CLI_ERRO_USO"
+    }
+    if [[ $tipo == 'min' ]]; then min=$DBX_FILTRO_BYTES; else max=$DBX_FILTRO_BYTES; fi
+  done
+  dbx_filtro_meta_definir "$desde" "$ate" "$min" "$max" || {
+    DBX_CMD_FILTRO_MOTIVO=$DBX_FILTRO_MOTIVO
+    return "$DBX_CLI_ERRO_USO"
+  }
+  return 0
+}
+
+# dbx_cmd_campos_de_filtro <filtrados_origem> <filtrados_destino> — RF-80(i)(j).
+#
+# `filtros sim|nao`, cada padrao ativo pela chave do seu tipo (`excluir`,
+# `incluir`), as faixas de data e tamanho e as contagens. Filtrado nunca e
+# listado um a um. Acrescimo compativel (RF-35).
+dbx_cmd_campos_de_filtro() {
+  local i
+  if dbx_filtro_ativo || dbx_filtro_meta_ativo; then
+    dbx_output_campo filtros sim
+  else
+    dbx_output_campo filtros nao
+  fi
+  for i in "${!DBX_FILTRO_PADROES[@]}"; do
+    dbx_output_campo "${DBX_FILTRO_TIPOS[i]}" "${DBX_FILTRO_PADROES[i]}"
+  done
+  [[ -n $DBX_FILTRO_DESDE ]] && dbx_output_campo modificado_desde "$DBX_FILTRO_DESDE"
+  [[ -n $DBX_FILTRO_ATE ]] && dbx_output_campo modificado_ate "$DBX_FILTRO_ATE"
+  [[ -n $DBX_FILTRO_MIN ]] && dbx_output_campo tamanho_min "$DBX_FILTRO_MIN"
+  [[ -n $DBX_FILTRO_MAX ]] && dbx_output_campo tamanho_max "$DBX_FILTRO_MAX"
+  dbx_output_campo filtrados_origem "${1:-0}"
+  dbx_output_campo filtrados_destino "${2:-0}"
+}
+
+# dbx_cmd_avisos_de_filtro — DBX_SYNC_AVISOS em stderr, uma linha cada (DIV-91):
+# nao muda stdout nem codigo de saida.
+dbx_cmd_avisos_de_filtro() {
+  local aviso
+  [[ ${#DBX_SYNC_AVISOS[@]} -gt 0 ]] || return 0
+  dbx_cmd_iniciar_saida
+  for aviso in "${DBX_SYNC_AVISOS[@]}"; do
+    dbx_output_diagnostico aviso "$aviso"
+  done
+  dbx_output_render_diagnostico >&2
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Limite de banda (RF-82) — ponto unico para `upload`, `download` e `sync`
+# ---------------------------------------------------------------------------
+
+# dbx_cmd_limite_banda <tem_opcao: sim|nao> <opcao_como_digitada> <valor>
+#
+# A opcao vence: presente, a variavel DBX_LIMITE_BANDA NAO e consultada (DIV-89),
+# nem para recusar. Ausente a opcao, a variavel presente e invalida (inclusive
+# vazia) recusa com o remedio; nunca e ignorada nem trocada por "sem limite"
+# (RF-82(g), RNF-30(c)). O piso deriva da velocidade minima EFETIVA (DIV-88),
+# ja validada pela entrada (`dbx_http_validar_ambiente`). Recusa com uso
+# invalido e a mensagem em DBX_CMD_LIMITE_MOTIVO, antes de qualquer rede.
+DBX_CMD_LIMITE_BANDA=''
+DBX_CMD_LIMITE_MOTIVO=''
+# shellcheck disable=SC2034  # DBX_CMD_LIMITE_*: canais publicos, lidos pelos comandos
+dbx_cmd_limite_banda() {
+  local tem_opcao=$1 opcao=$2 valor=${3-} piso
+  DBX_CMD_LIMITE_BANDA=''
+  DBX_CMD_LIMITE_MOTIVO=''
+  piso=$((2 * ${DBX_HTTP_EFETIVO[DBX_HTTP_VELOCIDADE_MINIMA_BPS]:-1024}))
+  if [[ $tem_opcao == 'sim' ]]; then
+    dbx_cli_validar_taxa "$opcao" "$valor" "$piso" opcao || {
+      DBX_CMD_LIMITE_MOTIVO=$DBX_CLI_MOTIVO
+      return "$DBX_CLI_ERRO_USO"
+    }
+  elif [[ -n ${DBX_LIMITE_BANDA+definida} ]]; then
+    dbx_cli_validar_taxa DBX_LIMITE_BANDA "$DBX_LIMITE_BANDA" "$piso" variavel || {
+      DBX_CMD_LIMITE_MOTIVO=$DBX_CLI_MOTIVO
+      return "$DBX_CLI_ERRO_USO"
+    }
+  else
+    dbx_http_limite_banda ''
+    return 0
+  fi
+  # shellcheck disable=SC2034  # canal publico, lido pelos comandos na saida
+  DBX_CMD_LIMITE_BANDA=$DBX_CLI_TAXA
+  dbx_http_limite_banda "$DBX_CLI_TAXA"
+}
