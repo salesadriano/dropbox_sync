@@ -226,6 +226,11 @@ _dbx_json_definir() {
   DBX_JSON_VALORES[no]=$valor
 }
 
+# Chaves repetidas no mesmo objeto na ULTIMA analise (de qualquer contexto):
+# canal lido logo apos `dbx_json_analisar` (QA-B3-05).
+# shellcheck disable=SC2034  # canal publico, lido por lib/cmd
+DBX_JSON_DUPLICADAS=0
+
 # _dbx_json_criar_filho <no_pai> <segmento> — deixa o id em _dbx_json_filho_id.
 # Nao imprime: o canal de chave nunca passa por `$( )`, que removeria quebras de
 # linha finais e entregaria outro campo (defeito E2-04, terceira ocorrencia
@@ -239,6 +244,9 @@ _dbx_json_criar_filho() {
   DBX_JSON_TAMANHO[_dbx_json_filho_id]=0
   DBX_JSON_NFILHOS[_dbx_json_filho_id]=0
   if [[ -n ${DBX_JSON_FILHO[$chave]:-} ]]; then
+    # QA-B3-05: contada para quem precisa recusar a ambiguidade (a guarda do
+    # expurgo); a analise segue aceitando, como E2-08 e E3-03 fixam.
+    DBX_JSON_DUPLICADAS=$((DBX_JSON_DUPLICADAS + 1))
     # Chave duplicada: vence a ultima ocorrencia, e o no anterior fica
     # inalcancavel junto com toda a sua descendencia. Sem trocar o no, as
     # filhas da primeira ocorrencia sobreviveriam como fantasmas (E2-08).
@@ -329,6 +337,11 @@ _dbx_json_cadeia() {
           elif [[ $alto -ge 56320 && $alto -le 57343 ]]; then
             { _dbx_json_falhar malformado 'surrogate baixo sem surrogate alto'; return $?; }
           fi
+          # QA-B3-04: U+0000 nao cabe em variavel de shell; `printf` o
+          # descartaria em silencio e "/x.txt\u0000" valeria "/x.txt". Todo
+          # documento com ele e recusado.
+          [[ $alto -ne 0 ]] ||
+            { _dbx_json_falhar malformado 'U+0000 nao representavel'; return $?; }
           # shellcheck disable=SC2059  # a sequencia `\U` precisa estar NO formato:
           # e o proprio `printf` do shell que converte o ponto de codigo em UTF-8,
           # e passar o valor como argumento nao produziria essa conversao.
@@ -517,6 +530,7 @@ dbx_json_analisar() {
   DBX_JSON_MOTIVO_DO_CONTEXTO[$_dbx_ctx]=''
   DBX_JSON_RESULTADO=''
   DBX_JSON_ANALISADO=0
+  DBX_JSON_DUPLICADAS=0
   DBX_JSON_ANALISADO_DO_CONTEXTO[$_dbx_ctx]=0
   # Libera os nos da analise anterior DESTE contexto. Sem isso, uma listagem
   # paginada acumularia os nos de todas as paginas ate o fim do processo.

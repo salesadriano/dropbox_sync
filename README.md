@@ -350,6 +350,46 @@ source <(dbx completar bash)
 
 ---
 
+### 11. Recuperação: `revisoes` (`revisions`), `restaurar` (`restore`) e `lixeira` (`trash`)
+Os três comandos não usam a memória de `~/.local/state/dbx/`, não travam e confinam todo caminho à raiz remota antes de qualquer chamada (código `13`).
+
+**Revisões de um arquivo**, da mais recente para a mais antiga, com os campos de `info` e, ao fim, `apagado`, `apagado_em`, `mais` e `total` (só leitura; arquivo apagado também é listado):
+
+```bash
+dbx revisoes /docs/relatorio.txt
+dbx revisions --limit 50 --by-id /docs/relatorio.txt   # --limite de 1 a 100 (padrão 10); --por-id segue movimentos
+```
+
+**Restauração de arquivo**, por `--rev` (o `rev` precisa constar do histórico do próprio arquivo; senão `4`) ou `--antes-de`/`--before` (`AAAA-MM-DD`, fim do dia UTC, ou `AAAA-MM-DDTHH:MM:SSZ`). Arquivo apagado sem seleção volta na última revisão; arquivo vivo exige uma das duas. Restaurar sobre arquivo existente é direto: a versão atual vira revisão anterior, e a saída traz `rev_substituida` e `para_desfazer` com o comando que desfaz (`dbx restaurar <caminho> --rev <rev_substituida>`). `--dry-run` só lê.
+
+```bash
+dbx restaurar --antes-de 2026-10-01 /docs/relatorio.txt
+dbx restore --rev 0123456789abcdef /docs/relatorio.txt
+```
+
+**Restauração de pasta apagada**: tudo o que está apagado sob ela volta, arquivo por arquivo, na última revisão; item vivo não é tocado. Cada item sai com `rev`, `apagado_em` e `resultado`, e o resumo traz `restaurados`, `falhas`, `sem_revisao` e `total`. Falha de item ou listagem parcial sai com `14` e diz o que faltou; rodar de novo restaura só o que ainda está apagado. Pasta apagada vazia não é recriada.
+
+```bash
+dbx --dry-run restaurar /docs/pasta-apagada
+dbx restaurar /docs/pasta-apagada
+```
+
+**Lixeira**: lista os itens apagados da pasta (padrão: a raiz remota) com `name`, `path_display` e `restauravel`; a API não informa tipo nem data de exclusão, e a saída não os inventa. `-R` desce nas subpastas vivas.
+
+```bash
+dbx lixeira -R /docs
+```
+
+**Exclusão permanente** (`--excluir`, alias `--purge`): **irreversível** e só existe em contas **Dropbox Business**. Exige o escopo opcional `files.permanent_delete`: habilite-o no **App Console** do aplicativo e reautorize com `dbx unlink` seguido de `dbx config`. Só item já apagado é aceito (apague antes com `dbx delete`; a checagem é feita na API), e nem a raiz da conta nem a raiz remota podem ser alvo. Com terminal, o operador digita o caminho para confirmar; sem terminal, `--confirmar-caminho` precisa repetir o alvo. Não há `--yes`. Conta pessoal sai com `6` (use `dbx delete`: o item fica na lixeira pelo prazo da conta); escopo ausente sai com `5`. O `dbx diagnostico` mostra o escopo opcional na linha `escopos`, sem reprovar.
+
+```bash
+dbx lixeira --excluir /docs/velho.txt --confirmar-caminho /docs/velho.txt
+```
+
+A tabela de códigos de saída não muda: os três comandos usam só os códigos já existentes.
+
+---
+
 ## Testes e Qualidade
 
 O projeto conta com uma suíte abrangente de testes automatizados com saída **TAP 13**, cobrindo cenários unitários e de integração com dublês de rede e auditorias adversariais:

@@ -898,4 +898,32 @@ teste_classificacao_e_politica_nao_criam_subshell_por_dentro() {
   assert_igual '' "$achados" "consulta interna por substituicao de comando: $achados"
 }
 
+# ---------------------------------------------------------------------------
+# DIV-58 (fase 3): tags de list_revisions, restore e permanently_delete
+# mapeadas a classes EXISTENTES; nenhum codigo novo.
+# ---------------------------------------------------------------------------
+
+teste_div58_tags_da_recuperacao_mapeadas_a_classes_existentes() {
+  local par resumo esperado
+  for par in 'path/invalid_revision/.=nao_encontrado' 'invalid_revision/.=nao_encontrado' \
+    'invalid_before_rev/.=uso_invalido' 'before_rev_not_supported/.=uso_invalido' \
+    'path_write/unsupported_content_type/.=uso_invalido' 'path_lookup/locked/.=conflito' \
+    'path_write/team_folder/.=permissao' 'path_write/operation_suppressed/.=permissao' \
+    'path_write/access_restricted/.=permissao' 'in_progress/.=erro_remoto' \
+    'path_write/too_many_files/.=nao_concluida' 'too_many_files/.=nao_concluida'; do
+    resumo=${par%=*} esperado=${par##*=}
+    assert_igual "$esperado" "$(dbx_errors_classificar 409 "$resumo")" "classe de $resumo"
+  done
+  # Fronteira de componente vale para as tags novas.
+  assert_igual desconhecido "$(dbx_errors_classificar 409 'path_lookup/lockedx/.')" 'lockedx nao e locked'
+}
+
+teste_div58_in_progress_e_repetido_mesmo_em_escrita() {
+  assert_igual recuo_exponencial "$(dbx_errors_politica_retentativa 409 'in_progress/.' nao)" \
+    'restore em andamento: repetir e seguro'
+  assert_igual recuo_exponencial "$(dbx_errors_politica_retentativa 409 'path/in_progress/.' sim)"
+  assert_igual nenhuma "$(dbx_errors_politica_retentativa 409 'path/invalid_revision/.' nao)" \
+    'invalid_revision nao e repetido'
+}
+
 harness_executar "$@"

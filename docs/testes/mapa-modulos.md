@@ -102,6 +102,17 @@ Nenhum comando tem teste unitario: todos sao exercitados por `bin/dbx` em testes
 | `commands/verificar.sh` (fase 1 do backlog, RF-65) | walk, sync; **chama** cmd (`dbx_cmd_ciclo_iniciar`, fase 2), cli (`dbx_cli_validar_espera`) e auth | `tmp_test` (TC-CNF-01) | `verificar`, `trava`, `completar`, `qa_consulta_diagnostico`, `confinamento_remoto` |
 | `commands/diagnostico.sh` (fase 1 do backlog, RF-66) | preflight, sync; camada de credencial por `dbx_carregar_camada_de_credencial` (bin/dbx); **le canais de** auth (`DBX_AUTH_ESCOPOS*`), preflight (`DBX_PREFLIGHT_AUSENTES`) e state (`DBX_STATE_TRAVAS_*`, checagem `trava`, fase 2) | | `diagnostico`, `trava` (TC-DIA-11..14, TC-TRV-35), `completar`, `qa_consulta_diagnostico` |
 | `commands/completar.sh` (fase 1 do backlog, RF-68) | cmd; **le** `completions/dbx.bash` | | `completar`, `qa_consulta_diagnostico` |
+| `commands/revisoes.sh` (fase 3 do backlog, RF-72) | **chama** cmd (`_dbx_cmd_caminho_remoto`, `_dbx_cmd_metadado_em`, `dbx_cmd_remoto_confinado`, `dbx_cmd_campo_caminho`) e auth | `recuperacao_test` (TC-RVS-01..08); ponto unico auditado por `composicao` | `completar` (TC-CPL-08) |
+| `commands/restaurar.sh` (fase 3, RF-73, RF-74) | sync (`dbx_sync_ordem_sem_caixa`, so na pasta); **chama** cmd (`_dbx_cmd_escrita_remota` silencioso, `dbx_cmd_listar_nivel`, `dbx_cmd_remoto_confinado`), tmp (`dbx_tmp_acao_registrar`, resumo parcial no sinal) e auth | `recuperacao_test` (TC-RST-01..14, TC-RPA-01..10) | `completar` (TC-CPL-08) |
+| `commands/lixeira.sh` (fase 3, RF-75, RF-76) | **chama** cmd (`dbx_cmd_listar_nivel`, `_dbx_cmd_escrita_remota` silencioso, `dbx_cmd_remoto_confinado`) e auth | `recuperacao_test` (TC-LIX-01..07, TC-EXP-01..14, TC-DOC-02; usa `script(1)` para o terminal de TC-EXP-05 e pula sem ele) | `completar` (TC-CPL-08) |
+
+## Testes da fase 3 do backlog (revisoes, restauracao e lixeira)
+
+| Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
+|---|---|---|---|
+| `tests/integracao/recuperacao_test.sh` | `recuperacao` | `bin/dbx` (revisoes, restaurar, lixeira e os aliases, `--dry-run`, `--json --null`, `--debug`) com duplo de `curl` por regra (endpoint e corpo) e registro de chamadas; `setsid` para o `TERM` de TC-RPA-10; `script(1)` para TC-EXP-05; carrega `lib/errors.sh`; le `README.md` | `bin/dbx`, `commands/revisoes.sh`, `commands/restaurar.sh`, `commands/lixeira.sh`, `lib/cmd.sh`, `lib/sync.sh`, `lib/errors.sh`, `lib/http.sh`, `lib/auth.sh`, `lib/json.sh`, `lib/path.sh`, `lib/output.sh`, `lib/tmp.sh`, `lib/cli.sh`, `README.md` |
+
+Casos novos em arquivos existentes: `errors_test` (DIV-58), `diagnostico_test` (TC-DIA-15..16), `completar_test` (TC-CPL-08) e `composicao_test` (ponto unico dos tres comandos).
 
 ## Testes da fase 2 do backlog (trava e `lib/tmp`)
 

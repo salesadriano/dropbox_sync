@@ -347,4 +347,33 @@ teste_dia10_argumento_desconhecido_e_uso_invalido() {
   assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" 'argumento recusado'
 }
 
+# ---------------------------------------------------------------------------
+# TC-DIA-15, TC-DIA-16 (RF-77, DIV-67) — escopo opcional files.permanent_delete
+# na propria linha `escopos` (DIV-70: sem checagem nova, contagens intactas).
+# ---------------------------------------------------------------------------
+
+teste_dia15_escopo_opcional_concedido_e_ok_habilitada() {
+  local base
+  base=$(_cenario)
+  printf '{"access_token":"%s","expires_in":14400,"scope":"%s files.permanent_delete"}' \
+    "$SENTINELA_TOKEN" "$ESCOPOS" >"$base/token"
+  _rodar "$base" diagnostico
+  assert_contem 'escopos=ok' "$(_linha escopos)" 'continua ok'
+  assert_contem 'exclusao permanente habilitada' "$(_linha escopos)" 'opcional concedido'
+  assert_nao_contem 'opcional ausente' "$(_linha escopos)" 'sem remedio'
+}
+
+teste_dia16_escopo_opcional_ausente_e_ok_informativo_sem_mudar_o_codigo() {
+  local base
+  base=$(_cenario)
+  _rodar "$base" diagnostico
+  assert_contem 'escopos=ok' "$(_linha escopos)" 'ausente continua ok (DIV-67)'
+  assert_contem 'opcional ausente: files.permanent_delete' "$(_linha escopos)" 'informa'
+  assert_contem 'dbx lixeira --excluir indisponivel' "$(_linha escopos)" 'o que fica indisponivel'
+  assert_contem 'dbx unlink' "$(_linha escopos)" 'remedio de RF-76(g) (DIV-56)'
+  assert_nao_contem 'escopos=aviso' "$DBX_SAIDA" 'nao vira aviso'
+  _localidade_disponivel && assert_igual 0 "$DBX_ESTADO" 'codigo inalterado sem outras falhas'
+  return 0
+}
+
 harness_executar "$@"

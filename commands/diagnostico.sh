@@ -23,6 +23,8 @@ dbx_cmd_diagnostico_requisitos() { printf 'nenhum'; }
 # Escopos exigidos pelos comandos habilitados (DIV-35, memoria
 # 2026-10-19-1050-consulta-e-diagnostico).
 readonly DBX_CMD_DIAGNOSTICO_ESCOPOS='account_info.read files.metadata.read files.content.read files.content.write'
+# RF-77: so `dbx lixeira --excluir` o usa; nunca reprova o diagnostico.
+readonly DBX_CMD_DIAGNOSTICO_OPCIONAL='files.permanent_delete'
 
 DBX_CMD_DIAG_IDS=()
 DBX_CMD_DIAG_RESULTADOS=()
@@ -227,11 +229,19 @@ dbx_cmd_diagnostico_executar() {
     for escopo in $DBX_CMD_DIAGNOSTICO_ESCOPOS; do
       [[ " $DBX_AUTH_ESCOPOS " == *" $escopo "* ]] || faltantes+="${faltantes:+ }$escopo"
     done
+    # RF-77 (DIV-67): o escopo OPCIONAL vai na mesma linha, informativo; o
+    # conjunto exigido e o resultado da linha nao mudam (DIV-70).
+    local opcional="opcional ausente: $DBX_CMD_DIAGNOSTICO_OPCIONAL (dbx lixeira --excluir indisponivel)"
+    local remedio_opcional="para a exclusao permanente, habilite $DBX_CMD_DIAGNOSTICO_OPCIONAL no App Console do aplicativo e reautorize com dbx unlink seguido de dbx config"
+    if [[ " $DBX_AUTH_ESCOPOS " == *" $DBX_CMD_DIAGNOSTICO_OPCIONAL "* ]]; then
+      opcional="opcional $DBX_CMD_DIAGNOSTICO_OPCIONAL concedido: exclusao permanente habilitada"
+      remedio_opcional=''
+    fi
     if [[ -n $faltantes ]]; then
-      _dbx_cmd_diag escopos falha "escopo(s) faltante(s): $faltantes" \
+      _dbx_cmd_diag escopos falha "escopo(s) faltante(s): $faltantes; $opcional" \
         "habilite $faltantes no console do aplicativo e rode dbx config --substituir"
     else
-      _dbx_cmd_diag escopos ok 'escopos exigidos concedidos'
+      _dbx_cmd_diag escopos ok "escopos exigidos concedidos; $opcional" "$remedio_opcional"
     fi
   fi
 

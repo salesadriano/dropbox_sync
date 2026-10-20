@@ -86,14 +86,17 @@ DBX_CLI_MOTIVO=''
 
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
 #
-# Conjunto FECHADO: os nove comandos de `DP-06` e `DP-25` e os tres da fase 1
-# do backlog (RF-65 a RF-68), mais os aliases em ingles destes ultimos.
+# Conjunto FECHADO: os nove comandos de `DP-06` e `DP-25`, os tres da fase 1
+# do backlog (RF-65 a RF-68) e os tres da fase 3 (RF-72 a RF-76), mais os
+# aliases em ingles destes ultimos.
 dbx_cli_comando_valido() {
   case ${1-} in
     upload | download | list | delete | info | space) return 0 ;;
     config | unlink | sync) return 0 ;;
     verificar | diagnostico | completar) return 0 ;;
     verify | doctor | completion) return 0 ;;
+    revisoes | restaurar | lixeira) return 0 ;;
+    revisions | restore | trash) return 0 ;;
     help | version) return 0 ;;
   esac
   return 1
@@ -108,6 +111,9 @@ dbx_cli_canonico() {
     verify) DBX_CLI_CANONICO='verificar' ;;
     doctor) DBX_CLI_CANONICO='diagnostico' ;;
     completion) DBX_CLI_CANONICO='completar' ;;
+    revisions) DBX_CLI_CANONICO='revisoes' ;;
+    restore) DBX_CLI_CANONICO='restaurar' ;;
+    trash) DBX_CLI_CANONICO='lixeira' ;;
     *) DBX_CLI_CANONICO=${1-} ;;
   esac
 }
@@ -132,6 +138,9 @@ _dbx_cli_arquivo_do_comando() {
     verificar) printf '%s' "$raiz/commands/verificar.sh" ;;
     diagnostico) printf '%s' "$raiz/commands/diagnostico.sh" ;;
     completar) printf '%s' "$raiz/commands/completar.sh" ;;
+    revisoes) printf '%s' "$raiz/commands/revisoes.sh" ;;
+    restaurar) printf '%s' "$raiz/commands/restaurar.sh" ;;
+    lixeira) printf '%s' "$raiz/commands/lixeira.sh" ;;
     *) return 1 ;;
   esac
 }

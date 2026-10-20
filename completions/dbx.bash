@@ -37,7 +37,8 @@ _dbx_completar() {
     else
       case $palavra in
         --modo | --mode | --rev | --limite | --limit | --raiz | --root | \
-          --origem | --source | --destino | --dest | --esperar | --wait) valor='sim' ;;
+          --origem | --source | --destino | --dest | --esperar | --wait | \
+          --antes-de | --before | --excluir | --purge | --confirmar-caminho) valor='sim' ;;
         -?*) ;;
         *) posicionais=$((posicionais + 1)) ;;
       esac
@@ -47,13 +48,16 @@ _dbx_completar() {
     verify) comando='verificar' ;;
     doctor) comando='diagnostico' ;;
     completion) comando='completar' ;;
+    revisions) comando='revisoes' ;;
+    restore) comando='restaurar' ;;
+    trash) comando='lixeira' ;;
   esac
 
   if [[ -z $comando || $comando == 'help' ]]; then
     if [[ -z $comando && $atual == -* ]]; then
       lista='--help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug'
     elif [[ -z $comando || $posicionais -eq 0 ]]; then
-      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion help'
+      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion revisoes revisions restaurar restore lixeira trash help'
     fi
     mapfile -t COMPREPLY < <(compgen -W "$lista" -- "$atual")
     return 0
@@ -69,6 +73,9 @@ _dbx_completar() {
     unlink) lista='--confirmar --yes --manter-aplicativo --keep-app' ;;
     sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --progresso --progress -p --sem-progresso --no-progress' ;;
     verificar) lista='--enviar --push --receber --pull --origem --source --destino --dest --esperar --wait --progresso --progress -p --sem-progresso --no-progress' ;;
+    revisoes) lista='--limite --limit --por-id --by-id' ;;
+    restaurar) lista='--rev --antes-de --before' ;;
+    lixeira) lista='--recursivo --recursive -R --limite --limit --excluir --purge --confirmar-caminho' ;;
   esac
 
   if [[ $atual == -* ]]; then
@@ -82,7 +89,8 @@ _dbx_completar() {
       return 0
       ;;
     # `--raiz` do `config` e a raiz REMOTA gravada na credencial.
-    --rev | --limite | --limit | --raiz | --root | --esperar | --wait) return 0 ;;
+    --rev | --limite | --limit | --raiz | --root | --esperar | --wait | --antes-de | --before | \
+      --excluir | --purge | --confirmar-caminho) return 0 ;;
     --origem | --source) [[ $sentido == 'enviar' ]] && local_='sim' ;;
     --destino | --dest) [[ $sentido == 'receber' ]] && local_='sim' ;;
     *)

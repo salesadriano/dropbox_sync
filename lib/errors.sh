@@ -143,6 +143,19 @@ DBX_ERRORS_TAGS=(
   'not_closed=nao_concluida'
   'transient_error=erro_remoto'
   'internal_error=erro_remoto'
+  # DIV-58 (fase 3): `list_revisions`, `restore` e `permanently_delete`. So
+  # classes existentes; `in_progress` e repetido pela politica abaixo e o
+  # comando que o recebe ao fim das tentativas o le como `nao_concluida`.
+  'invalid_revision=nao_encontrado'
+  'invalid_before_rev=uso_invalido'
+  'before_rev_not_supported=uso_invalido'
+  'unsupported_content_type=uso_invalido'
+  'locked=conflito'
+  'team_folder=permissao'
+  'operation_suppressed=permissao'
+  'access_restricted=permissao'
+  'in_progress=erro_remoto'
+  'too_many_files=nao_concluida'
   'other=desconhecido'
 )
 
@@ -425,6 +438,12 @@ _dbx_errors_politica_retentativa() {
       fi
       if _dbx_errors_prefixo_casa "$restante" incorrect_offset; then
         DBX_ERRORS_POLITICA='retomar'
+        return "$DBX_ERRORS_STATUS_OK"
+      fi
+      # DIV-58: `in_progress` diz que a operacao ainda corre do outro lado e
+      # nao foi aplicada por esta chamada; repetir e seguro mesmo em escrita.
+      if _dbx_errors_prefixo_casa "$restante" in_progress; then
+        DBX_ERRORS_POLITICA='recuo_exponencial'
         return "$DBX_ERRORS_STATUS_OK"
       fi
       _dbx_errors_remover_qualificador "$restante" || break
