@@ -135,8 +135,43 @@ _qa_estado_final() {
   printf -- '--arvore--\n'
   (cd -- "$BASE" && find local config estado -print 2>/dev/null | LC_ALL=C sort)
   printf -- '--conteudo--\n'
-  (cd -- "$BASE" && find local config estado -type f -print0 2>/dev/null |
+  (cd -- "$BASE" && find local config estado -type f ! -name 'memoria-*' -print0 2>/dev/null |
     LC_ALL=C sort -z | xargs -0 -r cksum --)
+  printf -- '--memoria--\n'
+  _qa_memoria_semantica
+}
+
+# _qa_memoria_semantica — cada `memoria-*` do `sync` pelo que ela significa, nao
+# pelos bytes. O `cp -a` da restauracao preserva o `mtime` mas troca `ctime` e
+# inode, e a identidade forte gravada (`%Y|%y|%z|%d|%i|%s`, `lib/hash`) os
+# carrega: o cksum do arquivo diferiria entre formas identicas. Aqui ficam o
+# cabecalho (versao, conta, origem, destino) e, por registro, caminho,
+# content_hash, `mtime` (segundos e nanossegundos) e tamanho; saem `ctime`,
+# dispositivo e inode. Leitura por `read -d ''` no formato de registros
+# terminados em nulo de `lib/state`, sem substituicao de comando sobre os bytes.
+_qa_memoria_semantica() {
+  local arquivo registro resumo resto identidade caminho contados linha
+  local -a campos=() linhas=()
+  while IFS= read -r -d '' arquivo; do
+    printf 'arquivo=%s\n' "${arquivo##*/}"
+    contados=0 linhas=()
+    while IFS= read -r -d '' registro; do
+      if [[ $contados -lt 4 ]]; then
+        printf 'cabecalho=%q\n' "$registro"
+        contados=$((contados + 1))
+        continue
+      fi
+      resumo=${registro%%$'\t'*}
+      resto=${registro#*$'\t'}
+      identidade=${resto%%$'\t'*}
+      caminho=${resto#*$'\t'}
+      IFS='|' read -r -a campos <<<"$identidade"
+      printf -v linha 'registro=%q hash=%s mtime=%s|%s tamanho=%s' \
+        "$caminho" "$resumo" "${campos[0]-}" "${campos[1]-}" "${campos[5]-}"
+      linhas+=("$linha")
+    done <"$arquivo"
+    [[ ${#linhas[@]} -eq 0 ]] || printf '%s\n' "${linhas[@]}" | LC_ALL=C sort
+  done < <(find "$BASE/estado" -type f -name 'memoria-*' -print0 2>/dev/null | LC_ALL=C sort -z)
 }
 
 _qa_localidade_utf8_existe() {
@@ -155,6 +190,9 @@ teste_qa_p4_alias_sync_execucao_real_em_ingles_misto_e_portugues_deixa_o_mesmo_e
   _qa_cenario
   printf 'novo' >"$BASE/local/novo.txt"
   printf 'igual' >"$BASE/local/igual.txt"
+  # Mtime antigo: a memoria so guarda arquivo com 2 s de idade, e sem isso
+  # cada rodada guardaria ou nao conforme o relogio.
+  touch -d '@1700000000' "$BASE/local/novo.txt" "$BASE/local/igual.txt"
   _qa_listagem "$(_qa_entrada /r/orfao.txt /r/orfao.txt ff 1)" \
     "$(_qa_entrada /r/igual.txt /r/igual.txt "$(_qa_hash "$BASE/local/igual.txt")" 5)"
   _qa_fotografar
@@ -173,6 +211,7 @@ teste_qa_p4_alias_sync_execucao_real_em_ingles_misto_e_portugues_deixa_o_mesmo_e
 
   _qa_cenario
   printf 'meu' >"$BASE/local/so_local.txt"
+  touch -d '@1700000000' "$BASE/local/so_local.txt"
   _qa_listagem "$(_qa_entrada /r/remoto.txt /r/remoto.txt ff 15)"
   _qa_fotografar
   _qa_rodar -- --json sync --receber --origem /r --destino "$BASE/local" --espelhar --confirmar

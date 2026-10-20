@@ -48,3 +48,11 @@ As mudanças em relação à versão `c34c2120…`:
 > Aprovo
 
 **Intenção:** o solicitante aprova a versão `2044fa23…` da suíte do QA da fase 3 (30 casos). A única mudança em relação à `e77153d5…` é a correção do padrão de contagem do R10, que nunca casava.
+
+## Prompt 5 — 2026-10-19 (teste instável; regras 12 e 48)
+
+> Corrigir nesta PR (Recomendado)
+>
+> Aprovo
+
+**Intenção:** a suíte completa da PR #44 ficou vermelha no caso `qa_p4_alias_sync_execucao_real...` de `tests/integracao/qa_docs_aliases_p4_test.sh`. O caso já era instável no `develop`, onde falha cerca de 2 a cada 5 rodadas. A causa é a memória do sync, que grava ctime e inode: o `cp -a` entre as rodadas troca os dois, e o registro depende da regra dos 2 s. O solicitante decidiu corrigir nesta PR e aprovou a mudança do QA (sha256 `8df6bf4e…`): as fixtures ganham mtime antigo e a memória passa a ser comparada pelo conteúdo semântico (cabeçalho e, por registro, caminho, content_hash, mtime e tamanho). O solicitante também confirmou a alteração como feita pelos agents (regra 48).
