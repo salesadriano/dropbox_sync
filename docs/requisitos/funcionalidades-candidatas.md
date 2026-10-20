@@ -4,8 +4,8 @@
 |---|---|
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
-| Data | 2026-10-18 |
-| Versao | **v0.9** — fase 4 (2026-10-19): `F-13` e `F-17` "em andamento, fase 4", formalizados em `RF-79` a `RF-83` (porte M; filtros de caminho com sintaxe gitignore, data e tamanho so na origem, limite de banda por `limit-rate`); divergencias `DIV-79` a `DIV-94` decididas pelo Tech Lead conforme as recomendacoes (memoria `2026-10-19-2141-filtros-e-banda`). **v0.8** — fase 3 (2026-10-19): `F-07` e `F-20` "em andamento, fase 3", formalizados em `RF-72` a `RF-78` (porte G; escopo novo `files.permanent_delete`); `F-39` (filtro por data na restauracao de pasta) criado no backlog (`DIV-62`). **v0.7** — fase 2 (2026-10-19): `F-12` e o restante de `F-31` "em andamento, fase 2", formalizados em `RF-69` a `RF-71`, `RNF-35` e `RNF-36`; o `C-1` da fase 1 entra como `RNF-36`. **v0.6** — fase 1b (2026-10-19): `F-36` e `F-37` "em andamento, fase 1b"; `F-38` (raiz local configuravel) criado no backlog. **v0.5** — fase 1 (2026-10-19): `F-11`, `F-19`, `F-21` e `F-22` formalizados em `RF-65` a `RF-68` e marcados "em andamento, fase 1". **v0.4** — pendencias da fase 0 (2026-10-19): `F-23` a `F-33` conferidos contra os registros de `docs/reviews/` e marcados como entregues (PRs #35 a #38), com `F-31` parcial; `F-06` entregue; `F-35` fora; `F-03`, `F-07` a `F-22`, `F-34` planejados por fase (memoria `2026-10-19-1023-plano-do-backlog`). *Registro anterior:* **v0.3** — fase 3 (`DP-34`): `F-25`, `F-26` e `F-29` em andamento com rastreio para `RF-60` a `RF-63` e `RNF-33`; `F-34` (paralelismo e APIs em lote, com medicao previa) e `F-35` (PKCE) criados. *Registro anterior:* **v0.2 — DECIDIDO** |
+| Data | 2026-10-18 *(atualizado em 2026-10-20)* |
+| Versao | **v0.10** — fase 5 (2026-10-20): `F-15` e `F-16` "em andamento, fase 5", formalizados em `RF-84` a `RF-92` (porte G; `dbx link-temporario`/`temp-link` e `dbx compartilhar`/`share` com `--listar` e `--revogar`; visibilidade explicita; senha so por terminal ou `--senha-stdin`); divergencias `DIV-104` a `DIV-120` decididas conforme as recomendacoes (`DIV-106` pelo solicitante: `sharing.read` habilitado) (memoria `2026-10-20-1110-compartilhamento`). **v0.9** — fase 4 (2026-10-19): `F-13` e `F-17` "em andamento, fase 4", formalizados em `RF-79` a `RF-83` (porte M; filtros de caminho com sintaxe gitignore, data e tamanho so na origem, limite de banda por `limit-rate`); divergencias `DIV-79` a `DIV-94` decididas pelo Tech Lead conforme as recomendacoes (memoria `2026-10-19-2141-filtros-e-banda`). **v0.8** — fase 3 (2026-10-19): `F-07` e `F-20` "em andamento, fase 3", formalizados em `RF-72` a `RF-78` (porte G; escopo novo `files.permanent_delete`); `F-39` (filtro por data na restauracao de pasta) criado no backlog (`DIV-62`). **v0.7** — fase 2 (2026-10-19): `F-12` e o restante de `F-31` "em andamento, fase 2", formalizados em `RF-69` a `RF-71`, `RNF-35` e `RNF-36`; o `C-1` da fase 1 entra como `RNF-36`. **v0.6** — fase 1b (2026-10-19): `F-36` e `F-37` "em andamento, fase 1b"; `F-38` (raiz local configuravel) criado no backlog. **v0.5** — fase 1 (2026-10-19): `F-11`, `F-19`, `F-21` e `F-22` formalizados em `RF-65` a `RF-68` e marcados "em andamento, fase 1". **v0.4** — pendencias da fase 0 (2026-10-19): `F-23` a `F-33` conferidos contra os registros de `docs/reviews/` e marcados como entregues (PRs #35 a #38), com `F-31` parcial; `F-06` entregue; `F-35` fora; `F-03`, `F-07` a `F-22`, `F-34` planejados por fase (memoria `2026-10-19-1023-plano-do-backlog`). *Registro anterior:* **v0.3** — fase 3 (`DP-34`): `F-25`, `F-26` e `F-29` em andamento com rastreio para `RF-60` a `RF-63` e `RNF-33`; `F-34` (paralelismo e APIs em lote, com medicao previa) e `F-35` (PKCE) criados. *Registro anterior:* **v0.2 — DECIDIDO** |
 | Status | ✅ **DP-02 resolvida.** Escopo do MVP aprovado pelo solicitante. Este documento passa de proposta a **registro da decisao e do backlog** |
 | Origem | Resposta a DP-02 |
 | Documentos relacionados | [Escopo e requisitos](escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](decisoes-pendentes.md) · [System Design](../arquitetura/system-design.md) |
@@ -228,8 +228,8 @@ tar czf - /dados | gpg -c | dbx upload - /backups/dados.tgz.gpg
 
 | ID | Funcionalidade | Valor | Esforco | Observacao |
 |---|---|---|---|---|
-| F-15 | Link temporario de download direto | Medio | P | Gera URL de acesso direto para consumo por outra ferramenta ou outra maquina, sem passar pela CLI |
-| F-16 | Link compartilhado com expiracao, senha ou restricao de audiencia | Medio | P | Recursos dependem do plano Dropbox contratado (DP-18) |
+| F-15 | Link temporario de download direto | Medio | P | Gera URL de acesso direto para consumo por outra ferramenta ou outra maquina, sem passar pela CLI. *(v0.10: em andamento, fase 5, `RF-84`)* |
+| F-16 | Link compartilhado com expiracao, senha ou restricao de audiencia | Medio | P | Recursos dependem do plano Dropbox contratado (DP-18). *(v0.10: em andamento, fase 5; restricao de plano tratada como `permissao` `6` em `RF-90(b)`; `DP-18` resolvida pela decisao de 2026-10-20, `DIV-116`)* |
 | F-17 | Limitacao de banda | Medio | P | Evita saturar o enlace em horario comercial |
 | F-18 | Perfis nomeados de credencial | Medio | P | Ja especificado como RF-05. Ergonomia superior ao caminho de arquivo do modelo |
 | F-19 | Autocompletar de shell | Baixo | P | Melhora o uso interativo, agora confirmado em DP-03 |
@@ -328,8 +328,8 @@ Justificativa registrada: as quatro nao exigem estado local persistente, o que m
 | F-12 | Trava de execucao concorrente | 🔧 Em andamento, fase 2 | `RF-69`, `RF-70`, `RF-71` |
 | F-13 | Filtros avancados | 🔧 Em andamento, fase 4 | `RF-79`, `RF-80`, `RF-81`, `RF-83` |
 | F-14 | Deteccao de mudancas por cursor | 📅 Planejado, fase 7 | — |
-| F-15 | Link temporario de download | 📅 Planejado, fase 5 | — |
-| F-16 | Link compartilhado com expiracao ou senha | 📅 Planejado, fase 5 | — |
+| F-15 | Link temporario de download | 🔧 Em andamento, fase 5 | `RF-84`, `RF-90`, `RF-92` |
+| F-16 | Link compartilhado com expiracao ou senha | 🔧 Em andamento, fase 5 | `RF-85`, `RF-86`, `RF-87`, `RF-88`, `RF-89`, `RF-90`, `RF-91`, `RF-92` |
 | F-17 | Limitacao de banda | 🔧 Em andamento, fase 4 | `RF-82`, `RF-83` |
 | F-18 | Perfis nomeados de credencial | 📅 Planejado, fase 8 | — |
 | F-19 | Autocompletar de shell | 🔧 Em andamento, fase 1 | `RF-68` |

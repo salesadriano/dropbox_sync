@@ -41,7 +41,6 @@ dbx_cmd_config_requisitos() { printf 'ambiente'; }
 # `texto` preencheria o local desta funcao em vez do do chamador.
 _dbx_cmd_config_perguntar() {
   local _texto=$1 _nome=$2 _oculto=${3:-nao}
-  printf '%s' "$_texto" >&2
   # O STATUS DE `read` NAO E O CRITERIO, e confundir os dois foi defeito real.
   #
   # `read` devolve NAO ZERO ao encontrar o fim da entrada, mesmo tendo atribuido
@@ -55,12 +54,11 @@ _dbx_cmd_config_perguntar() {
   # sem passar por substituicao de comando — que rodaria em subshell e removeria
   # a quebra final. Escrever `read -r _nome` preencheria o local desta funcao.
   if [[ $_oculto == 'sim' ]]; then
-    # `-s` so tem efeito quando a entrada e terminal; num canal nao ha eco a
-    # suprimir e a leitura e a mesma. A quebra de linha e reposta a mao porque
-    # sob `-s` o terminal nao a exibe e a pergunta seguinte sairia colada.
-    IFS= read -r -s "$_nome"
-    printf '\n' >&2
+    # Leitura sem eco no ponto unico de lib/cli (DIV-117), o mesmo da senha do
+    # `compartilhar`. `-s` so tem efeito quando a entrada e terminal.
+    dbx_cli_ler_oculto "$_texto" "$_nome"
   else
+    printf '%s' "$_texto" >&2
     IFS= read -r "$_nome"
   fi
   [[ -n ${!_nome} ]] || return 1

@@ -544,7 +544,10 @@ _dbx_http_conduzir() {
   local tentativa=1 estado codigo politica
   local destino=$_DBX_HTTP_DESTINO saida_padrao='' saida_e_cano='nao'
 
-  [[ -n $corpo ]] && printf '%s' "$corpo" >"$area/requisicao"
+  # QA-B5-05: o arquivo de corpo nasce 0600 (pode levar a senha do link,
+  # RF-86(e)), alem da area 0700. A mascara muda so no subshell: a do
+  # processo, que vale para o arquivo baixado, fica intacta (RNF-29(a)).
+  [[ -n $corpo ]] && (umask 077 && printf '%s' "$corpo" >"$area/requisicao")
 
   # RF-32(b): o cliente roda DENTRO da substituicao que captura o codigo HTTP,
   # onde `/dev/stdout` (ou `-`) seria o cano da captura e o conteudo se

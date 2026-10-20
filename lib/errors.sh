@@ -112,6 +112,10 @@ DBX_ERRORS_QUALIFICADORES=(
   from_write
   to
   lookup_failed
+  # RF-90(a) (fase 5): `SharedLinkSettingsError` vem como
+  # `settings_error/<tag>` em `create_shared_link_with_settings` e
+  # `modify_shared_link_settings`.
+  settings_error
 )
 
 DBX_ERRORS_TAGS=(
@@ -156,6 +160,23 @@ DBX_ERRORS_TAGS=(
   'access_restricted=permissao'
   'in_progress=erro_remoto'
   'too_many_files=nao_concluida'
+  # RF-90(a) (fase 5): rotas `files/get_temporary_link` e `sharing/*`, so
+  # classes existentes. `shared_link_already_exists` e tratado pelo comando
+  # (RF-87); se escapar, e conflito. `unsupported_parameter_field` e membro de
+  # `SharedLinkError` na especificacao (`sharing.stone`, DIV-121).
+  'not_authorized=permissao'
+  'invalid_settings=uso_invalido'
+  'shared_link_already_exists=conflito'
+  'shared_link_not_found=nao_encontrado'
+  'shared_link_access_denied=permissao'
+  'shared_link_malformed=uso_invalido'
+  'unsupported_link_type=uso_invalido'
+  'unsupported_parameter_field=uso_invalido'
+  'unsupported_file=uso_invalido'
+  'not_allowed=permissao'
+  'email_not_verified=permissao'
+  'banned_member=permissao'
+  'too_many_shared_folders=permissao'
   'other=desconhecido'
 )
 
@@ -192,6 +213,7 @@ DBX_ERRORS_CHAVES_SENSIVEIS=(
   access_token refresh_token client_secret app_secret oauth_token id_token
   api_key apikey app_key auth authorization proxy_authorization cookie set_cookie
   password passwd secret token tokens code
+  link_password
 )
 
 # Chaves cujo valor se estende ate o fim da linha, e nao ate um delimitador.
@@ -378,6 +400,31 @@ _dbx_errors_classificar() {
     *) DBX_ERRORS_CLASSE='desconhecido' ;;
   esac
   return "$DBX_ERRORS_STATUS_OK"
+}
+
+# dbx_errors_tag_reconhecida <error_summary> — a TAG da tabela que classifica o
+# resumo (depois de tirar os qualificadores conhecidos), em DBX_ERRORS_TAG;
+# vazia quando nenhuma casa. O valor sai SEMPRE do vocabulario fechado da
+# tabela, nunca do texto do servico: e o que pode ser citado quando o resumo
+# cru nao pode (QA-B5-08, rotas que levam a senha do link).
+DBX_ERRORS_TAG=''
+dbx_errors_tag_reconhecida() {
+  local restante=${1-} voltas=0 entrada tag
+  DBX_ERRORS_TAG=''
+  while [[ -n $restante && $voltas -le 4 ]]; do
+    for entrada in "${DBX_ERRORS_TAGS[@]}"; do
+      tag=${entrada%%=*}
+      if _dbx_errors_prefixo_casa "$restante" "$tag"; then
+        # shellcheck disable=SC2034  # canal publico, lido por commands/compartilhar
+        DBX_ERRORS_TAG=$tag
+        return 0
+      fi
+    done
+    _dbx_errors_remover_qualificador "$restante" || break
+    restante=$DBX_ERRORS_RESTANTE
+    voltas=$((voltas + 1))
+  done
+  return 1
 }
 
 # dbx_errors_politica_retentativa <codigo_http> <error_summary> [idempotente]

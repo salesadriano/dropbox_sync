@@ -276,3 +276,9 @@ dbx_tmp_critico_inicio() {
   _dbx_tmp_critico_inicio
 }
 dbx_tmp_critico_fim() { _dbx_tmp_critico_fim; }
+
+# dbx_tmp_armar — arma os tratadores deste processo sem registrar nada. Para
+# quem precisa que INT, TERM e HUP terminem com `nao_concluida` (14) antes de
+# criar a primeira area: a leitura da senha do `compartilhar` (RF-86(b)), que
+# vem antes de qualquer rede.
+dbx_tmp_armar() { _dbx_tmp_armar; }

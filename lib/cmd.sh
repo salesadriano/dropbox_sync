@@ -305,8 +305,15 @@ _dbx_cmd_metadado_em() {
 #   `in_progress` que sobra das tentativas (DIV-58) e `nao_concluida` nos
 #   pontos que passam por AQUI (`delete`, `restore`, `permanently_delete`); o
 #   envio de conteudo (`upload`, por lib/transfer) nao passa e mantem `10`.
+#
+#   Fase 5: o quarto argumento opcional `sim` declara a escrita idempotente
+#   para a retentativa de RNF-07 (padrao `nao`). Vale para as rotas de link
+#   compartilhado (DIV-119): repetir a criacao recebe `shared_link_already_exists`
+#   e cai no reuso (RF-87); repetir a modificacao aplica o mesmo estado; repetir
+#   a revogacao recebe `shared_link_not_found` e sai `4` com a explicacao.
 _dbx_cmd_escrita_remota() {
-  local url=$1 corpo=$2 modo=${3:-} estado
+  local url=$1 corpo=$2 modo=${3:-} idempotente=${4:-nao} estado
+  [[ $idempotente == 'sim' ]] || idempotente='nao'
   DBX_CMD_FALHA_CLASSE=''
   DBX_CMD_FALHA_MOTIVO=''
 
@@ -318,9 +325,11 @@ _dbx_cmd_escrita_remota() {
   # shellcheck disable=SC2034  # canal publico, consumido pelos comandos
   DBX_CMD_SIMULADO='nao'
 
-  # Escrita nao e idempotente: repetir as cegas pode aplicar duas vezes.
-  dbx_auth_requisitar POST "$url" "$corpo" nao
+  # Escrita nao e idempotente por padrao: repetir as cegas pode aplicar duas
+  # vezes. So quem declara `sim` (fase 5) ganha a retentativa.
+  dbx_auth_requisitar POST "$url" "$corpo" "$idempotente"
   estado=$?
+  corpo=''
   [[ $estado -eq 0 ]] && {
     _dbx_cmd_analisar_corpo
     return $?
