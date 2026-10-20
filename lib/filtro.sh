@@ -99,6 +99,9 @@ declare -ga _dbx_filtro_casou=()
 _dbx_filtro_tem_incluir='nao'
 _dbx_filtro_falha=''
 _dbx_filtro_rx=''
+# `sim` quando o ultimo padrao compilado tem ao menos um caractere literal
+# (padrao amplo de RF-96(f), DIV-132: so curingas).
+_dbx_filtro_literal_visto='nao'
 _dbx_filtro_rxb=''
 _dbx_filtro_conj=''
 _dbx_filtro_conj_b=''
@@ -295,6 +298,7 @@ _dbx_filtro_compilar() {
   local -a tok=()
   _dbx_filtro_falha=''
   _dbx_filtro_rx=''
+  _dbx_filtro_literal_visto='nao'
   # 1. Fichas: `L<c>` literal, `S` estrela, `Q` interrogacao, `B<regex>`
   #    conjunto ja traduzido, `/` separador.
   while ((i < n)); do
@@ -303,6 +307,7 @@ _dbx_filtro_compilar() {
       \\)
         ((i + 1 < n)) || { _dbx_filtro_falha='barra invertida no fim do padrao'; return 1; }
         tok+=("L${p:i+1:1}")
+        _dbx_filtro_literal_visto='sim'
         i=$((i + 2))
         ;;
       '*') tok+=(S) i=$((i + 1)) ;;
@@ -315,7 +320,7 @@ _dbx_filtro_compilar() {
         tok+=("B${_dbx_filtro_conj}"$'\x1e'"${_dbx_filtro_conj_b}")
         i=$_dbx_filtro_sp
         ;;
-      *) tok+=("L$c") i=$((i + 1)) ;;
+      *) tok+=("L$c") i=$((i + 1)) _dbx_filtro_literal_visto='sim' ;;
     esac
   done
   # 2. `/` final: so pasta. `/` inicial: so ancora. `/` no meio: ancora.
@@ -407,40 +412,59 @@ _dbx_filtro_compilar() {
   return 0
 }
 
+# _dbx_filtro_validar_padrao <padrao> <remedio_do_!> — RF-79(i)(j)(k): a UNICA
+# validacao do padrao, para os filtros de caminho e para o nome avulso da
+# retencao (RNF-36). Compila em _dbx_filtro_rx/_dbx_filtro_rxb; status 1 com o
+# motivo (sem a opcao) em _dbx_filtro_falha.
+_dbx_filtro_validar_padrao() {
+  local padrao=${1-} remedio=${2:---incluir} bytes
+  _dbx_filtro_bytes "$padrao"
+  bytes=$_dbx_filtro_sp
+  if [[ -z $padrao ]]; then
+    _dbx_filtro_falha='padrao vazio'
+  elif [[ $bytes -gt $DBX_FILTRO_MAXIMO_BYTES ]]; then
+    _dbx_filtro_falha="padrao com $bytes bytes; o maximo e $DBX_FILTRO_MAXIMO_BYTES"
+  elif [[ $padrao == *[$'\001'-$'\037\177']* ]]; then
+    _dbx_filtro_falha='byte de controle no padrao'
+  elif [[ $padrao == '!'* ]]; then
+    _dbx_filtro_falha="a negacao com ! nao existe aqui; use $remedio (ou \\! para o caractere literal)"
+  else
+    dbx_filtro_chave "$padrao"
+    _dbx_filtro_compilar "$DBX_FILTRO_CHAVE" && return 0
+    _dbx_filtro_falha="padrao malformado: $_dbx_filtro_falha"
+  fi
+  return 1
+}
+
+# _dbx_filtro_recusar <opcao> <padrao> <motivo> — DBX_FILTRO_MOTIVO com a opcao
+# e o padrao citado sem byte cru (RNF-22).
+_dbx_filtro_recusar() {
+  dbx_filtro_citar "$2"
+  if [[ -z $2 ]]; then
+    DBX_FILTRO_MOTIVO="$1: $3"
+  else
+    DBX_FILTRO_MOTIVO="$1 $DBX_FILTRO_CITADO: $3"
+  fi
+}
+
 # dbx_filtro_adicionar <excluir|incluir> <opcao_como_digitada> <padrao>
 #
 # Valida (RF-79(i)(j)(k)) e acrescenta. Recusa com uso invalido e a mensagem em
 # DBX_FILTRO_MOTIVO, que nomeia a opcao e cita o padrao sem byte cru.
 dbx_filtro_adicionar() {
-  local tipo=${1-} opcao=${2-} padrao=${3-} motivo='' bytes
+  local tipo=${1-} opcao=${2-} padrao=${3-} motivo=''
   DBX_FILTRO_MOTIVO=''
   case $tipo in
     excluir | incluir) ;;
     *) return "$DBX_FILTRO_ERRO_USO" ;;
   esac
-  dbx_filtro_citar "$padrao"
-  _dbx_filtro_bytes "$padrao"
-  bytes=$_dbx_filtro_sp
   if [[ ${#DBX_FILTRO_PADROES[@]} -ge $DBX_FILTRO_MAXIMO_PADROES ]]; then
     motivo="mais de $DBX_FILTRO_MAXIMO_PADROES padroes por execucao (--excluir e --incluir somados)"
-  elif [[ -z $padrao ]]; then
-    motivo='padrao vazio'
-  elif [[ $bytes -gt $DBX_FILTRO_MAXIMO_BYTES ]]; then
-    motivo="padrao com $bytes bytes; o maximo e $DBX_FILTRO_MAXIMO_BYTES"
-  elif [[ $padrao == *[$'\001'-$'\037\177']* ]]; then
-    motivo='byte de controle no padrao'
-  elif [[ $padrao == '!'* ]]; then
-    motivo='a negacao com ! nao existe aqui; use --incluir (ou \! para o caractere literal)'
-  else
-    dbx_filtro_chave "$padrao"
-    _dbx_filtro_compilar "$DBX_FILTRO_CHAVE" || motivo="padrao malformado: $_dbx_filtro_falha"
+  elif ! _dbx_filtro_validar_padrao "$padrao" '--incluir'; then
+    motivo=$_dbx_filtro_falha
   fi
   if [[ -n $motivo ]]; then
-    if [[ -z $padrao ]]; then
-      DBX_FILTRO_MOTIVO="$opcao: $motivo"
-    else
-      DBX_FILTRO_MOTIVO="$opcao $DBX_FILTRO_CITADO: $motivo"
-    fi
+    _dbx_filtro_recusar "$opcao" "$padrao" "$motivo"
     return "$DBX_FILTRO_ERRO_USO"
   fi
   DBX_FILTRO_TIPOS+=("$tipo")
@@ -600,6 +624,74 @@ dbx_filtro_descrever() {
     DBX_FILTRO_DESCRICAO+="${DBX_FILTRO_DESCRICAO:+ }${DBX_FILTRO_OPCOES[i]} $DBX_FILTRO_CITADO"
   done
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# Nome avulso (fase 6, RF-93(g)(h)(j), DIV-131, DIV-132)
+# ---------------------------------------------------------------------------
+#
+# O `--padrao` do `reter` casa o NOME de um arquivo, nunca o caminho. A
+# validacao e o casamento sao os mesmos dos filtros de caminho (RNF-36, sem
+# codigo gemeo): `_dbx_filtro_validar_padrao` e `_dbx_filtro_compilar`. Proprio
+# daqui: `/` em qualquer posicao e recusado, e o padrao fica fora dos vetores
+# dos filtros de caminho (as duas coisas convivem na mesma execucao).
+#
+# FALHA FECHADA. Casar e tornar o arquivo candidato a exclusao, como o
+# `--incluir` sob `--espelhar` (DIV-103): nome que nao e UTF-8 valido (so
+# possivel com resposta incoerente) compara em bytes, e ai padrao impreciso NAO
+# casa; regex que a biblioteca recusa tambem nao casa.
+
+DBX_FILTRO_AMPLO='nao'
+_dbx_filtro_nome_rx=''
+_dbx_filtro_nome_rxb=''
+_dbx_filtro_nome_impreciso='nao'
+_dbx_filtro_nome_pronto='nao'
+
+# dbx_filtro_nome_preparar <opcao_como_digitada> <padrao> — valida e guarda o
+# padrao de nome. Recusa com uso invalido e DBX_FILTRO_MOTIVO (opcao e padrao
+# citado). DBX_FILTRO_AMPLO = `sim` quando o padrao nao tem caractere literal.
+dbx_filtro_nome_preparar() {
+  local opcao=${1-} padrao=${2-} motivo=''
+  DBX_FILTRO_MOTIVO=''
+  DBX_FILTRO_AMPLO='nao'
+  _dbx_filtro_nome_pronto='nao'
+  if [[ $padrao == */* ]]; then
+    motivo='/ no padrao: o padrao casa so o nome; a retencao olha um nivel'
+  elif ! _dbx_filtro_validar_padrao "$padrao" 'um padrao que case so os artefatos'; then
+    motivo=$_dbx_filtro_falha
+  fi
+  if [[ -n $motivo ]]; then
+    _dbx_filtro_recusar "$opcao" "$padrao" "$motivo"
+    return "$DBX_FILTRO_ERRO_USO"
+  fi
+  _dbx_filtro_nome_rx=$_dbx_filtro_rx
+  _dbx_filtro_nome_rxb=$_dbx_filtro_rxb
+  _dbx_filtro_nome_impreciso='nao'
+  [[ $_dbx_filtro_rxb == *"$_dbx_filtro_seq"* ]] && _dbx_filtro_nome_impreciso='sim'
+  [[ $_dbx_filtro_literal_visto == 'sim' ]] || DBX_FILTRO_AMPLO='sim'
+  _dbx_filtro_nome_pronto='sim'
+  return 0
+}
+
+# dbx_filtro_nome_casa <nome> — 0 quando o nome inteiro casa o padrao
+# preparado, sem caixa (RF-54). Nome vazio, com `/` ou sem padrao preparado:
+# nao casa.
+dbx_filtro_nome_casa() {
+  local nome=${1-} dobrado rx
+  [[ $_dbx_filtro_nome_pronto == 'sim' && -n $nome && $nome != */* ]] || return 1
+  { local LC_ALL=$DBX_FILTRO_LOCALIDADE; } 2>/dev/null
+  if [[ $nome =~ ^.*$ ]]; then
+    dobrado=${nome,,}
+    rx=$_dbx_filtro_nome_rx
+    [[ $dobrado =~ $rx ]]
+    return
+  fi
+  [[ $_dbx_filtro_nome_impreciso == 'nao' ]] || return 1
+  _dbx_filtro_dobrar_bytes "$nome" 2>/dev/null
+  dobrado=$_dbx_filtro_rx
+  { LC_ALL=C; } 2>/dev/null
+  rx=$_dbx_filtro_nome_rxb
+  [[ $dobrado =~ $rx ]]
 }
 
 # ---------------------------------------------------------------------------

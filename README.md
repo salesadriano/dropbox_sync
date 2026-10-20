@@ -474,6 +474,29 @@ dbx compartilhar --revogar 'https://www.dropbox.com/scl/fi/...'
 
 **Escopos e plano.** Criar, modificar e revogar exigem o escopo opcional `sharing.write`; listar, reusar link existente e revogar exigem `sharing.read`. Sem eles o comando sai com `5` nomeando o escopo: habilite-o no **App Console** do aplicativo e reautorize com `dbx unlink` seguido de `dbx config`. O `dbx diagnostico` mostra os dois na linha `escopos`, sem reprovar. **Senha, equipe e expiração dependem do plano da conta:** no plano Basic só há link público, sem senha e sem expiração, e o pedido sai com `6`.
 
+
+## Retencao de backup
+
+**`dbx reter <pasta> --padrao GLOB (--manter N | --dias D) [--confirmar]`** (alias `retain`; `--pattern`, `--keep`, `--days`, `--yes`/`-y`): rotação de artefatos de backup de uma pasta remota. Mantém os mais novos e manda o excedente **para a lixeira**, por `delete_v2` — nunca exclusão permanente.
+
+- **Plano antes de tudo:** sem --confirmar nada e apagado: o comando so mostra o plano (`acao=fica` ou `acao=sai` por artefato, mais o resumo) e sai com `0`. Com `--dry-run` (opção global, antes do comando), também nada é apagado, mesmo com `--confirmar`. Nenhuma pergunta é feita: o `--confirmar` é a confirmação, próprio para `cron`.
+- **Políticas, excludentes:** `--manter N` (1 a 999999) mantém os `N` mais novos; `--dias D` (1 a 36500) mantém os de até `D` dias. O `dbx reter` sempre mantem pelo menos 1 artefato: com `--dias` e tudo velho, o mais novo fica (`mantido_pelo_minimo=sim`, com aviso).
+- **O que entra:** so o nivel de cima da pasta e so arquivos; o padrao casa o nome, sem diferenciar maiusculas (glob dos filtros: `*`, `?`, `[...]`, `\`; `/` é recusado). Pastas, subpastas e arquivos fora do padrão **nunca** são apagados, só contados (`ignorados`, `fora_do_padrao`). Padrão só de curingas (`*`) é aceito com aviso.
+- **Ordem:** o mais novo e o de data do servidor mais recente; em empate, o de maior nome (`server_modified`; `client_modified` e tamanho não contam). Restaurar ou regravar um artefato antigo o torna o mais novo.
+- **Recuperação:** os apagados vao para a lixeira e podem ser recuperados com dbx restaurar dentro do prazo do plano da conta; `dbx lixeira <pasta>` mostra o que está lá.
+- **Relógio:** --dias compara a data do servidor com o relogio desta maquina, conferido contra o cabeçalho `Date` da listagem: divergência acima de 300 s sai com `3`, sem apagar nada.
+- **Guarda sem estado:** o plano vem só da listagem completa desta execução (até 1000 páginas). Listagem incoerente, `server_modified` inválido ou paginação que não avança saem com `10` sem apagar nada. Cada exclusão leva o `rev` listado (`parent_rev`): um backup novo de mesmo nome que chegue no meio não é apagado (falha `conflito`). Item já ausente conta em `ja_ausentes` e não é falha. Falha de item segue com os demais e sai `14`; autenticação, limite de taxa ou rede esgotados param, com `nao_tentados`. Sinal (`INT`, `TERM`, `HUP`) para antes da próxima exclusão, com `14` e resumo em `stderr`. Sem trava e sem nada em `lib/state`.
+
+```bash
+# Plano (nada é apagado)
+dbx reter /backups --padrao 'db-*.tar.gz' --manter 7
+
+# Em cron, depois do envio
+dbx upload ... && dbx reter /backups --padrao 'db-*.tar.gz' --manter 7 --confirmar
+```
+
+A tabela de códigos de saída não muda: `0`, `2`, `3`, `4` (pasta inexistente), `5`, `8`, `9`, `10`, `13` e `14`. O escopo usado (`files.content.write`) já é exigido; o `dbx diagnostico` não muda.
+
 ---
 
 ## Testes e Qualidade

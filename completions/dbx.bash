@@ -42,7 +42,7 @@ _dbx_completar() {
           --exclude | --incluir | --include | --modificado-desde | --modified-since | \
           --modificado-ate | --modified-until | --tamanho-min | --min-size | --tamanho-max | \
           --max-size | --limite-banda | --bwlimit | --expira | --expires | --revogar | \
-          --revoke) valor='sim' ;;
+          --revoke | --padrao | --pattern | --manter | --keep | --dias | --days) valor='sim' ;;
         -?*) ;;
         *) posicionais=$((posicionais + 1)) ;;
       esac
@@ -57,13 +57,14 @@ _dbx_completar() {
     trash) comando='lixeira' ;;
     link-temporario | temp-link) comando='link_temporario' ;;
     share) comando='compartilhar' ;;
+    retain) comando='reter' ;;
   esac
 
   if [[ -z $comando || $comando == 'help' ]]; then
     if [[ -z $comando && $atual == -* ]]; then
       lista='--help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug'
     elif [[ -z $comando || $posicionais -eq 0 ]]; then
-      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion revisoes revisions restaurar restore lixeira trash link-temporario temp-link compartilhar share help'
+      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion revisoes revisions restaurar restore lixeira trash link-temporario temp-link compartilhar share reter retain help'
     fi
     mapfile -t COMPREPLY < <(compgen -W "$lista" -- "$atual")
     return 0
@@ -84,6 +85,7 @@ _dbx_completar() {
     lixeira) lista='--recursivo --recursive -R --limite --limit --excluir --purge --confirmar-caminho' ;;
     link_temporario) lista='' ;;
     compartilhar) lista='--publico --public --equipe --team --senha --password --senha-stdin --password-stdin --expira --expires --listar --list --revogar --revoke' ;;
+    reter) lista='--padrao --pattern --manter --keep --dias --days --confirmar --yes -y' ;;
   esac
 
   if [[ $atual == -* ]]; then
@@ -101,7 +103,8 @@ _dbx_completar() {
       --excluir | --purge | --confirmar-caminho | --exclude | --incluir | --include | \
       --modificado-desde | --modified-since | --modificado-ate | --modified-until | \
       --tamanho-min | --min-size | --tamanho-max | --max-size | --limite-banda | --bwlimit | \
-      --expira | --expires | --revogar | --revoke) return 0 ;;
+      --expira | --expires | --revogar | --revoke | --padrao | --pattern | --manter | --keep | \
+      --dias | --days) return 0 ;;
     --origem | --source) [[ $sentido == 'enviar' ]] && local_='sim' ;;
     --destino | --dest) [[ $sentido == 'receber' ]] && local_='sim' ;;
     *)

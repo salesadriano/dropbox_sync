@@ -147,7 +147,9 @@ teste_cpl08_revisoes_restaurar_lixeira_coincidem_com_a_ajuda() {
     done < <(_opcoes_da_ajuda "$comando")
   done
   assert_igual '' "$faltando" "opcao documentada que o comando nao reconhece:$faltando"
-  assert_igual $'restaurar\nrestore\nrevisions\nrevisoes' "$(_completar re)" 'comandos e aliases'
+  assert_igual $'restaurar\nrestore' "$(_completar res)" 'comandos e aliases'
+  assert_igual $'revisions\nrevisoes' "$(_completar rev)" 'comandos e aliases'
+  assert_igual $'retain\nreter' "$(_completar ret)" 'reter e alias'
   assert_contem 'trash' "$(_completar t)" 'alias trash'
   assert_contem '--purge' "$(_completar trash --p)" 'opcoes pelo alias'
   assert_contem '--before' "$(_completar restore --b)" 'ingles completado'
