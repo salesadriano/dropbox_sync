@@ -111,7 +111,7 @@ Contagens literais dos pareceres do Senior Developer ([TDD](2026-10-19-1828-pare
 - `shellcheck` 0.10.0 limpo nos ciclos 1 a 3; nenhum `scripts/*.sh` alterado.
 - Seguranca e acesso (regra 6): toda recusa da exclusao permanente ocorre antes da chamada destrutiva (`permanently_delete` contado igual a 0 em exp02/03/04/05/06/10/11); recusas de uso, raiz, confinamento e confirmacao sem nenhuma chamada, nem a renovacao do token; `get_metadata` com `include_deleted` antes do expurgo (ordem em exp01); sentinelas de credencial ausentes de stdout, stderr e `--debug` (exp14); TTY real por `script(1)` (exp05); sinal real por `setsid` (rpa10: 14, resumo parcial, `TMPDIR` limpo). Suite do QA: 26 tentativas de ataque no ciclo 1, matriz de NUL, chave duplicada e listagem hostil nos ciclos 2 e 3.
 - Piramide 70/20/10 e E2E: Testcontainers e Cypress nao se aplicam (CLI em shell, sem banco nem UI). Integracao ponta a ponta pelo `bin/dbx` real com duplo de `curl` na fronteira de rede. Formularios (regra 7): nao aplicavel.
-- **Suite completa local no push para a PR de `develop` (regra 8): PENDENTE.** A de 1259 aprovados e do ciclo 1, anterior as correcoes dos ciclos 2 e 3. Rodar `sh scripts/suite-completa.sh` e registrar.
+- **Suite completa local no push para a PR de `develop` (regra 8):** comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`), **verde** em `f433e33`, depois dos tres ciclos: 43 arquivos, 1296 aprovados, 0 reprovados, 2 pulados (vetor oficial sem rede), 783 s; `--conferir` com saida 0. Guarda de remocao de casos: 1308 -> 1308, sem reducao. O commit de documentacao que preenche este registro reexecuta a suite antes do proprio push.
 
 ## 5. Gates
 
@@ -145,7 +145,7 @@ Detalhe em [validacao-qa-recuperacao-b3](2026-10-19-1828-validacao-qa-recuperaca
   - O parser JSON descartava NUL em silencio, e isso contornava a comparacao da guarda (QA-B3-04). Um parser usado por uma guarda deve recusar o que nao consegue representar.
   - A descida de arvore precisa resistir a uma listagem hostil: so descendente estrito e conjunto de visitados (QA-B3-06).
 - Impacto: contrato. Tres comandos novos com aliases (`revisions`, `restore`, `trash`) e opcoes `--rev`, `--antes-de`/`--before`, `--por-id`/`--by-id`, `--recursivo`/`-R`, `--excluir`/`--purge`, `--confirmar-caminho`; escopo opcional `files.permanent_delete` (OAuth); `lib/json` passa a recusar `\u0000` em todo documento; nenhum codigo de saida novo; nada em `lib/state`; sem dependencia nova.
-- Rollback: `git revert` do commit da fase basta (apos o commit). Sem migracao de dado ou credencial. A exclusao permanente ja executada por um operador nao se desfaz.
+- Rollback: `git revert f433e33` (e do commit de documentacao) basta. Sem migracao de dado ou credencial. A exclusao permanente ja executada por um operador nao se desfaz.
 - **Acao do solicitante pendente:** habilitar `files.permanent_delete` no App Console e refazer a autorizacao com `dbx unlink` e depois `dbx config`. A exclusao permanente so funciona em contas Business.
 
 ## 8. Links e aceites
@@ -153,8 +153,8 @@ Detalhe em [validacao-qa-recuperacao-b3](2026-10-19-1828-validacao-qa-recuperaca
 - Entradas de memoria: `2026-10-19-1828-recuperacao-e-lixeira`.
 - Documentacao sincronizada: [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) (secao 5.11, RF-72..78), [system-design.md](../arquitetura/system-design.md), [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md), [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md), [decisoes-pendentes.md](../requisitos/decisoes-pendentes.md), [mapa-modulos.md](../testes/mapa-modulos.md), `README.md`. DIV-78 e QA-B3-01..06 propagados pelo BA ao escopo v1.14 (RF-73..76, emenda do RNF-11, TC-RPA-11..12, TC-LIX-08, TC-EXP-16..17, TC-JSN-01..04) e ao System Design v1.11.
 - Pareceres: [TDD](2026-10-19-1828-parecer-tdd-recuperacao-b3.md), [conformidade](2026-10-19-1828-parecer-conformidade-recuperacao-b3.md), [QA](2026-10-19-1828-validacao-qa-recuperacao-b3.md).
-- Suite completa local: **PENDENTE**.
-- Commit(s): **PENDENTE**. Rascunho de mensagem em `/tmp/claude-1000/-home-sales-dropbox-api/79c5663b-427b-43f7-afa1-0bdb22ddd6bf/scratchpad/commit-msg-b3.txt`.
-- PR: **PENDENTE**.
-- Tech Lead: aceite **PENDENTE**.
+- Suite completa local: verde em `f433e33` (1296/0/2, 783 s).
+- Commit(s): `f433e33` (fase 3) e o commit de documentacao que preenche este registro.
+- PR: [#44](https://github.com/salesadriano/dropbox_sync/pull/44) para `develop`, labels `review` e `enhancement`.
+- Tech Lead: aceite com a validacao independente do QA aprovada no ciclo 3, os tres aceites da regra 12 pelo solicitante e a suite completa local verde em `f433e33`. Requisitos e System Design alinhados as decisoes finais (DIV-54..78, QA-B3-01..06).
 - Solicitante: aceite do `qa-*` por sha256 (regra 12) concedido tres vezes (`c34c2120...`, `e77153d5...`, `2044fa23...`); a versao final e `2044fa23...`.
