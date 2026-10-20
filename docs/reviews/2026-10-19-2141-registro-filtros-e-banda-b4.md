@@ -77,7 +77,7 @@ Selecao pelo mapa de modulos sobre os itens afetados, com parada no primeiro err
   - Taxa validada antes de rede ou escrita; 26 taxas hostis saem 2; o texto nunca chega ao `argv` nem a configuracao do cURL (TC-BND-04, QA-B4-B02/B03).
   - Limites de 64 padroes e 1024 bytes por padrao, contados em bytes (QA-B4-E12); nomes nao UTF-8 e caixa trocada (QA-B4-E03, E13 a E16).
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: projeto e CLI em shell, sem formulario.
-- Suite completa local no push para a PR de `develop` (Regra 8), pelo comando oficial `sh scripts/suite-completa.sh`: **pendente** (resultado: _a preencher_; duracao: _a preencher_; sha testado: _a preencher_).
+- Suite completa local no push para a PR de `develop` (Regra 8), pelo comando oficial `sh scripts/suite-completa.sh`: **APROVADA**: 48 arquivos, 1401 aprovados, 0 reprovados e 2 pulados (vetor oficial sem rede); 657 s; sha testado `0830c2c`, registrado e conferido com `--conferir` em 2026-10-20T10:47:13Z.
 
 ## 5. Gates
 
@@ -110,13 +110,13 @@ Parecer combinado dos dois gates locais, executados pelo Senior Developer, nesta
   - INFO-02: padrao com byte nao UTF-8 pode casar a menos contra nome valido. Owner BA, sem prazo.
   - TC-BND-13 em modo humano (terminal) nao exercitado.
 - Impacto: contrato. Flags novas `--excluir`, `--incluir`, `--modificado-desde`, `--modificado-ate`, `--tamanho-min`, `--tamanho-max` (`sync`, `verificar`, `download` de pasta) e `--limite-banda`/`--bwlimit` (`upload`, `download`, `sync`); variavel `DBX_LIMITE_BANDA`; campos de saida novos (DIV-98), so acrescimo; nenhum codigo de saida novo. Correcao DIV-95 muda o corpo das chamadas JSON depois de um envio. Sem schema nem dependencia nova.
-- Rollback: `git revert <sha>` basta; filtros e limite sao por execucao e ficam fora da identidade da memoria (DIV-92), sem migracao de dado nem de credencial.
+- Rollback: `git revert 0830c2c` basta; filtros e limite sao por execucao e ficam fora da identidade da memoria (DIV-92), sem migracao de dado nem de credencial.
 
 ## 8. Links e aceites
 
 - Entradas de memoria: `2026-10-19-2141-filtros-e-banda`.
 - Documentacao sincronizada: [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) v1.17, [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md) v0.9, [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md) v0.9 (RSK-56), [system-design.md](../arquitetura/system-design.md) v1.12, [mapa-modulos.md](../testes/mapa-modulos.md), `README.md`.
-- Commit(s): **pendente** (`<sha>` - `feat(filtros): ...`).
-- PR: **pendente** (`#<n>` para `develop`).
-- Tech Lead: **pendente**, apos a suite completa local.
+- Commit(s): `0830c2c` - `feat(filtros): filtros de caminho, data e tamanho e limite de banda`; mais o commit deste preenchimento.
+- PR: [#45](https://github.com/salesadriano/dropbox_sync/pull/45) para `develop`.
+- Tech Lead: aceite em 2026-10-20, depois da suite completa verde em `0830c2c`, do QA aprovado no ciclo 2 e da aprovacao do solicitante (regra 12). O merge fica com o solicitante.
 - Solicitante: aceite dos `qa-*` por sha256 (regra 12), 2026-10-20 ("Aprovo"): `tests/integracao/qa_filtros_banda_b4_test.sh` (21 casos, `5f8978afe165a914e673f6ee319dc56249005dcc303c575c0e9894dc38d9a1b0`).

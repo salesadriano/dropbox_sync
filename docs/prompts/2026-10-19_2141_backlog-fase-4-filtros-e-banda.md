@@ -3,7 +3,7 @@ date: 2026-10-19
 hora: "2141"
 domain: filtros de sincronizacao e limite de banda
 porte: M
-status: em-andamento
+status: concluido
 instancia: myPCWin/Adriano Sales Santos
 registro_de_entrega: "docs/reviews/2026-10-19-2141-registro-filtros-e-banda-b4.md"
 ---
