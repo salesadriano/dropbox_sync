@@ -38,7 +38,10 @@ _dbx_completar() {
       case $palavra in
         --modo | --mode | --rev | --limite | --limit | --raiz | --root | \
           --origem | --source | --destino | --dest | --esperar | --wait | \
-          --antes-de | --before | --excluir | --purge | --confirmar-caminho) valor='sim' ;;
+          --antes-de | --before | --excluir | --purge | --confirmar-caminho | \
+          --exclude | --incluir | --include | --modificado-desde | --modified-since | \
+          --modificado-ate | --modified-until | --tamanho-min | --min-size | --tamanho-max | \
+          --max-size | --limite-banda | --bwlimit) valor='sim' ;;
         -?*) ;;
         *) posicionais=$((posicionais + 1)) ;;
       esac
@@ -64,15 +67,15 @@ _dbx_completar() {
   fi
 
   case $comando in
-    upload) lista='--modo --mode --rev --forcar --force --progresso --progress -p --sem-progresso --no-progress' ;;
-    download) lista='--progresso --progress -p --sem-progresso --no-progress --forcar --force' ;;
+    upload) lista='--modo --mode --rev --forcar --force --limite-banda --bwlimit --progresso --progress -p --sem-progresso --no-progress' ;;
+    download) lista='--excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --progresso --progress -p --sem-progresso --no-progress --forcar --force' ;;
     list) lista='--limite --limit --recursivo --recursive -R' ;;
     delete) lista='--confirmar --yes -y --rev' ;;
     space) lista='--humano --human -H' ;;
     config) lista='--substituir --replace --raiz --root --debug' ;;
     unlink) lista='--confirmar --yes --manter-aplicativo --keep-app' ;;
-    sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --progresso --progress -p --sem-progresso --no-progress' ;;
-    verificar) lista='--enviar --push --receber --pull --origem --source --destino --dest --esperar --wait --progresso --progress -p --sem-progresso --no-progress' ;;
+    sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --progresso --progress -p --sem-progresso --no-progress' ;;
+    verificar) lista='--enviar --push --receber --pull --origem --source --destino --dest --esperar --wait --excluir --exclude --incluir --include --progresso --progress -p --sem-progresso --no-progress' ;;
     revisoes) lista='--limite --limit --por-id --by-id' ;;
     restaurar) lista='--rev --antes-de --before' ;;
     lixeira) lista='--recursivo --recursive -R --limite --limit --excluir --purge --confirmar-caminho' ;;
@@ -90,7 +93,9 @@ _dbx_completar() {
       ;;
     # `--raiz` do `config` e a raiz REMOTA gravada na credencial.
     --rev | --limite | --limit | --raiz | --root | --esperar | --wait | --antes-de | --before | \
-      --excluir | --purge | --confirmar-caminho) return 0 ;;
+      --excluir | --purge | --confirmar-caminho | --exclude | --incluir | --include | \
+      --modificado-desde | --modified-since | --modificado-ate | --modified-until | \
+      --tamanho-min | --min-size | --tamanho-max | --max-size | --limite-banda | --bwlimit) return 0 ;;
     --origem | --source) [[ $sentido == 'enviar' ]] && local_='sim' ;;
     --destino | --dest) [[ $sentido == 'receber' ]] && local_='sim' ;;
     *)

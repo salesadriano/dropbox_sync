@@ -51,9 +51,17 @@ dbx_cmd_upload_requisitos() { printf 'credencial'; }
 
 dbx_cmd_upload_executar() {
   local origem='' destino='' modo='add' rev='' forcar='nao'
+  local tem_limite='nao' opcao_limite='' valor_limite=''
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
+      # RF-82: limite de banda das requisicoes de conteudo; o ultimo vence.
+      --limite-banda | --bwlimit)
+        opcao_limite=$1
+        shift
+        valor_limite=${1-}
+        tem_limite='sim'
+        ;;
       --modo | --mode)
         shift
         modo=${1-}
@@ -107,6 +115,12 @@ dbx_cmd_upload_executar() {
       ;;
   esac
 
+  # RF-82(b)(g): opcao ou variavel, validada antes de qualquer chamada.
+  dbx_cmd_limite_banda "$tem_limite" "$opcao_limite" "$valor_limite" || {
+    dbx_cmd_falhar uso_invalido "$DBX_CMD_LIMITE_MOTIVO"
+    return $?
+  }
+
   local eh_diretorio='nao'
   if [[ $origem != '-' ]]; then
     if [[ -d $origem ]]; then
@@ -159,6 +173,8 @@ dbx_cmd_upload_executar() {
     # RF-67(e): no diretorio, `--forcar` chega ao `sync`, onde so pula o espaco.
     local -a forcar_sync=()
     [[ $forcar == 'sim' ]] && forcar_sync=(--forcar)
+    # RF-82: o limite vai ja convertido, para a variavel nao ser relida no sync.
+    [[ -n $DBX_CMD_LIMITE_BANDA ]] && forcar_sync+=(--limite-banda "$DBX_CMD_LIMITE_BANDA")
     dbx_cmd_sync_executar --enviar ${forcar_sync[@]+"${forcar_sync[@]}"} \
       --origem "$origem" --destino "$alvo_remoto"
     return $?
@@ -199,6 +215,7 @@ dbx_cmd_upload_executar() {
       dbx_cmd_espaco_campos
     fi
     [[ -n $recusaria ]] && dbx_output_campo recusaria "$recusaria"
+    dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
     dbx_output_campo simulado sim
     dbx_output_render
     return 0
@@ -249,6 +266,7 @@ dbx_cmd_upload_executar() {
         dbx_output_campo caminho "$remoto"
         dbx_output_campo status dispensado
         dbx_output_campo motivo inalterado
+        dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
         dbx_output_render
         return 0
       fi
@@ -327,6 +345,8 @@ dbx_cmd_upload_executar() {
   fi
 
   _dbx_cmd_encerrar_consulta
+  # RF-82(i): acrescimo compativel (RF-35); vazio sem limite.
+  dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
   dbx_output_render
   return 0
 }

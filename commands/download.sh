@@ -16,11 +16,62 @@
 
 dbx_cmd_download_requisitos() { printf 'credencial'; }
 
+# _dbx_cmd_download_pasta <remoto> <alvo> [opcoes do sync...] — recebimento
+# recursivo pelo `sync --receber` interno (RF-69(h)), com os filtros e o limite
+# de banda repassados (RF-80(l), RF-82(a)).
+_dbx_cmd_download_pasta() {
+  local remoto=$1 alvo=$2
+  shift 2
+  # RF-56: o destino que ja existe como arquivo e do usuario, e nao vira
+  # diretorio. Remove-lo para dar lugar a pasta seria perda sem aviso.
+  if [[ -e $alvo || -L $alvo ]] && [[ ! -d $alvo ]]; then
+    dbx_cmd_falhar conflito \
+      "o caminho remoto e uma pasta e o destino local ja existe e nao e diretorio: $alvo"
+    return $?
+  fi
+  mkdir -p -- "$alvo" 2>/dev/null || {
+    dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $alvo"
+    return $?
+  }
+  dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
+  # shellcheck source=commands/sync.sh
+  . "${BASH_SOURCE[0]%/*}/sync.sh"
+  local -a args_sync=(--receber --origem "$remoto" --destino "$alvo" "$@")
+  [[ ${DBX_CLI_PROGRESSO:-} == 'sim' ]] && args_sync+=(--progresso)
+  [[ ${DBX_CLI_PROGRESSO:-} == 'nao' ]] && args_sync+=(--sem-progresso)
+  dbx_cmd_sync_executar "${args_sync[@]}"
+}
+
 dbx_cmd_download_executar() {
-  local caminho='' destino=''
+  local caminho='' destino='' opcao tem_limite='nao' opcao_limite='' valor_limite=''
+  local -a filtros_caminho=() filtros_meta=()
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
+      # RF-79, RF-81: filtros do `download` de PASTA, repassados ao `sync
+      # --receber` interno. Em arquivo, recusa (DIV-85).
+      --excluir | --exclude | --incluir | --include)
+        opcao=$1
+        shift
+        filtros_caminho+=("$opcao" "${1-}")
+        ;;
+      --modificado-desde | --modified-since | --modificado-ate | --modified-until)
+        opcao=$1
+        shift
+        filtros_meta+=("$opcao" "${1-}")
+        ;;
+      --tamanho-min | --min-size | --tamanho-max | --max-size)
+        opcao=$1
+        shift
+        filtros_meta+=("$opcao" "${1-}")
+        ;;
+      # RF-82: limite de banda; o ultimo vence.
+      --limite-banda | --bwlimit)
+        opcao_limite=$1
+        shift
+        valor_limite=${1-}
+        tem_limite='sim'
+        ;;
       --progresso | --progress | -p)
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
         DBX_CLI_PROGRESSO='sim'
@@ -71,10 +122,30 @@ dbx_cmd_download_executar() {
   _dbx_cmd_caminho_remoto "$caminho" || return $?
   remoto=$DBX_CMD_LIDO
 
+  # RF-79(j), RF-81, RF-82(b): filtros e limite validados antes de qualquer
+  # chamada e de qualquer escrita. Os filtros sao repassados ao `sync` interno
+  # como foram digitados (ele os valida de novo, com o mesmo resultado); o
+  # limite vai ja convertido, para a variavel nao ser relida la.
+  # shellcheck source=lib/filtro.sh
+  . "$DBX_CLI_RAIZ/lib/filtro.sh"
+  dbx_cmd_filtros_preparar filtros_caminho filtros_meta || {
+    dbx_cmd_falhar uso_invalido "$DBX_CMD_FILTRO_MOTIVO"
+    return $?
+  }
+  dbx_cmd_limite_banda "$tem_limite" "$opcao_limite" "$valor_limite" || {
+    dbx_cmd_falhar uso_invalido "$DBX_CMD_LIMITE_MOTIVO"
+    return $?
+  }
+  local tem_filtros='nao'
+  local -a repasse=(${filtros_caminho[@]+"${filtros_caminho[@]}"} ${filtros_meta[@]+"${filtros_meta[@]}"})
+  [[ ${#repasse[@]} -gt 0 ]] && tem_filtros='sim'
+  [[ -n $DBX_CMD_LIMITE_BANDA ]] && repasse+=(--limite-banda "$DBX_CMD_LIMITE_BANDA")
+
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
     dbx_cmd_iniciar_saida
     dbx_output_campo operacao download
     dbx_output_campo caminho "$remoto"
+    dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
     dbx_output_campo simulado sim
     dbx_output_render
     return 0
@@ -96,12 +167,33 @@ dbx_cmd_download_executar() {
     dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
     # shellcheck source=commands/sync.sh
     . "${BASH_SOURCE[0]%/*}/sync.sh"
-    dbx_cmd_sync_executar --receber --origem / --destino "$dir_raiz_local"
+    dbx_cmd_sync_executar --receber --origem / --destino "$dir_raiz_local" ${repasse[@]+"${repasse[@]}"}
     return $?
   fi
 
   dbx_json_escapar_cadeia "$remoto"
   local argumento="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
+
+  # DIV-85: com filtro, o tipo do alvo e conhecido ANTES de qualquer escrita,
+  # por `get_metadata` (leitura): arquivo com filtro e recusado; pasta segue
+  # para o recebimento recursivo. Sem filtro, o fluxo e o de sempre.
+  local pasta_confirmada='nao'
+  if [[ $tem_filtros == 'sim' ]]; then
+    _dbx_cmd_consultar 'https://api.dropboxapi.com/2/files/get_metadata' "$argumento" || return $?
+    local tipo_remoto=''
+    _dbx_cmd_campo '.tag' && tipo_remoto=$DBX_CMD_LIDO
+    _dbx_cmd_encerrar_consulta
+    if [[ $tipo_remoto != 'folder' ]]; then
+      dbx_cmd_falhar uso_invalido \
+        "os filtros (--excluir, --incluir, data e tamanho) valem so para download de pasta, e o caminho remoto nao e pasta: $remoto"
+      return $?
+    fi
+    if [[ -z $destino || $destino == '-' ]]; then
+      dbx_cmd_falhar uso_invalido 'o caminho remoto e uma pasta; informe o diretorio local de destino'
+      return $?
+    fi
+    pasta_confirmada='sim'
+  fi
 
   # Sem destino, o conteudo vai para a saida padrao. Se o destino informado
   # for um diretorio (ou terminar com barra), o arquivo e salvo com o nome
@@ -135,6 +227,11 @@ dbx_cmd_download_executar() {
       fi
       alvo=$destino
     fi
+  fi
+
+  if [[ $pasta_confirmada == 'sim' ]]; then
+    _dbx_cmd_download_pasta "$remoto" "$alvo" ${repasse[@]+"${repasse[@]}"}
+    return $?
   fi
 
   local str_barra_inicio=''
@@ -182,24 +279,7 @@ dbx_cmd_download_executar() {
             "o caminho remoto e uma pasta; informe o diretorio local de destino"
           return $?
         fi
-        # RF-56: o destino que ja existe como arquivo e do usuario, e nao vira
-        # diretorio. Remove-lo para dar lugar a pasta seria perda sem aviso.
-        if [[ -e $alvo || -L $alvo ]] && [[ ! -d $alvo ]]; then
-          dbx_cmd_falhar conflito \
-            "o caminho remoto e uma pasta e o destino local ja existe e nao e diretorio: $alvo"
-          return $?
-        fi
-        mkdir -p -- "$alvo" 2>/dev/null || {
-          dbx_cmd_falhar configuracao "nao foi possivel criar o diretorio de destino: $alvo"
-          return $?
-        }
-        dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
-        # shellcheck source=commands/sync.sh
-        . "${BASH_SOURCE[0]%/*}/sync.sh"
-        local -a args_sync=(--receber --origem "$remoto" --destino "$alvo")
-        [[ ${DBX_CLI_PROGRESSO:-} == 'sim' ]] && args_sync+=(--progresso)
-        [[ ${DBX_CLI_PROGRESSO:-} == 'nao' ]] && args_sync+=(--sem-progresso)
-        dbx_cmd_sync_executar "${args_sync[@]}"
+        _dbx_cmd_download_pasta "$remoto" "$alvo" ${repasse[@]+"${repasse[@]}"}
         return $?
         ;;
       *not_found*)
@@ -247,6 +327,8 @@ dbx_cmd_download_executar() {
   dbx_output_campo destino "$alvo"
   dbx_output_campo integridade "$verificacao"
   [[ -n $esperado ]] && dbx_output_campo content_hash "$esperado"
+  # RF-82(i): acrescimo compativel (RF-35); vazio sem limite.
+  dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
   # RF-32(b): em fluxo a saida padrao E o conteudo; o registro do resultado
   # colado ao fim dele corromperia o que o consumidor recebe. Vai para a saida
   # de erro, como o diagnostico.

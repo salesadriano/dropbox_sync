@@ -48,6 +48,8 @@ _dbx_walk_diretorio=$(cd -P -- "$_dbx_walk_diretorio" && pwd -P)
 . "$_dbx_walk_diretorio/hash.sh"
 # shellcheck source=lib/tmp.sh
 . "$_dbx_walk_diretorio/tmp.sh"
+# shellcheck source=lib/filtro.sh
+. "$_dbx_walk_diretorio/filtro.sh"
 unset _dbx_walk_diretorio
 
 DBX_WALK_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -64,6 +66,10 @@ readonly DBX_WALK_PROFUNDIDADE_MAXIMA=64
 DBX_WALK_PARCIAL='nao'
 DBX_WALK_MOTIVO=''
 DBX_WALK_TOTAL=0
+# RF-80(b): pastas (e entradas que nao sao arquivo comum) fora do escopo que a
+# descida PODOU, por caminho relativo. Quem consome as conta como filtradas.
+declare -ga DBX_WALK_PODADAS=()
+_dbx_walk_filtrar='nao'
 
 # _dbx_walk_descer <profundidade> <prefixo>
 #
@@ -88,6 +94,27 @@ _dbx_walk_descer() {
 
   for nome in *; do
     relativo="${prefixo}${nome}"
+
+    # RF-80(b): pasta que casa `--excluir` NAO E PERCORRIDA — nem listada, nem
+    # inspecionada, nem resumida —, e erro dentro dela (ilegivel, ciclo) nao
+    # existe para a execucao. A conferencia vem ANTES da de legibilidade, para
+    # a propria pasta excluida ilegivel tambem nao marcar a travessia parcial.
+    # Vinculo e entrada que nao e arquivo comum so saem em silencio se ficam
+    # fora do escopo tanto como arquivo quanto como pasta: assim o par do outro
+    # lado, seja do tipo que for, tambem esta fora, e nada e apagado por eles.
+    if [[ $_dbx_walk_filtrar == 'sim' ]]; then
+      if [[ -d $nome && ! -L $nome ]]; then
+        if dbx_filtro_pasta_excluida "$relativo"; then
+          printf '%s\0' "$relativo" >&4
+          continue
+        fi
+      elif [[ -L $nome || ! -f $nome ]]; then
+        if ! dbx_filtro_classificar "$relativo" nao && ! dbx_filtro_classificar "$relativo" sim; then
+          printf '%s\0' "$relativo" >&4
+          continue
+        fi
+      fi
+    fi
 
     # A ordem importa: `-L` antes de `-d`, porque uma ligacao PARA diretorio
     # satisfaz `-d` e seria percorrida.
@@ -153,17 +180,25 @@ _dbx_walk_descer() {
 # corrente de quem chamou.
 dbx_walk_local() {
   [[ $# -eq 2 ]] || return "$DBX_WALK_ERRO_USO"
-  local raiz=$1 destino=$2 motivos
+  local raiz=$1 destino=$2 motivos podadas
 
   DBX_WALK_PARCIAL='nao'
   DBX_WALK_MOTIVO=''
   DBX_WALK_TOTAL=0
+  DBX_WALK_PODADAS=()
+  _dbx_walk_filtrar='nao'
+  dbx_filtro_ativo && _dbx_walk_filtrar='sim'
 
   [[ -d $raiz ]] || return "$DBX_WALK_ERRO_NAO_ENCONTRADO"
   [[ -r $raiz && -x $raiz ]] || return "$DBX_WALK_ERRO_NAO_ENCONTRADO"
 
   dbx_tmp_arquivo "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX" || return "$DBX_WALK_ERRO_USO"
   motivos=$DBX_TMP_CAMINHO
+  dbx_tmp_arquivo "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX" || {
+    dbx_tmp_remover "$motivos"
+    return "$DBX_WALK_ERRO_USO"
+  }
+  podadas=$DBX_TMP_CAMINHO
 
   : >"$destino"
   (
@@ -174,7 +209,7 @@ dbx_walk_local() {
     shopt -s nullglob dotglob
     cd -P -- "$raiz" || exit 1
     _dbx_walk_descer 1 ''
-  ) >"$destino" 3>"$motivos"
+  ) >"$destino" 3>"$motivos" 4>"$podadas"
 
   if [[ -s $motivos ]]; then
     # shellcheck disable=SC2034  # canais publicos, ver nota no topo
@@ -199,6 +234,11 @@ dbx_walk_local() {
     done <"$motivos"
   fi
   dbx_tmp_remover "$motivos"
+  local _podada
+  while IFS= read -r -d '' _podada; do
+    DBX_WALK_PODADAS+=("$_podada")
+  done <"$podadas"
+  dbx_tmp_remover "$podadas"
 
   # Contagem por registro, e nao por linha: o separador e o byte nulo justamente
   # porque nome de arquivo carrega quebra de linha, e contar linhas devolveria
