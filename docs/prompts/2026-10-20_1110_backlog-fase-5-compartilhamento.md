@@ -3,7 +3,7 @@ date: 2026-10-20
 hora: "1110"
 domain: compartilhamento (link temporario e link compartilhado)
 porte: G
-status: em-andamento
+status: concluido
 instancia: myPCWin/Adriano Sales Santos
 registro_de_entrega: "docs/reviews/2026-10-20-1110-registro-compartilhamento-b5.md"
 ---

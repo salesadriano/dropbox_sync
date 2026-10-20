@@ -138,7 +138,7 @@ Contagens literais dos pareceres do Senior Developer ([TDD](2026-10-20-1110-pare
 - `shellcheck` 0.10.0 limpo nos quatro ciclos, inclusive nos testes novos.
 - Seguranca e acesso (regra 6): sentinela de senha ausente de argv (o duble varre `/proc/*/cmdline`), ambiente (`/proc/*/environ`), `-K -`, stdout, stderr, `--debug`, `--json`, `--null`, TMPDIR, estado e config, inclusive com TERM, INT e HUP durante a chamada; `--senha` em pseudo-terminal real com eco desligado nas duas leituras e religado ao fim; guarda do `--revogar` provada contra 20 metadados hostis, 18 URLs hostis e estado plantado em `XDG_STATE_HOME`; 33 combinacoes de visibilidade invalida saem 2 sem chamada; mutantes do developer (M1..M9) e do QA (35 no ciclo 1, MC2..MC11b nos ciclos 2 e 3) mortos, salvo o MC2, equivalente na saida observavel (secao 6).
 - Piramide 70/20/10 e E2E: Testcontainers e Cypress nao se aplicam (CLI em shell, sem banco nem UI). Integracao ponta a ponta pelo `bin/dbx` real com duplo de `curl` na fronteira de rede. Formularios (regra 7): nao aplicavel.
-- **Suite completa local no push para a PR de `develop` (regra 8):** comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`). **Pendente:** resultado, duracao e sha do commit em que rodou.
+- **Suite completa local no push para a PR de `develop` (regra 8):** comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`). **APROVADA**: 52 arquivos, 1545 aprovados, 0 reprovados e 2 pulados (vetor oficial sem rede); 847 s; sha `032fe3b`, registrada e conferida com `--conferir` em 2026-10-20T18:24:53Z.
 
 ## 5. Gates
 
@@ -175,15 +175,15 @@ Detalhe em [validacao-qa-compartilhamento-b5](2026-10-20-1110-validacao-qa-compa
   - A guarda do `--revogar` segue a licao `guarda-de-seguranca-sem-estado`: decide pela resposta da mesma execucao e confere a identidade do alvo (`path_lower`), nao so a existencia.
   - Paginacao vinda de servidor precisa de teto, alem da deteccao de cursor repetido (QA-B5-03, 14).
 - Impacto: contrato. Dois comandos novos com aliases (`link-temporario`/`temp-link`, `compartilhar`/`share`) e opcoes `--publico`/`--public`, `--equipe`/`--team`, `--senha`/`--password`, `--senha-stdin`/`--password-stdin`, `--expira`/`--expires`, `--listar`/`--list`, `--revogar`/`--revoke`; escopos opcionais `sharing.write` e `sharing.read` (OAuth), citados pelo `diagnostico`; `lib/http` passa a criar o arquivo de corpo com 0600; `config` le o app secret pela leitura unica de `lib/cli`; nenhum codigo de saida novo; nada em `lib/state`; sem dependencia nova.
-- Rollback: `git revert <pendente: sha do commit da fase 5>` (e do commit de documentacao) basta. Sem migracao de dado ou credencial. Links ja criados ou modificados por um operador continuam no Dropbox; revogue-os com `dbx compartilhar --revogar <url>` antes do revert, se for o caso. Link temporario ja emitido vale ate expirar.
+- Rollback: `git revert 032fe3b` (e do commit de documentacao) basta. Sem migracao de dado ou credencial. Links ja criados ou modificados por um operador continuam no Dropbox; revogue-os com `dbx compartilhar --revogar <url>` antes do revert, se for o caso. Link temporario ja emitido vale ate expirar.
 
 ## 8. Links e aceites
 
 - Entradas de memoria: `2026-10-20-1110-compartilhamento`.
-- Documentacao sincronizada (versoes finais): [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) **v1.18** (secao 5.13, RF-84..92; tres rodadas: fase 5, DIV-104..120, DIV-121..127), [system-design.md](../arquitetura/system-design.md) **v1.13**, [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md) **v0.10**, [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md) **v0.10** (RSK-57..61), [decisoes-pendentes.md](../requisitos/decisoes-pendentes.md) (DP-18 resolvida; cabecalho em v1.3), [mapa-modulos.md](../testes/mapa-modulos.md), `README.md`. Pendencias de propagacao na secao 3.
+- Documentacao sincronizada (versoes finais): [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) **v1.18** (secao 5.13, RF-84..92; tres rodadas: fase 5, DIV-104..120, DIV-121..127), [system-design.md](../arquitetura/system-design.md) **v1.13**, [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md) **v0.10**, [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md) **v0.10** (RSK-57..61), [decisoes-pendentes.md](../requisitos/decisoes-pendentes.md) **v1.4** (DP-18 resolvida), [mapa-modulos.md](../testes/mapa-modulos.md), `README.md`. Propagacao concluida (secao 3).
 - Pareceres: [TDD](2026-10-20-1110-parecer-tdd-compartilhamento-b5.md), [conformidade](2026-10-20-1110-parecer-conformidade-compartilhamento-b5.md), [QA](2026-10-20-1110-validacao-qa-compartilhamento-b5.md).
-- Suite completa local: **pendente** (resultado, duracao e sha).
-- Commit(s): **pendente** (hash do commit da fase 5) e o commit de documentacao que preenche este registro.
-- PR: **pendente** (numero) para `develop`.
-- Tech Lead: aceite pendente da suite completa local verde; validacao independente do QA aprovada no ciclo 3 com as ressalvas corrigidas no ciclo 4.
+- Suite completa local: **APROVADA** em `032fe3b` (1545 aprovados, 0 reprovados, 2 pulados, 847 s).
+- Commit(s): `032fe3b` - `feat(compartilhamento): link temporario e link compartilhado`; mais o commit de documentacao que preenche este registro.
+- PR: [#46](https://github.com/salesadriano/dropbox_sync/pull/46) para `develop`.
+- Tech Lead: aceite em 2026-10-20. A suite completa ficou verde em `032fe3b`; a validacao independente do QA foi aprovada no ciclo 3, e as ressalvas, corrigidas no ciclo 4; o solicitante aprovou a suite do QA (regra 12). O merge fica com o solicitante.
 - Solicitante: DIV-106 decidida (`sharing.read` habilitado); aceite do `qa-*` por sha256 (regra 12) concedido em 2026-10-20 para `8adf68023874b67e2fb51de3b946d43b489b2a5952621b3b01203e4ecb566a76` (43 casos).
