@@ -139,7 +139,7 @@ Contagens literais dos pareceres do Senior Developer ([TDD](2026-10-20-2010-pare
 - `shellcheck` 0.10.0 limpo nos cinco ciclos (`lib/*.sh commands/*.sh bin/* scripts/*.sh`; `shellcheck -x` nos testes novos).
 - Seguranca e acesso (regra 6): confinamento (13 sem chamada, inclusive `\n`/`\r`); estado envenenado em `XDG_STATE_HOME` identico ao vazio; `parent_rev` em todo `delete_v2`; pasta, item fora da pasta, da raiz ou do padrao nunca apagado; sentinelas de token, refresh e segredo ausentes de stdout, stderr, `--debug` e argv do `curl`; padrao tratado como dado (`$(touch S)` nao executa); auditoria estatica sem `permanently_delete` nem `delete_batch`. Mutantes do developer nos cinco ciclos e barreiras em camadas (cada barreira removida isolada e todas juntas) mortos.
 - Piramide 70/20/10 e E2E: Testcontainers e Cypress nao se aplicam (CLI em shell, sem banco nem UI). Unidade (38) sobre as funcoes puras com relogio fixado e propriedade sobre 200 listagens; integracao ponta a ponta pelo `bin/dbx` real com duble de `curl` na fronteira de rede. Formularios (regra 7): nao aplicavel.
-- **Suite completa local no push para a PR de `develop` (regra 8):** comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`). **[A PREENCHER pelo Tech Lead: resultado (APROVADA/REPROVADA), arquivos, aprovados, reprovados, pulados, tempo em s, sha do commit e instante do `--conferir`.]**
+- **Suite completa local no push para a PR de `develop` (regra 8):** comando oficial `sh scripts/suite-completa.sh` (`bash tests/run.sh`). **APROVADA** em `903c15f`: 55 arquivos, 1727 aprovados, 0 reprovados, 2 pulados, 1196 s; `--conferir` registrou "suite completa verde para 903c15f em 2026-10-20T23:27:13Z". O commit de documentacao que preenche este registro tem a sua propria execucao, citada na PR.
 
 ## 5. Gates
 
@@ -180,15 +180,15 @@ Detalhe em [validacao-qa-retencao-b6](2026-10-20-2010-validacao-qa-retencao-b6.m
   - Defesa em profundidade so vale se falhar fechada: a guarda (7) aprovava sem a lista de quem fica ou com lista vazia na pratica (QA-B6-04, QA-B6-06).
   - A licao `guarda-de-seguranca-sem-estado` se manteve: toda autorizacao vem da listagem da mesma execucao.
 - Impacto: contrato. Comando novo `reter` com alias `retain` e opcoes `--padrao`/`--pattern`, `--manter`/`--keep`, `--dias`/`--days`, `--confirmar`/`--yes`/`-y`; `lib/http` passa a expor `DBX_HTTP_DATA`; `lib/filtro` expoe validacao e casamento de nome avulso; nenhum codigo de saida novo; nenhum escopo OAuth novo; nada em `lib/state`; sem dependencia nova.
-- Rollback: **[A PREENCHER pelo Tech Lead: `git revert <hash>` do commit da fase (e do commit de documentacao, se houver).]** Sem migracao de dado ou credencial. Itens ja apagados por um `reter --confirmar` estao na lixeira e voltam com `dbx lixeira` ou `dbx restaurar` dentro do prazo do plano; o revert nao os restaura.
+- Rollback: `git revert -m 1 <merge da PR #47>` em `develop`, ou `git revert 903c15f` e o commit de documentacao seguinte. Sem migracao de dado ou credencial. Itens ja apagados por um `reter --confirmar` estao na lixeira e voltam com `dbx lixeira` ou `dbx restaurar` dentro do prazo do plano; o revert nao os restaura.
 
 ## 8. Links e aceites
 
 - Entradas de memoria: `2026-10-20-2010-retencao`.
 - Documentacao sincronizada (versoes finais): [escopo-requisitos-e-criterios-de-aceite.md](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) **v1.20** (secao 5.14, RF-93..100; rodadas v1.19 e v1.20), [system-design.md](../arquitetura/system-design.md) **v1.14**, [funcionalidades-candidatas.md](../requisitos/funcionalidades-candidatas.md) **v0.12** (F-40, F-41), [riscos-restricoes-e-licenciamento.md](../requisitos/riscos-restricoes-e-licenciamento.md) **v0.12** (RSK-62..68), [mapa-modulos.md](../testes/mapa-modulos.md), `README.md`. Propagacao concluida (secao 3).
 - Pareceres: [TDD](2026-10-20-2010-parecer-tdd-retencao-b6.md), [conformidade](2026-10-20-2010-parecer-conformidade-retencao-b6.md), [QA](2026-10-20-2010-validacao-qa-retencao-b6.md).
-- Suite completa local: **[A PREENCHER pelo Tech Lead: resultado e tempo, no hash do commit.]**
-- Commit(s): **[A PREENCHER pelo Tech Lead: hash]** - `feat(retencao): dbx reter com plano, lixeira e guarda por identidade`; mais o commit de documentacao que preenche este registro, se houver.
-- PR: **[A PREENCHER pelo Tech Lead: #numero e link]** para `develop`.
-- Tech Lead: **[A PREENCHER pelo Tech Lead: aceite, depois da suite completa verde.]** A validacao independente do QA foi aprovada no ciclo 5; o solicitante aprovou a suite do QA (regra 12). O merge fica com o solicitante.
+- Suite completa local: APROVADA em `903c15f` (1727 aprovados, 0 reprovados, 2 pulados, 1196 s).
+- Commit(s): `903c15f` - `feat(retencao): dbx reter com plano, lixeira e guarda por identidade`; mais o commit de documentacao que preenche este registro.
+- PR: [#47](https://github.com/salesadriano/dropbox_sync/pull/47) para `develop`.
+- Tech Lead: aceito em 2026-10-20, com a suite completa verde em `903c15f`. A validacao independente do QA foi aprovada no ciclo 5; o solicitante aprovou a suite do QA (regra 12). O merge fica com o solicitante.
 - Solicitante: aceite do `qa-*` por sha256 (regra 12) concedido em 2026-10-20 para `cd0178992648fc24132d992c86927c29b418e7cdcf3ac873ae426c591e258cad` (60 casos); DIV-148 autorizada (troca do TC-CPL-08); risco residual da DIV-170 aceito (RSK-68).

@@ -3,7 +3,7 @@ date: 2026-10-20
 hora: "2010"
 domain: retencao e rotacao de backup
 porte: G
-status: em-andamento
+status: concluido
 instancia: myPCWin/Adriano Sales Santos
 registro_de_entrega: "docs/reviews/2026-10-20-2010-registro-retencao-b6.md"
 ---
