@@ -3,7 +3,7 @@ date: 2026-10-21
 hora: "0713"
 domain: deteccao de mudancas por cursor no sync remoto para local
 porte: G
-status: em-andamento
+status: concluido
 instancia: myPCWin/Adriano Sales Santos
 registro_de_entrega: "docs/reviews/2026-10-21-0713-registro-cursor-b7b.md"
 ---

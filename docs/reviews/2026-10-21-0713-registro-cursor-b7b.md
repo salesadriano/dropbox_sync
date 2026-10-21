@@ -198,7 +198,7 @@ Observação: a execução do dev no ciclo 2 foi feita contra a versão de 41 ca
 - **Shellcheck:** limpo em `lib/`, `commands/`, `bin/`, `scripts/*.sh` e nos três arquivos de teste novos (dev); limpo na suíte do QA (QA ciclo 2).
 - **Guarda de remoção de casos:** `bash scripts/verificar-remocao-de-casos.sh` com 1872 para 1872, nenhuma redução não declarada, nos dois ciclos.
 - **Piramide e E2E:** a CLI é shell com dublê de `curl` na fronteira de rede. Sem E2E contra o serviço real (sem credencial de teste; mesmo critério das fases 3 a 7a). Formulários (regra 7): não aplicável.
-- **Suíte completa local no push (regra 8):** comando oficial `sh scripts/suite-completa.sh`. **[PENDENTE: resultado da suíte completa, com a contagem de arquivos, aprovados, reprovados e pulados, e o commit em que foi executada.]**
+- **Suíte completa local no push para a PR de `develop` (regra 8):** comando oficial `sh scripts/suite-completa.sh`. **APROVADA** em `95ac612`: 63 arquivos, 1981 aprovados, 0 reprovados, 3 pulados, em 1872 s. O commit de documentação que preenche este registro tem execução própria, citada na PR.
 
 ### 5.2 Gates
 
@@ -276,7 +276,7 @@ Detalhe em [validação do QA](2026-10-21-0713-validacao-qa-cursor-b7b.md).
 - **RSK-78:** conferir no primeiro uso real o `include_deleted` do `continue` e o comportamento da última página durante a varredura.
 - **Endurecimento da leitura em FIFO** (OBS-3 da 7a, RSK-76): segue no backlog.
 - **Documentar cópia de backup** do home com o dado de cursor no README (RSK-80).
-- **Suíte completa e PR:** [PENDENTE: resultado de `sh scripts/suite-completa.sh`, sha do commit e número da PR.]
+- **Suíte completa e PR:** suíte verde em `95ac612`; PR [#49](https://github.com/salesadriano/dropbox_sync/pull/49) para `develop`. O merge fica com o solicitante.
 - **`documentation-sync` deste registro:** os documentos vivos afetados estão listados na seção 3.1; a conferência final fica com o Tech Lead antes do merge.
 
 ## 9. Diagrama de contexto (Mermaid, cursor e estado)
