@@ -1042,6 +1042,8 @@ _dbx_cmd_retomavel_recomecar() {
 
 # Area da execucao em curso (`dbx-sync.*`, nome mantido por DIV-42).
 DBX_CMD_CICLO_AREA=''
+DBX_CMD_CICLO_INICIO_S=0
+DBX_CMD_CICLO_ESPERA_S=0
 
 # dbx_cmd_ciclo_iniciar <comando> <raiz_local> <raiz_remota> <espera_s>
 #
@@ -1059,6 +1061,9 @@ DBX_CMD_CICLO_AREA=''
 dbx_cmd_ciclo_iniciar() {
   local comando=$1 raiz_local=$2 remoto=$3 espera=$4 chave_local=$2 estado
   DBX_CMD_CICLO_AREA=''
+  # Marco da espera: a trava de raiz usa o que sobra do MESMO teto (RF-132(c)).
+  printf -v DBX_CMD_CICLO_INICIO_S '%(%s)T' -1
+  DBX_CMD_CICLO_ESPERA_S=$espera
   # A raiz local entra pelo caminho fisico canonico (RF-62), que existe mesmo
   # para a raiz que o `--receber` ainda vai criar.
   dbx_path_local_canonico "$raiz_local" && chave_local=$DBX_PATH_RESULTADO
@@ -1102,6 +1107,52 @@ dbx_cmd_ciclo_iniciar() {
   # shellcheck disable=SC2034  # canal publico, lido por commands/sync e commands/verificar
   DBX_CMD_CICLO_AREA=$DBX_TMP_CAMINHO
   return 0
+}
+
+# dbx_cmd_ciclo_trava_raiz <raiz_local>
+#
+# Trava por raiz local canonica do `sync --receber` (fase 8, RF-132, DIV-250),
+# ALEM da trava do par e DEPOIS dela (libera na ordem inversa, por `lib/tmp`).
+# A raiz precisa existir para ter identidade fisica: raiz inexistente (so
+# `--dry-run`, que nao a cria) nao tem o que travar. `--esperar` e o que sobrou
+# do teto da trava do par (RF-132(c): nunca o dobro). Ocupada: `conflito` (7),
+# sem perfil nem identidade na mensagem. Diretorio de estado alheio ou sem
+# escrita segue sem a trava, com aviso, como a do par.
+dbx_cmd_ciclo_trava_raiz() {
+  local raiz_local=$1 canonico=$1 estado agora restante
+  [[ -d $raiz_local ]] || return 0
+  dbx_path_local_canonico "$raiz_local" && canonico=$DBX_PATH_RESULTADO
+  printf -v agora '%(%s)T' -1
+  restante=$((DBX_CMD_CICLO_ESPERA_S - (agora - DBX_CMD_CICLO_INICIO_S)))
+  [[ $restante -gt 0 ]] || restante=0
+  dbx_state_trava_raiz_adquirir "$canonico" "$restante"
+  estado=$?
+  if [[ -n $DBX_STATE_AVISO ]]; then
+    dbx_cmd_iniciar_saida
+    dbx_output_diagnostico aviso "$DBX_STATE_AVISO"
+    dbx_output_render_diagnostico >&2
+  fi
+  case $estado in
+    0) return 0 ;;
+    "$DBX_STATE_ERRO_CONFLITO")
+      dbx_cmd_falhar conflito "$DBX_STATE_MOTIVO"
+      return $?
+      ;;
+    "$DBX_STATE_ERRO_PERMISSAO")
+      dbx_cmd_iniciar_saida
+      dbx_output_diagnostico aviso "sem trava de raiz local nesta execucao: ${DBX_STATE_MOTIVO:-diretorio de estado inacessivel}"
+      dbx_output_render_diagnostico >&2
+      return 0
+      ;;
+    "$DBX_STATE_ERRO_USO")
+      dbx_cmd_falhar uso_invalido "aquisicao da trava de raiz recusou os argumentos (defeito interno): ${DBX_STATE_MOTIVO:-uso invalido}"
+      return $?
+      ;;
+    *)
+      dbx_cmd_falhar configuracao "nao foi possivel obter a trava da raiz local: ${DBX_STATE_MOTIVO:-falha local}"
+      return $?
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------

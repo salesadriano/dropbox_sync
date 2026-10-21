@@ -9,7 +9,8 @@
 # portugues e alias em ingles) e caminhos LOCAIS onde o argumento e local. Nunca
 # completa caminho remoto, nunca chama a rede e nunca le arquivo do dbx: so a
 # linha de comando e, para caminho local, o sistema de arquivos. Carregar este
-# arquivo so define a funcao abaixo e o registro `complete`.
+# arquivo so define a funcao abaixo e o registro `complete`. O VALOR de `--perfil`
+# nao e completado: so a opcao (DIV-255 C; completar o valor fica no backlog F-45).
 #
 # As listas tem fonte unica na ajuda (`dbx help` e `dbx help <comando>`): a
 # suite reprova quando uma opcao existe so de um lado.
@@ -42,7 +43,8 @@ _dbx_completar() {
           --exclude | --incluir | --include | --modificado-desde | --modified-since | \
           --modificado-ate | --modified-until | --tamanho-min | --min-size | --tamanho-max | \
           --max-size | --limite-banda | --bwlimit | --expira | --expires | --revogar | \
-          --revoke | --padrao | --pattern | --manter | --keep | --dias | --days) valor='sim' ;;
+          --revoke | --padrao | --pattern | --manter | --keep | --dias | --days | \
+          --perfil | --profile) valor='sim' ;;
         -?*) ;;
         *) posicionais=$((posicionais + 1)) ;;
       esac
@@ -58,13 +60,14 @@ _dbx_completar() {
     link-temporario | temp-link) comando='link_temporario' ;;
     share) comando='compartilhar' ;;
     retain) comando='reter' ;;
+    profiles) comando='perfis' ;;
   esac
 
   if [[ -z $comando || $comando == 'help' ]]; then
     if [[ -z $comando && $atual == -* ]]; then
-      lista='--help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug'
+      lista='--help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug --perfil --profile'
     elif [[ -z $comando || $posicionais -eq 0 ]]; then
-      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion revisoes revisions restaurar restore lixeira trash link-temporario temp-link compartilhar share reter retain help'
+      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion revisoes revisions restaurar restore lixeira trash link-temporario temp-link compartilhar share reter retain perfis profiles help'
     fi
     mapfile -t COMPREPLY < <(compgen -W "$lista" -- "$atual")
     return 0
@@ -76,8 +79,9 @@ _dbx_completar() {
     list) lista='--limite --limit --recursivo --recursive -R' ;;
     delete) lista='--confirmar --yes -y --rev' ;;
     space) lista='--humano --human -H' ;;
-    config) lista='--substituir --replace --raiz --root --debug' ;;
-    unlink) lista='--confirmar --yes --manter-aplicativo --keep-app' ;;
+    config) lista='--perfil --profile --substituir --replace --raiz --root --debug' ;;
+    unlink) lista='--perfil --profile --confirmar --yes --manter-aplicativo --keep-app' ;;
+    perfis) lista='' ;;
     sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --sem-cursor --no-cursor --varredura-completa --full-scan --progresso --progress -p --sem-progresso --no-progress' ;;
     verificar) lista='--enviar --push --receber --pull --origem --source --destino --dest --esperar --wait --excluir --exclude --incluir --include --progresso --progress -p --sem-progresso --no-progress' ;;
     revisoes) lista='--limite --limit --por-id --by-id' ;;
@@ -104,7 +108,7 @@ _dbx_completar() {
       --modificado-desde | --modified-since | --modificado-ate | --modified-until | \
       --tamanho-min | --min-size | --tamanho-max | --max-size | --limite-banda | --bwlimit | \
       --expira | --expires | --revogar | --revoke | --padrao | --pattern | --manter | --keep | \
-      --dias | --days) return 0 ;;
+      --dias | --days | --perfil | --profile) return 0 ;;
     --origem | --source) [[ $sentido == 'enviar' ]] && local_='sim' ;;
     --destino | --dest) [[ $sentido == 'receber' ]] && local_='sim' ;;
     *)

@@ -73,7 +73,7 @@ DBX_CLI_CARREGADO=1
 
 DBX_CLI_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 
-readonly DBX_CLI_VERSAO='1.2.0'
+readonly DBX_CLI_VERSAO='1.3.0'
 
 DBX_CLI_COMANDO=''
 DBX_CLI_ARGS=()
@@ -83,6 +83,10 @@ DBX_CLI_SIMULACAO='nao'
 DBX_CLI_PROGRESSO='auto'
 DBX_CLI_DEBUG='nao'
 DBX_CLI_MOTIVO=''
+# Perfil dado pela opcao `--perfil` (fase 8): `DBX_CLI_PERFIL_DADO` diz se a
+# opcao apareceu (repeti-la, mesmo igual, e uso invalido, DIV-241).
+DBX_CLI_PERFIL=''
+DBX_CLI_PERFIL_DADO='nao'
 
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
 #
@@ -105,6 +109,7 @@ dbx_cli_comando_valido() {
     link-temporario | link_temporario | compartilhar) return 0 ;;
     temp-link | share) return 0 ;;
     reter | retain) return 0 ;;
+    perfis | profiles) return 0 ;;
     help | version) return 0 ;;
   esac
   return 1
@@ -125,6 +130,7 @@ dbx_cli_canonico() {
     link-temporario | temp-link) DBX_CLI_CANONICO='link_temporario' ;;
     share) DBX_CLI_CANONICO='compartilhar' ;;
     retain) DBX_CLI_CANONICO='reter' ;;
+    profiles) DBX_CLI_CANONICO='perfis' ;;
     *) DBX_CLI_CANONICO=${1-} ;;
   esac
 }
@@ -155,6 +161,7 @@ _dbx_cli_arquivo_do_comando() {
     link_temporario) printf '%s' "$raiz/commands/link_temporario.sh" ;;
     compartilhar) printf '%s' "$raiz/commands/compartilhar.sh" ;;
     reter) printf '%s' "$raiz/commands/reter.sh" ;;
+    perfis) printf '%s' "$raiz/commands/perfis.sh" ;;
     *) return 1 ;;
   esac
 }
@@ -252,6 +259,88 @@ _dbx_cli_recusar() {
   return "$DBX_CLI_ERRO_USO"
 }
 
+# _dbx_cli_carregar_config — `lib/config` sob demanda: a validacao do nome do
+# perfil mora la (ponto unico, RNF-37) e `help`/`version`/`completar` nao
+# pagam o carregamento quando nao ha `--perfil`.
+_dbx_cli_carregar_config() {
+  declare -F dbx_config_perfil_validar >/dev/null && return 0
+  # shellcheck source=lib/json.sh
+  . "$DBX_CLI_RAIZ/lib/json.sh"
+  # shellcheck source=lib/config.sh
+  . "$DBX_CLI_RAIZ/lib/config.sh"
+}
+
+# _dbx_cli_perfil_registrar <opcao> <valor|-ausente> — valida e guarda o nome.
+_dbx_cli_perfil_registrar() {
+  local opcao=$1
+  shift
+  if [[ $# -eq 0 ]]; then
+    _dbx_cli_recusar "$opcao exige um nome de perfil"
+    return $?
+  fi
+  if [[ $DBX_CLI_PERFIL_DADO == 'sim' ]]; then
+    _dbx_cli_recusar "$opcao repetida: informe o perfil uma unica vez"
+    return $?
+  fi
+  _dbx_cli_carregar_config
+  if ! dbx_config_perfil_validar "$1" opcao; then
+    DBX_CLI_MOTIVO=$DBX_CONFIG_DETALHE
+    return "$DBX_CLI_ERRO_USO"
+  fi
+  DBX_CLI_PERFIL=$1
+  DBX_CLI_PERFIL_DADO='sim'
+  return 0
+}
+
+# _dbx_cli_perfil_dado <--perfil|--profile> [valor...] — opcao global.
+_dbx_cli_perfil_dado() {
+  _dbx_cli_perfil_registrar "$@"
+}
+
+# _dbx_cli_perfil_depois <argumentos do comando...> — `config` e `unlink`
+# (DIV-241): espia `--perfil` depois do subcomando. `--help` vence (a ajuda
+# curto-circuita) e o valor de `--raiz` nao e opcao.
+_dbx_cli_perfil_depois() {
+  local arg
+  for arg in "$@"; do
+    [[ $arg == '--help' || $arg == '-h' ]] && return 0
+  done
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --raiz | --root)
+        shift
+        ;;
+      --perfil | --profile)
+        _dbx_cli_perfil_registrar "$@" || return $?
+        shift
+        ;;
+    esac
+    [[ $# -gt 0 ]] && shift
+  done
+  return 0
+}
+
+# dbx_cli_perfil_aplicar — passa a selecao a `lib/config` (opcao > variavel >
+# `padrao`, RF-120). A variavel so e lida aqui, e so validada quando usada.
+# Uso invalido: DBX_CLI_MOTIVO, sem ecoar o valor de `DBX_PERFIL`.
+dbx_cli_perfil_aplicar() {
+  DBX_CLI_MOTIVO=''
+  if [[ $DBX_CLI_PERFIL_DADO == 'sim' ]]; then
+    _dbx_cli_carregar_config
+    dbx_config_perfil_selecionar "$DBX_CLI_PERFIL" opcao || {
+      DBX_CLI_MOTIVO=$DBX_CONFIG_DETALHE
+      return "$DBX_CLI_ERRO_USO"
+    }
+  elif [[ -n ${DBX_PERFIL:-} ]]; then
+    _dbx_cli_carregar_config
+    dbx_config_perfil_do_ambiente || {
+      DBX_CLI_MOTIVO=$DBX_CONFIG_DETALHE
+      return "$DBX_CLI_ERRO_USO"
+    }
+  fi
+  return 0
+}
+
 # dbx_cli_analisar <argumentos...>
 #
 # Opcao global so e reconhecida ANTES do subcomando. Depois dele, todo argumento
@@ -265,6 +354,8 @@ dbx_cli_analisar() {
   DBX_CLI_SIMULACAO='nao'
   DBX_CLI_PROGRESSO='auto'
   DBX_CLI_DEBUG='nao'
+  DBX_CLI_PERFIL=''
+  DBX_CLI_PERFIL_DADO='nao'
   [[ -n ${DBX_DEBUG:-} && ${DBX_DEBUG:-} != '0' && ${DBX_DEBUG:-} != 'nao' ]] && DBX_CLI_DEBUG='sim'
   DBX_CLI_MOTIVO=''
 
@@ -276,6 +367,10 @@ dbx_cli_analisar() {
       --progresso | --progress | -p) DBX_CLI_PROGRESSO='sim' ;;
       --sem-progresso | --no-progress) DBX_CLI_PROGRESSO='nao' ;;
       --debug) DBX_CLI_DEBUG='sim' ;;
+      --perfil | --profile)
+        _dbx_cli_perfil_dado "$@" || return $?
+        shift
+        ;;
       --help | -h)
         DBX_CLI_COMANDO='help'
         return 0
@@ -303,6 +398,11 @@ dbx_cli_analisar() {
         DBX_CLI_COMANDO=$DBX_CLI_CANONICO
         shift
         DBX_CLI_ARGS=("$@")
+        # `config` e `unlink` aceitam `--perfil` tambem depois do subcomando
+        # (DIV-241): a analise so ESPIA, os argumentos seguem com o comando.
+        if [[ $DBX_CLI_COMANDO == config || $DBX_CLI_COMANDO == unlink ]]; then
+          _dbx_cli_perfil_depois "$@" || return $?
+        fi
         return 0
         ;;
     esac

@@ -211,20 +211,24 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       config)
-        printf 'Uso: dbx config [--substituir | --replace] [--raiz | --root <caminho>] [--debug]\n\n'
-        printf 'Configura credencial e pareamento com a conta do Dropbox via fluxo OAuth2 offline.\n\n'
+        printf 'Uso: dbx config [--perfil | --profile <nome>] [--substituir | --replace] [--raiz | --root <caminho>] [--debug]\n\n'
+        printf 'Configura credencial e pareamento com a conta do Dropbox via fluxo OAuth2 offline.\n'
+        printf 'Sem --perfil grava o perfil padrao (credencial.json); com --perfil <nome> cria\n'
+        printf 'perfis/<nome>.json (veja dbx help perfis). O nome pode vir antes ou depois de config.\n\n'
         printf 'Opcoes:\n'
+        printf '  --perfil, --profile <nome>      Perfil da credencial (1 a 32 de a-z, 0-9, _ e -)\n'
         printf '  --substituir, --replace         Troca a credencial existente (o token antigo NAO e revogado)\n'
         printf '  --raiz, --root <caminho>        Raiz remota gravada na credencial (padrao: /)\n'
         printf '  --debug                         Diagnostico do ambiente em stderr\n'
         exit 0
         ;;
       unlink)
-        printf 'Uso: dbx unlink [--confirmar | --yes] [--manter-aplicativo | --keep-app]\n\n'
+        printf 'Uso: dbx unlink [--perfil | --profile <nome>] [--confirmar | --yes] [--manter-aplicativo | --keep-app]\n\n'
         printf 'Revoga o vinculo com a conta remota e limpa a credencial local.\n'
         printf 'Com sync ou verificar em curso neste host, recusa com codigo 7 sem apagar nada;\n'
         printf 'trava orfa, ilegivel ou de outro host fica, com um aviso por trava.\n\n'
         printf 'Opcoes:\n'
+        printf '  --perfil, --profile <nome>      Desvincula so este perfil (o nome pode vir antes ou depois de unlink)\n'
         printf '  --confirmar, --yes              Confirma o desvinculo sem terminal interativo\n'
         printf '  --manter-aplicativo, --keep-app Preserva app key e app secret para religar\n'
         exit 0
@@ -540,6 +544,24 @@ case $DBX_CLI_COMANDO in
         printf '  dbx upload ... && dbx reter /backups --padrao '"'"'db-*.tar.gz'"'"' --manter 7 --confirmar\n'
         exit 0
         ;;
+      perfis)
+        printf 'Uso: dbx perfis\n\n'
+        printf 'Lista os perfis de credencial (o padrao e perfis/<nome>.json) e se cada um esta\n'
+        printf 'completo, um registro por perfil e um total no fim: perfil, credencial (completa,\n'
+        printf 'incompleta, ilegivel, permissao ou ligacao_simbolica), ativo (sim ou nao) e arquivo.\n'
+        printf 'Alias em ingles: profiles.\n\n'
+        printf 'Nunca imprime segredo nem a identidade da credencial; so le, sem rede e sem criar nada.\n'
+        printf 'Codigo de saida: 0 (inclusive perfil quebrado e nenhum perfil); 2 uso invalido;\n'
+        printf '3 so sem diretorio de configuracao.\n\n'
+        printf 'Selecao do perfil (todos os comandos): --perfil <nome> (alias --profile) ANTES do\n'
+        printf 'comando, ou depois dele so em config e unlink; a variavel DBX_PERFIL carrega SO o\n'
+        printf 'nome (nunca segredo) e a opcao vence. Sem nenhuma das duas vale o perfil padrao.\n'
+        printf 'Perfil inexistente sai com codigo 3, sem rede e sem recuar para o padrao.\n'
+        printf 'O unlink de um perfil nao apaga o estado de outro; com a mesma credencial em dois\n'
+        printf 'perfis ele nao revoga o token. Dois sync --receber na mesma raiz local sao\n'
+        printf 'recusados (codigo 7), qualquer que seja o perfil.\n'
+        exit 0
+        ;;
       diagnostico)
         printf 'Uso: dbx diagnostico\n\n'
         printf 'Checa dependencias, credencial, conectividade, escopos, espaco, localidade, o\n'
@@ -579,9 +601,12 @@ case $DBX_CLI_COMANDO in
         printf '  link-temporario  URL direta de download valida por 4 horas\n'
         printf '  temp-link    Alias em ingles de link-temporario\n'
         printf '  compartilhar Cria, lista ou revoga link compartilhado (alias: share)\n'
-        printf '  reter        Mantem os backups mais novos e apaga o resto (alias: retain)\n\n'
-        printf 'Opcoes globais: --help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug\n\n'
+        printf '  reter        Mantem os backups mais novos e apaga o resto (alias: retain)\n'
+        printf '  perfis       Lista os perfis de credencial e se estao completos (alias: profiles)\n\n'
+        printf 'Opcoes globais: --help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug --perfil --profile\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
+        printf 'Perfil de credencial (--perfil <nome>, alias --profile): vale para todos os comandos; a\n'
+        printf 'variavel DBX_PERFIL carrega so o nome (nunca segredo) e a opcao vence. Veja dbx help perfis.\n\n'
         # RNF-07, RNF-30: os ajustes de rede sao documentados onde o operador os
         # procura; valor invalido e recusado com codigo 2 antes da rede.
         printf 'Variaveis de ambiente de rede (inteiro positivo; invalido sai com codigo 2):\n'
@@ -592,6 +617,8 @@ case $DBX_CLI_COMANDO in
         printf '  DBX_HTTP_ESPERA_BASE_MS         base do recuo exponencial, em ms (padrao 1000)\n'
         printf '  DBX_HTTP_ESPERA_TETO_MS         teto de cada espera, em ms (padrao 60000)\n'
         printf '  DBX_HTTP_RETRY_AFTER_TETO_S     teto do Retry-After do servidor, em s (padrao 300)\n\n'
+        printf 'Variavel de ambiente do perfil (so o NOME, nunca segredo; vazia vale como nao definida):\n'
+        printf '  DBX_PERFIL                      perfil de credencial; --perfil vence (padrao: perfil padrao)\n\n'
         printf 'Recomendacao para upload de fluxo (RSK-36):\n'
         printf '  Em "dbx upload - <destino>", ative "set -o pipefail" no shell do operador ao usar pipes.\n'
         exit 0
@@ -599,6 +626,16 @@ case $DBX_CLI_COMANDO in
     esac
     ;;
 esac
+
+# PERFIL (fase 8, RF-120, RF-121, RF-128): a selecao vale para todo comando que
+# resolve credencial; `help`, `version` e `completar` nunca leem `DBX_PERFIL`.
+# Nome invalido sai 2 ANTES de qualquer acesso a disco e de rede.
+if [[ $DBX_CLI_COMANDO != 'completar' ]]; then
+  dbx_cli_perfil_aplicar || _dbx_falhar uso_invalido "$DBX_CLI_MOTIVO"
+  if [[ ${DBX_CONFIG_PERFIL_ORIGEM:-} == 'ambiente' ]]; then
+    printf 'aviso: perfil ativo %s (DBX_PERFIL)\n' "$DBX_CONFIG_PERFIL" >&2
+  fi
+fi
 
 _dbx_arquivo=$(_dbx_cli_arquivo_do_comando "$DBX_CLI_COMANDO") ||
   _dbx_falhar uso_invalido "comando sem implementacao: $DBX_CLI_COMANDO"
@@ -622,7 +659,7 @@ case $_dbx_requisito in
     if [[ $_dbx_requisito == 'credencial' ]]; then
       dbx_carregar_camada_de_credencial
       dbx_config_carregar ||
-        _dbx_falhar configuracao "credencial indisponivel: $DBX_CONFIG_MOTIVO"
+        _dbx_falhar configuracao "$(dbx_config_mensagem_de_indisponibilidade)"
     fi
     ;;
   *) _dbx_falhar uso_invalido "requisito nao reconhecido: $_dbx_requisito" ;;
