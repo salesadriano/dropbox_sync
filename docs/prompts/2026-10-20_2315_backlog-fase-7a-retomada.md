@@ -3,7 +3,7 @@ date: 2026-10-20
 hora: "2315"
 domain: retomada de transferencia entre execucoes
 porte: G
-status: em-andamento
+status: concluido
 instancia: myPCWin/Adriano Sales Santos
 registro_de_entrega: "docs/reviews/2026-10-20-2315-registro-retomada-b7a.md"
 ---

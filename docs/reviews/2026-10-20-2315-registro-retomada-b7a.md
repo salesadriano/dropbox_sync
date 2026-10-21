@@ -180,7 +180,10 @@ Contagens literais dos pareceres do Senior Developer ([TDD](2026-10-20-2315-pare
 - **Shellcheck:** `shellcheck lib/*.sh commands/*.sh bin/* scripts/*.sh` com 0 achados (ciclo 1, com uma supressao SC2016 justificada; ciclo 2 sem alteracao). `shellcheck -x` nos testes novos com 0 achados; `shellcheck tests/integracao/qa_retomada_b7a_test.sh` limpo.
 - **Guarda de remocao de casos:** `bash scripts/verificar-remocao-de-casos.sh` com 1739 para 1739, nenhuma reducao, nos dois ciclos.
 - **Piramide e E2E:** a CLI e shell com duble de `curl` na fronteira de rede. Sem E2E contra o servico real (sem credencial de teste; mesmo criterio das fases 3 a 6). Formularios (regra 7): nao aplicavel.
-- **Suite completa local no push (regra 8):** [PENDENTE: resultado do comando oficial `sh scripts/suite-completa.sh`, preenchido apos o push].
+- **Suite completa local no push para a PR de `develop` (regra 8):** comando oficial `sh scripts/suite-completa.sh`.
+  - **Primeira rodada, REPROVADA, em `7674bb8`:** o `harness_test` recusou `erro()` redefinido em dois dubles de curl da suite do QA. O solicitante autorizou trocar o do download por `erro_download` (3 linhas, nenhum caso alterado) e aprovou o novo sha `bb76e263...`.
+  - **Segunda rodada, APROVADA, em `7baf2f9`:** 59 arquivos, 1859 aprovados, 0 reprovados, 3 pulados, em 1475 s. O `--conferir` registrou "suite completa verde para 7baf2f9 em 2026-10-21T11:18:08Z".
+  - O commit de documentacao que preenche este registro tem execucao propria, citada na PR.
 
 ### 5.2 Gates
 
@@ -247,7 +250,7 @@ Detalhe em [validacao-qa-retomada-b7a](2026-10-20-2315-validacao-qa-retomada-b7a
 - **Endurecimento da OBS-3:** o solicitante aceitou o risco (RSK-76). O endurecimento por `<>` na abertura ou por `timeout` fica no backlog.
 - **DIV-d:** separadores `\n` nas chaves antigas (`memoria-*`, `upload-*`, `trava-*`), risco teorico, para o backlog.
 - **RSK-70:** conferir o `Range` e o `rev:` contra o servico real, no primeiro uso real.
-- **Suite completa e PR:** [PENDENTE: suite completa no push, sha do commit e numero da PR].
+- **Suite completa e PR:** suite verde em `7baf2f9`; PR [#48](https://github.com/salesadriano/dropbox_sync/pull/48) para `develop`. O merge fica com o solicitante.
 - **`documentation-sync` deste registro:** os documentos vivos afetados foram listados na secao 3.1; a conferencia final fica com o Tech Lead antes do merge.
 
 ## 9. Diagrama de contexto (Mermaid, retomada e estado)
@@ -728,4 +731,4 @@ flowchart LR
 
 Links e pareceres: [TDD](2026-10-20-2315-parecer-tdd-retomada-b7a.md), [conformidade](2026-10-20-2315-parecer-conformidade-retomada-b7a.md), [QA](2026-10-20-2315-validacao-qa-retomada-b7a.md).
 
-Commit: [PENDENTE: sha do commit da 7a, preenchido apos o commit]. PR: [PENDENTE: numero da PR, preenchido apos o push].
+Commits: `7674bb8` (fase 7a) e `7baf2f9` (correcao da suite do QA). PR: [#48](https://github.com/salesadriano/dropbox_sync/pull/48).
