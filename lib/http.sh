@@ -107,6 +107,16 @@ _DBX_HTTP_CAMPOS_NOME=''
 # por segundo, ou vazio. Interno, iniciado aqui para o ambiente nao o trazer:
 # so `dbx_http_limite_banda` o escreve.
 _DBX_HTTP_LIMITE_BANDA=''
+# Fase 7a (RF-104(c)(d)): deslocamento do recebimento retomado (`continue-at`
+# do cliente, que pede `Range: bytes=N-` e anexa ao destino). Vazio fora dele.
+_DBX_HTTP_FAIXA_INICIO=''
+# `sim` quando o cliente recusou a resposta a um pedido de faixa (status 33:
+# `200` no lugar de `206`, ou `206` com inicio diferente) SEM escrever o corpo.
+# shellcheck disable=SC2034  # canal publico, lido por lib/cmd
+DBX_HTTP_FAIXA_IGNORADA='nao'
+# `Content-Range` da ultima resposta (aparado, no maximo 128 bytes).
+# shellcheck disable=SC2034  # canal publico, lido por lib/cmd
+DBX_HTTP_FAIXA_CABECALHO=''
 
 # Status do cliente que denuncia defeito NOSSO, e nao da rede; e a mensagem que
 # o cliente emitiu, ja redigida. Canais publicos.
@@ -247,6 +257,7 @@ _dbx_http_correlacao_de() {
   DBX_HTTP_RESULTADO_CABECALHO=''
   DBX_HTTP_RETRY_AFTER=''
   DBX_HTTP_DATA=''
+  DBX_HTTP_FAIXA_CABECALHO=''
   [[ -r $arquivo ]] || return 0
   while IFS= read -r linha; do
     linha=${linha%$'\r'}
@@ -269,6 +280,11 @@ _dbx_http_correlacao_de() {
         # nao e 50 s — e ele cai no recuo.
         [[ $valor =~ ^[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && valor=${BASH_REMATCH[1]}
         DBX_HTTP_RETRY_AFTER=$valor
+        ;;
+      content-range)
+        [[ $valor =~ ^[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && valor=${BASH_REMATCH[1]}
+        # shellcheck disable=SC2034  # canal publico, lido por lib/cmd
+        DBX_HTTP_FAIXA_CABECALHO=${valor:0:128}
         ;;
       date)
         [[ $valor =~ ^[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && valor=${BASH_REMATCH[1]}
@@ -365,6 +381,11 @@ _dbx_http_opcoes() {
       if [[ -n $_DBX_HTTP_LIMITE_BANDA ]]; then
         printf 'limit-rate = %s\n' "$_DBX_HTTP_LIMITE_BANDA"
       fi
+      # RF-104(c): o cliente pede `Range: bytes=N-`, ANEXA ao destino e recusa
+      # (status 33, sem escrever) resposta sem `Content-Range` que comece em N.
+      if [[ -n $_DBX_HTTP_FAIXA_INICIO && $_DBX_HTTP_CANAL == 'fluxo' ]]; then
+        printf 'continue-at = %s\n' "$_DBX_HTTP_FAIXA_INICIO"
+      fi
       ;;
     *)
       printf 'header = "Authorization: Bearer %s"\n' "$_DBX_HTTP_TOKEN"
@@ -451,10 +472,15 @@ dbx_http_conteudo() {
   _DBX_HTTP_ARG=$arg
   _DBX_HTTP_ARQUIVO_CORPO=$arquivo
   _DBX_HTTP_DESTINO=''
+  _DBX_HTTP_FAIXA_INICIO=''
   _dbx_http_executar "$metodo" "$url" '' "$idempotente"
 }
 
-# dbx_http_conteudo_receber <metodo> <url> <token> <arg_json> <destino>
+# dbx_http_conteudo_receber <metodo> <url> <token> <arg_json> <destino> [inicio]
+#
+# Com <inicio> maior que zero (fase 7a, RF-104), o pedido e de FAIXA: o cliente
+# envia `Range: bytes=<inicio>-` e anexa o corpo ao destino; resposta que nao
+# seja `206` comecando em <inicio> nao e escrita (DBX_HTTP_FAIXA_IGNORADA).
 #
 # Recebimento em fluxo: o corpo vai direto para <destino> — arquivo ou descritor,
 # tipicamente `/dev/stdout` — sem materializar copia intermediaria. Nao ha teto de
@@ -464,11 +490,13 @@ dbx_http_conteudo() {
 # repete quando nada foi emitido. Ver a nota no laco.
 dbx_http_conteudo_receber() {
   [[ $# -ge 5 ]] || return "$DBX_HTTP_ERRO_USO"
-  local metodo=$1 url=$2 token=$3 arg=$4 destino=$5
+  local metodo=$1 url=$2 token=$3 arg=$4 destino=$5 inicio=${6:-}
   [[ -n $metodo && -n $url && -n $token && -n $destino ]] || return "$DBX_HTTP_ERRO_USO"
+  [[ -z $inicio || $inicio =~ ^[1-9][0-9]{0,17}$ ]] || return "$DBX_HTTP_ERRO_USO"
 
   dbx_http_cabecalho_valido "$arg" || return "$DBX_HTTP_ERRO_USO"
 
+  _DBX_HTTP_FAIXA_INICIO=$inicio
   _DBX_HTTP_MODO=conteudo
   _DBX_HTTP_CANAL=fluxo
   _DBX_HTTP_TOKEN=$token
@@ -476,6 +504,9 @@ dbx_http_conteudo_receber() {
   _DBX_HTTP_ARQUIVO_CORPO=''
   _DBX_HTTP_DESTINO=$destino
   _dbx_http_executar "$metodo" "$url" '' sim
+  local estado=$?
+  _DBX_HTTP_FAIXA_INICIO=''
+  return "$estado"
 }
 
 # dbx_http_requisitar <metodo> <url> <token> <corpo> <idempotente>
@@ -489,6 +520,7 @@ dbx_http_requisitar() {
   # como corpo (o `delete_v2` do espelhamento, por exemplo).
   _DBX_HTTP_ARQUIVO_CORPO=''
   _DBX_HTTP_DESTINO=''
+  _DBX_HTTP_FAIXA_INICIO=''
   _dbx_http_executar "$1" "$2" "$4" "$5"
 }
 
@@ -507,6 +539,7 @@ dbx_http_formulario() {
   # levar o arquivo da chamada anterior.
   _DBX_HTTP_ARQUIVO_CORPO=''
   _DBX_HTTP_DESTINO=''
+  _DBX_HTTP_FAIXA_INICIO=''
   # Sem corpo em arquivo: os campos vao pela entrada padrao.
   # Nao idempotente: uma troca de token repetida as cegas nao e desejavel.
   _dbx_http_executar POST "$1" '' nao
@@ -627,7 +660,14 @@ _dbx_http_conduzir() {
     #   43 argumento interno invalido
     # O stderr do cliente e guardado, redigido, para o diagnostico.
     DBX_HTTP_DEFEITO_CLIENTE=''
-    if [[ $estado -eq 22 ]]; then
+    DBX_HTTP_FAIXA_IGNORADA='nao'
+    if [[ $estado -eq 33 && -n $_DBX_HTTP_FAIXA_INICIO ]]; then
+      # Fase 7a (RF-104(d), DIV-176): HOUVE resposta, e o cliente se recusou a
+      # anexa-la — `200` a um pedido de faixa, ou `206` que nao comeca no
+      # deslocamento pedido. Nada foi escrito; o codigo observado fica.
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      DBX_HTTP_FAIXA_IGNORADA='sim'
+    elif [[ $estado -eq 22 ]]; then
       # `--fail` no canal de fluxo: HOUVE resposta HTTP e o codigo e conhecido; o
       # cliente apenas se recusou a emitir o corpo de erro como se fosse
       # conteudo. Nao e falha de rede.
@@ -679,6 +719,15 @@ _dbx_http_conduzir() {
     politica=$DBX_ERRORS_POLITICA
     # shellcheck disable=SC2034  # canal publico, ver nota no topo
     DBX_HTTP_POLITICA=$politica
+
+    if [[ $DBX_HTTP_FAIXA_IGNORADA == 'sim' ]]; then
+      # Resposta incoerente com o pedido de faixa: quem pediu decide (recomeca
+      # do zero); nunca e repetida aqui nem passa por sucesso.
+      DBX_HTTP_CLASSE='erro_remoto'
+      # shellcheck disable=SC2034  # canal publico, ver nota no topo
+      DBX_HTTP_POLITICA='nenhuma'
+      break
+    fi
 
     if [[ -n $DBX_HTTP_DEFEITO_CLIENTE ]]; then
       # Erro de uso do proprio programa: nao e retentavel e nao e da rede.
@@ -764,16 +813,21 @@ _dbx_http_conduzir() {
   # entre as duas, o diagnostico descreve outro instante. Diagnostico que descreve
   # outro momento e pior que diagnostico ausente, entao a divergencia fica
   # registrada em vez de silenciada.
-  if [[ $_DBX_HTTP_CANAL == 'fluxo' && $DBX_HTTP_CLASSE != 'sucesso' && -n $DBX_HTTP_CODIGO && $DBX_HTTP_CODIGO != '0' ]]; then
-    local _canal_original=$_DBX_HTTP_CANAL _destino_original=$_DBX_HTTP_DESTINO
+  # Fase 7a: a faixa recusada (33) e o `416` sao respostas que quem pediu a
+  # faixa interpreta; nao ha corpo de erro a buscar.
+  if [[ $_DBX_HTTP_CANAL == 'fluxo' && $DBX_HTTP_CLASSE != 'sucesso' && -n $DBX_HTTP_CODIGO && $DBX_HTTP_CODIGO != '0' &&
+    $DBX_HTTP_FAIXA_IGNORADA != 'sim' && ! (-n $_DBX_HTTP_FAIXA_INICIO && $DBX_HTTP_CODIGO == '416') ]]; then
+    local _canal_original=$_DBX_HTTP_CANAL _destino_original=$_DBX_HTTP_DESTINO _faixa_original=$_DBX_HTTP_FAIXA_INICIO
     local _codigo_observado=$DBX_HTTP_CODIGO
     _DBX_HTTP_CANAL=padrao
     _DBX_HTTP_DESTINO=''
+    _DBX_HTTP_FAIXA_INICIO=''
     # Nao idempotente: a reemissao existe para diagnosticar, nunca para repetir a
     # operacao. Uma retentativa aqui seria uma segunda tentativa disfarcada.
     _dbx_http_executar "$metodo" "$url" '' nao >/dev/null 2>&1 || true
     _DBX_HTTP_CANAL=$_canal_original
     _DBX_HTTP_DESTINO=$_destino_original
+    _DBX_HTTP_FAIXA_INICIO=$_faixa_original
     if [[ $DBX_HTTP_CODIGO != "$_codigo_observado" ]]; then
       # shellcheck disable=SC2034  # canal publico, ver nota no topo
       DBX_HTTP_DIAGNOSTICO="diagnostico obtido em reemissao posterior; o codigo mudou de ${_codigo_observado} para ${DBX_HTTP_CODIGO} entre as duas requisicoes"

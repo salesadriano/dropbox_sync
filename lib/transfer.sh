@@ -145,11 +145,11 @@ DBX_TRANSFER_LIDO=''
 # sessao a compartilham.
 DBX_TRANSFER_AREA_TEMP=''
 
-# RF-58 — estado da retomada, SO EM MEMORIA e so durante a sessao: a origem
+# RF-58 — estado da retomada DENTRO da execucao, so em memoria: a origem
 # posicionavel (vazia para a entrada padrao), o tamanho medido no inicio, o
 # descritor de onde as partes sao lidas e o deslocamento pedido pelo servico.
-# Nenhum deles e gravado em disco; uma nova execucao recomeca do zero (F-03
-# fora de escopo).
+# A retomada ENTRE execucoes (fase 7a, F-03) e outra coisa e tem secao propria
+# abaixo: so o `upload` de arquivo regular a liga, e o registro e de `lib/state`.
 _DBX_TRANSFER_ORIGEM=''
 _DBX_TRANSFER_TAMANHO_INICIAL=0
 _DBX_TRANSFER_FONTE=0
@@ -356,6 +356,21 @@ _dbx_transfer_anexar() {
       ;;
   esac
 
+  _dbx_transfer_falha_de_parte "$deslocamento"
+}
+
+# _dbx_transfer_falha_de_parte <deslocamento> — a parte foi recusada sem
+# condicao de sessao a tratar: classe e motivo da falha.
+_dbx_transfer_falha_de_parte() {
+  local deslocamento=$1
+  # RF-103(f), RF-109 (fase 7a): `too_large` e falha definitiva, resposta que
+  # nenhuma repeticao conserta: classe `erro_remoto` (10). DIV-196.
+  _dbx_transfer_tag_sessao
+  if [[ $_DBX_TRANSFER_TAG == 'too_large' ]]; then
+    _dbx_transfer_falhar erro_remoto \
+      "parte que comeca em $deslocamento recusada: o arquivo excede o tamanho aceito pela sessao (too_large); nada foi publicado no destino"
+    return $?
+  fi
   # RF-09 emendado: falha transitoria que resistiu a todas as tentativas e
   # operacao NAO CONCLUIDA — a classe original fica no diagnostico.
   case ${DBX_HTTP_POLITICA:-} in
@@ -508,6 +523,15 @@ dbx_transfer_sessao() {
   _DBX_TRANSFER_TAMANHO_INICIAL=0
   _DBX_TRANSFER_FONTE=0
   _DBX_TRANSFER_RETOMAR_EM=''
+  # Fase 7a: saida da retomada e estado da sessao retomada, por execucao.
+  # shellcheck disable=SC2034  # canais publicos, lidos por commands/upload
+  DBX_TRANSFER_RETOMADA='nao'
+  # shellcheck disable=SC2034
+  DBX_TRANSFER_RETOMADO_DE=0
+  _DBX_TRANSFER_RET_REMOVER='nao'
+  _DBX_TRANSFER_RET_PRIMEIRA='nao'
+  # RF-102(b): a entrada padrao nunca retoma, ligue quem ligar.
+  [[ -n $origem && -f $origem ]] || _dbx_transfer_ret_desligar
   if [[ -n $origem && -f $origem ]]; then
     dbx_transfer_tamanho_de_arquivo "$origem" || {
       _dbx_transfer_falhar nao_encontrado "tamanho do arquivo local indeterminado: $origem"
@@ -537,6 +561,18 @@ dbx_transfer_sessao() {
   # muitas portas, e uma limpeza por porta seria a forma de esquecer uma.
   _dbx_transfer_conduzir "$commit"
   estado=$?
+  # RF-106(a)(c): rede, limite de taxa e operacao nao concluida deixam o
+  # registro para a proxima execucao; sucesso (C5: depois do `finish`), falha
+  # definitiva e arquivo que mudou o removem. A trava sai em todo caminho.
+  if [[ $DBX_TRANSFER_RETOMADA_ATIVA == 'sim' ]]; then
+    case $estado:${DBX_TRANSFER_CLASSE:-}:$_DBX_TRANSFER_RET_REMOVER in
+      0:*) dbx_state_retomada_remover ;;
+      *:rede:nao | *:limite_taxa:nao | *:nao_concluida:nao) ;;
+      *) dbx_state_retomada_remover ;;
+    esac
+    dbx_state_retomada_soltar
+  fi
+  DBX_TRANSFER_RETOMADA_ATIVA='nao'
   # O descritor da releitura e estado do processo emprestado pela sessao.
   [[ $_DBX_TRANSFER_FONTE -ne 0 ]] && exec {_DBX_TRANSFER_FONTE}<&-
   _DBX_TRANSFER_FONTE=0
@@ -548,39 +584,83 @@ dbx_transfer_sessao() {
 }
 
 _dbx_transfer_conduzir() {
-  local commit=$1
-  local bloco="$DBX_TRANSFER_AREA_TEMP/parte"
-  local sessao deslocamento=0 tamanho=0 argumento remoto parte=1
-  local retomadas=0 maior_confirmado=0 resumo_pelo_arquivo='nao'
+  local commit=$1 bloco="$DBX_TRANSFER_AREA_TEMP/parte" estado recomecos=0
 
   : >"$bloco" || {
     _dbx_transfer_falhar configuracao 'area temporaria nao gravavel'
     return $?
   }
 
+  # RF-103(f), DIV-171: a sessao recusada pelo servidor (expirada, fechada, ou
+  # deslocamento que nao confere com o registro) recomeca do zero na MESMA
+  # execucao, uma unica vez, sem consumir tentativa de RF-09.
+  _DBX_TRANSFER_RET_NAO_CARREGAR='nao'
+  _DBX_TRANSFER_RET_PODE_RECOMECAR=$DBX_TRANSFER_RETOMADA_ATIVA
+  while :; do
+    _dbx_transfer_percurso "$commit" "$bloco"
+    estado=$?
+    [[ $estado -eq $_DBX_TRANSFER_RECOMECAR ]] || return "$estado"
+    recomecos=$((recomecos + 1))
+    _DBX_TRANSFER_RET_PODE_RECOMECAR='nao'
+    _DBX_TRANSFER_RET_NAO_CARREGAR='sim'
+    [[ $DBX_TRANSFER_RETOMADA_ATIVA == 'sim' ]] && dbx_state_retomada_remover
+    # shellcheck disable=SC2034  # canais publicos, lidos por commands/upload
+    DBX_TRANSFER_RETOMADA='recomecada'
+    # shellcheck disable=SC2034
+    DBX_TRANSFER_RETOMADO_DE=0
+    _dbx_transfer_reposicionar "$bloco" 0 || return $?
+  done
+}
+
+# _dbx_transfer_percurso <commit> <bloco> — uma sessao, do `start` (ou da
+# retomada de um registro valido) ao `finish`. Devolve _DBX_TRANSFER_RECOMECAR
+# quando a sessao retomada foi recusada e o envio precisa recomecar do zero.
+_dbx_transfer_percurso() {
+  local commit=$1 bloco=$2
+  local sessao sessao_crua deslocamento=0 tamanho=0 argumento remoto parte=1 voo_h='-'
+  local retomadas=0 maior_confirmado=0 resumo_pelo_arquivo='nao'
+
   dbx_hash_acumular_iniciar || {
     _dbx_transfer_falhar configuracao 'utilitario de resumo SHA-256 indisponivel'
     return $?
   }
 
-  # Inicio com corpo VAZIO. Em sessao sequencial e permitido mandar dado ja no
-  # inicio, mas nao mandar mantem UMA forma de enviar parte — a do `append` — em
-  # vez de duas, e a regra de deslocamento fica com um dono so.
-  _dbx_transfer_emitir "$DBX_TRANSFER_URL_INICIAR" '{"close":false}' "$bloco" nao || {
-    _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
-      "inicio de sessao recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
-    return $?
-  }
-  _dbx_transfer_ler_campo session_id || {
-    _dbx_transfer_falhar erro_remoto 'inicio de sessao sem identificador de sessao'
-    return $?
-  }
-  dbx_json_escapar_cadeia "$DBX_TRANSFER_LIDO"
+  # Fase 7a: registro valido, arquivo local inalterado e prefixo conferido
+  # (RF-103(b)(c)): a sessao continua do confirmado, sem `start`.
+  _dbx_transfer_ret_abrir "$bloco" || return $?
+  if [[ $_DBX_TRANSFER_RET_ABERTA == 'sim' ]]; then
+    sessao_crua=$_DBX_TRANSFER_RET_SESSAO
+    deslocamento=$_DBX_TRANSFER_RET_CONFIRMADO
+    maior_confirmado=$deslocamento
+    parte=$((deslocamento / DBX_TRANSFER_TAMANHO_PARTE + 1))
+  else
+    # Inicio com corpo VAZIO. Em sessao sequencial e permitido mandar dado ja
+    # no inicio, mas nao mandar mantem UMA forma de enviar parte — a do
+    # `append` — em vez de duas, e a regra de deslocamento fica com um dono so.
+    _dbx_transfer_emitir "$DBX_TRANSFER_URL_INICIAR" '{"close":false}' "$bloco" nao || {
+      _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
+        "inicio de sessao recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+      return $?
+    }
+    _dbx_transfer_ler_campo session_id || {
+      _dbx_transfer_falhar erro_remoto 'inicio de sessao sem identificador de sessao'
+      return $?
+    }
+    sessao_crua=$DBX_TRANSFER_LIDO
+    _DBX_TRANSFER_RET_SESSAO=$sessao_crua
+    printf -v _DBX_TRANSFER_RET_CRIADO '%(%s)T' -1
+    # RF-103(a): o registro nasce depois do `start`, com confirmado 0.
+    _dbx_transfer_ret_prefixo
+    _dbx_transfer_ret_gravar 0 0 - "$_DBX_TRANSFER_RET_PREFIXO"
+  fi
+  dbx_json_escapar_cadeia "$sessao_crua"
   sessao=$DBX_JSON_ESCAPADO
   # Canal publico ALHEIO, esvaziado por quem o encheu, mesmo sem segredo: a
   # disciplina e "quem enche o canal de outro componente o esvazia".
   # shellcheck disable=SC2034  # canal publico alheio, limpo por quem o encheu
   DBX_JSON_ESCAPADO=''
+  # shellcheck disable=SC2034  # canal publico, esvaziado: o `session_id` nao fica
+  DBX_TRANSFER_LIDO=''
 
   while :; do
     # Sem cano: o status abaixo e o do proprio leitor. Falha de leitura aborta a
@@ -600,6 +680,10 @@ _dbx_transfer_conduzir() {
       return $?
     }
 
+    # Fase 7a: o `prefixo_hash` do registro e o do que o servidor ja confirmou,
+    # isto e, o acumulador ANTES desta parte.
+    _dbx_transfer_ret_prefixo
+    voo_h='-'
     # Depois de uma retomada as partes deixam de coincidir com os blocos do
     # resumo (RF-58(f)); o resumo passa a ser o do arquivo, no fim.
     if [[ $tamanho -gt 0 && $resumo_pelo_arquivo == 'nao' ]]; then
@@ -608,14 +692,22 @@ _dbx_transfer_conduzir() {
           "resumo do bloco no deslocamento $deslocamento nao pode ser calculado"
         return $?
       }
+      voo_h=$DBX_HASH_ULTIMO_BLOCO
     fi
 
     # Leitura curta so ocorre no fim da entrada: este e o ultimo bloco e ele vai
     # no `finish`, mesmo quando tem zero bytes.
     [[ $tamanho -lt $DBX_TRANSFER_TAMANHO_PARTE ]] && break
 
+    # RF-103(a), DIV-172: nenhum byte sai sem o registro que o descreve.
+    _dbx_transfer_ret_gravar "$deslocamento" "$tamanho" "$voo_h" "$_DBX_TRANSFER_RET_PREFIXO"
     _DBX_TRANSFER_RETOMAR_EM=''
-    _dbx_transfer_anexar "$sessao" "$deslocamento" "$tamanho" "$bloco" || return $?
+    if [[ $_DBX_TRANSFER_RET_PRIMEIRA == 'sim' ]]; then
+      _DBX_TRANSFER_RET_PRIMEIRA='nao'
+      _dbx_transfer_anexar_retomado "$sessao" "$deslocamento" "$tamanho" "$bloco" "$voo_h" || return $?
+    else
+      _dbx_transfer_anexar "$sessao" "$deslocamento" "$tamanho" "$bloco" || return $?
+    fi
     if [[ -n $_DBX_TRANSFER_RETOMAR_EM ]]; then
       # RF-58: cada retomada consome uma das tentativas (decisao do Tech Lead),
       # o que limita o laco mesmo diante de um servico que recusa sempre.
@@ -625,6 +717,10 @@ _dbx_transfer_conduzir() {
           "deslocamento incorreto repetido: esgotadas as ${DBX_HTTP_EFETIVO[DBX_HTTP_TENTATIVAS_MAXIMAS]} tentativas na parte que comeca em $deslocamento; nada foi publicado no destino"
         return $?
       fi
+      # DIV-195: dentro da execucao vale RF-58; as partes deixam de coincidir
+      # com os blocos, e o `prefixo_hash` deixaria de existir. Segue sem
+      # retomada entre execucoes.
+      _dbx_transfer_ret_desligar 'sem retomada nesta execucao: o servico pediu para reenviar parte ja enviada'
       _dbx_transfer_reposicionar "$bloco" "$_DBX_TRANSFER_RETOMAR_EM" || return $?
       deslocamento=$_DBX_TRANSFER_RETOMAR_EM
       _DBX_TRANSFER_RETOMAR_EM=''
@@ -649,14 +745,20 @@ _dbx_transfer_conduzir() {
   dbx_progress_barra_gerar 100 20 str_barra_concluida
   dbx_progress_mensagem "[upload] concluindo sessao em partes ($str_total_sessao)... $str_barra_concluida (100%)"
 
-  _dbx_transfer_conferir_tamanho "$((deslocamento + tamanho))" || return $?
+  # RF-103(d): mudou de tamanho durante o envio, o registro tambem sai.
+  _dbx_transfer_conferir_tamanho "$((deslocamento + tamanho))" || {
+    local estado_tamanho=$?
+    _DBX_TRANSFER_RET_REMOVER='sim'
+    return "$estado_tamanho"
+  }
 
+  _dbx_transfer_ret_gravar "$deslocamento" "$tamanho" "$voo_h" "$_DBX_TRANSFER_RET_PREFIXO"
   argumento="{\"cursor\":{\"session_id\":\"$sessao\",\"offset\":$deslocamento},\"commit\":$commit}"
   _dbx_transfer_emitir "$DBX_TRANSFER_URL_CONCLUIR" "$argumento" "$bloco" nao || {
-    _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
-      "conclusao da sessao recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+    _dbx_transfer_conclusao_recusada
     return $?
   }
+  _DBX_TRANSFER_RET_PRIMEIRA='nao'
   # shellcheck disable=SC2034
   # Justificativa: total de bytes lidos da origem, publicado pelo comando (RF-31).
   DBX_TRANSFER_BYTES=$((deslocamento + tamanho))
@@ -674,6 +776,9 @@ _dbx_transfer_conduzir() {
       return $?
     }
   else
+    # Fase 7a (DIV-175): na retomada, o acumulador tem o prefixo RELIDO desta
+    # execucao mais as partes enviadas agora — o arquivo inteiro, nunca so o
+    # que esta execucao mandou.
     dbx_hash_acumular_encerrar "$bloco" || {
       _dbx_transfer_falhar integridade \
         'o resumo local do conteudo enviado nao pode ser calculado; a integridade nao foi conferida'
@@ -705,6 +810,276 @@ _dbx_transfer_conduzir() {
   fi
 
   return 0
+}
+
+# _dbx_transfer_conclusao_recusada — o `finish` falhou. Na retomada (fase 7a),
+# `lookup_failed` por sessao expirada ou fechada, ou deslocamento recusado numa
+# sessao retomada sem `append` nesta execucao, recomeca do zero uma vez
+# (RF-103(f)); `too_large` e falha definitiva (`10`). O resto, como hoje.
+_dbx_transfer_conclusao_recusada() {
+  _dbx_transfer_tag_sessao
+  if [[ $_DBX_TRANSFER_RET_PODE_RECOMECAR == 'sim' ]]; then
+    case $_DBX_TRANSFER_TAG in
+      not_found | closed)
+        _dbx_transfer_avisar 'sessao de envio expirada no servidor; recomecando'
+        return "$_DBX_TRANSFER_RECOMECAR"
+        ;;
+      incorrect_offset)
+        if [[ $_DBX_TRANSFER_RET_PRIMEIRA == 'sim' ]]; then
+          _dbx_transfer_avisar 'estado de retomada descartado: o servico informou um deslocamento que nao confere com o registro; o envio recomeca do zero'
+          return "$_DBX_TRANSFER_RECOMECAR"
+        fi
+        ;;
+    esac
+  fi
+  if [[ $_DBX_TRANSFER_TAG == 'too_large' ]]; then
+    _dbx_transfer_falhar erro_remoto \
+      'conclusao da sessao recusada: o arquivo excede o tamanho aceito pela sessao (too_large)'
+    return $?
+  fi
+  _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
+    "conclusao da sessao recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+}
+
+# ---------------------------------------------------------------------------
+# Retomada entre execucoes (fase 7a, F-03; RF-103, RF-106)
+# ---------------------------------------------------------------------------
+#
+# LIGADA SO PELO `upload` de arquivo regular por sessao, depois da decisao do
+# comando (C5: RF-60, `--rev`, espaco) e com a trava do registro ja detida
+# (`dbx_cmd_retomada_preparar`). O `sync` e a entrada padrao nunca a ligam
+# (RF-102(b), DIV-180). O registro e de `lib/state`; aqui se decide QUANDO
+# grava-lo e o que PROVAR antes de usa-lo:
+#
+#   - gravacao antecipada (DIV-172): depois do `start` (confirmado 0) e antes
+#     de cada `append_v2` e do `finish`, com o confirmado pelo servidor e o
+#     tamanho e o SHA-256 da parte em voo;
+#   - carga (RF-103(b)(c), C1): identidade forte igual e `prefixo_hash` igual,
+#     recalculado relendo [0, confirmado) PARA O ACUMULADOR, antes do primeiro
+#     `append_v2`; qualquer diferenca descarta e recomeca do zero;
+#   - primeiro `append_v2` retomado: o `correct_offset` so vale se for o
+#     confirmado, ou o confirmado mais a parte em voo com o SHA-256 relido
+#     igual ao gravado;
+#   - conferencia final do `content_hash` do arquivo inteiro (DIV-175).
+#
+# O `session_id` fica so no registro 0600: nunca vai para mensagem, progresso
+# ou canal publico (C6).
+
+# shellcheck disable=SC2034
+# Justificativa: entradas da retomada, postas por commands/upload.
+DBX_TRANSFER_RETOMADA_ATIVA='nao'
+# shellcheck disable=SC2034
+DBX_TRANSFER_RETOMADA_IDENTIDADE=''
+# shellcheck disable=SC2034
+DBX_TRANSFER_AVISAR=''
+# shellcheck disable=SC2034
+# Justificativa: saida da retomada (`nao`, `sim`, `recomecada`) e os bytes
+# confirmados de onde continuou, lidos por commands/upload.
+DBX_TRANSFER_RETOMADA='nao'
+# shellcheck disable=SC2034
+DBX_TRANSFER_RETOMADO_DE=0
+readonly _DBX_TRANSFER_RECOMECAR=250
+
+_DBX_TRANSFER_RET_ABERTA='nao'
+_DBX_TRANSFER_RET_PRIMEIRA='nao'
+_DBX_TRANSFER_RET_VOO_T=0
+_DBX_TRANSFER_RET_VOO_H=''
+_DBX_TRANSFER_RET_CRIADO=0
+_DBX_TRANSFER_RET_SESSAO=''
+_DBX_TRANSFER_RET_CONFIRMADO=0
+_DBX_TRANSFER_RET_NAO_CARREGAR='nao'
+_DBX_TRANSFER_RET_PODE_RECOMECAR='nao'
+_DBX_TRANSFER_RET_REMOVER='nao'
+_DBX_TRANSFER_RET_PREFIXO=''
+_DBX_TRANSFER_TAG=''
+
+# _dbx_transfer_avisar <texto> — um aviso de uma linha pela funcao do comando.
+_dbx_transfer_avisar() {
+  if [[ -n $DBX_TRANSFER_AVISAR ]] && declare -F -- "$DBX_TRANSFER_AVISAR" >/dev/null; then
+    "$DBX_TRANSFER_AVISAR" "$1"
+  fi
+  return 0
+}
+
+# _dbx_transfer_tag_sessao — tag do erro de sessao da ultima resposta, sem o
+# qualificador `lookup_failed`, em _DBX_TRANSFER_TAG (`not_found`, `closed`,
+# `incorrect_offset`, `too_large` ou o que vier).
+_dbx_transfer_tag_sessao() {
+  local resumo=${DBX_HTTP_RESUMO_DE_ERRO:-}
+  resumo=${resumo#lookup_failed/}
+  resumo=${resumo#lookup_failed.}
+  resumo=${resumo%%/*}
+  _DBX_TRANSFER_TAG=${resumo%%.*}
+  return 0
+}
+
+# _dbx_transfer_ret_desligar [aviso] — a execucao segue SEM retomada: o
+# registro desta chave sai e a trava e liberada.
+_dbx_transfer_ret_desligar() {
+  [[ $DBX_TRANSFER_RETOMADA_ATIVA == 'sim' ]] || return 0
+  dbx_state_retomada_remover
+  dbx_state_retomada_soltar
+  DBX_TRANSFER_RETOMADA_ATIVA='nao'
+  [[ -n ${1:-} ]] && _dbx_transfer_avisar "$1"
+  return 0
+}
+
+# _dbx_transfer_ret_prefixo — `content_hash` do que o acumulador ja tem (o
+# prefixo confirmado), em _DBX_TRANSFER_RET_PREFIXO.
+_dbx_transfer_ret_prefixo() {
+  _DBX_TRANSFER_RET_PREFIXO=''
+  [[ $DBX_TRANSFER_RETOMADA_ATIVA == 'sim' ]] || return 0
+  if dbx_hash_acumular_encerrar "$DBX_TRANSFER_AREA_TEMP/prefixo"; then
+    _DBX_TRANSFER_RET_PREFIXO=$DBX_HASH_RESULTADO
+  fi
+  DBX_HASH_RESULTADO=''
+  return 0
+}
+
+# _dbx_transfer_ret_gravar <confirmado> <voo_tamanho> <voo_sha256> <prefixo> —
+# RF-103(a). Falha ao gravar NAO aborta o envio: segue sem retomada, com aviso.
+_dbx_transfer_ret_gravar() {
+  [[ $DBX_TRANSFER_RETOMADA_ATIVA == 'sim' ]] || return 0
+  dbx_state_retomada_gravar "$_DBX_TRANSFER_RET_SESSAO" "$1" "$2" "$3" "$_DBX_TRANSFER_TAMANHO_INICIAL" \
+    "$DBX_TRANSFER_RETOMADA_IDENTIDADE" "$_DBX_TRANSFER_RET_CRIADO" "$4" >/dev/null 2>&1 && return 0
+  _dbx_transfer_ret_desligar 'sem retomada nesta execucao: o registro de retomada nao pode ser gravado'
+  return 0
+}
+
+# _dbx_transfer_ret_mudou — arquivo local diferente do registrado: descarta.
+_dbx_transfer_ret_mudou() {
+  dbx_state_retomada_remover
+  # shellcheck disable=SC2034  # canal publico, lido por commands/upload
+  DBX_TRANSFER_RETOMADA='recomecada'
+  _dbx_transfer_avisar 'arquivo local mudou desde a interrupcao; o envio recomeca do zero'
+}
+
+# _dbx_transfer_ret_abrir <bloco> — carrega o registro e prova que ele serve.
+# _DBX_TRANSFER_RET_ABERTA `sim` com a sessao, o confirmado, a parte em voo e o
+# acumulador com o prefixo relido; `nao` para comecar do zero (registro
+# ausente ou descartado). Diferente de zero so em falha de leitura da origem.
+_dbx_transfer_ret_abrir() {
+  local bloco=$1 restante lido identidade_atual='' falhou='nao'
+  local sessao confirmado voo_t voo_h total identidade criado prefixo
+  _DBX_TRANSFER_RET_ABERTA='nao'
+  _DBX_TRANSFER_RET_PRIMEIRA='nao'
+  _DBX_TRANSFER_RET_VOO_T=0
+  _DBX_TRANSFER_RET_VOO_H=''
+  [[ $DBX_TRANSFER_RETOMADA_ATIVA == 'sim' && $_DBX_TRANSFER_RET_NAO_CARREGAR != 'sim' && -n $_DBX_TRANSFER_ORIGEM ]] ||
+    return 0
+  dbx_state_retomada_carregar
+  case $? in
+    0) ;;
+    2)
+      _dbx_transfer_avisar "estado de retomada descartado: $DBX_STATE_MOTIVO"
+      # shellcheck disable=SC2034  # canal publico, lido por commands/upload
+      DBX_TRANSFER_RETOMADA='recomecada'
+      return 0
+      ;;
+    3)
+      dbx_state_retomada_soltar
+      DBX_TRANSFER_RETOMADA_ATIVA='nao'
+      _dbx_transfer_avisar 'sem retomada nesta execucao: o registro de retomada nao e um arquivo deste usuario'
+      return 0
+      ;;
+    *) return 0 ;;
+  esac
+  sessao=${DBX_STATE_RETOMADA_CAMPOS[0]}
+  confirmado=$((10#${DBX_STATE_RETOMADA_CAMPOS[1]}))
+  voo_t=$((10#${DBX_STATE_RETOMADA_CAMPOS[2]}))
+  voo_h=${DBX_STATE_RETOMADA_CAMPOS[3]}
+  total=$((10#${DBX_STATE_RETOMADA_CAMPOS[4]}))
+  identidade=${DBX_STATE_RETOMADA_CAMPOS[5]}
+  criado=${DBX_STATE_RETOMADA_CAMPOS[6]}
+  prefixo=${DBX_STATE_RETOMADA_CAMPOS[7]}
+
+  # (c1) identidade forte e tamanho: os de agora, os do inicio desta execucao e
+  # os gravados, todos iguais.
+  dbx_hash_identidade "$_DBX_TRANSFER_ORIGEM" && identidade_atual=$DBX_HASH_IDENTIDADE
+  if [[ -z $identidade_atual || $identidade != "$identidade_atual" ||
+    $identidade != "$DBX_TRANSFER_RETOMADA_IDENTIDADE" || $total -ne $_DBX_TRANSFER_TAMANHO_INICIAL ]]; then
+    _dbx_transfer_ret_mudou
+    return 0
+  fi
+
+  # (c2) C1: o prefixo [0, confirmado) relido agora, em blocos de 4 MiB, PARA O
+  # ACUMULADOR (o arquivo e lido uma vez so), e o `prefixo_hash` conferido
+  # ANTES de qualquer `append_v2`. A origem fica posicionada no confirmado.
+  restante=$confirmado
+  while [[ $restante -gt 0 ]]; do
+    lido=''
+    head -c "$DBX_TRANSFER_TAMANHO_PARTE" <&"$_DBX_TRANSFER_FONTE" >"$bloco" && lido=$(wc -c <"$bloco")
+    lido=${lido//[^0-9]/}
+    if [[ -z $lido || $lido -ne $DBX_TRANSFER_TAMANHO_PARTE ]] || ! dbx_hash_acumular_bloco "$bloco"; then
+      falhou='sim'
+      break
+    fi
+    restante=$((restante - lido))
+  done
+  [[ $falhou == 'nao' ]] && _dbx_transfer_ret_prefixo
+  if [[ $falhou == 'sim' || $_DBX_TRANSFER_RET_PREFIXO != "$prefixo" ]]; then
+    # Nunca se envia o sufixo sobre o prefixo antigo: sessao nova, do zero.
+    _dbx_transfer_ret_mudou
+    dbx_hash_acumular_iniciar || {
+      _dbx_transfer_falhar configuracao 'utilitario de resumo SHA-256 indisponivel'
+      return $?
+    }
+    _dbx_transfer_reposicionar "$bloco" 0 || return $?
+    return 0
+  fi
+
+  _DBX_TRANSFER_RET_ABERTA='sim'
+  _DBX_TRANSFER_RET_PRIMEIRA='sim'
+  _DBX_TRANSFER_RET_SESSAO=$sessao
+  _DBX_TRANSFER_RET_CONFIRMADO=$confirmado
+  _DBX_TRANSFER_RET_VOO_T=$voo_t
+  _DBX_TRANSFER_RET_VOO_H=$voo_h
+  _DBX_TRANSFER_RET_CRIADO=$criado
+  # shellcheck disable=SC2034  # canais publicos, lidos por commands/upload
+  DBX_TRANSFER_RETOMADA='sim'
+  # shellcheck disable=SC2034
+  DBX_TRANSFER_RETOMADO_DE=$confirmado
+  return 0
+}
+
+# _dbx_transfer_anexar_retomado <sessao_json> <deslocamento> <tamanho> <corpo>
+# <sha256_da_parte> — o PRIMEIRO `append_v2` de uma sessao retomada
+# (RF-103(b)(f), DIV-172), mais restrito que RF-58: o servidor e a autoridade,
+# e o `correct_offset` so vale se for o confirmado, ou o confirmado mais a
+# parte em voo gravada com o SHA-256 da parte RELIDA agora igual ao gravado.
+# Qualquer outro valor, `not_found` ou `closed`: _DBX_TRANSFER_RECOMECAR.
+_dbx_transfer_anexar_retomado() {
+  local sessao=$1 deslocamento=$2 tamanho=$3 corpo=$4 sha=$5 argumento correto
+  argumento="{\"cursor\":{\"session_id\":\"$sessao\",\"offset\":$deslocamento},\"close\":false}"
+  _dbx_transfer_emitir "$DBX_TRANSFER_URL_ANEXAR" "$argumento" "$corpo" sim && return 0
+  _dbx_transfer_tag_sessao
+  case $_DBX_TRANSFER_TAG in
+    not_found | closed)
+      _dbx_transfer_avisar 'sessao de envio expirada no servidor; recomecando'
+      return "$_DBX_TRANSFER_RECOMECAR"
+      ;;
+    too_large)
+      _dbx_transfer_falhar erro_remoto \
+        'o servico recusou a sessao: o arquivo excede o tamanho aceito (too_large); nada foi publicado no destino'
+      return $?
+      ;;
+  esac
+  if [[ ${DBX_HTTP_POLITICA:-} == 'retomar' ]] && _dbx_transfer_deslocamento_correto; then
+    correto=$DBX_TRANSFER_LIDO
+    if [[ $correto =~ ^[0-9]{1,18}$ ]]; then
+      if ((10#$correto == deslocamento)); then
+        # O servidor esta no confirmado: a mesma parte, de novo, uma vez.
+        _dbx_transfer_emitir "$DBX_TRANSFER_URL_ANEXAR" "$argumento" "$corpo" sim && return 0
+      elif ((_DBX_TRANSFER_RET_VOO_T > 0 && 10#$correto == deslocamento + _DBX_TRANSFER_RET_VOO_T &&
+        tamanho == _DBX_TRANSFER_RET_VOO_T)) && [[ $sha == "$_DBX_TRANSFER_RET_VOO_H" ]]; then
+        # A parte em voo chegou antes da interrupcao e e a mesma: avanca.
+        return 0
+      fi
+    fi
+    _dbx_transfer_avisar 'estado de retomada descartado: o servico informou um deslocamento que nao confere com o registro; o envio recomeca do zero'
+    return "$_DBX_TRANSFER_RECOMECAR"
+  fi
+  _dbx_transfer_falha_de_parte "$deslocamento"
 }
 
 # ---------------------------------------------------------------------------

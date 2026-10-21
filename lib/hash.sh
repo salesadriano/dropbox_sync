@@ -96,6 +96,10 @@ DBX_HASH_RESULTADO=''
 # shellcheck disable=SC2034
 # Justificativa: total de bytes acumulados, exigido por RF-31 e lido por lib/transfer.
 DBX_HASH_BYTES=0
+# shellcheck disable=SC2034
+# Justificativa: SHA-256 do ultimo bloco acumulado (fase 7a), o da parte em voo
+# no registro de retomada (RF-103(a)), sem reler o bloco; lido por lib/transfer.
+DBX_HASH_ULTIMO_BLOCO=''
 
 # ---------------------------------------------------------------------------
 # Utilitario de resumo
@@ -222,6 +226,8 @@ dbx_hash_acumular_bloco() {
 
   hex=$(_dbx_hash_sha256_hex <"$caminho") || return "$DBX_HASH_ERRO_RESUMO"
   _dbx_hash_anexar_escapes "$hex"
+  # shellcheck disable=SC2034  # canal publico, lido por lib/transfer (fase 7a)
+  DBX_HASH_ULTIMO_BLOCO=$hex
   DBX_HASH_BYTES=$((DBX_HASH_BYTES + tamanho))
   return "$DBX_HASH_OK"
 }

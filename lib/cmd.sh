@@ -662,6 +662,381 @@ dbx_cmd_receber_arquivo() {
 }
 
 # ---------------------------------------------------------------------------
+# Retomada entre execucoes (fase 7a, F-03; RF-101 a RF-109)
+# ---------------------------------------------------------------------------
+#
+# Conjunto onde incide: `upload` de arquivo regular por sessao e `download` de
+# arquivo acima de 150 MiB para destino em arquivo, e SO eles (RF-102(a)). O
+# `sync`, as pastas, a entrada e a saida padrao, a simulacao e `--sem-retomada`
+# nunca passam por aqui (RF-102(b), DIV-180, DIV-186, DIV-187).
+#
+# O ESTADO SO ACELERA. Tudo o que vem do registro e reprovado por uma prova
+# feita nesta execucao antes de ser usado; registro que nao serve e descartado
+# e a transferencia recomeca do zero com o codigo de uma execucao sem estado.
+
+# Canais publicos, lidos por commands/download e commands/upload: `nao`, `sim`
+# ou `recomecada`, e os bytes ja recebidos de onde a transferencia continuou.
+# shellcheck disable=SC2034
+DBX_CMD_RETOMADA='nao'
+# shellcheck disable=SC2034
+DBX_CMD_RETOMADO_DE=0
+_DBX_CMD_PART_FD=''
+_DBX_CMD_PART_T=0
+
+# dbx_cmd_avisar <texto> — um aviso de uma linha em stderr (RF-108(b)); usado
+# tambem por lib/transfer como funcao de aviso da retomada.
+dbx_cmd_avisar() { _dbx_cmd_avisar "$1"; }
+
+# dbx_cmd_retomada_preparar <sentido> <local_canonico> <remoto> — contexto e
+# trava do registro (RF-105(a)): 0 quando a retomada esta ligada (a trava fica
+# com este processo); 1 quando a transferencia segue SEM retomada — sem conta,
+# diretorio de estado inutilizavel (RF-101(i)) ou trava ocupada, de outro host
+# ou ilegivel (RF-105(b)) —, com um aviso de uma linha quando ha o que dizer.
+# Nunca recusa e nunca espera.
+dbx_cmd_retomada_preparar() {
+  local sentido=$1 local_=$2 remoto=$3 estado
+  dbx_config_identidade
+  [[ -n $DBX_CONFIG_IDENTIDADE && -n $local_ ]] || return 1
+  if ! dbx_state_retomada_diretorio_utilizavel; then
+    _dbx_cmd_avisar "sem retomada nesta execucao: $DBX_STATE_MOTIVO"
+    return 1
+  fi
+  dbx_state_retomada_contexto "$sentido" "$DBX_CONFIG_IDENTIDADE" "$local_" "$remoto" || return 1
+  dbx_state_retomada_travar
+  estado=$?
+  if [[ $estado -eq 0 ]]; then
+    [[ -n $DBX_STATE_AVISO ]] && _dbx_cmd_avisar "$DBX_STATE_AVISO"
+    return 0
+  fi
+  _dbx_cmd_avisar "sem retomada nesta execucao: ${DBX_STATE_MOTIVO:-trava do registro indisponivel}"
+  return 1
+}
+
+# dbx_cmd_retomada_limpar <sentido> <local_canonico> <remoto> — remove, sob a
+# trava, o registro da chave (dispensa de RF-60, remoto inexistente): o que
+# existia nao vale mais. Trava ocupada: nada e tocado. Download: o `.part` sai
+# so pela barreira.
+dbx_cmd_retomada_limpar() {
+  dbx_cmd_retomada_preparar "$@" || return 0
+  if [[ $1 == 'download' ]] && dbx_state_retomada_carregar; then
+    _dbx_cmd_retomada_apagar_part "${DBX_STATE_RETOMADA_CAMPOS[3]}" "${DBX_STATE_RETOMADA_CAMPOS[4]}"
+  fi
+  dbx_state_retomada_remover
+  dbx_state_retomada_soltar
+  return 0
+}
+
+# _dbx_cmd_retomada_apagar_part <nome> <dev|inode> — o `.part` do alvo do
+# contexto, so pela barreira (RF-104(e)).
+_dbx_cmd_retomada_apagar_part() {
+  local diretorio=${DBX_STATE_RETOMADA_LOCAL%/*}
+  [[ -n $diretorio ]] || diretorio=/
+  dbx_state_retomada_part_apagar "$diretorio" "$1" "$2" || :
+}
+
+# _dbx_cmd_part_abrir <diretorio> <nome> <dev|inode> <tamanho_maximo>
+#
+# Abre o `.part` para ANEXAR, com a barreira conferida PELO DESCRITOR
+# (RF-104(c)): o arquivo e aberto so para leitura (sem criar), o descritor e
+# conferido (regular, do usuario, mesmo dispositivo e inode, tamanho ate o
+# esperado) e so entao o MESMO inode e reaberto para anexar por `/dev/fd`. Um
+# nome trocado entre a conferencia e a abertura reprova, e nada e escrito no
+# arquivo trocado. 0 aberto (_DBX_CMD_PART_FD, _DBX_CMD_PART_T); 1 reprovado.
+_dbx_cmd_part_abrir() {
+  local diretorio=$1 nome=$2 devino=$3 maximo=$4 caminho leitura escrita info tamanho
+  _DBX_CMD_PART_FD=''
+  _DBX_CMD_PART_T=0
+  dbx_state_retomada_part_barreira "$diretorio" "$nome" "$devino" || return 1
+  caminho="$diretorio/$nome"
+  { exec {leitura}<"$caminho"; } 2>/dev/null || return 1
+  info=''
+  if [[ -f /dev/fd/$leitura && -O /dev/fd/$leitura ]]; then
+    info=$(stat -L -c '%d|%i|%s' -- "/dev/fd/$leitura" 2>/dev/null) || info=''
+  fi
+  tamanho=${info##*|}
+  if [[ ${info%|*} != "$devino" || ! $tamanho =~ ^[0-9]{1,18}$ ]] || ((10#$tamanho > maximo)); then
+    exec {leitura}<&-
+    return 1
+  fi
+  { exec {escrita}>>"/dev/fd/$leitura"; } 2>/dev/null || {
+    exec {leitura}<&-
+    return 1
+  }
+  exec {leitura}<&-
+  _DBX_CMD_PART_FD=$escrita
+  _DBX_CMD_PART_T=$((10#$tamanho))
+  return 0
+}
+
+_dbx_cmd_part_fechar() {
+  [[ -n $_DBX_CMD_PART_FD ]] && exec {_DBX_CMD_PART_FD}>&-
+  _DBX_CMD_PART_FD=''
+  return 0
+}
+
+# _dbx_cmd_resultado_campo <campo> — campo de texto do `Dropbox-API-Result` da
+# ultima resposta, em DBX_CMD_LIDO (vazio quando ausente).
+_dbx_cmd_resultado_campo() {
+  DBX_CMD_LIDO=''
+  [[ -n ${DBX_HTTP_RESULTADO_CABECALHO:-} ]] || return 0
+  dbx_json_contexto resultado >/dev/null 2>&1 || return 0
+  if dbx_json_analisar "$DBX_HTTP_RESULTADO_CABECALHO" >/dev/null 2>&1 &&
+    dbx_json_valor "$1" >/dev/null 2>&1; then
+    DBX_CMD_LIDO=$DBX_JSON_RESULTADO
+  fi
+  dbx_json_descartar resultado >/dev/null 2>&1
+  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR" >/dev/null 2>&1
+  return 0
+}
+
+# dbx_cmd_receber_retomavel <remoto> <alvo> <rev> <tamanho> <content_hash>
+#
+# Recebimento atomico RETOMAVEL (RF-104), para arquivo remoto acima de 150 MiB
+# cujo metadado (`get_metadata` desta execucao) deu `rev`, tamanho e
+# `content_hash`. Mesmos canais de `dbx_cmd_receber_arquivo`, mais
+# DBX_CMD_RETOMADA e DBX_CMD_RETOMADO_DE.
+#
+#   - O pedido e sempre por `rev:<rev>` (DIV-177): o conteudo e imutavel entre
+#     as execucoes. Registro de outra revisao, tamanho ou resumo e descartado.
+#   - O `.part` e o temporario de RF-55(a), no diretorio do alvo, 0600. Sai do
+#     registro de `lib/tmp` so DEPOIS de o registro de retomada estar gravado.
+#   - Retomado, so pela barreira conferida pelo descritor; a requisicao leva
+#     `Range: bytes=T-` e so um `206` coerente e anexado (DIV-176).
+#   - O alvo so muda depois do `content_hash` do `.part` INTEIRO conferido
+#     (DIV-183); divergencia ou faixa incoerente descartam o `.part` (pela
+#     barreira) e recomecam do zero UMA vez, sem retomada.
+dbx_cmd_receber_retomavel() {
+  local remoto=$1 alvo=$2 rev=$3 tamanho=$4 esperado=$5
+  local diretorio nome canonico='' ativa='nao' part='' devino='' inicio=0 estado argumento codigo
+  local rev_g tam_g hash_g nome_g devino_g criado obtido resultado modo coerente
+  DBX_CMD_INTEGRIDADE='nao_aplicavel'
+  DBX_CMD_CONTENT_HASH=''
+  DBX_CMD_FALHA_CLASSE=''
+  DBX_CMD_FALHA_MOTIVO=''
+  # shellcheck disable=SC2034  # canais publicos, ver nota no topo
+  DBX_CMD_RETOMADA='nao'
+  # shellcheck disable=SC2034
+  DBX_CMD_RETOMADO_DE=0
+
+  if [[ -L $alvo ]]; then
+    IFS= read -r -d '' alvo < <(readlink -f -- "$2" && printf '\0') || {
+      DBX_CMD_FALHA_CLASSE='configuracao'
+      DBX_CMD_FALHA_MOTIVO="vinculo simbolico de destino nao resolvido: $2"
+      return "$(dbx_errors_codigo_saida configuracao)"
+    }
+    alvo=${alvo%$'\n'}
+  fi
+  # Alvo que nao e arquivo regular recebe em fluxo, como hoje: sem `.part`.
+  if [[ -e $alvo && ! -f $alvo ]]; then
+    dbx_cmd_receber_arquivo "$remoto" "$alvo"
+    return $?
+  fi
+  # RF-55(f) e RF-102(c): destino somente leitura recusa ANTES de ler registro
+  # ou criar `.part`.
+  _dbx_cmd_alvo_somente_leitura "$alvo" && return "$(dbx_errors_codigo_saida permissao)"
+
+  diretorio=${alvo%/*}
+  [[ $diretorio == "$alvo" ]] && diretorio=.
+  [[ -z $diretorio ]] && diretorio=/
+  nome=${alvo##*/}
+  dbx_path_local_canonico "$alvo" && canonico=$DBX_PATH_RESULTADO
+  if [[ -n $canonico ]] && dbx_cmd_retomada_preparar download "$canonico" "$remoto"; then
+    ativa='sim'
+    dbx_state_retomada_carregar
+    case $? in
+      0)
+        rev_g=${DBX_STATE_RETOMADA_CAMPOS[0]}
+        tam_g=${DBX_STATE_RETOMADA_CAMPOS[1]}
+        hash_g=${DBX_STATE_RETOMADA_CAMPOS[2]}
+        nome_g=${DBX_STATE_RETOMADA_CAMPOS[3]}
+        devino_g=${DBX_STATE_RETOMADA_CAMPOS[4]}
+        if [[ $rev_g != "$rev" || $tam_g != "$tamanho" || $hash_g != "$esperado" ]]; then
+          # RF-104(b): o remoto mudou; o `.part` antigo sai so pela barreira.
+          _dbx_cmd_avisar 'o arquivo remoto mudou desde a interrupcao; o recebimento recomeca do zero'
+          dbx_state_retomada_part_apagar "$diretorio" "$nome_g" "$devino_g" || :
+          dbx_state_retomada_remover
+          DBX_CMD_RETOMADA='recomecada'
+        elif _dbx_cmd_part_abrir "$diretorio" "$nome_g" "$devino_g" "$tamanho"; then
+          part="$diretorio/$nome_g"
+          devino=$devino_g
+          inicio=$_DBX_CMD_PART_T
+          DBX_CMD_RETOMADA='sim'
+          DBX_CMD_RETOMADO_DE=$inicio
+        else
+          # RF-104(e): o arquivo no lugar nao passa a barreira e NAO e tocado.
+          _dbx_cmd_avisar 'estado de retomada descartado: o arquivo parcial sumiu, foi trocado ou esta fora do padrao; o recebimento usa um novo'
+          dbx_state_retomada_remover
+          DBX_CMD_RETOMADA='recomecada'
+        fi
+        ;;
+      2)
+        _dbx_cmd_avisar "estado de retomada descartado: $DBX_STATE_MOTIVO"
+        DBX_CMD_RETOMADA='recomecada'
+        ;;
+      3)
+        _dbx_cmd_avisar 'sem retomada nesta execucao: o registro de retomada nao e um arquivo deste usuario'
+        dbx_state_retomada_soltar
+        ativa='nao'
+        ;;
+    esac
+  fi
+
+  if [[ -z $part ]]; then
+    dbx_tmp_arquivo "$diretorio/.${nome:0:200}${DBX_CMD_MARCA_RECEBIMENTO}XXXXXX" || {
+      dbx_state_retomada_soltar
+      DBX_CMD_FALHA_CLASSE='configuracao'
+      DBX_CMD_FALHA_MOTIVO="nao foi possivel criar o temporario de recebimento em: $diretorio"
+      return "$(dbx_errors_codigo_saida configuracao)"
+    }
+    part=$DBX_TMP_CAMINHO
+    devino=$(stat -c '%d|%i' -- "$part" 2>/dev/null) || devino=''
+    if [[ $ativa == 'sim' ]]; then
+      printf -v criado '%(%s)T' -1
+      if dbx_state_retomada_gravar "$rev" "$tamanho" "$esperado" "${part##*/}" "$devino" "$criado"; then
+        # RF-104(a): so agora o `.part` deixa `lib/tmp` e sobrevive a interrupcao.
+        dbx_tmp_esquecer "$part"
+      else
+        _dbx_cmd_avisar 'sem retomada nesta execucao: o registro de retomada nao pode ser gravado'
+        dbx_state_retomada_remover
+        dbx_state_retomada_soltar
+        ativa='nao'
+      fi
+    fi
+    if ! _dbx_cmd_part_abrir "$diretorio" "${part##*/}" "$devino" "$tamanho"; then
+      _dbx_cmd_retomavel_descartar "$ativa" "$diretorio" "$part" "$devino"
+      DBX_CMD_FALHA_CLASSE='configuracao'
+      DBX_CMD_FALHA_MOTIVO="o temporario de recebimento mudou antes do uso: $diretorio"
+      return "$(dbx_errors_codigo_saida configuracao)"
+    fi
+  fi
+
+  dbx_json_escapar_cadeia "rev:$rev"
+  argumento="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  if [[ $inicio -gt 0 ]]; then
+    dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
+      "$argumento" "/dev/fd/$_DBX_CMD_PART_FD" "$inicio"
+  else
+    dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
+      "$argumento" "/dev/fd/$_DBX_CMD_PART_FD"
+  fi
+  estado=$?
+  _dbx_cmd_part_fechar
+  codigo=${DBX_HTTP_CODIGO:-0}
+
+  coerente='nao'
+  # O `416` chega como recusa de `lib/http`; com a faixa no fim, e a resposta
+  # esperada (RF-104(d)).
+  if [[ $estado -eq 0 || ($inicio -gt 0 && $codigo == '416') ]]; then
+    _dbx_cmd_resultado_campo rev
+    resultado=$DBX_CMD_LIDO
+    if [[ $inicio -eq 0 ]]; then
+      [[ $codigo == '200' && $resultado == "$rev" ]] && coerente='sim'
+    elif [[ $codigo == '206' && $resultado == "$rev" &&
+      ${DBX_HTTP_FAIXA_CABECALHO:-} == "bytes $inicio-$((tamanho - 1))/$tamanho" ]]; then
+      coerente='sim'
+    elif [[ $codigo == '416' && $inicio -eq $tamanho ]]; then
+      # RF-104(d): nada falta; segue direto para a conferencia.
+      coerente='sim'
+    fi
+    if [[ $coerente != 'sim' ]]; then
+      _dbx_cmd_avisar "faixa ignorada: o servico respondeu $codigo sem a faixa pedida; o recebimento recomeca do zero"
+      _dbx_cmd_retomavel_recomecar "$ativa" "$diretorio" "$part" "$devino" "$remoto" "$alvo" "$rev"
+      return $?
+    fi
+  elif [[ ${DBX_HTTP_FAIXA_IGNORADA:-nao} == 'sim' ]]; then
+    # DIV-176: `200` (ou `206` de outro inicio) a um pedido de faixa nunca e
+    # anexado: o cliente recusou antes de escrever.
+    _dbx_cmd_avisar "faixa ignorada: o servico respondeu $codigo sem a faixa pedida; o recebimento recomeca do zero"
+    _dbx_cmd_retomavel_recomecar "$ativa" "$diretorio" "$part" "$devino" "$remoto" "$alvo" "$rev"
+    return $?
+  else
+    # RF-106(a): rede, limite de taxa e operacao nao concluida preservam o
+    # registro e o `.part` para a proxima execucao; o resto e definitivo.
+    case ${DBX_HTTP_CLASSE:-} in
+      rede | limite_taxa | nao_concluida) ;;
+      *) _dbx_cmd_retomavel_descartar "$ativa" "$diretorio" "$part" "$devino" ;;
+    esac
+    dbx_state_retomada_soltar
+    return "$estado"
+  fi
+
+  # RF-104(f): o `.part` INTEIRO, pela barreira, contra o resumo esperado e o
+  # do `Dropbox-API-Result` (ausente no `416`).
+  obtido=''
+  if dbx_state_retomada_part_barreira "$diretorio" "${part##*/}" "$devino"; then
+    dbx_hash_publicar_arquivo "$part" 2>/dev/null && obtido=$DBX_HASH_RESULTADO
+  fi
+  dbx_cmd_content_hash_do_resultado
+  resultado=$DBX_CMD_LIDO
+  if ! dbx_hash_iguais "$obtido" "$esperado" || { [[ -n $resultado ]] && ! dbx_hash_iguais "$resultado" "$esperado"; }; then
+    _dbx_cmd_avisar 'o conteudo recebido nao confere com o content_hash; o destino foi preservado e o recebimento recomeca do zero'
+    _dbx_cmd_retomavel_recomecar "$ativa" "$diretorio" "$part" "$devino" "$remoto" "$alvo" "$rev"
+    return $?
+  fi
+  # shellcheck disable=SC2034  # canais publicos, ver nota no topo
+  DBX_CMD_CONTENT_HASH=$esperado
+
+  if _dbx_cmd_alvo_somente_leitura "$alvo"; then
+    _dbx_cmd_retomavel_descartar "$ativa" "$diretorio" "$part" "$devino"
+    dbx_state_retomada_soltar
+    return "$(dbx_errors_codigo_saida permissao)"
+  fi
+  modo=''
+  if [[ -f $alvo ]]; then
+    modo=$(stat -c %a -- "$alvo" 2>/dev/null) || modo=''
+  fi
+  [[ -n $modo ]] || printf -v modo '%o' $((0666 & ~$(umask)))
+  chmod "$modo" -- "$part" 2>/dev/null || :
+  # O nome so e trocado pelo alvo se ainda for o `.part` conferido.
+  if ! dbx_state_retomada_part_barreira "$diretorio" "${part##*/}" "$devino" ||
+    ! mv -f -- "$part" "$alvo" 2>/dev/null; then
+    _dbx_cmd_retomavel_descartar "$ativa" "$diretorio" "$part" "$devino"
+    dbx_state_retomada_soltar
+    DBX_CMD_FALHA_CLASSE='configuracao'
+    DBX_CMD_FALHA_MOTIVO="nao foi possivel substituir o destino: $alvo"
+    return "$(dbx_errors_codigo_saida configuracao)"
+  fi
+  dbx_tmp_esquecer "$part"
+  # C5: o registro sai DEPOIS do `mv`.
+  [[ $ativa == 'sim' ]] && dbx_state_retomada_remover
+  dbx_state_retomada_soltar
+  # shellcheck disable=SC2034  # canal publico, ver nota no topo
+  DBX_CMD_INTEGRIDADE='conferida'
+  return 0
+}
+
+# _dbx_cmd_retomavel_descartar <ativa> <diretorio> <part> <dev|inode> — o
+# `.part` sai pela barreira (ou por `lib/tmp`, se ainda for dele) e o registro
+# sai.
+_dbx_cmd_retomavel_descartar() {
+  local ativa=$1 diretorio=$2 part=$3 devino=$4
+  if ! dbx_state_retomada_part_apagar "$diretorio" "${part##*/}" "$devino"; then
+    # Ainda registrado em `lib/tmp` (registro nao gravado): sai na saida.
+    :
+  fi
+  dbx_tmp_esquecer "$part"
+  [[ $ativa == 'sim' ]] && dbx_state_retomada_remover
+  return 0
+}
+
+# _dbx_cmd_retomavel_recomecar <ativa> <diretorio> <part> <dev|inode> <remoto>
+# <alvo> <rev> — descarta e recomeca do zero UMA vez, sem retomada, pelo
+# recebimento atomico de hoje sobre a mesma revisao. Divergindo de novo, o
+# resultado e o dele (`integridade`, alvo intacto).
+_dbx_cmd_retomavel_recomecar() {
+  local ativa=$1 diretorio=$2 part=$3 devino=$4 alvo=$6 rev=$7
+  _dbx_cmd_retomavel_descartar "$ativa" "$diretorio" "$part" "$devino"
+  dbx_state_retomada_soltar
+  # shellcheck disable=SC2034  # canais publicos, ver nota no topo
+  DBX_CMD_RETOMADA='recomecada'
+  # shellcheck disable=SC2034
+  DBX_CMD_RETOMADO_DE=0
+  dbx_cmd_receber_arquivo "rev:$rev" "$alvo"
+}
+
+# ---------------------------------------------------------------------------
 # Ciclo comum do `sync` e do `verificar` (RF-69, RNF-35, RNF-36)
 # ---------------------------------------------------------------------------
 

@@ -154,7 +154,9 @@ _dbx_state_preparar_diretorio() {
   # RNF-25(c): `-mtime +0` e "mais de 24 h". Os recentes podem ser gravacao
   # concorrente de outro processo e ficam.
   # RF-69(o): `.trava.*` entra na mesma regra; `trava-*` nunca e varrido.
-  find "$diretorio" -maxdepth 1 -type f \( -name '.memoria.*' -o -name '.upload.*' -o -name '.trava.*' \) \
+  # RNF-25(c) emendado (fase 7a): `.retomada.*` tambem.
+  find "$diretorio" -maxdepth 1 -type f \( -name '.memoria.*' -o -name '.upload.*' -o -name '.trava.*' \
+    -o -name '.retomada.*' \) \
     -mtime +0 -exec rm -f -- {} + 2>/dev/null
   return 0
 }
@@ -209,6 +211,58 @@ dbx_state_registravel() {
   mtime=${antes%%|*}
   [[ $((agora - mtime)) -ge $DBX_STATE_ANTI_CORRIDA_S ]] || return 1
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# Leitor NUL limitado (fase 7a, C3 do parecer do DBA)
+# ---------------------------------------------------------------------------
+
+# Teto de um registro de `upload-*` ou `retomada-*`: 16 KiB.
+readonly DBX_STATE_LIMITE_REGISTRO=16384
+_DBX_STATE_CAMPOS=()
+
+# _dbx_state_ler_limitado <arquivo> <campos_maximos> — campos terminados em NUL
+# em _DBX_STATE_CAMPOS. 0 lido; 1 recusado (ligacao simbolica, nao regular, de
+# outro dono, acima de 16 KiB, ultimo campo sem terminador, campos demais); 2
+# ausente.
+#
+# Um descritor so: o que e conferido (`-f`, `-O` pelo `/dev/fd`) e o que e
+# lido sao o mesmo arquivo. Cada leitura pede no maximo o que falta para o teto
+# mais um byte (`-n`, sob `LC_ALL=C`, onde caractere e byte): o leitor nunca
+# guarda nem le alem do limite, qualquer que seja o tamanho do arquivo. Nada e
+# executado nem ecoado; a validacao de cada campo e de quem chama.
+_dbx_state_ler_limitado() {
+  local arquivo=$1 maximo=$2 fd campo consumido=0 restante estado=0 LC_ALL=C
+  _DBX_STATE_CAMPOS=()
+  [[ -L $arquivo ]] && return 1
+  [[ -e $arquivo ]] || return 2
+  # QA-B7A-01 (ciclo 2): so arquivo regular e aberto. Abrir uma FIFO bloqueia
+  # para sempre; a conferencia pelo descritor, abaixo, vem tarde demais.
+  [[ -f $arquivo ]] || return 1  # nao regular
+  { exec {fd}<"$arquivo"; } 2>/dev/null || return 1
+  if [[ ! -f /dev/fd/$fd || ! -O /dev/fd/$fd ]]; then
+    exec {fd}<&-
+    return 1
+  fi
+  while :; do
+    restante=$((DBX_STATE_LIMITE_REGISTRO + 1 - consumido))
+    campo=''
+    if IFS= read -r -d '' -n "$restante" campo <&"$fd"; then
+      consumido=$((consumido + ${#campo} + 1))
+      if [[ $consumido -gt $DBX_STATE_LIMITE_REGISTRO || ${#_DBX_STATE_CAMPOS[@]} -ge $maximo ]]; then
+        estado=1
+        break
+      fi
+      _DBX_STATE_CAMPOS+=("$campo")
+    else
+      # Fim do arquivo: um resto sem NUL e campo truncado.
+      [[ -n $campo ]] && estado=1
+      break
+    fi
+  done
+  exec {fd}<&-
+  [[ $estado -eq 0 ]] || _DBX_STATE_CAMPOS=()
+  return "$estado"
 }
 
 # ---------------------------------------------------------------------------
@@ -439,11 +493,11 @@ dbx_state_upload_consultar() {
   _dbx_state_diretorio_confiavel "${arquivo%/*}" || return 1
   [[ -f $arquivo && -r $arquivo && -O $arquivo ]] || return 1
 
-  local -a campos=()
-  while IFS= read -r -d '' registro; do
-    campos+=("$registro")
-    [[ ${#campos[@]} -le 4 ]] || return 1
-  done <"$arquivo"
+  # C3 (fase 7a, emenda de RF-61): leitor LIMITADO. O laco antigo limitava o
+  # numero de campos, nao o tamanho de um campo: 1 GB sem nulo ia inteiro para
+  # a memoria. Acima de 16 KiB, sem terminador ou com campo a mais: ausente.
+  _dbx_state_ler_limitado "$arquivo" 4 || return 1
+  local -a campos=(${_DBX_STATE_CAMPOS[@]+"${_DBX_STATE_CAMPOS[@]}"})
   [[ ${#campos[@]} -eq 4 ]] || return 1
   [[ ${campos[0]} == "$DBX_STATE_VERSAO" && ${campos[1]} == 'upload' && ${campos[2]} == "$chave" ]] ||
     return 1
@@ -577,6 +631,12 @@ DBX_STATE_TRAVAS_COMANDO=()
 _dbx_state_trava_inicio=''
 _dbx_state_trava_acao=''
 _dbx_state_trava_criados=()
+# Fase 7a (RF-105): `par` (sync, verificar) ou `registro` (retomada). Um
+# processo pode deter uma de cada; so a de par e unica por processo.
+_dbx_state_trava_modo='par'
+DBX_STATE_TRAVA_REGISTRO=''
+_dbx_state_trava_registro_inicio=''
+_dbx_state_trava_registro_acao=''
 
 # dbx_state_host_id — identidade do host, uma vez por processo: nome (do shell,
 # com recuo para o kernel), `boot_id` e inode do namespace de pid, cada um
@@ -642,6 +702,9 @@ _dbx_state_trava_ler() {
   DBX_STATE_TRAVA_PID='' DBX_STATE_TRAVA_HOST='' DBX_STATE_TRAVA_INICIO='' DBX_STATE_TRAVA_COMANDO=''
   [[ -L $arquivo ]] && return 1
   [[ -e $arquivo ]] || return 2
+  # QA-B7A-01 (ciclo 2): FIFO ou outro nao regular no lugar da trava e
+  # ilegivel, como o diretorio ja era; abri-lo poderia bloquear.
+  [[ -f $arquivo ]] || return 1
   # Um descritor so: o que e conferido e o que e lido sao o mesmo arquivo,
   # ainda que o nome seja trocado ou apagado no meio. Sem utilitario externo:
   # o `diagnostico` le a trava so com o shell (RF-66(e)).
@@ -673,7 +736,8 @@ _dbx_state_trava_ler() {
   [[ ${campos[2]} =~ ^[1-9][0-9]{1,6}$ ]] || return 1
   [[ ${campos[3]} =~ ^[A-Za-z0-9._:-]{1,255}$ ]] || return 1
   [[ ${campos[4]} =~ ^[0-9]{1,19}$ ]] || return 1
-  [[ ${campos[5]} == 'sync' || ${campos[5]} == 'verificar' ]] || return 1
+  # RF-105(a) (fase 7a): `retomada` e a trava de registro de upload/download.
+  [[ ${campos[5]} == 'sync' || ${campos[5]} == 'verificar' || ${campos[5]} == 'retomada' ]] || return 1
   DBX_STATE_TRAVA_PID=${campos[2]}
   DBX_STATE_TRAVA_HOST=${campos[3]}
   DBX_STATE_TRAVA_INICIO=${campos[4]}
@@ -812,6 +876,13 @@ _dbx_state_trava_sem_escrita() {
 # _dbx_state_trava_detida <arquivo> — a trava e deste processo: a liberacao
 # entra no registro de `lib/tmp` (RNF-35(h)).
 _dbx_state_trava_detida() {
+  if [[ $_dbx_state_trava_modo == 'registro' ]]; then
+    DBX_STATE_TRAVA_REGISTRO=$1
+    _dbx_state_trava_registro_inicio=$_dbx_state_trava_inicio
+    dbx_tmp_acao_registrar _dbx_state_trava_registro_soltar "$1"
+    _dbx_state_trava_registro_acao=$DBX_TMP_ID
+    return 0
+  fi
   DBX_STATE_TRAVA=$1
   dbx_tmp_acao_registrar _dbx_state_trava_soltar "$1"
   _dbx_state_trava_acao=$DBX_TMP_ID
@@ -1057,5 +1128,536 @@ dbx_state_travas_listar() {
     DBX_STATE_TRAVAS_INICIO+=("$DBX_STATE_TRAVA_INICIO")
     DBX_STATE_TRAVAS_COMANDO+=("$DBX_STATE_TRAVA_COMANDO")
   done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Namespace da retomada: `retomada-*` (fase 7a, F-03; RF-101, RF-105, RF-107)
+# ---------------------------------------------------------------------------
+#
+# O ESTADO SO ACELERA (P1). O registro diz onde uma transferencia interrompida
+# parou; ele nunca decide a integridade nem uma exclusao. Quem prova a
+# integridade e a execucao corrente: o prefixo relido e conferido, o
+# deslocamento do servidor conferido, o `content_hash` final e o `.part` inteiro
+# antes do `mv`. Apagar `retomada-*` a mao so muda o custo (RF-101(j)).
+#
+# ESTADO INVALIDO NUNCA FAZ FALHAR (P2). Qualquer anomalia — vazio, truncado,
+# lixo, magia ou versao desconhecida, contagem, campo fora da regex, acima de
+# 16 KiB, conta, sentido, host ou caminho divergentes — DESCARTA: o registro e
+# apagado (so o do usuario) e quem chama recomeca do zero, com um motivo de uma
+# linha sem byte cru e sem `session_id`.
+#
+# FORMATO v1 (C3, C4; versao DO NAMESPACE, `DBX_STATE_VERSAO` nao muda):
+#   magia, versao, sentido, conta, host, remoto, <campos do sentido>, local
+# com NUL terminando cada campo e o caminho local fisico canonico por ultimo.
+#   upload:   session_id, confirmado, voo_tamanho, voo_sha256, total,
+#             identidade, criado_em, prefixo_hash
+#   download: rev, tamanho, content_hash, nome do .part, dev|inode, criado_em
+# Nenhum segredo (P3): o `session_id` e identificador operacional sensivel (C6),
+# fica so neste arquivo 0600 e nunca sai em mensagem.
+#
+# CHAVE (C4, DIV-182): SHA-256 de `retomada` NUL sentido NUL conta NUL local NUL
+# remoto-dobrado NUL, truncado em 32 hexadecimais. O resumo so LOCALIZA; a
+# reconferencia byte a byte do cabecalho, na carga, e o que autentica.
+
+readonly DBX_STATE_RETOMADA_MAGIA='dbx-retomada'
+readonly DBX_STATE_RETOMADA_VERSAO=1
+readonly DBX_STATE_RETOMADA_TETO=1000
+readonly DBX_STATE_RETOMADA_DIAS=8
+readonly DBX_STATE_RETOMADA_PARTE=4194304
+readonly DBX_STATE_RETOMADA_CAMPOS_UPLOAD=15
+readonly DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD=13
+
+# Contexto da transferencia corrente (`dbx_state_retomada_contexto`).
+DBX_STATE_RETOMADA_SENTIDO=''
+DBX_STATE_RETOMADA_CONTA=''
+DBX_STATE_RETOMADA_HOST=''
+DBX_STATE_RETOMADA_REMOTO=''
+DBX_STATE_RETOMADA_LOCAL=''
+DBX_STATE_RETOMADA_ARQUIVO=''
+# Campos do sentido do ultimo registro valido carregado.
+DBX_STATE_RETOMADA_CAMPOS=()
+# Listagem para o `diagnostico` e o `unlink` (RF-107(c)(d)).
+DBX_STATE_RETOMADAS_ARQUIVO=()
+DBX_STATE_RETOMADAS_ESTADO=()
+DBX_STATE_RETOMADAS_SENTIDO=()
+DBX_STATE_RETOMADAS_LOCAL=()
+DBX_STATE_RETOMADAS_REMOTO=()
+DBX_STATE_RETOMADAS_BYTES=()
+DBX_STATE_RETOMADAS_IDADE=()
+DBX_STATE_RETOMADAS_PART=()
+DBX_STATE_RETOMADAS_DEVINO=()
+
+# Diretorio ja preparado e podado nesta execucao (DIV-191: uma poda por
+# execucao, na primeira gravacao, e nao a cada parte de 4 MiB).
+_dbx_state_retomada_preparado=''
+_DBX_STATE_REGISTRO_RETOMADA=()
+
+# dbx_state_retomada_contexto <sentido> <conta> <local_canonico> <remoto>
+#
+# Fixa o contexto e o arquivo do registro, sem ler nem criar nada. Sem rede: a
+# conta e o resumo local da credencial (`dbx_config_identidade`, DIV-47), e o
+# host e so o nome (RF-101(h)).
+dbx_state_retomada_contexto() {
+  [[ $# -eq 4 && ($1 == 'upload' || $1 == 'download') && $2 =~ ^cred-[0-9a-f]{32}$ && -n $3 && -n $4 ]] ||
+    return "$DBX_STATE_ERRO_USO"
+  local sentido=$1 conta=$2 local_=$3 remoto=$4 base dobrado resumo
+  DBX_STATE_RETOMADA_ARQUIVO=''
+  _dbx_state_base || return $?
+  base=$DBX_STATE_RESULTADO
+  _dbx_state_minusculas_ascii "$remoto"
+  dobrado=$DBX_STATE_RESULTADO
+  DBX_STATE_RESULTADO=''
+  dbx_hash_verificar_dependencias || return 1
+  # Separador NUL (DIV-d do parecer do DBA): `a\nb`+`c` e `a`+`b\nc` nao colidem.
+  resumo=$(printf 'retomada\0%s\0%s\0%s\0%s\0' "$sentido" "$conta" "$local_" "$dobrado" |
+    _dbx_hash_sha256_hex) || return 1
+  [[ $resumo =~ ^[0-9a-f]{64}$ ]] || return 1
+  dbx_state_host_id
+  DBX_STATE_RETOMADA_SENTIDO=$sentido
+  DBX_STATE_RETOMADA_CONTA=$conta
+  DBX_STATE_RETOMADA_HOST=$DBX_STATE_HOST_NOME
+  DBX_STATE_RETOMADA_REMOTO=$remoto
+  DBX_STATE_RETOMADA_LOCAL=$local_
+  DBX_STATE_RETOMADA_ARQUIVO="$base/retomada-${resumo:0:32}"
+  return 0
+}
+
+# dbx_state_retomada_diretorio_utilizavel — 0 quando o diretorio de estado e do
+# usuario e gravavel (criado em 0700 se faltar). Senao 1, com o motivo: quem
+# chama segue SEM retomada, com aviso e codigo normal (RF-101(i), DIV-190).
+dbx_state_retomada_diretorio_utilizavel() {
+  local diretorio
+  DBX_STATE_MOTIVO=''
+  _dbx_state_base || {
+    DBX_STATE_MOTIVO='diretorio de estado indeterminado'
+    return 1
+  }
+  diretorio=$DBX_STATE_RESULTADO
+  DBX_STATE_RESULTADO=''
+  if [[ ! -e $diretorio && ! -L $diretorio ]]; then
+    # shellcheck disable=SC2174  # deliberado: so o ultimo componente e deste modulo
+    mkdir -p -m 700 -- "$diretorio" 2>/dev/null || {
+      DBX_STATE_MOTIVO='nao foi possivel criar o diretorio de estado'
+      return 1
+    }
+  fi
+  if ! _dbx_state_diretorio_confiavel "$diretorio"; then
+    DBX_STATE_MOTIVO='o diretorio de estado pertence a outro usuario'
+    return 1
+  fi
+  if [[ ! -w $diretorio || ! -x $diretorio ]]; then
+    DBX_STATE_MOTIVO='o diretorio de estado nao aceita escrita'
+    return 1
+  fi
+  return 0
+}
+
+# _dbx_state_retomada_formato <campos...> — 0 quando os campos formam um
+# registro v1 bem formado de algum sentido (sem comparar com o processo).
+# Publica o sentido em DBX_STATE_RESULTADO; o motivo do descarte em
+# DBX_STATE_MOTIVO.
+_dbx_state_retomada_formato() {
+  local LC_ALL=C
+  local -a c=("$@")
+  local n=${#c[@]}
+  DBX_STATE_RESULTADO=''
+  if [[ $n -lt 3 || ${c[0]} != "$DBX_STATE_RETOMADA_MAGIA" || ${c[1]} != "$DBX_STATE_RETOMADA_VERSAO" ]]; then
+    DBX_STATE_MOTIVO='registro de formato ou versao desconhecidos'
+    return 1
+  fi
+  case ${c[2]} in
+    upload) [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_UPLOAD ]] ;;
+    download) [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD ]] ;;
+    *) false ;;
+  esac || {
+    DBX_STATE_MOTIVO='registro com contagem de campos errada'
+    return 1
+  }
+  DBX_STATE_MOTIVO='registro com campo invalido'
+  [[ ${c[3]} =~ ^cred-[0-9a-f]{32}$ && ${c[4]} =~ ^[A-Za-z0-9._-]{1,64}$ && -n ${c[5]} && -n ${c[n - 1]} ]] ||
+    return 1
+  if [[ ${c[2]} == 'upload' ]]; then
+    [[ ${c[6]} =~ ^[A-Za-z0-9:_-]{1,256}$ && ${c[7]} =~ ^[0-9]{1,18}$ && ${c[8]} =~ ^[0-9]{1,18}$ &&
+      ${c[10]} =~ ^[0-9]{1,18}$ && ${c[12]} =~ ^[0-9]{1,18}$ && ${c[13]} =~ ^[0-9a-f]{64}$ ]] || return 1
+    _dbx_state_identidade_valida "${c[11]}" || return 1
+    local confirmado=$((10#${c[7]})) voo=$((10#${c[8]})) total=$((10#${c[10]}))
+    ((confirmado % DBX_STATE_RETOMADA_PARTE == 0 && voo <= DBX_STATE_RETOMADA_PARTE &&
+      confirmado + voo <= total)) || return 1
+    if [[ $voo -eq 0 ]]; then
+      [[ ${c[9]} == '-' ]] || return 1
+    else
+      [[ ${c[9]} =~ ^[0-9a-f]{64}$ ]] || return 1
+    fi
+  else
+    [[ ${c[6]} =~ ^[0-9a-f]{9,64}$ && ${c[7]} =~ ^[0-9]{1,18}$ && ${c[8]} =~ ^[0-9a-f]{64}$ &&
+      ${c[9]} =~ ^\.[^/]+\.dbx-part\.[A-Za-z0-9]{6}$ && ${c[10]} =~ ^[0-9]{1,20}\|[0-9]{1,20}$ &&
+      ${c[11]} =~ ^[0-9]{1,18}$ ]] || return 1
+  fi
+  DBX_STATE_MOTIVO=''
+  DBX_STATE_RESULTADO=${c[2]}
+  return 0
+}
+
+# _dbx_state_retomada_descartar <motivo> — apaga o registro do contexto, so se
+# for arquivo regular do usuario, e devolve 2 (descartado) com o motivo.
+_dbx_state_retomada_descartar() {
+  local arquivo=$DBX_STATE_RETOMADA_ARQUIVO
+  DBX_STATE_MOTIVO=$1
+  DBX_STATE_RETOMADA_CAMPOS=()
+  [[ -f $arquivo && ! -L $arquivo && -O $arquivo ]] && rm -f -- "$arquivo" 2>/dev/null
+  return 2
+}
+
+# _dbx_state_retomada_descartar_part <campos do registro...> — registro de
+# download bem formado E do alvo desta execucao (mesmo caminho local; o que
+# diverge e outra parte do cabecalho, como o remoto): o `.part` que ele aponta
+# sai so pela barreira. Registro de OUTRO alvo (copiado ou plantado) nunca leva
+# a apagar nada fora do alvo desta execucao (QA-B7A-02 x qa_d12).
+_dbx_state_retomada_descartar_part() {
+  local -a c=("$@")
+  [[ ${#c[@]} -eq $DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD && ${c[2]} == 'download' &&
+    $DBX_STATE_RETOMADA_SENTIDO == 'download' && ${c[12]} == "$DBX_STATE_RETOMADA_LOCAL" ]] || return 0
+  _dbx_state_retomada_dir_local "${c[12]}"
+  dbx_state_retomada_part_apagar "$DBX_STATE_RESULTADO" "${c[9]}" "${c[10]}" || :
+  DBX_STATE_RESULTADO=''
+  return 0
+}
+
+# dbx_state_retomada_carregar — le o registro do contexto pelo leitor limitado.
+#
+#   0  valido: campos do sentido em DBX_STATE_RETOMADA_CAMPOS
+#   1  ausente
+#   2  descartado: apagado, motivo em DBX_STATE_MOTIVO (segue do zero)
+#   3  intocavel: ligacao simbolica, nao regular ou de outro dono — nao e lido
+#      nem apagado, e quem chama segue SEM retomada (nao grava por cima)
+#
+# Quem chama ja detem a trava do registro (RF-105(a)).
+dbx_state_retomada_carregar() {
+  local arquivo=$DBX_STATE_RETOMADA_ARQUIVO esperado LC_ALL=C
+  DBX_STATE_RETOMADA_CAMPOS=()
+  DBX_STATE_MOTIVO=''
+  [[ -n $arquivo ]] || return "$DBX_STATE_ERRO_USO"
+  [[ -L $arquivo ]] && return 3
+  [[ -e $arquivo ]] || return 1
+  _dbx_state_diretorio_confiavel "${arquivo%/*}" || return 3
+  [[ -f $arquivo && -O $arquivo ]] || return 3
+  esperado=$DBX_STATE_RETOMADA_CAMPOS_UPLOAD
+  [[ $DBX_STATE_RETOMADA_SENTIDO == 'download' ]] && esperado=$DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD
+  _dbx_state_ler_limitado "$arquivo" "$DBX_STATE_RETOMADA_CAMPOS_UPLOAD"
+  case $? in
+    0) ;;
+    2) return 1 ;;
+    *)
+      _dbx_state_retomada_descartar 'registro ilegivel, truncado ou acima de 16 KiB'
+      return $?
+      ;;
+  esac
+  local -a c=(${_DBX_STATE_CAMPOS[@]+"${_DBX_STATE_CAMPOS[@]}"})
+  if ! _dbx_state_retomada_formato ${c[@]+"${c[@]}"}; then
+    _dbx_state_retomada_descartar "$DBX_STATE_MOTIVO"
+    return $?
+  fi
+  # Reconferencia byte a byte (C4): o resumo do nome so localiza.
+  if [[ ${#c[@]} -ne $esperado || ${c[2]} != "$DBX_STATE_RETOMADA_SENTIDO" ||
+    ${c[3]} != "$DBX_STATE_RETOMADA_CONTA" || ${c[4]} != "$DBX_STATE_RETOMADA_HOST" ||
+    ${c[5]} != "$DBX_STATE_RETOMADA_REMOTO" || ${c[esperado - 1]} != "$DBX_STATE_RETOMADA_LOCAL" ]]; then
+    # QA-B7A-02 (ciclo 2): o registro legivel diz qual `.part` era dele; sai
+    # junto, so pela barreira de identidade, para nao ficar parcial invisivel.
+    _dbx_state_retomada_descartar_part "${c[@]}"
+    _dbx_state_retomada_descartar 'registro de outra conta, host, sentido ou caminho'
+    return $?
+  fi
+  # shellcheck disable=SC2034  # canal publico, lido por lib/cmd e lib/transfer
+  DBX_STATE_RETOMADA_CAMPOS=("${c[@]:6:esperado-7}")
+  return 0
+}
+
+_dbx_state_conteudo_retomada() {
+  printf '%s\0' "${_DBX_STATE_REGISTRO_RETOMADA[@]}"
+}
+
+# dbx_state_retomada_gravar <campos do sentido...> — gravacao atomica do
+# registro do contexto (temporario `.retomada.*` no mesmo diretorio e `mv`), sem
+# `fsync`: o estado e advisorio. 0 gravado; diferente de zero quando o campo e
+# invalido, o lugar e de outro dono ou nao e arquivo, ou a gravacao falha —
+# quem chama segue sem retomada (RF-103(a)).
+dbx_state_retomada_gravar() {
+  local arquivo=$DBX_STATE_RETOMADA_ARQUIVO diretorio estado primeira='nao'
+  [[ -n $arquivo ]] || return "$DBX_STATE_ERRO_USO"
+  local -a registro=("$DBX_STATE_RETOMADA_MAGIA" "$DBX_STATE_RETOMADA_VERSAO" "$DBX_STATE_RETOMADA_SENTIDO"
+    "$DBX_STATE_RETOMADA_CONTA" "$DBX_STATE_RETOMADA_HOST" "$DBX_STATE_RETOMADA_REMOTO" "$@"
+    "$DBX_STATE_RETOMADA_LOCAL")
+  _dbx_state_retomada_formato "${registro[@]}" || return "$DBX_STATE_ERRO_USO"
+  [[ $DBX_STATE_RESULTADO == "$DBX_STATE_RETOMADA_SENTIDO" ]] || return "$DBX_STATE_ERRO_USO"
+  DBX_STATE_RESULTADO=''
+  diretorio=${arquivo%/*}
+  if [[ $_dbx_state_retomada_preparado != "$diretorio" ]]; then
+    _dbx_state_preparar_diretorio "$diretorio"
+    estado=$?
+    [[ $estado -eq 0 ]] || return "$estado"
+    primeira='sim'
+  fi
+  # O que nao foi lido nao e sobrescrito: ligacao, diretorio ou alheio.
+  if [[ -L $arquivo ]] || { [[ -e $arquivo ]] && ! [[ -f $arquivo && -O $arquivo ]]; }; then
+    return 1
+  fi
+  _DBX_STATE_REGISTRO_RETOMADA=("${registro[@]}")
+  _dbx_state_gravar_arquivo "$arquivo" .retomada _dbx_state_conteudo_retomada || return 1
+  if [[ $primeira == 'sim' ]]; then
+    _dbx_state_retomada_preparado=$diretorio
+    _dbx_state_retomada_podar "$diretorio"
+  fi
+  return 0
+}
+
+# dbx_state_retomada_remover — apaga o registro do contexto (so o do usuario).
+dbx_state_retomada_remover() {
+  local arquivo=$DBX_STATE_RETOMADA_ARQUIVO
+  [[ -n $arquivo ]] || return 0
+  [[ -f $arquivo && ! -L $arquivo && -O $arquivo ]] && rm -f -- "$arquivo" 2>/dev/null
+  return 0
+}
+
+# dbx_state_retomada_part_barreira <diretorio_do_alvo> <nome> <dev|inode>
+#
+# A BARREIRA DE IDENTIDADE do `.part` (RF-104(c)(e)): 0 so quando o nome segue
+# o padrao `.*.dbx-part.??????` sem barra, e o arquivo no diretorio do alvo nao
+# e ligacao simbolica, e regular, e do usuario e tem o MESMO dispositivo e
+# inode gravados. Nenhum arquivo do usuario e apagado por causa do estado: o
+# que reprova fica onde esta.
+dbx_state_retomada_part_barreira() {
+  local diretorio=$1 nome=$2 devino=$3 caminho atual LC_ALL=C
+  [[ -n $diretorio && $nome =~ ^\.[^/]+\.dbx-part\.[A-Za-z0-9]{6}$ && $devino =~ ^[0-9]{1,20}\|[0-9]{1,20}$ ]] ||
+    return 1
+  caminho="$diretorio/$nome"
+  [[ -L $caminho ]] && return 1
+  [[ -f $caminho && -O $caminho ]] || return 1
+  atual=$(stat -c '%d|%i' -- "$caminho" 2>/dev/null) || return 1
+  [[ $atual == "$devino" ]]
+}
+
+# dbx_state_retomada_part_apagar <diretorio_do_alvo> <nome> <dev|inode> — apaga
+# o `.part` so pela barreira. 0 apagado; 1 reprovado (intocado).
+dbx_state_retomada_part_apagar() {
+  dbx_state_retomada_part_barreira "$@" || return 1
+  rm -f -- "$1/$2" 2>/dev/null
+  return 0
+}
+
+# _dbx_state_retomada_dir_local <caminho_local> — diretorio do alvo em
+# DBX_STATE_RESULTADO.
+_dbx_state_retomada_dir_local() {
+  DBX_STATE_RESULTADO=${1%/*}
+  [[ $DBX_STATE_RESULTADO == "$1" ]] && DBX_STATE_RESULTADO=.
+  [[ -z $DBX_STATE_RESULTADO ]] && DBX_STATE_RESULTADO=/
+  return 0
+}
+
+# _dbx_state_retomada_podar_um <arquivo> — poda UM registro (RF-107(a)(b)): com
+# trava viva, fica; de download legivel, o `.part` sai so pela barreira; o
+# registro sai. 0 removido, 1 mantido.
+_dbx_state_retomada_podar_um() {
+  local arquivo=$1 resumo trava
+  [[ -f $arquivo && ! -L $arquivo && -O $arquivo ]] || return 1
+  resumo=${arquivo##*/retomada-}
+  trava="${arquivo%/*}/trava-$resumo"
+  if [[ -e $trava || -L $trava ]]; then
+    dbx_state_trava_examinar "$trava"
+    [[ $DBX_STATE_TRAVA_ESTADO == 'viva' ]] && return 1
+  fi
+  if _dbx_state_ler_limitado "$arquivo" "$DBX_STATE_RETOMADA_CAMPOS_UPLOAD" &&
+    _dbx_state_retomada_formato "${_DBX_STATE_CAMPOS[@]}" && [[ $DBX_STATE_RESULTADO == 'download' ]]; then
+    _dbx_state_retomada_dir_local "${_DBX_STATE_CAMPOS[12]}"
+    dbx_state_retomada_part_apagar "$DBX_STATE_RESULTADO" "${_DBX_STATE_CAMPOS[9]}" "${_DBX_STATE_CAMPOS[10]}" || :
+  fi
+  DBX_STATE_RESULTADO=''
+  DBX_STATE_MOTIVO=''
+  rm -f -- "$arquivo" 2>/dev/null
+  return 0
+}
+
+# _dbx_state_retomada_podar <diretorio> — RF-107(a), DIV-184: registros com
+# modificacao ha mais de 8 dias (idade do ARQUIVO, nunca o `criado_em`) e, acima
+# de 1.000, os mais antigos por modificacao ate o teto. Nunca casa `memoria-*`,
+# `upload-*` nem `trava-*`; o registro do contexto nunca sai por aqui. O relogio
+# decide so o que TENTAR limpar, nunca a validade de um registro em uso.
+_dbx_state_retomada_podar() {
+  local diretorio=$1 arquivo linha carimbo antigo antigo_carimbo tinha_nullglob='nao'
+  local -a registros=()
+  while IFS= read -r -d '' arquivo; do
+    [[ $arquivo == "$DBX_STATE_RETOMADA_ARQUIVO" ]] && continue
+    _dbx_state_retomada_podar_um "$arquivo" || :
+  done < <(find "$diretorio" -maxdepth 1 -type f -name 'retomada-*' -mtime "+$DBX_STATE_RETOMADA_DIAS" -print0 2>/dev/null)
+
+  shopt -q nullglob && tinha_nullglob='sim'
+  shopt -s nullglob
+  registros=("$diretorio"/retomada-*)
+  [[ $tinha_nullglob == 'sim' ]] || shopt -u nullglob
+  local excesso=$((${#registros[@]} - DBX_STATE_RETOMADA_TETO)) voltas=0
+  local -A mantidos=()
+  while [[ $excesso -gt 0 && $voltas -lt $((excesso + 50)) ]]; do
+    voltas=$((voltas + 1))
+    antigo='' antigo_carimbo=''
+    while IFS= read -r -d '' linha; do
+      carimbo=${linha%% *}
+      carimbo=${carimbo%%.*}
+      arquivo=${linha#* }
+      [[ $arquivo == "$DBX_STATE_RETOMADA_ARQUIVO" || -n ${mantidos[$arquivo]:-} ]] && continue
+      [[ $carimbo =~ ^[0-9]+$ ]] || continue
+      if [[ -z $antigo || $carimbo -lt $antigo_carimbo ]]; then
+        antigo=$arquivo
+        antigo_carimbo=$carimbo
+      fi
+    done < <(find "$diretorio" -maxdepth 1 -type f -name 'retomada-*' -printf '%T@ %p\0' 2>/dev/null)
+    [[ -n $antigo ]] || break
+    if _dbx_state_retomada_podar_um "$antigo"; then
+      excesso=$((excesso - 1))
+    else
+      mantidos[$antigo]=1
+    fi
+  done
+  return 0
+}
+
+# dbx_state_retomada_travar — trava do registro (RF-105(a), C2): `trava-<o mesmo
+# resumo>` pela receita de RF-69(j), comando `retomada`, ALEM de uma eventual
+# trava de par. Adquirida antes de ler o registro e mantida ate a remocao ou a
+# ultima regravacao; liberada em todo caminho de saida (`lib/tmp`).
+#
+#   0          adquirida (DBX_STATE_AVISO quando retomou orfa do mesmo host)
+#   conflito   ocupada, de outro host ou ilegivel: quem chama segue SEM
+#              retomada, sem esperar e sem recusar (RF-105(b)); DBX_STATE_MOTIVO
+#   permissao  diretorio de estado alheio ou sem escrita
+#   outro      uso invalido ou falha local
+dbx_state_retomada_travar() {
+  local arquivo resumo estado repeticoes=0
+  [[ -n $DBX_STATE_RETOMADA_ARQUIVO && -z $DBX_STATE_TRAVA_REGISTRO ]] || return "$DBX_STATE_ERRO_USO"
+  DBX_STATE_MOTIVO=''
+  # shellcheck disable=SC2034  # canal publico, lido por lib/cmd
+  DBX_STATE_AVISO=''
+  resumo=${DBX_STATE_RETOMADA_ARQUIVO##*/retomada-}
+  arquivo="${DBX_STATE_RETOMADA_ARQUIVO%/*}/trava-$resumo"
+  if ! _dbx_state_diretorio_confiavel "${arquivo%/*}"; then
+    DBX_STATE_MOTIVO='diretorio de estado ausente ou de outro usuario'
+    return "$DBX_STATE_ERRO_PERMISSAO"
+  fi
+  dbx_state_host_id
+  [[ -n $_dbx_state_trava_inicio ]] || printf -v _dbx_state_trava_inicio '%(%s)T' -1
+  _dbx_state_trava_modo='registro'
+  while :; do
+    _dbx_state_trava_tentar "$arquivo" retomada
+    estado=$?
+    [[ $estado -eq 3 && $repeticoes -lt 50 ]] || break
+    repeticoes=$((repeticoes + 1))
+  done
+  _dbx_state_trava_modo='par'
+  [[ $estado -eq 3 ]] && estado=$DBX_STATE_ERRO_CONFLITO
+  if [[ $estado -eq $DBX_STATE_ERRO_CONFLITO ]]; then
+    # O texto da trava de par fala de sync e de `--esperar`; aqui nao se espera.
+    _dbx_state_trava_ler "$arquivo"
+    case $? in
+      0)
+        _dbx_state_trava_classificar
+        _dbx_state_trava_quem
+        if [[ $DBX_STATE_TRAVA_ESTADO == 'outro-host' ]]; then
+          DBX_STATE_MOTIVO="trava do registro de outro host: $DBX_STATE_RESULTADO"
+        else
+          DBX_STATE_MOTIVO="trava do registro ocupada: $DBX_STATE_RESULTADO"
+        fi
+        DBX_STATE_RESULTADO=''
+        ;;
+      *) DBX_STATE_MOTIVO='trava do registro ilegivel ou instavel' ;;
+    esac
+  fi
+  return "$estado"
+}
+
+# _dbx_state_trava_registro_soltar <arquivo> — apaga so a propria trava de
+# registro (pid, host e inicio desta aquisicao).
+_dbx_state_trava_registro_soltar() {
+  local arquivo=$1
+  if _dbx_state_trava_ler "$arquivo" && [[ $DBX_STATE_TRAVA_PID == "$$" &&
+    $DBX_STATE_TRAVA_HOST == "$DBX_STATE_HOST_ID" && $DBX_STATE_TRAVA_INICIO == "$_dbx_state_trava_registro_inicio" &&
+    $DBX_STATE_TRAVA_COMANDO == 'retomada' ]]; then
+    rm -f -- "$arquivo"
+  fi
+  [[ $DBX_STATE_TRAVA_REGISTRO == "$arquivo" ]] && DBX_STATE_TRAVA_REGISTRO=''
+  return 0
+}
+
+# dbx_state_retomada_soltar — libera agora a trava de registro (idempotente).
+dbx_state_retomada_soltar() {
+  [[ -n $DBX_STATE_TRAVA_REGISTRO ]] || return 0
+  dbx_tmp_acao_cancelar "$_dbx_state_trava_registro_acao"
+  _dbx_state_trava_registro_acao=''
+  _dbx_state_trava_registro_soltar "$DBX_STATE_TRAVA_REGISTRO"
+}
+
+# dbx_state_retomada_listar — uma entrada por `retomada-*`, so lendo, pelo
+# leitor limitado: nao cria o diretorio, nao remove nada (RF-107(d)). Estado
+# `pendente`, `ilegivel` ou `orfa` (modificado ha mais de 8 dias); bytes
+# confirmados (upload) ou recebidos (tamanho atual do `.part` que passa a
+# barreira); idade em dias. Nenhum `session_id` sai daqui (C6).
+dbx_state_retomada_listar() {
+  local diretorio arquivo agora mtime idade tinha_nullglob='nao' bytes part devino
+  local -a arquivos=() c=()
+  DBX_STATE_RETOMADAS_ARQUIVO=() DBX_STATE_RETOMADAS_ESTADO=() DBX_STATE_RETOMADAS_SENTIDO=()
+  DBX_STATE_RETOMADAS_LOCAL=() DBX_STATE_RETOMADAS_REMOTO=() DBX_STATE_RETOMADAS_BYTES=()
+  DBX_STATE_RETOMADAS_IDADE=() DBX_STATE_RETOMADAS_PART=() DBX_STATE_RETOMADAS_DEVINO=()
+  _dbx_state_base || return 0
+  diretorio=$DBX_STATE_RESULTADO
+  DBX_STATE_RESULTADO=''
+  _dbx_state_diretorio_confiavel "$diretorio" || return 0
+  shopt -q nullglob && tinha_nullglob='sim'
+  shopt -s nullglob
+  arquivos=("$diretorio"/retomada-*)
+  [[ $tinha_nullglob == 'sim' ]] || shopt -u nullglob
+  printf -v agora '%(%s)T' -1
+  for arquivo in ${arquivos[@]+"${arquivos[@]}"}; do
+    [[ -e $arquivo || -L $arquivo ]] || continue
+    mtime=$(stat -c %Y -- "$arquivo" 2>/dev/null) || mtime=$agora
+    [[ $mtime =~ ^[0-9]+$ ]] || mtime=$agora
+    idade=$(((agora - mtime) / 86400))
+    DBX_STATE_RETOMADAS_ARQUIVO+=("$arquivo")
+    DBX_STATE_RETOMADAS_IDADE+=("$idade")
+    if _dbx_state_ler_limitado "$arquivo" "$DBX_STATE_RETOMADA_CAMPOS_UPLOAD" &&
+      _dbx_state_retomada_formato "${_DBX_STATE_CAMPOS[@]}"; then
+      c=("${_DBX_STATE_CAMPOS[@]}")
+      part='' devino='' bytes=0
+      if [[ ${c[2]} == 'upload' ]]; then
+        bytes=$((10#${c[7]}))
+        DBX_STATE_RETOMADAS_LOCAL+=("${c[14]}")
+      else
+        _dbx_state_retomada_dir_local "${c[12]}"
+        part="$DBX_STATE_RESULTADO/${c[9]}"
+        devino=${c[10]}
+        if dbx_state_retomada_part_barreira "$DBX_STATE_RESULTADO" "${c[9]}" "$devino"; then
+          bytes=$(stat -c %s -- "$part" 2>/dev/null) || bytes=0
+        fi
+        DBX_STATE_RETOMADAS_LOCAL+=("${c[12]}")
+      fi
+      DBX_STATE_RESULTADO=''
+      if [[ $((agora - mtime)) -gt $((DBX_STATE_RETOMADA_DIAS * 86400)) ]]; then
+        DBX_STATE_RETOMADAS_ESTADO+=(orfa)
+      else
+        DBX_STATE_RETOMADAS_ESTADO+=(pendente)
+      fi
+      DBX_STATE_RETOMADAS_SENTIDO+=("${c[2]}")
+      DBX_STATE_RETOMADAS_REMOTO+=("${c[5]}")
+      DBX_STATE_RETOMADAS_BYTES+=("$bytes")
+      DBX_STATE_RETOMADAS_PART+=("$part")
+      DBX_STATE_RETOMADAS_DEVINO+=("$devino")
+    else
+      DBX_STATE_RETOMADAS_ESTADO+=(ilegivel)
+      DBX_STATE_RETOMADAS_SENTIDO+=('')
+      DBX_STATE_RETOMADAS_LOCAL+=('')
+      DBX_STATE_RETOMADAS_REMOTO+=('')
+      DBX_STATE_RETOMADAS_BYTES+=(0)
+      DBX_STATE_RETOMADAS_PART+=('')
+      DBX_STATE_RETOMADAS_DEVINO+=('')
+    fi
+  done
+  DBX_STATE_MOTIVO=''
   return 0
 }
