@@ -39,6 +39,11 @@ _dbx_cmd_download_pasta() {
   local -a args_sync=(--receber --origem "$remoto" --destino "$alvo" "$@")
   [[ ${DBX_CLI_PROGRESSO:-} == 'sim' ]] && args_sync+=(--progresso)
   [[ ${DBX_CLI_PROGRESSO:-} == 'nao' ]] && args_sync+=(--sem-progresso)
+  # DIV-205 (fase 7b): o cursor de listagem serve so ao `sync --receber`; o
+  # `sync` interno do `download` de pasta nao le, nao grava e nao mostra nada
+  # dele. Variavel local: vale so durante esta chamada.
+  # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico
+  local DBX_CMD_SYNC_CHAMADOR='download'
   dbx_cmd_sync_executar "${args_sync[@]}"
 }
 
@@ -206,6 +211,9 @@ dbx_cmd_download_executar() {
     dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
     # shellcheck source=commands/sync.sh
     . "${BASH_SOURCE[0]%/*}/sync.sh"
+    # DIV-205: download de pasta nunca usa o cursor de listagem.
+    # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico
+    local DBX_CMD_SYNC_CHAMADOR='download'
     dbx_cmd_sync_executar --receber --origem / --destino "$dir_raiz_local" ${repasse[@]+"${repasse[@]}"}
     return $?
   fi

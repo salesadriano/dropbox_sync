@@ -78,7 +78,7 @@ _dbx_completar() {
     space) lista='--humano --human -H' ;;
     config) lista='--substituir --replace --raiz --root --debug' ;;
     unlink) lista='--confirmar --yes --manter-aplicativo --keep-app' ;;
-    sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --progresso --progress -p --sem-progresso --no-progress' ;;
+    sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --sem-cursor --no-cursor --varredura-completa --full-scan --progresso --progress -p --sem-progresso --no-progress' ;;
     verificar) lista='--enviar --push --receber --pull --origem --source --destino --dest --esperar --wait --excluir --exclude --incluir --include --progresso --progress -p --sem-progresso --no-progress' ;;
     revisoes) lista='--limite --limit --por-id --by-id' ;;
     restaurar) lista='--rev --antes-de --before' ;;

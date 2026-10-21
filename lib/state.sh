@@ -154,21 +154,24 @@ _dbx_state_preparar_diretorio() {
   # RNF-25(c): `-mtime +0` e "mais de 24 h". Os recentes podem ser gravacao
   # concorrente de outro processo e ficam.
   # RF-69(o): `.trava.*` entra na mesma regra; `trava-*` nunca e varrido.
-  # RNF-25(c) emendado (fase 7a): `.retomada.*` tambem.
+  # RNF-25(c) emendado (fase 7a): `.retomada.*` tambem; (fase 7b) `.cursor.*`.
   find "$diretorio" -maxdepth 1 -type f \( -name '.memoria.*' -o -name '.upload.*' -o -name '.trava.*' \
-    -o -name '.retomada.*' \) \
+    -o -name '.retomada.*' -o -name '.cursor.*' \) \
     -mtime +0 -exec rm -f -- {} + 2>/dev/null
   return 0
 }
 
 # _dbx_state_gravar_arquivo <arquivo> <prefixo_temporario> <funcao_de_conteudo>
+#   [funcao_de_rodape]
 #
-# Gravacao atomica UNICA, para os dois namespaces (RNF-25(a)): temporario no
+# Gravacao atomica UNICA, para todos os namespaces (RNF-25(a)): temporario no
 # MESMO diretorio, criado em 0600 e registrado por `lib/tmp`, e renomeacao.
 # Falha em qualquer etapa preserva o arquivo anterior; sinal remove o
-# temporario.
+# temporario. Com <funcao_de_rodape> (fase 7b, `cursor-*`), ela recebe o
+# caminho do temporario ja escrito e acrescenta o rodape de integridade antes
+# do `mv`: o rodape cobre exatamente os bytes que serao publicados.
 _dbx_state_gravar_arquivo() {
-  local arquivo=$1 prefixo=$2 conteudo=$3 temporario
+  local arquivo=$1 prefixo=$2 conteudo=$3 rodape=${4:-} temporario
   # Estado hostil: diretorio no lugar do registro. `mv` moveria o temporario
   # para dentro dele e devolveria sucesso.
   [[ -d $arquivo ]] && return 1
@@ -178,6 +181,10 @@ _dbx_state_gravar_arquivo() {
     dbx_tmp_remover "$temporario"
     return 1
   }
+  if [[ -n $rodape ]] && ! "$rodape" "$temporario" 2>/dev/null; then
+    dbx_tmp_remover "$temporario"
+    return 1
+  fi
   mv -f -- "$temporario" "$arquivo" 2>/dev/null || {
     dbx_tmp_remover "$temporario"
     return 1
@@ -1658,6 +1665,514 @@ dbx_state_retomada_listar() {
       DBX_STATE_RETOMADAS_DEVINO+=('')
     fi
   done
+  DBX_STATE_MOTIVO=''
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Namespace do cursor de listagem: `cursor-*` (fase 7b, F-14; RF-111, RF-113,
+# RF-117; parecer do DBA, C1 a C4, C6, C10, C11)
+# ---------------------------------------------------------------------------
+#
+# O ESTADO SO ACELERA (P1). O registro guarda o cursor do `list_folder` e o
+# RETRATO remoto sem filtro do instante dele (C3): o `sync --receber` aplica o
+# delta do `list_folder/continue` ao retrato e reconstroi a tabela remota. Ele
+# nunca decide uma exclusao (toda candidata e confirmada no servidor, RF-114,
+# em `lib/sync`) nem a integridade (o download confere `rev` e `content_hash`).
+# Apagar `cursor-*` a mao so muda o custo.
+#
+# ESTADO INVALIDO NUNCA FAZ FALHAR (P3). Qualquer anomalia descarta: o registro
+# e apagado (so o do usuario, e nunca em simulacao) e quem chama faz a
+# varredura completa na mesma execucao, com um motivo de uma linha sem byte cru
+# e SEM o cursor (C10).
+#
+# FORMATO v1 (C1; versao DO NAMESPACE, `DBX_STATE_VERSAO` nao muda), cada campo
+# terminado em NUL:
+#   cabecalho (12): magia, versao, cred-, account_id, assinatura da listagem,
+#     raiz remota (sem dobra), raiz local canonica, cursor,
+#     varredura_completa_em, incrementais_desde, gravado_em, n_entradas
+#   corpo (n x 2): "tag<TAB>id<TAB>rev<TAB>content_hash<TAB>tamanho<TAB>
+#     server_modified<TAB>path_display" e "path_lower"; pasta com `-` em rev,
+#     hash e data; arquivo sem `content_hash` com `-` (DIV-223) e sem data com
+#     `-` (a data so e lida quando filtra o escopo, RF-39; DIV-225)
+#   rodape: `fim` e o SHA-256 hexadecimal de todos os bytes anteriores a `fim`
+#
+# CHAVE (C2): SHA-256 de `cursor` NUL cred- NUL local NUL remoto-dobrado NUL
+# assinatura NUL, truncado em 32 hexadecimais. O resumo so LOCALIZA; a
+# reconferencia byte a byte do cabecalho, mais o `account_id` desta execucao, e
+# o que autentica. Filtros fora da chave: o retrato e sem filtro (DIV-213).
+#
+# LEITOR EM FLUXO (C4): um descritor, so arquivo regular do usuario, campo de
+# ate 8 KiB, ate 1.000.000 de entradas e 512 MiB, regex por campo, e o rodape
+# conferido ANTES de o chamador usar o retrato (quem chama so monta a tabela
+# em memoria; o descarte a zera). Cada entrada passa pela funcao do chamador,
+# que confina o caminho (`dbx_sync_relativo`) e recusa `path_lower` repetido.
+
+readonly DBX_STATE_CURSOR_MAGIA='dbx-cursor'
+readonly DBX_STATE_CURSOR_VERSAO=1
+readonly DBX_STATE_CURSOR_CABECALHO=12
+readonly DBX_STATE_CURSOR_CAMPO=8192
+readonly DBX_STATE_CURSOR_ENTRADAS=1000000
+readonly DBX_STATE_CURSOR_BYTES=536870912
+readonly DBX_STATE_CURSOR_TETO=100
+readonly DBX_STATE_CURSOR_DIAS=8
+# Varredura completa obrigatoria (C8, DIV-208): 7 dias, 100 incrementais, ou
+# relogio que voltou mais de 5 minutos. O relogio so decide fazer MAIS trabalho.
+readonly DBX_STATE_CURSOR_VALIDADE_S=604800
+readonly DBX_STATE_CURSOR_INCREMENTAIS=100
+readonly DBX_STATE_CURSOR_FOLGA_S=300
+readonly DBX_STATE_CURSOR_RE_CURSOR='^[A-Za-z0-9_=+/.-]{1,8192}$'
+readonly DBX_STATE_CURSOR_RE_CONTA='^dbid:[A-Za-z0-9_-]{1,128}$'
+readonly DBX_STATE_CURSOR_RE_ASSINATURA='^[A-Za-z0-9_;=.-]{1,256}$'
+readonly DBX_STATE_CURSOR_RE_ENTRADA=$'^(f|d)\t(id:[A-Za-z0-9_-]{1,64})\t([0-9a-f]{9,64}|-)\t([0-9a-f]{64}|-)\t([0-9]{1,18})\t([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z|-)\t(.+)$'
+
+# Contexto (`dbx_state_cursor_contexto`).
+DBX_STATE_CURSOR_ARQUIVO=''
+DBX_STATE_CURSOR_CONTA=''
+DBX_STATE_CURSOR_ACCOUNT=''
+DBX_STATE_CURSOR_ASSINATURA=''
+DBX_STATE_CURSOR_REMOTO=''
+DBX_STATE_CURSOR_LOCAL=''
+# Cabecalho do registro valido carregado. O cursor e identificador operacional
+# sensivel (C10): fica so neste canal e no arquivo 0600, nunca em mensagem.
+DBX_STATE_CURSOR_VALOR=''
+DBX_STATE_CURSOR_COMPLETA_EM=''
+DBX_STATE_CURSOR_INCREMENTAIS_DESDE=''
+DBX_STATE_CURSOR_N=''
+# Listagem para o `diagnostico` (RF-117(e)), so do cabecalho.
+DBX_STATE_CURSORES_ARQUIVO=()
+DBX_STATE_CURSORES_ESTADO=()
+DBX_STATE_CURSORES_REMOTO=()
+DBX_STATE_CURSORES_LOCAL=()
+DBX_STATE_CURSORES_ENTRADAS=()
+DBX_STATE_CURSORES_IDADE=()
+
+_DBX_STATE_CURSOR_REG=()
+_DBX_STATE_CURSOR_LIDO=''
+_dbx_state_cursor_corpo=''
+_dbx_state_cursor_podado=''
+_dbx_state_cursor_consumido=0
+_dbx_state_cursor_fd=''
+
+# dbx_state_cursor_contexto <cred> <account_id> <local_canonico> <remoto>
+#   <assinatura>
+#
+# Fixa o contexto e o arquivo do registro, sem ler nem criar nada. Sem `cred-`
+# ou sem `account_id` nao ha contexto, e portanto nao ha cursor (C2, RF-52(a)).
+# O <remoto> e o caminho da API e pode ser VAZIO: e a raiz `/` da credencial
+# (QA-B7B-01); o campo vazio entra na chave e no cabecalho como qualquer outro.
+dbx_state_cursor_contexto() {
+  local LC_ALL=C
+  DBX_STATE_CURSOR_ARQUIVO=''
+  [[ $# -eq 5 && $1 =~ ^cred-[0-9a-f]{32}$ && $2 =~ $DBX_STATE_CURSOR_RE_CONTA && -n $3 &&
+    $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ]] || return "$DBX_STATE_ERRO_USO"
+  local conta=$1 account=$2 local_=$3 remoto=$4 assinatura=$5 base dobrado resumo
+  _dbx_state_base || return $?
+  base=$DBX_STATE_RESULTADO
+  _dbx_state_minusculas_ascii "$remoto"
+  dobrado=$DBX_STATE_RESULTADO
+  DBX_STATE_RESULTADO=''
+  dbx_hash_verificar_dependencias || return 1
+  resumo=$(printf 'cursor\0%s\0%s\0%s\0%s\0' "$conta" "$local_" "$dobrado" "$assinatura" |
+    _dbx_hash_sha256_hex) || return 1
+  [[ $resumo =~ ^[0-9a-f]{64}$ ]] || return 1
+  DBX_STATE_CURSOR_CONTA=$conta
+  DBX_STATE_CURSOR_ACCOUNT=$account
+  DBX_STATE_CURSOR_ASSINATURA=$assinatura
+  DBX_STATE_CURSOR_REMOTO=$remoto
+  DBX_STATE_CURSOR_LOCAL=$local_
+  DBX_STATE_CURSOR_ARQUIVO="$base/cursor-${resumo:0:32}"
+  return 0
+}
+
+# _dbx_state_cursor_cabecalho_formato <12 campos> — 0 quando o cabecalho e um
+# v1 bem formado (sem comparar com o processo); motivo em DBX_STATE_MOTIVO.
+_dbx_state_cursor_cabecalho_formato() {
+  local LC_ALL=C
+  if [[ $# -ne $DBX_STATE_CURSOR_CABECALHO || $1 != "$DBX_STATE_CURSOR_MAGIA" || $2 != "$DBX_STATE_CURSOR_VERSAO" ]]; then
+    DBX_STATE_MOTIVO='registro de listagem de formato ou versao desconhecidos'
+    return 1
+  fi
+  # O remoto ($6) vazio e a raiz `/` (QA-B7B-01); o local ($7) nunca e vazio.
+  if [[ ! $3 =~ ^cred-[0-9a-f]{32}$ || ! $4 =~ $DBX_STATE_CURSOR_RE_CONTA || ! $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ||
+    -z $7 || ! $8 =~ $DBX_STATE_CURSOR_RE_CURSOR || ! $9 =~ ^[0-9]{1,12}$ || ! ${10} =~ ^[0-9]{1,7}$ ||
+    ! ${11} =~ ^[0-9]{1,12}$ || ! ${12} =~ ^[0-9]{1,7}$ ]] || ((10#${12} > DBX_STATE_CURSOR_ENTRADAS)); then
+    DBX_STATE_MOTIVO='registro de listagem com campo invalido'
+    return 1
+  fi
+  DBX_STATE_MOTIVO=''
+  return 0
+}
+
+# _dbx_state_cursor_descartar <motivo> <apagar> — apaga o registro do contexto
+# (so arquivo regular do usuario, e so com <apagar> = sim: a simulacao nunca
+# apaga, RF-117(a)) e devolve 2 com o motivo.
+_dbx_state_cursor_descartar() {
+  local arquivo=$DBX_STATE_CURSOR_ARQUIVO
+  DBX_STATE_MOTIVO=$1
+  DBX_STATE_CURSOR_VALOR='' DBX_STATE_CURSOR_COMPLETA_EM='' DBX_STATE_CURSOR_INCREMENTAIS_DESDE='' DBX_STATE_CURSOR_N=''
+  if [[ $2 == 'sim' && -f $arquivo && ! -L $arquivo && -O $arquivo ]]; then
+    rm -f -- "$arquivo" 2>/dev/null
+  fi
+  return 2
+}
+
+# _dbx_state_cursor_campo <fd> — le UM campo terminado em NUL do descritor, no
+# maximo 8 KiB, em _DBX_STATE_CURSOR_LIDO, e soma os bytes consumidos. 0 lido;
+# 1 fim, campo truncado, acima de 8 KiB ou acima de 512 MiB no total.
+_dbx_state_cursor_campo() {
+  local LC_ALL=C
+  _DBX_STATE_CURSOR_LIDO=''
+  IFS= read -r -d '' -n "$((DBX_STATE_CURSOR_CAMPO + 1))" _DBX_STATE_CURSOR_LIDO <&"$1" || return 1
+  [[ ${#_DBX_STATE_CURSOR_LIDO} -le $DBX_STATE_CURSOR_CAMPO ]] || return 1
+  _dbx_state_cursor_consumido=$((_dbx_state_cursor_consumido + ${#_DBX_STATE_CURSOR_LIDO} + 1))
+  [[ $_dbx_state_cursor_consumido -le $DBX_STATE_CURSOR_BYTES ]]
+}
+
+# _dbx_state_cursor_abrir <arquivo> — abre o registro num descritor, so se for
+# arquivo regular do usuario e nao ligacao simbolica, em _dbx_state_cursor_fd.
+# 0 aberto; 1 intocavel (nem lido, nem apagado); 2 ausente.
+_dbx_state_cursor_abrir() {
+  local arquivo=$1 fd
+  _dbx_state_cursor_fd=''
+  [[ -L $arquivo ]] && return 1
+  [[ -e $arquivo ]] || return 2
+  # Como no leitor da 7a (QA-B7A-01): FIFO nunca e aberta, pois bloquearia.
+  [[ -f $arquivo && -O $arquivo ]] || return 1
+  { exec {fd}<"$arquivo"; } 2>/dev/null || return 1
+  if [[ ! -f /dev/fd/$fd || ! -O /dev/fd/$fd ]]; then
+    exec {fd}<&-
+    return 1
+  fi
+  _dbx_state_cursor_fd=$fd
+  return 0
+}
+
+# _dbx_state_cursor_entrada_valida <registro> <path_lower> — regex por campo;
+# arquivo com `rev` (a data remota e `-` quando nao foi lida, RF-39), pasta so
+# com `-`.
+_dbx_state_cursor_entrada_valida() {
+  local LC_ALL=C
+  [[ $1 =~ $DBX_STATE_CURSOR_RE_ENTRADA && $2 == /* ]] || return 1
+  if [[ ${BASH_REMATCH[1]} == 'f' ]]; then
+    [[ ${BASH_REMATCH[3]} != '-' ]]
+  else
+    [[ ${BASH_REMATCH[3]} == '-' && ${BASH_REMATCH[4]} == '-' && ${BASH_REMATCH[6]} == '-' ]]
+  fi
+}
+
+# _dbx_state_cursor_rodape_confere <fd> <bytes_do_prefixo> — 0 quando os dois
+# campos seguintes sao `fim` e o SHA-256 dos <bytes_do_prefixo> primeiros bytes
+# do MESMO arquivo, e nada vem depois. 1 truncado ou ausente; 2 divergente.
+_dbx_state_cursor_rodape_confere() {
+  local fd=$1 prefixo=$2 resumo conferido resto='' LC_ALL=C
+  _dbx_state_cursor_campo "$fd" && [[ $_DBX_STATE_CURSOR_LIDO == 'fim' ]] || return 1
+  _dbx_state_cursor_campo "$fd" && [[ $_DBX_STATE_CURSOR_LIDO =~ ^[0-9a-f]{64}$ ]] || return 1
+  resumo=$_DBX_STATE_CURSOR_LIDO
+  _DBX_STATE_CURSOR_LIDO=''
+  if IFS= read -r -d '' -n 1 resto <&"$fd" || [[ -n $resto ]]; then
+    return 1
+  fi
+  dbx_hash_verificar_dependencias || return 1
+  # `/dev/fd/N` aberto pelo `head` reabre o inode DO DESCRITOR, e nao o nome,
+  # que poderia ter sido trocado desde a abertura.
+  conferido=$(_dbx_hash_sha256_hex < <(head -c "$prefixo" -- "/dev/fd/$fd" 2>/dev/null)) || return 2
+  [[ $conferido == "$resumo" ]] || return 2
+  return 0
+}
+
+# dbx_state_cursor_carregar <funcao_de_entrada> [apagar]
+#
+# Le o registro do contexto em fluxo. Para cada entrada bem formada chama
+# `<funcao_de_entrada> <registro> <path_lower> <tag> <id> <path_display>`; um
+# status diferente de zero dela descarta o registro (caminho fora da raiz,
+# `path_lower` repetido). Com [apagar] = nao (simulacao), o descarte nao apaga.
+#
+#   0  valido e conferido: cabecalho em DBX_STATE_CURSOR_*; o retrato foi
+#      entregue a funcao e o rodape conferiu
+#   1  ausente
+#   2  descartado: motivo em DBX_STATE_MOTIVO; quem chama zera o que montou
+#   3  intocavel: ligacao simbolica, nao regular ou de outro dono — nao e lido
+#      nem apagado, e quem chama segue SEM cursor (nao grava por cima)
+#
+# Quem chama ja detem a trava do par (C7).
+dbx_state_cursor_carregar() {
+  [[ $# -ge 1 && -n $DBX_STATE_CURSOR_ARQUIVO ]] || return "$DBX_STATE_ERRO_USO"
+  local funcao=$1 apagar=${2:-sim} arquivo=$DBX_STATE_CURSOR_ARQUIVO fd tamanho n indice registro lower
+  local estado=0 LC_ALL=C
+  local -a cab=()
+  DBX_STATE_MOTIVO=''
+  DBX_STATE_CURSOR_VALOR='' DBX_STATE_CURSOR_COMPLETA_EM='' DBX_STATE_CURSOR_INCREMENTAIS_DESDE='' DBX_STATE_CURSOR_N=''
+  if ! _dbx_state_diretorio_confiavel "${arquivo%/*}"; then
+    [[ -e $arquivo || -L $arquivo ]] && return 3
+    return 1
+  fi
+  _dbx_state_cursor_abrir "$arquivo"
+  case $? in
+    0) fd=$_dbx_state_cursor_fd ;;
+    2) return 1 ;;
+    *) return 3 ;;
+  esac
+  tamanho=$(stat -L -c %s -- "/dev/fd/$fd" 2>/dev/null) || tamanho=-1
+  _dbx_state_cursor_consumido=0
+  if [[ ! $tamanho =~ ^[0-9]+$ || $tamanho -gt $DBX_STATE_CURSOR_BYTES ]]; then
+    exec {fd}<&-
+    _dbx_state_cursor_descartar 'registro de listagem ilegivel ou acima de 512 MiB' "$apagar"
+    return $?
+  fi
+  for ((indice = 0; indice < DBX_STATE_CURSOR_CABECALHO; indice++)); do
+    _dbx_state_cursor_campo "$fd" || {
+      estado=1
+      break
+    }
+    cab+=("$_DBX_STATE_CURSOR_LIDO")
+  done
+  if [[ $estado -ne 0 ]]; then
+    exec {fd}<&-
+    _dbx_state_cursor_descartar 'registro de listagem ilegivel, truncado ou com campo acima de 8 KiB' "$apagar"
+    return $?
+  fi
+  if ! _dbx_state_cursor_cabecalho_formato "${cab[@]}"; then
+    exec {fd}<&-
+    _dbx_state_cursor_descartar "$DBX_STATE_MOTIVO" "$apagar"
+    return $?
+  fi
+  # Reconferencia byte a byte (C2): o resumo do nome so localiza.
+  if [[ ${cab[2]} != "$DBX_STATE_CURSOR_CONTA" || ${cab[3]} != "$DBX_STATE_CURSOR_ACCOUNT" ||
+    ${cab[4]} != "$DBX_STATE_CURSOR_ASSINATURA" || ${cab[5]} != "$DBX_STATE_CURSOR_REMOTO" ||
+    ${cab[6]} != "$DBX_STATE_CURSOR_LOCAL" ]]; then
+    exec {fd}<&-
+    _dbx_state_cursor_descartar 'registro de listagem de outra conta, raiz ou listagem' "$apagar"
+    return $?
+  fi
+  n=$((10#${cab[11]}))
+  for ((indice = 0; indice < n; indice++)); do
+    if ! _dbx_state_cursor_campo "$fd"; then
+      estado=1
+      break
+    fi
+    registro=$_DBX_STATE_CURSOR_LIDO
+    if ! _dbx_state_cursor_campo "$fd"; then
+      estado=1
+      break
+    fi
+    lower=$_DBX_STATE_CURSOR_LIDO
+    if ! _dbx_state_cursor_entrada_valida "$registro" "$lower"; then
+      estado=2
+      break
+    fi
+    if ! "$funcao" "$registro" "$lower" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[7]}"; then
+      estado=3
+      break
+    fi
+  done
+  if [[ $estado -eq 0 ]]; then
+    _dbx_state_cursor_rodape_confere "$fd" "$_dbx_state_cursor_consumido"
+    case $? in
+      0) ;;
+      1) estado=1 ;;
+      *) estado=4 ;;
+    esac
+  fi
+  exec {fd}<&-
+  _DBX_STATE_CURSOR_LIDO=''
+  case $estado in
+    0) ;;
+    1)
+      _dbx_state_cursor_descartar 'registro de listagem truncado, sem rodape ou com contagem errada' "$apagar"
+      return $?
+      ;;
+    2)
+      _dbx_state_cursor_descartar 'registro de listagem com entrada invalida' "$apagar"
+      return $?
+      ;;
+    3)
+      _dbx_state_cursor_descartar 'registro de listagem com caminho fora da raiz ou repetido' "$apagar"
+      return $?
+      ;;
+    *)
+      _dbx_state_cursor_descartar 'registro de listagem com rodape de integridade divergente' "$apagar"
+      return $?
+      ;;
+  esac
+  # shellcheck disable=SC2034  # canais publicos, lidos por commands/sync
+  DBX_STATE_CURSOR_VALOR=${cab[7]}
+  # shellcheck disable=SC2034
+  DBX_STATE_CURSOR_COMPLETA_EM=$((10#${cab[8]}))
+  # shellcheck disable=SC2034
+  DBX_STATE_CURSOR_INCREMENTAIS_DESDE=$((10#${cab[9]}))
+  # shellcheck disable=SC2034
+  DBX_STATE_CURSOR_N=$n
+  return 0
+}
+
+# dbx_state_cursor_vencido <varredura_completa_em> <incrementais_desde> [agora]
+# — 0 quando a varredura completa e obrigatoria (C8, DIV-208): ultima completa
+# ha mais de 7 dias, 100 incrementais, ou relogio mais de 5 min no passado.
+dbx_state_cursor_vencido() {
+  local completa=${1-} incrementais=${2-} agora=${3:-}
+  [[ -n $agora ]] || printf -v agora '%(%s)T' -1
+  [[ $completa =~ ^[0-9]+$ && $incrementais =~ ^[0-9]+$ ]] || return 0
+  ((agora - completa > DBX_STATE_CURSOR_VALIDADE_S)) && return 0
+  ((completa - agora > DBX_STATE_CURSOR_FOLGA_S)) && return 0
+  ((incrementais >= DBX_STATE_CURSOR_INCREMENTAIS)) && return 0
+  return 1
+}
+
+_dbx_state_conteudo_cursor() {
+  printf '%s\0' "${_DBX_STATE_CURSOR_REG[@]}"
+  "$_dbx_state_cursor_corpo"
+}
+
+# _dbx_state_rodape_cursor <temporario> — acrescenta `fim` e o SHA-256 dos bytes
+# ja escritos; recusa o que passaria do teto de 512 MiB (nao persiste).
+_dbx_state_rodape_cursor() {
+  local temporario=$1 tamanho resumo
+  tamanho=$(stat -c %s -- "$temporario" 2>/dev/null) || return 1
+  [[ $tamanho =~ ^[0-9]+$ && $tamanho -le $((DBX_STATE_CURSOR_BYTES - 80)) ]] || return 1
+  resumo=$(_dbx_hash_sha256_hex <"$temporario") || return 1
+  [[ $resumo =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf 'fim\0%s\0' "$resumo" >>"$temporario"
+}
+
+# dbx_state_cursor_gravar <cursor> <varredura_completa_em> <incrementais_desde>
+#   <n_entradas> <funcao_de_corpo>
+#
+# Gravacao atomica do registro do contexto (C1, C6): temporario `.cursor.*` no
+# mesmo diretorio, rodape e `mv`, sem `fsync`. <funcao_de_corpo> escreve as
+# <n_entradas> entradas, dois campos NUL cada. Cursor fora da regex, retrato
+# acima de 1.000.000 de entradas ou de 512 MiB: NAO persiste (diferente de
+# zero), e quem chama segue normal. Lugar de outro dono, ligacao ou diretorio
+# no lugar do registro: nada e escrito. A poda (C11) corre uma vez por execucao.
+dbx_state_cursor_gravar() {
+  [[ $# -eq 5 && -n $DBX_STATE_CURSOR_ARQUIVO ]] || return "$DBX_STATE_ERRO_USO"
+  local arquivo=$DBX_STATE_CURSOR_ARQUIVO diretorio estado agora LC_ALL=C
+  printf -v agora '%(%s)T' -1
+  local -a registro=("$DBX_STATE_CURSOR_MAGIA" "$DBX_STATE_CURSOR_VERSAO" "$DBX_STATE_CURSOR_CONTA"
+    "$DBX_STATE_CURSOR_ACCOUNT" "$DBX_STATE_CURSOR_ASSINATURA" "$DBX_STATE_CURSOR_REMOTO"
+    "$DBX_STATE_CURSOR_LOCAL" "$1" "$2" "$3" "$agora" "$4")
+  _dbx_state_cursor_cabecalho_formato "${registro[@]}" || return 1
+  declare -F -- "$5" >/dev/null || return "$DBX_STATE_ERRO_USO"
+  diretorio=${arquivo%/*}
+  _dbx_state_preparar_diretorio "$diretorio"
+  estado=$?
+  [[ $estado -eq 0 ]] || return "$estado"
+  if [[ -L $arquivo ]] || { [[ -e $arquivo ]] && ! [[ -f $arquivo && -O $arquivo ]]; }; then
+    return 1
+  fi
+  _DBX_STATE_CURSOR_REG=("${registro[@]}")
+  _dbx_state_cursor_corpo=$5
+  _dbx_state_gravar_arquivo "$arquivo" .cursor _dbx_state_conteudo_cursor _dbx_state_rodape_cursor
+  estado=$?
+  _DBX_STATE_CURSOR_REG=()
+  _dbx_state_cursor_corpo=''
+  [[ $estado -eq 0 ]] || return 1
+  if [[ $_dbx_state_cursor_podado != "$diretorio" ]]; then
+    _dbx_state_cursor_podado=$diretorio
+    _dbx_state_cursor_podar "$diretorio"
+  fi
+  return 0
+}
+
+# dbx_state_cursor_remover — apaga o registro do contexto (so o do usuario).
+dbx_state_cursor_remover() {
+  local arquivo=$DBX_STATE_CURSOR_ARQUIVO
+  [[ -n $arquivo ]] || return 0
+  [[ -f $arquivo && ! -L $arquivo && -O $arquivo ]] && rm -f -- "$arquivo" 2>/dev/null
+  return 0
+}
+
+# _dbx_state_cursor_podar <diretorio> — C11: `cursor-*` com modificacao ha mais
+# de 8 dias e, acima de 100, os mais antigos por modificacao. So arquivo
+# regular do usuario; nunca o registro do contexto; nunca outro namespace.
+_dbx_state_cursor_podar() {
+  local diretorio=$1 arquivo linha carimbo antigo antigo_carimbo tinha_nullglob='nao'
+  local -a registros=()
+  while IFS= read -r -d '' arquivo; do
+    [[ $arquivo == "$DBX_STATE_CURSOR_ARQUIVO" ]] && continue
+    [[ -f $arquivo && ! -L $arquivo && -O $arquivo ]] && rm -f -- "$arquivo" 2>/dev/null
+  done < <(find "$diretorio" -maxdepth 1 -type f -name 'cursor-*' -mtime "+$DBX_STATE_CURSOR_DIAS" -print0 2>/dev/null)
+
+  shopt -q nullglob && tinha_nullglob='sim'
+  shopt -s nullglob
+  registros=("$diretorio"/cursor-*)
+  [[ $tinha_nullglob == 'sim' ]] || shopt -u nullglob
+  local excesso=$((${#registros[@]} - DBX_STATE_CURSOR_TETO)) voltas=0
+  local -A mantidos=()
+  while [[ $excesso -gt 0 && $voltas -lt $((excesso + 50)) ]]; do
+    voltas=$((voltas + 1))
+    antigo='' antigo_carimbo=''
+    while IFS= read -r -d '' linha; do
+      carimbo=${linha%% *}
+      carimbo=${carimbo%%.*}
+      arquivo=${linha#* }
+      [[ $arquivo == "$DBX_STATE_CURSOR_ARQUIVO" || -n ${mantidos[$arquivo]:-} ]] && continue
+      [[ $carimbo =~ ^[0-9]+$ ]] || continue
+      if [[ -z $antigo || $carimbo -lt $antigo_carimbo ]]; then
+        antigo=$arquivo
+        antigo_carimbo=$carimbo
+      fi
+    done < <(find "$diretorio" -maxdepth 1 -type f -name 'cursor-*' -printf '%T@ %p\0' 2>/dev/null)
+    [[ -n $antigo ]] || break
+    if [[ -f $antigo && ! -L $antigo && -O $antigo ]] && rm -f -- "$antigo" 2>/dev/null; then
+      excesso=$((excesso - 1))
+    else
+      mantidos[$antigo]=1
+    fi
+  done
+  return 0
+}
+
+# dbx_state_cursor_listar — uma entrada por `cursor-*`, lendo SO o cabecalho
+# (C4, RF-117(e)): nao cria o diretorio, nao remove nada, nunca le o retrato
+# (vale para registro de qualquer tamanho). Estado `valido`, `vencido`
+# (varredura completa obrigatoria, C8) ou `ilegivel`; remoto, local, entradas e
+# idade em dias da ultima varredura completa. O cursor NUNCA sai daqui (C10).
+dbx_state_cursor_listar() {
+  local diretorio arquivo agora indice fd tinha_nullglob='nao' estado
+  local -a arquivos=() cab=()
+  DBX_STATE_CURSORES_ARQUIVO=() DBX_STATE_CURSORES_ESTADO=() DBX_STATE_CURSORES_REMOTO=()
+  DBX_STATE_CURSORES_LOCAL=() DBX_STATE_CURSORES_ENTRADAS=() DBX_STATE_CURSORES_IDADE=()
+  _dbx_state_base || return 0
+  diretorio=$DBX_STATE_RESULTADO
+  DBX_STATE_RESULTADO=''
+  _dbx_state_diretorio_confiavel "$diretorio" || return 0
+  shopt -q nullglob && tinha_nullglob='sim'
+  shopt -s nullglob
+  arquivos=("$diretorio"/cursor-*)
+  [[ $tinha_nullglob == 'sim' ]] || shopt -u nullglob
+  printf -v agora '%(%s)T' -1
+  for arquivo in ${arquivos[@]+"${arquivos[@]}"}; do
+    [[ -e $arquivo || -L $arquivo ]] || continue
+    cab=()
+    estado='ilegivel'
+    if _dbx_state_cursor_abrir "$arquivo"; then
+      fd=$_dbx_state_cursor_fd
+      _dbx_state_cursor_consumido=0
+      for ((indice = 0; indice < DBX_STATE_CURSOR_CABECALHO; indice++)); do
+        _dbx_state_cursor_campo "$fd" || break
+        cab+=("$_DBX_STATE_CURSOR_LIDO")
+      done
+      exec {fd}<&-
+      _DBX_STATE_CURSOR_LIDO=''
+      if _dbx_state_cursor_cabecalho_formato ${cab[@]+"${cab[@]}"}; then
+        estado='valido'
+        dbx_state_cursor_vencido "$((10#${cab[8]}))" "$((10#${cab[9]}))" "$agora" && estado='vencido'
+      fi
+    fi
+    DBX_STATE_CURSORES_ARQUIVO+=("$arquivo")
+    DBX_STATE_CURSORES_ESTADO+=("$estado")
+    if [[ $estado != 'ilegivel' ]]; then
+      DBX_STATE_CURSORES_REMOTO+=("${cab[5]}")
+      DBX_STATE_CURSORES_LOCAL+=("${cab[6]}")
+      DBX_STATE_CURSORES_ENTRADAS+=("$((10#${cab[11]}))")
+      DBX_STATE_CURSORES_IDADE+=("$(((agora - 10#${cab[8]}) / 86400))")
+    else
+      DBX_STATE_CURSORES_REMOTO+=('') DBX_STATE_CURSORES_LOCAL+=('')
+      DBX_STATE_CURSORES_ENTRADAS+=(0) DBX_STATE_CURSORES_IDADE+=(0)
+    fi
+  done
+  cab=()
   DBX_STATE_MOTIVO=''
   return 0
 }

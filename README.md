@@ -524,6 +524,34 @@ A tabela de códigos de saída não muda.
 
 ---
 
+## Cursor de listagem do `sync --receber`
+
+**O `dbx sync --receber` guarda, ao fim de cada execução bem-sucedida, o cursor da listagem remota e um retrato da árvore remota**, e a execução seguinte pede ao Dropbox só o que mudou desde então (`list_folder/continue`) em vez de listar a árvore remota inteira (`F-14`, `RF-110` a `RF-119`). A árvore **local** continua sendo percorrida inteira em toda execução (com a memória `memoria-*`), e o plano é o mesmo que a varredura completa produziria.
+
+- **O cursor só acelera a listagem remota.** Sem registro, com registro inválido ou vencido, a varredura completa roda sozinha, na mesma execução, sem falhar e com o código de saída de sempre. O mesmo vale quando o servidor invalida o cursor (`reset`), quando a consulta de mudanças falha por rede ou limite de taxa, quando as mudanças vêm incoerentes ou quando o servidor contradiz uma exclusão.
+- **Uma exclusão local só é feita depois de o servidor confirmar que o arquivo foi apagado.** Todo arquivo que o plano incremental apagaria (ou listaria como `apenas_no_destino`, sem `--espelhar`) é conferido com o servidor na mesma execução, antes do plano; se o servidor ainda tem o arquivo, nada é apagado e a execução faz a varredura completa. Acima de 50 conferências, vai direto à varredura completa. As guardas de sempre (`--espelhar`, primeira execução, origem vazia, travessia parcial, filtros) continuam valendo.
+- **Varredura completa periódica:** obrigatória quando a última completa tem mais de 7 dias, depois de 100 execuções incrementais, ou quando o relógio voltou mais de 5 minutos.
+- **Onde fica:** um registro `cursor-<resumo>` (`0600`) por conta, raiz local e raiz remota, no diretório de estado `$XDG_STATE_HOME/dbx` (recuo `~/.local/state/dbx`, `0700`). Ele guarda o cursor e, para cada arquivo e pasta remotos, `id`, `rev`, `content_hash`, tamanho e caminho, com um rodapé de integridade (SHA-256). **Não guarda segredo** (token, chave ou conteúdo). O cursor é um identificador sensível da conta: nunca aparece na saída, em `--json`, `--debug`, no progresso nem no `dbx diagnostico`. Os filtros (`--excluir`, `--incluir`, data, tamanho) não entram na chave: trocar o filtro não invalida o registro.
+- **Opções (só com `--receber`; juntas, ou com `--enviar`, saem com `2`):** `--varredura-completa` (`--full-scan`) ignora o registro, faz a varredura completa e o regrava; `--sem-cursor` (`--no-cursor`) não lê, não grava e não apaga o registro.
+- **Saída:** o plano do `sync --receber` traz `varredura` (`incremental` ou `completa`), `cursor_motivo` (na completa: `sem-registro`, `descartado`, `reset`, `transitorio`, `periodica`, `contradicao`, `forcada` ou `desligado`), `cursor_mudancas` e `cursor_confirmadas`.
+- **Fora do cursor:** `sync --enviar`, `verificar` e o `download` de pasta sempre listam a árvore remota inteira e nunca leem nem gravam o registro.
+- **Como apagar:** apagar `cursor-*` à mão é sempre seguro (`rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/dbx"/cursor-*`): só faz a próxima execução ser completa. Registros parados há mais de 8 dias saem na próxima gravação (no máximo 100). O `dbx unlink` os remove com o diretório de estado; o `dbx diagnostico` mostra uma linha por registro (`valido`, `vencido` ou `ilegivel`).
+
+```bash
+# Execuções seguintes pedem ao servidor só o que mudou
+dbx sync --receber --origem /fotos --destino ./fotos
+
+# Refazer o registro com uma varredura completa
+dbx sync --receber --origem /fotos --destino ./fotos --varredura-completa
+
+# Não usar o registro nesta execução
+dbx sync --receber --origem /fotos --destino ./fotos --sem-cursor
+```
+
+A tabela de códigos de saída não muda.
+
+---
+
 ## Testes e Qualidade
 
 O projeto conta com uma suíte abrangente de testes automatizados com saída **TAP 13**, cobrindo cenários unitários e de integração com dublês de rede e auditorias adversariais:

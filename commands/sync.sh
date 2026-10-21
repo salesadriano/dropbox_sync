@@ -166,6 +166,8 @@ dbx_cmd_sync_executar() {
   local origem='' destino='' sentido='' espelhar='nao' confirmado='nao' permitir_origem_vazia='nao'
   local tem_origem='nao' tem_destino='nao' forcar='nao' espera=0 opcao_espera='' valor_espera=''
   local tem_limite='nao' opcao_limite='' valor_limite='' opcao
+  # RF-118 (fase 7b): cursor de listagem so no `--receber`.
+  local sem_cursor='nao' varredura_forcada='nao'
   local -a filtros_caminho=() filtros_meta=()
   while [[ $# -gt 0 ]]; do
     case ${1-} in
@@ -227,6 +229,9 @@ dbx_cmd_sync_executar() {
       # RF-67(e), DIV-33: so pula a checagem de espaco; a decisao por
       # `content_hash` (RF-39) nao muda.
       --forcar | --force) forcar='sim' ;;
+      # RF-118(a)(b), DIV-207 B: o cursor so acelera; estas so mudam o custo.
+      --sem-cursor | --no-cursor) sem_cursor='sim' ;;
+      --varredura-completa | --full-scan) varredura_forcada='sim' ;;
       # RF-70: espera pela trava do par; validada depois do laco (ultimo vence).
       --esperar | --wait)
         opcao_espera=$1
@@ -266,6 +271,18 @@ dbx_cmd_sync_executar() {
       'informe o sentido: --enviar ou --push (origem local para destino remoto), --receber ou --pull (origem remota para destino local)'
     return $?
   }
+  # RF-118(b)(c): juntas, ou fora do `--receber`, sao uso invalido, antes de
+  # qualquer leitura de estado.
+  if [[ $sem_cursor == 'sim' && $varredura_forcada == 'sim' ]]; then
+    dbx_cmd_falhar uso_invalido \
+      '--sem-cursor (--no-cursor) e --varredura-completa (--full-scan) sao mutuamente exclusivos'
+    return $?
+  fi
+  if [[ ($sem_cursor == 'sim' || $varredura_forcada == 'sim') && $sentido != 'receber' ]]; then
+    dbx_cmd_falhar uso_invalido \
+      '--sem-cursor (--no-cursor) e --varredura-completa (--full-scan) so valem com --receber'
+    return $?
+  fi
   if [[ -n $opcao_espera ]]; then
     dbx_cli_validar_espera "$opcao_espera" "$valor_espera" || {
       dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
@@ -351,8 +368,10 @@ dbx_cmd_sync_executar() {
   # RF-62(c): a raiz local entra na identidade da memoria ja canonizada, para
   # `./x` e `/abs/x` designarem a mesma memoria e o mesmo "par visto" (RF-48).
   # So a CHAVE muda: a travessia, o plano e a saida usam as raizes como dadas.
-  local chave_origem=$origem chave_destino=$destino
+  local chave_origem=$origem chave_destino=$destino local_canonico=''
   if dbx_path_local_canonico "$raiz_local"; then
+    # shellcheck disable=SC2153  # canal publico de lib/path, carregada por bin/dbx
+    local_canonico=$DBX_PATH_RESULTADO
     # shellcheck disable=SC2153  # canal publico de lib/path, carregada por bin/dbx
     if [[ $sentido == 'enviar' ]]; then
       chave_origem=$DBX_PATH_RESULTADO
@@ -464,24 +483,79 @@ dbx_cmd_sync_executar() {
   fi
 
   dbx_progress_mensagem "[sync] consultando arquivos remotos em: $remoto"
+  # Fase 7b (F-14): no `--receber` do proprio `sync` (nunca no `download` de
+  # pasta, DIV-205, nem no `--enviar`), o cursor de listagem pode substituir a
+  # varredura remota completa pelo retrato mais o delta. Tudo daqui ate o plano
+  # e o MESMO codigo nos dois modos (RF-112(d)).
+  _dbx_cmd_sync_cursor_zerar
+  if [[ $sentido == 'receber' && ${DBX_CMD_SYNC_CHAMADOR:-} != 'download' ]]; then
+    DBX_CMD_SYNC_CURSOR_CAMPOS='sim'
+    _dbx_cmd_sync_cursor_preparar "$conta" "$local_canonico" "$remoto" "$lado_remoto" "$sem_cursor" \
+      "$varredura_forcada" || return $?
+  fi
+
   # QA-P3-03: o status e capturado ANTES do teste. Lido dentro de `if ! …`, ele
   # e o da negacao (0), e uma enumeracao que falhou terminava o `sync` com sucesso.
-  local estado_remoto=0
-  dbx_sync_filtrados_zerar
-  dbx_sync_enumerar_remoto "$remoto" "$registros_remotos" "$revs_remotos" "$lado_remoto" || estado_remoto=$?
-  if [[ $estado_remoto -ne 0 ]]; then
-    dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
-    return "$estado_remoto"
-  fi
-  filtrados_remoto=$DBX_SYNC_FILTRADOS
-
+  # Duas rodadas no maximo: a segunda so existe quando a confirmacao de
+  # exclusao (RF-114) devolve a execucao a varredura completa.
+  local estado_remoto=0 rodada
   local -a ordem_remota=()
   # shellcheck disable=SC2034  # preenchido e lido por referencia de nome nas
   # funcoes de lib/sync; a analise estatica nao segue nameref entre arquivos.
   local -A mapa_remoto=() mapa_revs=()
-  dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
-  dbx_sync_ler_revs "$revs_remotos" mapa_revs
-  dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
+  for rodada in 1 2; do
+    [[ $rodada -eq 1 ]] || dbx_progress_mensagem '[sync] consultando arquivos remotos de novo (varredura completa)'
+    dbx_sync_filtrados_zerar
+    if [[ $DBX_CMD_SYNC_VARREDURA != 'incremental' ]]; then
+      estado_remoto=0
+      dbx_sync_listar_completo "$remoto" "$lado_remoto" || estado_remoto=$?
+      if [[ $estado_remoto -ne 0 ]]; then
+        dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
+        return "$estado_remoto"
+      fi
+    fi
+    # DIV-g: o escopo filtrado e aplicado DEPOIS da tabela inteira.
+    dbx_sync_tabela_emitir "$remoto" "$registros_remotos" "$revs_remotos" "$lado_remoto"
+    filtrados_remoto=$DBX_SYNC_FILTRADOS
+    dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
+    dbx_sync_ler_revs "$revs_remotos" mapa_revs
+    dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
+
+    if [[ $sentido == 'enviar' ]]; then
+      dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
+    else
+      dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
+    fi
+
+    # RF-80(d): item filtrado NUNCA e apagado. O destino ja chega ao plano so com
+    # o escopo; esta e a segunda barreira, SEM ESTADO: refaz a conta pelos
+    # padroes desta linha de comando, e nada da memoria entra nela.
+    _dbx_cmd_sync_sem_protegidos
+
+    # RF-114 (decisao do solicitante; C5): no modo incremental, TODA candidata a
+    # exclusao — `deleted` do delta ou ausencia no retrato — e confirmada no
+    # servidor nesta execucao, ANTES do plano, com ou sem `--espelhar` (DIV-218)
+    # e tambem na simulacao. O cursor sozinho nunca apaga nada.
+    [[ $DBX_CMD_SYNC_VARREDURA == 'incremental' && ${#DBX_SYNC_APAGAR[@]} -gt 0 ]] || break
+    dbx_sync_confirmar_exclusoes "$remoto" DBX_SYNC_APAGAR
+    case $? in
+      0)
+        DBX_CMD_SYNC_CURSOR_CONFIRMADAS=$DBX_SYNC_CONFIRMADAS
+        break
+        ;;
+      1)
+        dbx_cmd_avisar "exclusao nao confirmada pelo servidor (${DBX_SYNC_CONTRADICAO:-resposta duvidosa}): nada sera apagado por ela; varredura completa nesta execucao"
+        _dbx_cmd_sync_cursor_abandonar "${DBX_SYNC_CURSOR_MOTIVO:-contradicao}"
+        ;;
+      *)
+        # RF-114(b): falha de transporte na confirmacao e falha da fase de
+        # enumeracao, com a classe de hoje: nenhum plano, nada apagado, e o
+        # registro fica como estava.
+        dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-confirmacao de exclusao falhou}"
+        return $?
+        ;;
+    esac
+  done
 
   # RF-41(b): origem vazia — no `--enviar`, raiz local sem arquivo; no
   # `--receber`, listagem remota sem arquivo. Uma raiz que ficou vazia por
@@ -503,17 +577,6 @@ dbx_cmd_sync_executar() {
   # DIV-91: filtro mal escrito avisa em stderr, sem mudar stdout nem codigo.
   dbx_sync_avisos_de_filtro "$origem_antes" "$origem_depois"
   dbx_cmd_avisos_de_filtro
-
-  if [[ $sentido == 'enviar' ]]; then
-    dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
-  else
-    dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
-  fi
-
-  # RF-80(d): item filtrado NUNCA e apagado. O destino ja chega ao plano so com
-  # o escopo; esta e a segunda barreira, SEM ESTADO: refaz a conta pelos
-  # padroes desta linha de comando, e nada da memoria entra nela.
-  _dbx_cmd_sync_sem_protegidos
 
   # RF-41(b) com O-1 (memorias `2026-10-18-2243-guarda-origem-vazia` e
   # `2026-10-19-0829-aliases-poda-e-comentarios`): com espelhamento, origem vazia
@@ -638,6 +701,14 @@ dbx_cmd_sync_executar() {
   dbx_output_campo travessia_parcial "$parcial"
   dbx_cmd_campos_de_filtro "$filtrados_origem" "$filtrados_destino"
   dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
+  # RF-118(d): acrescimo compativel, so no `sync --receber`; nunca o cursor.
+  if [[ $DBX_CMD_SYNC_CURSOR_CAMPOS == 'sim' ]]; then
+    dbx_output_campo varredura "$DBX_CMD_SYNC_VARREDURA"
+    [[ $DBX_CMD_SYNC_VARREDURA == 'completa' ]] &&
+      dbx_output_campo cursor_motivo "$DBX_CMD_SYNC_CURSOR_MOTIVO"
+    dbx_output_campo cursor_mudancas "$DBX_CMD_SYNC_CURSOR_MUDANCAS"
+    dbx_output_campo cursor_confirmadas "$DBX_CMD_SYNC_CURSOR_CONFIRMADAS"
+  fi
   [[ $exclusao_desabilitada == 'sim' ]] &&
     dbx_output_campo exclusao_desabilitada "$motivo_exclusao"
   if [[ -n $recusaria ]]; then
@@ -725,6 +796,14 @@ dbx_cmd_sync_executar() {
       else
         falhas=$((falhas + 1))
         _dbx_cmd_sync_falhou "$caminho" "$antes"
+        # RF-111(g), C6: item do plano incremental que o servidor nao tem (ou
+        # que conflita no caminho) e retrato com entrada fantasma: o registro
+        # sai, e a execucao seguinte faz a varredura completa.
+        if [[ $DBX_CMD_SYNC_VARREDURA == 'incremental' &&
+          ($DBX_CMD_SYNC_FALHA_CLASSE == 'nao_encontrado' || $DBX_CMD_SYNC_FALHA_CLASSE == 'conflito') ]]; then
+          dbx_state_cursor_remover
+          DBX_CMD_SYNC_CURSOR_GRAVA='nao'
+        fi
       fi
     fi
   done
@@ -769,6 +848,14 @@ dbx_cmd_sync_executar() {
       dbx_output_diagnostico aviso "$DBX_STATE_MOTIVO"
       dbx_output_render_diagnostico >&2
     fi
+  fi
+
+  # RF-111(g), C6: o cursor e gravado UMA vez, depois da memoria, sob a trava,
+  # so quando a execucao vai terminar com 0. Falha ao gravar preserva o
+  # registro anterior (consistente, apenas mais antigo).
+  if [[ $DBX_CMD_SYNC_CURSOR_GRAVA == 'sim' && $falhas -eq 0 && $parcial != 'sim' &&
+    ! ($espelhar == 'sim' && ($memoria_descartada == 'sim' || -z $conta)) ]]; then
+    _dbx_cmd_sync_cursor_gravar
   fi
 
   dbx_cmd_iniciar_saida
@@ -899,4 +986,189 @@ _dbx_cmd_sync_apagar_local() {
   rm -f -- "$raiz/$relativo" 2>/dev/null && return 0
   DBX_CMD_SYNC_FALHA_CLASSE='permissao'
   return 1
+}
+
+# ---------------------------------------------------------------------------
+# Cursor de listagem entre execucoes (fase 7b, F-14; RF-110 a RF-119)
+# ---------------------------------------------------------------------------
+#
+# O ESTADO SO ACELERA (decisao do solicitante). O registro `cursor-*` (lib/state)
+# troca a varredura remota completa pelo retrato mais o delta; qualquer duvida —
+# sem registro, registro invalido, `reset`, erro transitorio, laco, contradicao,
+# varredura periodica vencida — volta a varredura completa NA MESMA execucao, sem
+# falhar e com o codigo de uma execucao sem estado (RF-113). Nenhuma exclusao
+# nasce do registro sem confirmacao no servidor (RF-114). O cursor nunca aparece
+# em saida, aviso, progresso nem diagnostico (C10).
+
+# Canais desta execucao (zerados a cada `sync`).
+DBX_CMD_SYNC_CURSOR_CAMPOS='nao'
+DBX_CMD_SYNC_VARREDURA='completa'
+DBX_CMD_SYNC_CURSOR_MOTIVO=''
+DBX_CMD_SYNC_CURSOR_GRAVA='nao'
+DBX_CMD_SYNC_CURSOR_MUDANCAS=0
+DBX_CMD_SYNC_CURSOR_CONFIRMADAS=0
+DBX_CMD_SYNC_CURSOR_COMPLETA_EM=''
+DBX_CMD_SYNC_CURSOR_INCREMENTAIS=0
+
+_dbx_cmd_sync_cursor_zerar() {
+  DBX_CMD_SYNC_CURSOR_CAMPOS='nao'
+  DBX_CMD_SYNC_VARREDURA='completa'
+  DBX_CMD_SYNC_CURSOR_MOTIVO=''
+  DBX_CMD_SYNC_CURSOR_GRAVA='nao'
+  DBX_CMD_SYNC_CURSOR_MUDANCAS=0
+  DBX_CMD_SYNC_CURSOR_CONFIRMADAS=0
+  DBX_CMD_SYNC_CURSOR_COMPLETA_EM=''
+  DBX_CMD_SYNC_CURSOR_INCREMENTAIS=0
+  dbx_sync_tabela_zerar
+}
+
+# _dbx_cmd_sync_cursor_abandonar <motivo> — volta a varredura completa nesta
+# execucao: a tabela do retrato sai e o registro e apagado (nunca em simulacao,
+# RF-117(a)). `memoria-*` nunca e tocada (RF-43, C9).
+_dbx_cmd_sync_cursor_abandonar() {
+  DBX_CMD_SYNC_VARREDURA='completa'
+  DBX_CMD_SYNC_CURSOR_MOTIVO=$1
+  DBX_CMD_SYNC_CURSOR_MUDANCAS=0
+  DBX_CMD_SYNC_CURSOR_CONFIRMADAS=0
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] || dbx_state_cursor_remover
+  dbx_sync_tabela_zerar
+}
+
+# _dbx_cmd_sync_cursor_preparar <conta> <local_canonico> <remoto> <lado>
+#   <sem_cursor> <varredura_forcada>
+#
+# Decide o modo da enumeracao remota. No incremental, deixa a tabela de
+# `lib/sync` montada (retrato mais delta) e DBX_CMD_SYNC_VARREDURA=incremental;
+# em todos os outros casos, a varredura completa com o motivo de RF-118(d).
+# Status diferente de zero so quando a varredura completa tambem falharia pela
+# mesma causa: 401/403 no `continue` (RF-113(b)).
+_dbx_cmd_sync_cursor_preparar() {
+  local conta=$1 local_=$2 remoto=$3 lado=$4 sem_cursor=$5 forcada=$6 apagar='sim' cursor retrato
+  if [[ $sem_cursor == 'sim' ]]; then
+    # RF-118(a): nao le, nao grava, nao apaga.
+    DBX_CMD_SYNC_CURSOR_MOTIVO='desligado'
+    return 0
+  fi
+  DBX_CMD_SYNC_CURSOR_MOTIVO='sem-registro'
+  [[ $forcada == 'sim' ]] && DBX_CMD_SYNC_CURSOR_MOTIVO='forcada'
+  # C2, C7: sem `cred-`, sem `account_id`, sem raiz local canonica ou sem a
+  # trava do par (DIV-48), nao ha cursor: nem leitura nem gravacao.
+  [[ -n ${DBX_CONFIG_IDENTIDADE:-} && -n $conta && -n $local_ ]] || return 0
+  if [[ -z ${DBX_STATE_TRAVA:-} ]]; then
+    dbx_cmd_avisar 'registro de listagem nao usado nesta execucao: sem a trava do par (varredura completa)'
+    return 0
+  fi
+  dbx_state_cursor_contexto "$DBX_CONFIG_IDENTIDADE" "$conta" "$local_" "$remoto" \
+    "$DBX_SYNC_ASSINATURA_LISTAGEM" || return 0
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && apagar='nao'
+  [[ $apagar == 'sim' ]] && DBX_CMD_SYNC_CURSOR_GRAVA='sim'
+  # RF-118(b): a forcada nao le o registro e o regrava ao fim.
+  [[ $forcada == 'sim' ]] && return 0
+
+  dbx_sync_tabela_zerar
+  # shellcheck disable=SC2034  # canal publico de lib/sync, lido pela funcao de entrada
+  DBX_SYNC_RETRATO_RAIZ=$remoto
+  dbx_state_cursor_carregar dbx_sync_retrato_entrada "$apagar"
+  case $? in
+    0) ;;
+    1)
+      dbx_sync_tabela_zerar
+      return 0
+      ;;
+    2)
+      dbx_sync_tabela_zerar
+      DBX_CMD_SYNC_CURSOR_MOTIVO='descartado'
+      dbx_cmd_avisar "${DBX_STATE_MOTIVO:-registro de listagem invalido}: descartado, varredura completa"
+      return 0
+      ;;
+    3)
+      # Ligacao simbolica, nao regular ou de outro dono: nao e lido nem
+      # substituido (RF-111(h)).
+      dbx_sync_tabela_zerar
+      DBX_CMD_SYNC_CURSOR_MOTIVO='descartado'
+      DBX_CMD_SYNC_CURSOR_GRAVA='nao'
+      dbx_cmd_avisar 'registro de listagem inacessivel (ligacao, nao regular ou de outro dono): nao lido nem substituido, varredura completa'
+      return 0
+      ;;
+    *)
+      dbx_sync_tabela_zerar
+      return 0
+      ;;
+  esac
+  cursor=$DBX_STATE_CURSOR_VALOR
+  DBX_STATE_CURSOR_VALOR=''
+  DBX_CMD_SYNC_CURSOR_COMPLETA_EM=$DBX_STATE_CURSOR_COMPLETA_EM
+  DBX_CMD_SYNC_CURSOR_INCREMENTAIS=$DBX_STATE_CURSOR_INCREMENTAIS_DESDE
+  # C8, DIV-208: a varredura periodica obrigatoria. O relogio so decide fazer
+  # MAIS trabalho; o registro sera regravado com os contadores zerados.
+  if dbx_state_cursor_vencido "$DBX_CMD_SYNC_CURSOR_COMPLETA_EM" "$DBX_CMD_SYNC_CURSOR_INCREMENTAIS"; then
+    dbx_sync_tabela_zerar
+    DBX_CMD_SYNC_CURSOR_MOTIVO='periodica'
+    dbx_cmd_avisar 'varredura completa periodica (a ultima tem mais de 7 dias, 100 execucoes incrementais, ou o relogio voltou)'
+    return 0
+  fi
+  dbx_sync_tabela_arquivos
+  retrato=$DBX_SYNC_LIDO
+  dbx_progress_mensagem '[sync] consultando mudancas remotas desde a ultima execucao...'
+  dbx_sync_listar_delta "$remoto" "$cursor" "$lado"
+  case $? in
+    0) ;;
+    1)
+      case $DBX_SYNC_CURSOR_MOTIVO in
+        reset) dbx_cmd_avisar 'o servidor invalidou o registro de listagem (reset): varredura completa' ;;
+        transitorio) dbx_cmd_avisar 'mudancas remotas indisponiveis (rede, limite de taxa ou erro do servico): varredura completa' ;;
+        *) dbx_cmd_avisar 'mudancas remotas incoerentes ou sem fim: registro de listagem descartado, varredura completa' ;;
+      esac
+      _dbx_cmd_sync_cursor_abandonar "${DBX_SYNC_CURSOR_MOTIVO:-descartado}"
+      return 0
+      ;;
+    *)
+      dbx_sync_tabela_zerar
+      dbx_cmd_falhar "${DBX_HTTP_CLASSE:-autenticacao}" "${DBX_SYNC_MOTIVO:-consulta de mudancas recusada}"
+      return $?
+      ;;
+  esac
+  # RF-116(c): mapa reconstruido sem arquivo a partir de retrato com arquivo vai
+  # a varredura completa ANTES da guarda de origem vazia (RF-41(b)).
+  dbx_sync_tabela_arquivos
+  if [[ $retrato -gt 0 && $DBX_SYNC_LIDO -eq 0 ]]; then
+    dbx_cmd_avisar 'as mudancas remotas esvaziariam a origem: varredura completa para conferir'
+    _dbx_cmd_sync_cursor_abandonar descartado
+    return 0
+  fi
+  # RF-81 sobre o retrato: o filtro de data so vale com a data de toda entrada.
+  if ! dbx_sync_tabela_datada; then
+    _dbx_cmd_sync_cursor_abandonar descartado
+    return 0
+  fi
+  DBX_CMD_SYNC_VARREDURA='incremental'
+  DBX_CMD_SYNC_CURSOR_MOTIVO=''
+  DBX_CMD_SYNC_CURSOR_MUDANCAS=$DBX_SYNC_DELTA_MUDANCAS
+  return 0
+}
+
+# _dbx_cmd_sync_cursor_gravar — grava cursor e retrato (C6): cursor da ultima
+# pagina, tabela sem filtro desta execucao, carimbo e contagem de incrementais.
+# Tabela fora do formato ou cursor fora da regex: nao persiste, sem aviso (a
+# proxima execucao faz a varredura completa). Falha de escrita: um aviso, o
+# mesmo resultado e o mesmo codigo (RF-111(g)).
+_dbx_cmd_sync_cursor_gravar() {
+  local completa incrementais agora
+  [[ $DBX_SYNC_TAB_PERSISTIVEL == 'sim' && $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]] || return 0
+  dbx_sync_tabela_contar
+  [[ $DBX_SYNC_LIDO -le $DBX_STATE_CURSOR_ENTRADAS ]] || return 0
+  printf -v agora '%(%s)T' -1
+  if [[ $DBX_CMD_SYNC_VARREDURA == 'incremental' ]]; then
+    completa=$DBX_CMD_SYNC_CURSOR_COMPLETA_EM
+    incrementais=$((DBX_CMD_SYNC_CURSOR_INCREMENTAIS + 1))
+  else
+    completa=$agora
+    incrementais=0
+  fi
+  if ! dbx_state_cursor_gravar "$DBX_SYNC_CURSOR_NOVO" "$completa" "$incrementais" "$DBX_SYNC_LIDO" \
+    dbx_sync_tabela_corpo; then
+    dbx_cmd_avisar 'registro de listagem nao gravado: a proxima execucao faz a varredura completa'
+  fi
+  DBX_SYNC_CURSOR_NOVO=''
+  return 0
 }
