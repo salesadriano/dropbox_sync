@@ -88,7 +88,8 @@ DBX_CLI_MOTIVO=''
 #
 # Conjunto FECHADO: os nove comandos de `DP-06` e `DP-25`, os tres da fase 1
 # do backlog (RF-65 a RF-68), os tres da fase 3 (RF-72 a RF-76) e os dois da
-# fase 5 (RF-84, RF-85), mais os aliases em ingles destes ultimos.
+# fase 5 (RF-84, RF-85) e o da fase 6 (RF-93), mais os aliases em ingles
+# destes ultimos.
 #
 # `link_temporario` e o nome do ARQUIVO do comando (DIV-117): entra na tabela
 # porque a auditoria de despacho exige que todo arquivo de `commands/` tenha
@@ -103,6 +104,7 @@ dbx_cli_comando_valido() {
     revisions | restore | trash) return 0 ;;
     link-temporario | link_temporario | compartilhar) return 0 ;;
     temp-link | share) return 0 ;;
+    reter | retain) return 0 ;;
     help | version) return 0 ;;
   esac
   return 1
@@ -122,6 +124,7 @@ dbx_cli_canonico() {
     trash) DBX_CLI_CANONICO='lixeira' ;;
     link-temporario | temp-link) DBX_CLI_CANONICO='link_temporario' ;;
     share) DBX_CLI_CANONICO='compartilhar' ;;
+    retain) DBX_CLI_CANONICO='reter' ;;
     *) DBX_CLI_CANONICO=${1-} ;;
   esac
 }
@@ -151,6 +154,7 @@ _dbx_cli_arquivo_do_comando() {
     lixeira) printf '%s' "$raiz/commands/lixeira.sh" ;;
     link_temporario) printf '%s' "$raiz/commands/link_temporario.sh" ;;
     compartilhar) printf '%s' "$raiz/commands/compartilhar.sh" ;;
+    reter) printf '%s' "$raiz/commands/reter.sh" ;;
     *) return 1 ;;
   esac
 }

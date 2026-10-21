@@ -7,8 +7,8 @@
 - Projeto ou produto: `dropbox_api` — aplicacao de linha de comando em shell script para integracao com a Dropbox API v2
 - Responsavel Business Analyst: Business Analyst (pacote de agents)
 - Responsavel tecnico principal: a definir pelo Tech Lead
-- Data da versao: 2026-10-20 (**v1.13**)
-- Status: 🔴 **`lib/stream` era componente planejado e NAO se materializou** (`DIV-20`); `RF-31` roda em `lib/transfer` + `lib/hash`. **Tamanho de parte FIXO em 4.194.304 bytes** (`DIV-19`, `DP-30`). **Limite de plataforma registrado em `RSK-36` / `DIV-18`.** **Todas as decisoes do `sync` fechadas.** Quinze comandos na fase 3 (`DIV-68`: o "nove" era anterior as fases 1 e 3), dezessete na fase 5 (`link-temporario` e `compartilhar`, em andamento); `RSK-24` com mitigacao estrutural em vez de aceite. Nenhuma decisao do solicitante em aberto para o `sync`
+- Data da versao: 2026-10-20 (**v1.14**)
+- Status: 🔴 **`lib/stream` era componente planejado e NAO se materializou** (`DIV-20`); `RF-31` roda em `lib/transfer` + `lib/hash`. **Tamanho de parte FIXO em 4.194.304 bytes** (`DIV-19`, `DP-30`). **Limite de plataforma registrado em `RSK-36` / `DIV-18`.** **Todas as decisoes do `sync` fechadas.** Quinze comandos na fase 3 (`DIV-68`: o "nove" era anterior as fases 1 e 3), dezessete na fase 5 (`link-temporario` e `compartilhar`, em andamento), dezoito na fase 6 (`reter`, em andamento); `RSK-24` com mitigacao estrutural em vez de aceite. Nenhuma decisao do solicitante em aberto para o `sync`
 
 Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](../requisitos/decisoes-pendentes.md) · [Funcionalidades candidatas](../requisitos/funcionalidades-candidatas.md) · [Riscos e licenciamento](../requisitos/riscos-restricoes-e-licenciamento.md)
 
@@ -17,6 +17,7 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 | Versao | Mudanca |
 |---|---|
 | v0.1 | Proposta arquitetural inicial |
+| **v1.14** | **Retencao e rotacao de backup (fase 6, 2026-10-20; `F-10`; `RF-93` a `RF-100`; porte G; em andamento).** Comando `reter` (`retain`), secao "Retencao e rotacao de backup" com o fluxo em Mermaid (plano, guarda no ponto do `delete_v2`, falha parcial). Componentes novos `lib/retencao` (puro) e `commands/reter.sh`; `lib/filtro` passa a expor validacao e casamento de nome avulso; `lib/http` passa a expor o cabecalho `Date` (`DIV-134`). Sem estado persistente, sem trava (`DIV-140`), sem codigo de saida novo. Pontos de desenho `DIV-130` a `DIV-147` decididos em 2026-10-20 conforme as recomendacoes. Achados do QA, ciclos 1 a 3 (`DIV-158` a `DIV-166`): chave sem caixa de `RF-54` e caminho canonico nas tres barreiras contra caminho duplicado (listagem, plano e guarda (7)); marca combinante recusada (`RSK-68`). Achados do QA, ciclos 4 e 5 (`DIV-167` a `DIV-170`): **barreira estrutural por identidade** (`id` e `rev` obrigatorios e unicos entre os arquivos da listagem; guarda (7) compara tambem `rev`/`id` de quem sai com os de quem fica, assinatura nova de `dbx_retencao_guarda` com 12 argumentos); `name` e `path_lower` em UTF-8 valido por bytes (`dbx_retencao_utf8_valido`, `DIV-168`); barreiras por grafia ficam como defesa adicional; risco residual da `DIV-170` aceito pelo solicitante (`RSK-68`). |
 | **v1.13** | **Link temporario e link compartilhado (fase 5, 2026-10-20; `F-15`, `F-16`; `RF-84` a `RF-92`; porte G; em andamento).** Comandos `link-temporario` (`temp-link`) e `compartilhar` (`share`, com `--listar` e `--revogar`), secao "Link temporario e link compartilhado", com diagramas da criacao/reuso/modificacao e da revogacao confinada. Componente novo `lib/compartilhamento` (decidido, `DIV-117`); leitura de segredo sem eco unica em `lib/cli`. Integracao "Compartilhamento" reescrita com os contratos lidos pelo Context7 (`get_temporary_link`, `create_shared_link_with_settings`, `list_shared_links`, `modify_shared_link_settings`, `revoke_shared_link`, `get_shared_link_metadata`); `sharing.write` e `sharing.read` como escopos opcionais; `DIV-14` deixa de valer para `create_shared_link_with_settings` (`sharing.write` confirmado). Sem estado persistente, sem trava, sem codigo de saida novo. `DIV-104` a `DIV-120` decididas conforme as recomendacoes (`DIV-106`: `sharing.read` habilitado pelo solicitante); `DIV-121` a `DIV-127` decididas; `lib/compartilhamento` implementado; ciclos 1 a 3 do QA (`QA-B5-01..19`, `DIV-128`, `DIV-129`) refletidos na fronteira de seguranca e nos fluxos. |
 | **v1.12** | **Filtros e limite de banda (fase 4, 2026-10-19; `F-13`, `F-17`; `RF-79` a `RF-83`; porte M; em andamento).** Componente novo **`lib/filtro`** (decidido, `DIV-94`), puro, consumido por `lib/walk` e `lib/sync`; limite de banda como opcao `limit-rate` de `lib/http` so no modo de conteudo; secao "Filtros e limite de banda", com diagrama da avaliacao de escopo. Sem estado persistente novo e sem codigo de saida novo. |
 | **v1.11** | **Revisoes, restauracao e lixeira (fase 3, 2026-10-19; `F-07`, `F-20`; `RF-72` a `RF-78`; porte G; em andamento).** Comandos `commands/revisoes.sh`, `commands/restaurar.sh` e `commands/lixeira.sh` (secao "Revisoes, restauracao e lixeira"), com diagramas da restauracao (arquivo e pasta recursiva) e da exclusao permanente; integracoes `list_revisions`, `restore`, `list_folder`/`get_metadata` com `include_deleted` e `permanently_delete`, confirmadas contra `files.stone` (ramo `main`); escopo opcional `files.permanent_delete`. Nenhum componente novo em `lib/`, nenhum estado persistente, nenhum codigo de saida novo. Status corrigido (`DIV-68`). `DIV-54` a `DIV-69` decididas pelo Tech Lead (exclusao permanente sem terminal so com `--confirmar-caminho` identico ao alvo; unica opcao de confirmacao; nenhum dos tres comandos trava). `DIV-70` a `DIV-77` (parecer do Senior Developer): escopo opcional dentro da linha `escopos`; `lixeira -R` so em pastas vivas; `restaurar` sobre pasta viva sai `2`; confirmacao literal ou normalizada, caixa exata; item de pasta fora da raiz ou sem revisao e falha (`14`), `--dry-run` sai `0`; `in_progress` vira `14` apos retentativas; aviso de pasta conta um nivel. Ciclo de QA: guarda do expurgo pelo `path_lower` do proprio alvo (dobra so ASCII sob `LC_ALL=C`) e sem chave repetida, senao `10` (`QA-B3-02`, `QA-B3-05`); `in_progress` vira `14` em `_dbx_cmd_escrita_remota` (`delete`, `restore`, expurgo) e o `upload` mantem `10` (`QA-B3-03`); `lib/json` recusa `\u0000`, substituto isolado e escape incompleto (`QA-B3-04`); descida so por descendente estrito com pastas visitadas (`QA-B3-06`); item fora da pasta pedida e falha (`DIV-78`). Riscos baixos aceitos: corte do corpo HTTP no primeiro NUL cru; fila quadratica da descida (fase 9). Versao anterior preservada nesta tabela (a regra de `historico/` do `AGENTS.md` vale para memoria, nao para este documento). |
@@ -375,6 +376,65 @@ flowchart TD
   R -->|Sucesso| OK[revogado, codigo 0]
   R -->|shared_link_not_found| X4[nao_encontrado 4: pode ja ter sido revogado]
   R -->|shared_link_access_denied| X6[permissao 6]
+```
+
+---
+
+### Retencao e rotacao de backup *(v1.14, fase 6, em andamento)*
+
+Decisao do solicitante (memoria `2026-10-20-2010-retencao`); requisitos `RF-93` a `RF-100` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.14); divergencias `DIV-130` a `DIV-147` **decididas pelo Tech Lead em 2026-10-20, todas conforme as recomendacoes** (memoria `2026-10-20-2010-retencao`). Um comando novo, **dois componentes novos**, **nenhum estado persistente** (`RNF-26` intacto), **nenhuma trava** (decidido, `DIV-140`), **nenhum codigo de saida novo**, **nenhum escopo OAuth novo**. Porte G: exclusao em lote no destino remoto, sem operador.
+
+| Comando | Alias | Requisito de ambiente | Papel | Endpoints | Escrita | Codigos proprios |
+|---|---|---|---|---|---|---|
+| `commands/reter.sh` *(novo)* | `retain` | `credencial` | Rotacao de artefatos de uma pasta: lista o nivel de cima, aplica `--manter N` ou `--dias D` sobre os arquivos que casam `--padrao`, mostra o plano e, so com `--confirmar`, apaga o excedente para a lixeira (`RF-93` a `RF-99`) | `list_folder` (`recursive=false`) e `list_folder/continue`; `delete_v2` com `parent_rev`, um por item | Remota (exclusao para a lixeira) | `0` (inclusive plano e nada a apagar); `2`; `3` relogio local a mais de 300 s do `Date` do servidor, com `--dias` (`DIV-134`); `4` pasta inexistente; `10` listagem ou resposta incoerente, `server_modified` invalido, teto; `13`; `14` falha parcial, `reset`, sinal |
+
+| Componente | Papel na fase |
+|---|---|
+| `lib/retencao` *(novo)* | **Puro**, sem rede, sem disco e sem estado: valida `--manter`/`--dias`; valida o carimbo `server_modified`; ordena candidatos (`server_modified` decrescente, desempate pelo nome sem caixa, `DIV-144`); calcula o corte de `--dias` a partir de um agora recebido; separa o que fica e o que sai, com o minimo de 1; e a **guarda por item** (`RF-97(b)`: `.tag`, pai, `name` x `path_lower`, padrao, sem marca combinante, dentro da raiz, pertence ao que sai e nao e o mais novo e (7) caminho, `rev` e `id` diferentes dos de todo item que fica). Assinatura (`DIV-167`): `dbx_retencao_guarda <tag> <path_lower> <name> <pasta> <raiz_remota> <acao> <e_primeiro: sim|nao> <vetor_ficam> <rev> <id> <vetor_revs_ficam> <vetor_ids_ficam>`, com os tres vetores passados por nome; `rev` ou `id` vazio, vetor de `rev`/`id` ausente, inexistente, vazio, com elemento vazio ou de tamanho diferente do vetor de caminhos recusa (falha fechada). Funcoes de caminho, usadas tambem por `commands/reter.sh` na conferencia da listagem: `dbx_retencao_chave` (chave sem caixa de `RF-54` via `dbx_filtro_chave`; status 1, falha fechada, para texto fora do ASCII sem `C.UTF-8`, `DIV-161`), `dbx_retencao_caminho_normalizado` (absoluto, sem barra final, sem `//` nem segmento `.`/`..`, `DIV-159`), `dbx_retencao_sem_combinante` (sem marca combinante dos blocos U+0300-036F, U+1AB0-1AFF, U+1DC0-1DFF, U+20D0-20FF e U+FE20-FE2F, detectada pelos bytes UTF-8 sob `LC_ALL=C`, `DIV-164`) e `dbx_retencao_caminho_canonico` (as tres anteriores e o caminho igual a propria chave, `DIV-165`) e `dbx_retencao_utf8_valido` (UTF-8 valido pelos bytes, RFC 3629, sem depender da localidade: recusa sequencia longa (overlong), surrogate, sequencia truncada, continuacao solta e sequencia de 5 ou 6 bytes, `DIV-168`) |
+| `commands/reter.sh` *(novo)* | Orquestra: uso, confinamento, renovacao, listagem paginada com teto e conferencia de coerencia, plano, `delete_v2` por item pelo ponto unico de escrita, resumo e codigo |
+| `lib/filtro` | Expoe validacao e casamento de **nome avulso** (sem `/`), com a chave sem caixa de `RF-54`; uma so implementacao do glob (`RNF-36`) |
+| `lib/cmd` | Ajudante de colecao paginada (`RNF-23`), `dbx_cmd_remoto_confinado`, `_dbx_cmd_escrita_remota` (silencioso, idempotente por `parent_rev`) |
+| `lib/path` | Confinamento do argumento (`RNF-20(b1..b6)`, `RNF-10(b)`) e comparacao por componente |
+| `lib/http` | Expoe o cabecalho `Date` da resposta, como ja expoe o `Retry-After` (decidido, `DIV-134`): o `reter --dias` confere o relogio local contra ele |
+| `lib/cli` | Opcoes e aliases do `reter`; `--confirmar`/`--yes`/`-y` aceitos porque a exclusao vai para a lixeira e e recuperavel, ao contrario do expurgo de `RF-76`, que so aceita `--confirmar-caminho` (decidido, `DIV-135`) |
+| `lib/output` | Plano, resultado e resumo em texto, `--json` e `--null` (`RF-99`) |
+
+**Fronteira de seguranca.** A unica fonte da autorizacao e a listagem **da mesma execucao**: o plano so existe depois da ultima pagina, a listagem incoerente derruba tudo antes de qualquer exclusao, e cada `delete_v2` passa de novo pela guarda e leva `parent_rev`, o que impede apagar um backup novo de mesmo nome e impede apagar pasta. Nada vem de `lib/state`, de cache nem de plano anterior. **Barreiras contra o mesmo arquivo em duas entradas: as tres por caminho e a por identidade.** A decisiva e a **por identidade** (`DIV-167`), estrutural e independente de tabela Unicode: o mesmo arquivo no servidor tem o mesmo `id` e o mesmo `rev`, seja qual for a grafia do nome. **(I) identidade na listagem** (`_dbx_cmd_reter_identidade`, `commands/reter.sh`): todo arquivo traz `id` nao vazio e `rev` no formato `Rev`, e nenhum dos dois se repete entre os arquivos, em pagina nenhuma; falta ou repeticao sai `10` com zero `delete_v2`; **(II) identidade na guarda (7)** (`dbx_retencao_guarda`): o `rev` (o `parent_rev` do `delete_v2`) e o `id` de quem sai diferem dos de todo item que fica, e as listas de `rev` e de `id` de quem fica sao obrigatorias e nao vazias, como a de caminhos (`DIV-162`). Antes delas, a listagem exige `name` e `path_lower` em UTF-8 valido pelos bytes (`dbx_retencao_utf8_valido`, chamada por `_dbx_cmd_reter_utf8`, `DIV-168`), senao `10`. As **tres barreiras por caminho** (`DIV-158`, `DIV-161`, `DIV-162`, `DIV-164`, `DIV-165`) ficam como defesa adicional, todas pela chave sem caixa de `RF-54` (`dbx_retencao_chave`) e nenhuma por indice: **(1) listagem** (`commands/reter.sh`), em toda entrada de qualquer `.tag` e pagina: `path_lower` normalizado, sem marca combinante, igual a propria chave e com chave inedita, senao `10` e zero `delete_v2`; **(2) plano** (`dbx_retencao_planejar`), os candidatos com chave unica, senao status 1 e nenhum plano; **(3) guarda (7)** (`dbx_retencao_guarda`), no ponto de cada `delete_v2`: a chave de quem sai difere da de todo item que fica, a lista de quem fica e obrigatoria e nao vazia, e cada elemento dela passa por `dbx_retencao_caminho_canonico`. Fora do ASCII sem `C.UTF-8`, ou com tabela Unicode da Dropbox diferente da do sistema, o resultado e `10`, nunca exclusao (`RSK-68`). Composicoes NFC fora dos cinco blocos de marcas (ex.: `が`, `한`, `ऩ`) escapam as barreiras por grafia; so as barreiras por identidade as cobrem, e o escape exigiria o servidor listar o mesmo arquivo com dois `id` e dois `rev`, contra o contrato: risco residual aceito pelo solicitante (`DIV-170`, `RSK-68`). O primeiro da ordem nunca chega ao `delete_v2`. A exclusao e sempre para a lixeira (`delete_v2`); `permanently_delete` e `delete_batch` nao aparecem no comando.
+
+Fluxo do `reter`:
+
+```mermaid
+flowchart TD
+  A[dbx reter pasta --padrao GLOB --manter N ou --dias D] --> B{Uso valido? padrao unico, sem barra, bem formado, uma politica, N e D na faixa}
+  B -->|Nao| X2[uso_invalido 2, sem rede]
+  B -->|Sim| C{Pasta absoluta, sem controle nem quebra de linha, dentro da raiz_remota?}
+  C -->|Nao| X13[caminho_recusado 13, sem rede]
+  C -->|Sim| L[list_folder recursive false, limit explicito, e continue ate has_more false]
+  L -->|Falha de rede, auth ou limite| XC[codigo da classe, zero delete_v2]
+  L -->|reset| X14r[nao_concluida 14, zero delete_v2]
+  L -->|Cursor repetido ou mais de 1000 paginas| X10p[erro_remoto 10, zero delete_v2]
+  L -->|Inexistente ou arquivo| X4[4 ou 2, zero delete_v2]
+  L -->|Completa| T{Politica dias e relogio local a mais de 300 s do Date da listagem?}
+  T -->|Sim| X3[configuracao 3, zero delete_v2]
+  T -->|Date ausente ou malformado| X10d[erro_remoto 10, zero delete_v2]
+  T -->|Nao, ou politica manter| K{Toda entrada coerente? pai igual a pasta, name sem barra, path_lower normalizado, sem marca combinante e igual a sua chave RF-54, sem chave repetida, UTF-8 valido, arquivo com id e rev unicos, candidato com rev e server_modified validos}
+  K -->|Nao| X10[erro_remoto 10, zero delete_v2]
+  K -->|Sim| P[lib/retencao: so arquivos que casam o padrao, ordem server_modified e nome, politica, minimo de 1]
+  P --> M{--confirmar e sem --dry-run?}
+  M -->|Nao| PL[Plano: o que fica e o que sai, modo plano ou simulado, codigo 0, nada apagado]
+  M -->|Sim| D[Proximo item que sai, do mais velho ao mais novo]
+  D --> G{Guarda do item com a listagem desta execucao: file, filho direto, name igual ao path_lower, casa o padrao, sem marca combinante, dentro da raiz, nao e o mais novo, chave, rev e id diferentes dos de todo item que fica}
+  G -->|Falha| X10g[erro_remoto 10, para antes do proximo]
+  G -->|Passa| DEL[delete_v2 path_lower e parent_rev listado]
+  DEL -->|Sucesso com metadata coerente| D
+  DEL -->|not_found| JA[ja_ausente, segue] --> D
+  DEL -->|parent_rev divergente ou falha do item| F[falha do item, segue] --> D
+  DEL -->|5, 8 ou 9 esgotados| PA[para, restantes nao_tentados]
+  DEL -->|2xx incoerente| X10g
+  D -->|Acabou| R{Alguma falha ou parada?}
+  PA --> R
+  R -->|Nao| OK[apagados para a lixeira, codigo 0]
+  R -->|Sim| X14[nao_concluida 14 com o resumo]
 ```
 
 ---

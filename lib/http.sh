@@ -134,6 +134,11 @@ DBX_HTTP_CORRELACAO=''
 # Valor cru do `Retry-After` da ultima resposta; quem o valida e a espera.
 DBX_HTTP_RETRY_AFTER=''
 # shellcheck disable=SC2034
+# Valor do cabecalho `Date` da ultima resposta, aparado e sem CR (DIV-134, fase
+# 6): o `reter --dias` confere o relogio local contra ele. Quem o valida e o
+# consumidor; aqui so se le, como o `Retry-After`.
+DBX_HTTP_DATA=''
+# shellcheck disable=SC2034
 # `error_summary` da ultima resposta, SO quando veio do JSON do servico. O
 # `DBX_HTTP_RESUMO_DE_ERRO` cai na primeira linha do corpo quando ele nao e JSON,
 # e corpo bruto nao pode ir para relatorio por item (RF-59(c)).
@@ -232,7 +237,7 @@ _dbx_http_esperar() {
 # perde-lo apenas no de erro seria a assimetria que RF-30 nao tolera, ja que e
 # no erro que ele serve.
 #
-# Le tambem o `Retry-After` (RNF-07) e o `Dropbox-API-Result`. A leitura
+# Le tambem o `Retry-After` (RNF-07), o `Date` (DIV-134) e o `Dropbox-API-Result`. A leitura
 # percorre todos os cabecalhos e nao para no identificador de correlacao, para
 # nao perder o que vier depois dele.
 _dbx_http_correlacao_de() {
@@ -241,6 +246,7 @@ _dbx_http_correlacao_de() {
   # shellcheck disable=SC2034  # canal publico, ver nota no topo
   DBX_HTTP_RESULTADO_CABECALHO=''
   DBX_HTTP_RETRY_AFTER=''
+  DBX_HTTP_DATA=''
   [[ -r $arquivo ]] || return 0
   while IFS= read -r linha; do
     linha=${linha%$'\r'}
@@ -263,6 +269,11 @@ _dbx_http_correlacao_de() {
         # nao e 50 s — e ele cai no recuo.
         [[ $valor =~ ^[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && valor=${BASH_REMATCH[1]}
         DBX_HTTP_RETRY_AFTER=$valor
+        ;;
+      date)
+        [[ $valor =~ ^[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] && valor=${BASH_REMATCH[1]}
+        # shellcheck disable=SC2034  # canal publico, lido por commands/reter
+        DBX_HTTP_DATA=${valor:0:64}
         ;;
     esac
   done <"$arquivo"

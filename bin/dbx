@@ -472,6 +472,36 @@ case $DBX_CLI_COMANDO in
         printf '  dbx compartilhar --revogar https://www.dropbox.com/scl/fi/...\n'
         exit 0
         ;;
+      reter)
+        printf 'Uso: dbx reter <pasta_remota> (--padrao | --pattern) <glob> ((--manter | --keep) <n> | (--dias | --days) <d>) [--confirmar | --yes | -y]\n\n'
+        printf 'Retencao e rotacao de backup: mantem os artefatos mais novos da pasta e manda\n'
+        printf 'o excedente para a lixeira. Alias em ingles: retain.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --padrao, --pattern <glob>      Nome dos artefatos (obrigatorio, um so)\n'
+        printf '  --manter, --keep <n>            Mantem os n mais novos (1 a 999999)\n'
+        printf '  --dias, --days <d>              Mantem os de ate d dias (1 a 36500)\n'
+        printf '  --confirmar, --yes, -y          Aplica o plano (sem ela, nada e apagado)\n\n'
+        printf 'sem --confirmar nada e apagado: o comando so mostra o plano (fica/sai) e sai\n'
+        printf 'com 0; com --dry-run, idem, mesmo com --confirmar. Nenhuma pergunta e feita.\n'
+        printf 'sempre mantem pelo menos 1 artefato.\n'
+        printf 'so o nivel de cima da pasta e so arquivos; o padrao casa o nome, sem diferenciar maiusculas\n'
+        printf '(glob dos filtros: *, ?, [...], \; sem /). Pastas, subpastas e arquivos fora\n'
+        printf 'do padrao nunca sao apagados, so contados. --manter e --dias sao excludentes.\n'
+        printf 'o mais novo e o de data do servidor mais recente; em empate, o de maior nome\n'
+        printf '(server_modified; client_modified e tamanho nao contam). restaurar ou regravar um artefato antigo o torna o mais novo.\n'
+        printf 'os apagados vao para a lixeira e podem ser recuperados com dbx restaurar dentro do prazo do plano da conta\n'
+        printf '(veja dbx lixeira <pasta>). Cada exclusao leva o rev listado: um backup novo de\n'
+        printf 'mesmo nome que chegue no meio nao e apagado (conflito, codigo 14).\n'
+        printf -- '--dias compara a data do servidor com o relogio desta maquina; divergencia\n'
+        printf 'acima de 300 s do cabecalho Date da listagem sai com codigo 3, sem apagar nada.\n\n'
+        printf 'Codigos: 0 (inclusive plano e nada a apagar), 2, 3, 4 (pasta inexistente), 5,\n'
+        printf '8, 9, 10 (listagem ou resposta incoerente, nada apagado), 13, 14 (falha parcial,\n'
+        printf 'reset ou sinal). Sem trava e sem estado local.\n\n'
+        printf 'Exemplos:\n'
+        printf '  dbx reter /backups --padrao '"'"'db-*.tar.gz'"'"' --manter 7\n'
+        printf '  dbx upload ... && dbx reter /backups --padrao '"'"'db-*.tar.gz'"'"' --manter 7 --confirmar\n'
+        exit 0
+        ;;
       diagnostico)
         printf 'Uso: dbx diagnostico\n\n'
         printf 'Checa dependencias, credencial, conectividade, escopos, espaco, localidade, o\n'
@@ -510,7 +540,8 @@ case $DBX_CLI_COMANDO in
         printf '  lixeira      Lista apagados; --excluir expurga em definitivo (alias: trash)\n'
         printf '  link-temporario  URL direta de download valida por 4 horas\n'
         printf '  temp-link    Alias em ingles de link-temporario\n'
-        printf '  compartilhar Cria, lista ou revoga link compartilhado (alias: share)\n\n'
+        printf '  compartilhar Cria, lista ou revoga link compartilhado (alias: share)\n'
+        printf '  reter        Mantem os backups mais novos e apaga o resto (alias: retain)\n\n'
         printf 'Opcoes globais: --help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
         # RNF-07, RNF-30: os ajustes de rede sao documentados onde o operador os
