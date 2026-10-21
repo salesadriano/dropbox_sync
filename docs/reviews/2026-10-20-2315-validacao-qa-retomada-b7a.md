@@ -17,9 +17,9 @@
 | Versao | sha256 (prefixo) | Casos | Mudanca |
 |---|---|---|---|
 | Ciclo 1 | `d90cfd7e...` | 34 | Suite inicial: upload (C1, DIV-172), `correct_offset`, estado invalido, trava, sigilo, simulacao e sinal, barreira do `.part`, resposta e conferencia, diagnostico |
-| Ciclo 2 | `445ba4fc6cf83dc85972e12e93ace6b6ec67d0d9a2ead5a594b600abbd263a34` | 41 | Sete casos novos (`qa_l04`, `qa_l05`, `qa_l06`, `qa_u19`, `qa_d14`, `qa_d15`, `qa_d16`); ajuste de RNF-24 em `qa_u10` e `qa_l03` (`printf -v` no lugar de substituicao de comando) |
+| Ciclo 2 | `bb76e2637255b4410e41aabe64163bd490dccbdc24c12bb74f0d3c91c91ff900` | 41 | Sete casos novos (`qa_l04`, `qa_l05`, `qa_l06`, `qa_u19`, `qa_d14`, `qa_d15`, `qa_d16`); ajuste de RNF-24 em `qa_u10` e `qa_l03` (`printf -v` no lugar de substituicao de comando) |
 
-**Aprovacao do solicitante (regra 12):** em 2026-10-21 ("Aprovo"), para a versao final, sha256 `445ba4fc6cf83dc85972e12e93ace6b6ec67d0d9a2ead5a594b600abbd263a34`, 41 casos.
+**Aprovacao do solicitante (regra 12):** em 2026-10-21 ("Aprovo"), para a versao final, sha256 `bb76e2637255b4410e41aabe64163bd490dccbdc24c12bb74f0d3c91c91ff900`, 41 casos.
 
 ## Ciclo 1 — REPROVADO
 

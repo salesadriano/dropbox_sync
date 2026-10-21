@@ -772,7 +772,7 @@ printf '%s %s%s %s\n' "$ep" "$arg" "$corpo" "$inicio" >>"$base/chamadas"
 rev=$(<"$base/rev"); hash=$(<"$base/hash"); tam=$(wc -c <"$base/remoto.bin")
 modo=''; [[ -r $base/modo ]] && modo=$(<"$base/modo")
 codigo=200 resposta='{}' faixa='' resultado=''
-erro() { codigo=409; resposta="{\"error_summary\":\"$1\"}"; }
+erro_download() { codigo=409; resposta="{\"error_summary\":\"$1\"}"; }
 cabecalho() {
   [[ -n $cabecalhos ]] || return 0
   {
@@ -813,7 +813,7 @@ case $ep in
   files/download)
     [[ $arg =~ \"path\":\"([^\"]*)\" ]] && caminho=${BASH_REMATCH[1]}
     if [[ $caminho == rev:* && ${caminho#rev:} != "$rev" ]]; then
-      erro 'path/not_found/'
+      erro_download 'path/not_found/'
     else
       rres=$rev
       [[ $modo == rev ]] && rres='fffffffffff'
@@ -835,7 +835,7 @@ case $ep in
       exit 0
     fi
     ;;
-  *) erro 'sem_regra/' ;;
+  *) erro_download 'sem_regra/' ;;
 esac
 cabecalho
 if [[ $falhar == sim && $codigo -ge 400 ]]; then

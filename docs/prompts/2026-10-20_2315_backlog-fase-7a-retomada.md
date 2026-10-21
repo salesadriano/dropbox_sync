@@ -31,3 +31,7 @@ registro_de_entrega: "docs/reviews/2026-10-20-2315-registro-retomada-b7a.md"
 **Decisões do solicitante (AskUserQuestion):**
 - **Suíte do QA da fase 7a:** "Aprovo". `tests/integracao/qa_retomada_b7a_test.sh`, 41 casos, sha256 `445ba4fc6cf83dc85972e12e93ace6b6ec67d0d9a2ead5a594b600abbd263a34`.
 - **OBS-3 (corrida entre a conferência de arquivo regular e a abertura):** "Aceito o risco (Recomendado)". Fica registrado como RSK-76.
+
+## Prompt 3 — 2026-10-21 (suíte completa reprovada no `harness_test`)
+
+**Decisão do solicitante (AskUserQuestion):** "Autorizo e aprovo (Recomendado)". A suíte do QA definia `erro()` duas vezes, em dois dublês de curl. O do download foi renomeado para `erro_download`, em 3 linhas e sem mudar nenhum caso. Novo sha256 aprovado: `bb76e2637255b4410e41aabe64163bd490dccbdc24c12bb74f0d3c91c91ff900`, que substitui o `445ba4fc…`.

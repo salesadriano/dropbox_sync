@@ -28,7 +28,7 @@ Registradas no log de prompt (Prompt 1 e Prompt 2, [log](../prompts/2026-10-20_2
 - **Alcance (F-03):** upload e download.
   - Upload: guarda sessao e deslocamento; so retoma se o arquivo local nao mudou; confere o `content_hash` final.
   - Download: retoma um `.part` por `Range`; confere o `content_hash` antes de trocar o destino.
-- **Suite do QA:** aprovada em 2026-10-21 ("Aprovo"), 41 casos, sha256 `445ba4fc6cf83dc85972e12e93ace6b6ec67d0d9a2ead5a594b600abbd263a34`.
+- **Suite do QA:** aprovada em 2026-10-21 ("Aprovo"), 41 casos, sha256 `bb76e2637255b4410e41aabe64163bd490dccbdc24c12bb74f0d3c91c91ff900`.
 - **OBS-3 do QA (corrida entre a conferencia de arquivo regular e a abertura):** risco aceito pelo solicitante em 2026-10-21, registrado no RSK-76.
 
 Princípios do Tech Lead, aceitos para a fase: o estado persistente nunca decide sozinho uma escrita destrutiva nem a integridade do resultado; estado corrompido, de outra versao ou de outra conta e descartado sem falhar a operacao; estado tem dono e permissao 0600 e nunca guarda segredo.
@@ -119,7 +119,7 @@ Os arquivos novos estao na tabela.
 | `tests/unit/retomada_estado_test.sh` | Novo. 23 casos (1 pulado sem root). |
 | `tests/integracao/retomada_upload_test.sh` | Novo. 39 casos. |
 | `tests/integracao/retomada_download_test.sh` | Novo. 23 casos. |
-| `tests/integracao/qa_retomada_b7a_test.sh` | Novo, suite do QA. 41 casos, sha256 `445ba4fc6cf83dc85972e12e93ace6b6ec67d0d9a2ead5a594b600abbd263a34`. Aprovada pelo solicitante em 2026-10-21. |
+| `tests/integracao/qa_retomada_b7a_test.sh` | Novo, suite do QA. 41 casos, sha256 `bb76e2637255b4410e41aabe64163bd490dccbdc24c12bb74f0d3c91c91ff900`. Aprovada pelo solicitante em 2026-10-21. |
 | `.github/agents/memoria/entradas/2026-10-20-2315-retomada.md` | Novo (memoria de decisao). |
 | `docs/prompts/2026-10-20_2315_backlog-fase-7a-retomada.md` | Novo (log de prompt). |
 | `docs/reviews/2026-10-20-2315-*.md` | Este registro e os pareceres TDD, de conformidade e de QA. |
@@ -195,7 +195,7 @@ Detalhe em [validacao-qa-retomada-b7a](2026-10-20-2315-validacao-qa-retomada-b7a
 
 - Ciclo 1: **reprovado**. QA-B7A-01 (P1, FIFO `retomada-*` pendura `diagnostico` e `unlink`) e QA-B7A-02 (P2, `.part` invisivel depois de registro legivel descartado). Nenhum P0 violado.
 - Ciclo 2: **aprovado**. Ambos fechados. Observacoes OBS-3 (TOCTOU, RSK-76) e OBS-4 (limite da barreira, RSK-76). OBS-1 e OBS-2 sem severidade.
-- Suite: 41 casos, sha256 `445ba4fc6cf83dc85972e12e93ace6b6ec67d0d9a2ead5a594b600abbd263a34`, aprovada pelo solicitante em 2026-10-21.
+- Suite: 41 casos, sha256 `bb76e2637255b4410e41aabe64163bd490dccbdc24c12bb74f0d3c91c91ff900`, aprovada pelo solicitante em 2026-10-21.
 
 ## 6. Riscos, impacto e rollback
 
@@ -256,7 +256,7 @@ O diagrama de relacionamento entre a conta, a retomada, a trava por registro, o 
 
 ## 10. Aceites
 
-- **Solicitante, regra 12:** suite do QA aprovada em 2026-10-21 ("Aprovo"), sha256 `445ba4fc6cf83dc85972e12e93ace6b6ec67d0d9a2ead5a594b600abbd263a34`, 41 casos.
+- **Solicitante, regra 12:** suite do QA aprovada em 2026-10-21 ("Aprovo", sha `445ba4fc…`). Depois, autorizada e reaprovada ("Autorizo e aprovo") a troca de `erro()` por `erro_download` no duble de download, exigida pelo `harness_test`, sem mudar caso. Sha256 final `bb76e2637255b4410e41aabe64163bd490dccbdc24c12bb74f0d3c91c91ff900`, 41 casos.
 - **Solicitante, OBS-3:** risco aceito em 2026-10-21 ("Aceito o risco (Recomendado)"), registrado no RSK-76.
 - **Tech Lead:** decisoes DIV-171 a DIV-203 registradas na memoria [2026-10-20-2315-retomada](../../.github/agents/memoria/entradas/2026-10-20-2315-retomada.md). Aceite final depende da suite completa no push e do commit.
 - **QA Expert:** validacao independente aprovada no ciclo 2 (ver [validacao](2026-10-20-2315-validacao-qa-retomada-b7a.md)).
