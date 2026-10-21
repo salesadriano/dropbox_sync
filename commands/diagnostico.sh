@@ -53,6 +53,32 @@ _dbx_cmd_diag_remedio_da_classe() {
   esac
 }
 
+# _dbx_cmd_diag_cursores — checagem `cursor` (fase 7b, RF-117(e), DIV-220): uma
+# linha por registro de cursor de listagem, com raiz remota, raiz local,
+# entradas do retrato, idade da ultima varredura completa e estado `valido`,
+# `vencido` (a proxima execucao faz a varredura completa) ou `ilegivel`. So o
+# CABECALHO e lido (C4), de registro de qualquer tamanho; nada e criado nem
+# removido; nunca `falha`; nenhum byte do cursor (C10). Sem registros, nenhuma
+# linha.
+_dbx_cmd_diag_cursores() {
+  local indice arquivo texto
+  dbx_state_cursor_listar
+  for indice in "${!DBX_STATE_CURSORES_ARQUIVO[@]}"; do
+    arquivo=${DBX_STATE_CURSORES_ARQUIVO[indice]}
+    if [[ ${DBX_STATE_CURSORES_ESTADO[indice]} == 'ilegivel' ]]; then
+      _dbx_cmd_diag cursor aviso "ilegivel: $arquivo" \
+        "remova $arquivo com rm; enquanto ele estiver ali, o sync --receber deste par faz a varredura completa"
+      continue
+    fi
+    # Remoto vazio e a raiz `/` da credencial (QA-B7B-01).
+    texto="${DBX_STATE_CURSORES_REMOTO[indice]:-/} ->${DBX_STATE_CURSORES_LOCAL[indice]}"
+    texto+=", ${DBX_STATE_CURSORES_ENTRADAS[indice]} entrada(s) no retrato"
+    texto+=", ultima varredura completa ha ${DBX_STATE_CURSORES_IDADE[indice]} dia(s): $arquivo"
+    _dbx_cmd_diag cursor ok "${DBX_STATE_CURSORES_ESTADO[indice]}: $texto"
+  done
+  return 0
+}
+
 # _dbx_cmd_diag_retomadas — checagem `retomada` (fase 7a, RF-107(d)): uma
 # linha por registro de retomada, com sentido, caminhos, bytes confirmados ou
 # recebidos, idade e estado. So le, pelo leitor limitado de `lib/state`: nada e
@@ -360,6 +386,9 @@ dbx_cmd_diagnostico_executar() {
 
   # 9. retomada (fase 7a, RF-107(d)) — uma linha por `retomada-*`, so lendo.
   _dbx_cmd_diag_retomadas
+
+  # 10. cursor (fase 7b, RF-117(e)) — uma linha por `cursor-*`, so o cabecalho.
+  _dbx_cmd_diag_cursores
 
   local indice texto ok=0 avisos=0 falhas=0
   dbx_cmd_iniciar_saida
