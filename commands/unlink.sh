@@ -84,6 +84,9 @@ _dbx_cmd_unlink_remover_estado() {
   [[ -d $estado ]] || return 0
 
   _dbx_cmd_unlink_recusar_se_trava_viva depois || return $?
+  # Fase 7a (RF-107(c), DIV-185): os `.part` de download interrompido saem so
+  # pela barreira de identidade, antes dos registros que os descrevem.
+  _dbx_cmd_unlink_parts
   for indice in "${!DBX_STATE_TRAVAS_ARQUIVO[@]}"; do
     dbx_state_trava_examinar "${DBX_STATE_TRAVAS_ARQUIVO[indice]}"
     # shellcheck disable=SC2034  # lido por referencia de nome na conferencia
@@ -106,6 +109,25 @@ _dbx_cmd_unlink_remover_estado() {
   [[ $falhou == 'nao' ]] || return 1
   [[ ${#DBX_CMD_UNLINK_MANTIDAS[@]} -gt 0 ]] && return 0
   rmdir -- "$estado" 2>/dev/null || return 1
+  return 0
+}
+
+# _dbx_cmd_unlink_parts — RF-107(c) (fase 7a, DIV-185): para cada registro de
+# retomada de download legivel, o `.part` que ele aponta e apagado SO se passar
+# a barreira de identidade (`lib/state`); o que existe e nao passa NAO e
+# apagado e fica em DBX_CMD_UNLINK_PARTS para o aviso. O estado nunca decide
+# apagar arquivo do usuario.
+DBX_CMD_UNLINK_PARTS=()
+_dbx_cmd_unlink_parts() {
+  local indice part
+  DBX_CMD_UNLINK_PARTS=()
+  dbx_state_retomada_listar
+  for indice in "${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"; do
+    part=${DBX_STATE_RETOMADAS_PART[indice]}
+    [[ ${DBX_STATE_RETOMADAS_SENTIDO[indice]} == 'download' && -n $part ]] || continue
+    dbx_state_retomada_part_apagar "${part%/*}" "${part##*/}" "${DBX_STATE_RETOMADAS_DEVINO[indice]}" && continue
+    [[ -e $part || -L $part ]] && DBX_CMD_UNLINK_PARTS+=("$part")
+  done
   return 0
 }
 
@@ -286,6 +308,19 @@ dbx_cmd_unlink_executar() {
       "trava mantida (orfa, ilegivel ou de outro host): $DBX_CMD_EXIBIDO; confirme que nenhum sync ou verificar deste par esta em curso e remova-a com rm"
     dbx_output_render_diagnostico >&2
   done
+
+  # RF-107(c): quantos `.part` ficaram e onde, uma linha cada, citados.
+  if [[ ${#DBX_CMD_UNLINK_PARTS[@]} -gt 0 ]]; then
+    dbx_cmd_iniciar_saida
+    dbx_output_diagnostico aviso \
+      "${#DBX_CMD_UNLINK_PARTS[@]} arquivo(s) parcial(is) de download interrompido nao apagado(s): nao passam a barreira de identidade (outro inode, outro dono, ligacao simbolica ou fora do padrao); confira e remova com rm"
+    local parte
+    for parte in "${DBX_CMD_UNLINK_PARTS[@]}"; do
+      dbx_cmd_caminho_exibivel "$parte"
+      dbx_output_diagnostico aviso "parcial mantido: $DBX_CMD_EXIBIDO"
+    done
+    dbx_output_render_diagnostico >&2
+  fi
 
   # CODIGO DE SAIDA — cada caso diz uma coisa diferente ao operador.
   if [[ $remocao == 'falhou' || $bases == 'falhou' ]]; then

@@ -53,6 +53,41 @@ _dbx_cmd_diag_remedio_da_classe() {
   esac
 }
 
+# _dbx_cmd_diag_retomadas — checagem `retomada` (fase 7a, RF-107(d)): uma
+# linha por registro de retomada, com sentido, caminhos, bytes confirmados ou
+# recebidos, idade e estado. So le, pelo leitor limitado de `lib/state`: nada e
+# criado nem removido, e o resultado e `ok` (pendente) ou `aviso` (orfa,
+# ilegivel), nunca `falha`. Nenhum `session_id` (C6). Sem registros, nenhuma
+# linha (DIV-197: as contagens do diagnostico sem estado ficam as de hoje).
+_dbx_cmd_diag_retomadas() {
+  local indice arquivo sentido texto bytes
+  dbx_state_retomada_listar
+  for indice in "${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"; do
+    arquivo=${DBX_STATE_RETOMADAS_ARQUIVO[indice]}
+    sentido=${DBX_STATE_RETOMADAS_SENTIDO[indice]}
+    if [[ ${DBX_STATE_RETOMADAS_ESTADO[indice]} == 'ilegivel' ]]; then
+      _dbx_cmd_diag retomada aviso "ilegivel: $arquivo" \
+        "remova $arquivo com rm; a proxima transferencia recomeca do zero"
+      continue
+    fi
+    bytes="${DBX_STATE_RETOMADAS_BYTES[indice]} bytes confirmados"
+    [[ $sentido == 'download' ]] && bytes="${DBX_STATE_RETOMADAS_BYTES[indice]} bytes recebidos"
+    if [[ $sentido == 'upload' ]]; then
+      texto="upload ${DBX_STATE_RETOMADAS_LOCAL[indice]} -> ${DBX_STATE_RETOMADAS_REMOTO[indice]}"
+    else
+      texto="download ${DBX_STATE_RETOMADAS_REMOTO[indice]} -> ${DBX_STATE_RETOMADAS_LOCAL[indice]}"
+    fi
+    texto+=", $bytes, ha ${DBX_STATE_RETOMADAS_IDADE[indice]} dia(s): $arquivo"
+    if [[ ${DBX_STATE_RETOMADAS_ESTADO[indice]} == 'orfa' ]]; then
+      _dbx_cmd_diag retomada aviso "orfa: $texto" \
+        'sai na proxima gravacao de retomada; ou repita a transferencia, ou use --sem-retomada'
+    else
+      _dbx_cmd_diag retomada ok "pendente: $texto"
+    fi
+  done
+  return 0
+}
+
 # _dbx_cmd_diag_travas <diretorio_de_estado> — checagem `trava` (RF-71) e o
 # aviso de diretorio de estado em NFS (RF-69(q)).
 _dbx_cmd_diag_travas() {
@@ -322,6 +357,9 @@ dbx_cmd_diagnostico_executar() {
   # 8. trava — uma linha por `trava-*`, so lendo (RF-71): nada e criado,
   # removido ou retomado, e trava nunca leva a `falha`.
   _dbx_cmd_diag_travas "$estado"
+
+  # 9. retomada (fase 7a, RF-107(d)) — uma linha por `retomada-*`, so lendo.
+  _dbx_cmd_diag_retomadas
 
   local indice texto ok=0 avisos=0 falhas=0
   dbx_cmd_iniciar_saida

@@ -355,7 +355,9 @@ dbx_auth_conteudo() {
   _dbx_auth_com_renovacao dbx_http_conteudo "$1" "$2" "$3" "$4" "$5"
 }
 
-# dbx_auth_conteudo_receber <metodo> <url> <arg_json> <destino>
+# dbx_auth_conteudo_receber <metodo> <url> <arg_json> <destino> [inicio]
+#
+# Com <inicio> (fase 7a), pedido de faixa: ver `dbx_http_conteudo_receber`.
 #
 # A renovacao aqui tem uma restricao que os outros caminhos nao tem: so pode
 # ocorrer se NADA foi emitido ao consumidor. Repetir depois do primeiro byte
@@ -364,7 +366,7 @@ dbx_auth_conteudo() {
 # passa pelo mesmo caminho.
 dbx_auth_conteudo_receber() {
   [[ $# -ge 4 ]] || return "$DBX_AUTH_ERRO_USO"
-  _dbx_auth_com_renovacao dbx_http_conteudo_receber "$1" "$2" "$3" "$4"
+  _dbx_auth_com_renovacao dbx_http_conteudo_receber "$1" "$2" "$3" "$4" ${5:+"$5"}
 }
 
 # ---------------------------------------------------------------------------

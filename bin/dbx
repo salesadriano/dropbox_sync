@@ -141,6 +141,21 @@ _dbx_ajuda_banda() {
     '  duas execucoes simultaneas somam.'
 }
 
+# _dbx_ajuda_retomada — RF-108(c) (fase 7a, F-03), a mesma em upload e download.
+_dbx_ajuda_retomada() {
+  # shellcheck disable=SC2016  # o nome da variavel e texto literal da ajuda
+  printf '%s\n' \
+    'Retomada (F-03), para arquivo acima de 150 MiB (nao vale para pasta, entrada ou' \
+    'saida padrao, sync nem --dry-run):' \
+    '  - uma transferencia grande interrompida continua de onde parou na proxima execucao com os mesmos argumentos;' \
+    '  - o upload so continua se o arquivo local nao mudou; ao final, o content_hash e conferido;' \
+    '  - o destino so muda depois de conferido o content_hash (o parcial do download' \
+    '    fica junto do destino: .<nome>.dbx-part.XXXXXX, 0600);' \
+    '  - use --sem-retomada para comecar do zero.' \
+    '  O estado fica em $XDG_STATE_HOME/dbx (retomada-*, 0600, sem segredo); apaga-lo' \
+    '  a mao (e o parcial) so faz a proxima execucao recomecar do zero.'
+}
+
 dbx_cli_analisar "$@" || _dbx_falhar uso_invalido "$DBX_CLI_MOTIVO"
 
 if [[ ${#DBX_CLI_ARGS[@]} -gt 0 ]]; then
@@ -164,7 +179,7 @@ case $DBX_CLI_COMANDO in
     _dbx_subcomando=$DBX_CLI_CANONICO
     case $_dbx_subcomando in
       upload)
-        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--limite-banda | --bwlimit <taxa>] [--progresso] <origem> <destino>\n\n'
+        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--limite-banda | --bwlimit <taxa>] [--sem-retomada | --no-resume] [--progresso] <origem> <destino>\n\n'
         printf 'Envia arquivo local ou conteudo da entrada padrao (-) para o caminho remoto.\n\n'
         printf 'Argumentos:\n'
         printf '  origem   Caminho de arquivo local ou "-" para entrada padrao (stdin)\n'
@@ -176,9 +191,13 @@ case $DBX_CLI_COMANDO in
         printf '                                  content_hash e espaco livre da conta\n'
         printf '  --limite-banda, --bwlimit <taxa>\n'
         printf '                                  Limite de banda por transferencia, em bytes/s\n'
+        printf '  --sem-retomada, --no-resume     Comeca do zero: nao le, nao grava nem apaga o\n'
+        printf '                                  estado de retomada\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
         _dbx_ajuda_banda
+        printf '\n'
+        _dbx_ajuda_retomada
         printf '\n'
         printf 'Espaco livre (RF-67):\n'
         printf '  Antes de enviar, uma consulta ao espaco da conta; se o arquivo nao cabe, o\n'
@@ -275,7 +294,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       download)
-        printf 'Uso: dbx download [--excluir <padrao>]... [--incluir <padrao>]... [--limite-banda <taxa>] [--progresso] <caminho_remoto> [destino_local]\n\n'
+        printf 'Uso: dbx download [--excluir <padrao>]... [--incluir <padrao>]... [--limite-banda <taxa>] [--sem-retomada | --no-resume] [--progresso] <caminho_remoto> [destino_local]\n\n'
         printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n'
         printf 'Pasta remota e recebida recursivamente (o sync --receber interno).\n\n'
         printf 'Opcoes:\n'
@@ -291,7 +310,11 @@ case $DBX_CLI_COMANDO in
         printf '                                  Limite de banda por transferencia, em bytes/s\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
-        printf '  --forcar, --force               Aceita e sem efeito, por paridade com o upload\n\n'
+        printf '  --forcar, --force               Aceita e sem efeito, por paridade com o upload\n'
+        printf '  --sem-retomada, --no-resume     Comeca do zero: nao le, nao grava nem apaga o\n'
+        printf '                                  estado de retomada nem arquivo parcial\n\n'
+        _dbx_ajuda_retomada
+        printf '\n'
         printf 'Os filtros valem so para pasta: com um arquivo remoto, a recusa e codigo 2,\n'
         printf 'sem nenhuma escrita (o tipo e consultado antes, por get_metadata).\n\n'
         _dbx_ajuda_filtros

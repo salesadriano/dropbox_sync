@@ -5,7 +5,7 @@
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
 | Data | 2026-10-18 |
-| Versao | **v1.4** — `DP-18` (compartilhamento) resolvida (fase 5, 2026-10-20, `DIV-116`). *Registro anterior:* **v1.3** — `DP-37` registrada e resolvida (fase 3: revisoes, restauracao e lixeira). *Registro anterior:* **v1.2** — `DP-36` registrada e resolvida (fase 2: trava de concorrencia e `lib/tmp`). *Registro anterior:* **v1.1** — `DP-35` registrada e resolvida (fase 4: aliases em ingles, `O-1`, `F-32`, `P5.1`). *Registro anterior:* **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
+| Versao | **v1.5** — `DP-09` reaberta para a fase 7a (`F-03`, retomada entre execucoes; 2026-10-20, memoria `2026-10-20-2315-retomada`): o estado de retomada (`retomada-*`) entra no estado autorizado e o DBA da parecer sobre formato, localizacao, versionamento, concorrencia e limpeza; `DP-12` anotada (o limiar e o custo da retomada, `DIV-179`, seguem sem medicao de volume). *Registro anterior:* **v1.4** — `DP-18` (compartilhamento) resolvida (fase 5, 2026-10-20, `DIV-116`). *Registro anterior:* **v1.3** — `DP-37` registrada e resolvida (fase 3: revisoes, restauracao e lixeira). *Registro anterior:* **v1.2** — `DP-36` registrada e resolvida (fase 2: trava de concorrencia e `lib/tmp`). *Registro anterior:* **v1.1** — `DP-35` registrada e resolvida (fase 4: aliases em ingles, `O-1`, `F-32`, `P5.1`). *Registro anterior:* **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
 | Status | 🔴 **Duas decisoes novas, devolvidas pela implementacao de `RF-31`/`RF-08`: `DP-29` e `DP-30`.** Nenhuma delas bloqueia a validacao da entrega atual; ambas bloqueiam declarar o requisito correspondente **integralmente** atendido. 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
@@ -44,7 +44,7 @@
 | DP-06 | Conjunto de comandos do MVP | ✅ **Resolvida — reabre estado local** | — |
 | DP-07 | Plataformas e shells suportados | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
 | DP-08 | Dependencias e interpretacao de JSON | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
-| DP-09 | Semantica de sincronizacao e estado local | 🔄 **REABERTA por DP-06, redefinida por `DP-27`** | O estado deixou de ser exigido pela correcao e passou a ser escolha de desempenho (`DP-27b`) |
+| DP-09 | Semantica de sincronizacao e estado local | 🔄 **REABERTA por DP-06, redefinida por `DP-27`; reaberta de novo para a fase 7a (`F-03`, 2026-10-20)** | O estado deixou de ser exigido pela correcao e passou a ser escolha de desempenho (`DP-27b`). **7a:** estado de retomada `retomada-*` (escopo 5.15, `RF-101`); parecer do DBA aceito com `C1` a `C6`; `DIV-171` a `DIV-190` decididas |
 | DP-21 | Semantica de resolucao de conflito | ❌ **Sem objeto por `DP-27`** — nao ha conflito quando um lado manda | — |
 | DP-22 | Conflito de exclusao contra alteracao | ❌ **Sem objeto por `DP-27`** | — |
 | DP-23 | Ciclo de vida e localizacao da linha de base | ✅ **Localizacao mantida (`$XDG_STATE_HOME`); tratamento de corrupcao INVERTIDO por `DP-27b`** — descarta e reconstroi, nao recusa | — |
@@ -399,6 +399,16 @@ Estava fechada sem impacto porque nenhuma funcionalidade do MVP exigia estado. `
 
 As perguntas remanescentes desta decisao foram desdobradas em `DP-21` a `DP-24`, por serem especificas demais para caber num item so.
 
+#### Reabertura para a fase 7a — estado de retomada (`F-03`, 2026-10-20) 🔄
+
+> Escrita **na mesma rodada** em que a decisao foi recebida (`RSK-26`). Memoria: `2026-10-20-2315-retomada`; escopo v1.21, secao 5.15.
+
+O solicitante promoveu `F-03` (retomada de **upload e download** entre execucoes), o que exige estado local persistente novo. **Principios do Tech Lead (nao reabrir):** o estado nunca decide sozinho uma escrita destrutiva nem a integridade do resultado; estado corrompido, de outra versao ou de outra conta e descartado e a operacao recomeca do zero, **nunca falhando por causa do estado**; o estado tem dono, permissao `0600` e nunca guarda segredo.
+
+**O que ja esta especificado (escopo 5.15):** um `retomada-<resumo>` por chave (tipo, conta pelo resumo local da credencial, origem e destino canonicos) no diretorio de estado de `lib/state`, gravado so por `lib/state` de forma atomica (`RF-101`); `RNF-26` ganha os itens 5 (estado de retomada) e 6 (trava de retomada).
+
+**Parecer do DBA (regra 26), aceito pelo Tech Lead com as condicoes `C1` a `C6`:** formato NUL com magia `dbx-retomada` v1, sem mudar `DBX_STATE_VERSAO`; chave SHA-256 com separador NUL e reconferencia byte a byte; nome do host gravado; `prefixo_hash` obrigatorio no upload (`C1`); trava `trava-<resumo>` com comando `retomada` (`C2`); leitor limitado a 16 KiB, tambem para `upload-*` (`C3`); retomada depois da decisao do comando (`C5`); `session_id` fora de toda saida (`C6`). **Divergencias `DIV-171` a `DIV-190`: decididas pelo Tech Lead em 2026-10-20**, todas na opcao recomendada; `DIV-172` B substitui a frequencia de gravacao do DBA e `DIV-185` A reve a pendencia `D1` do DBA. A retomada no `sync` e em pastas foi ao backlog como `F-42`. As emendas do System Design (`DIV-a` a `DIV-d` do parecer) ficam com o SD. Nenhuma pendencia do solicitante resta na 7a.
+
 ---
 
 ## Decisoes do `sync` — resolvidas
@@ -609,6 +619,8 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 | Redacao de erro | ~n^1.5; 256 KiB em 4,56 s | Unico ponto de atencao; irrelevante em mensagens de erro reais |
 
 **O que ainda falta:** os volumes de negocio — tamanhos e quantidades reais, frequencia, numero de hosts, janela de tempo, banda e espaco em `$TMPDIR`. A medicao acima informa o **custo unitario**; falta o **volume** para dimensionar.
+
+**Nota da fase 7a (2026-10-20):** `F-03` foi promovida por decisao do solicitante **sem** a resposta desta `DP` (era a condicao registrada para reavaliar a candidata). Ficam dependentes dela, e por isso propostos com valor conservador: o **limiar** da retomada (150 MiB nos dois sentidos, `DIV-179`), o custo aceito de **reler o arquivo** antes de retomar (`RF-103(h)`, ate duas leituras completas a ~320 MB/s) e o **espaco** ocupado pelo `.part` no diretorio do destino (`RSK-71`). Nenhum deles bloqueia a 7a.
 
 ---
 

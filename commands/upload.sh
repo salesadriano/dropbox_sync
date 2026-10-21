@@ -50,7 +50,7 @@
 dbx_cmd_upload_requisitos() { printf 'credencial'; }
 
 dbx_cmd_upload_executar() {
-  local origem='' destino='' modo='add' rev='' forcar='nao'
+  local origem='' destino='' modo='add' rev='' forcar='nao' sem_retomada='nao'
   local tem_limite='nao' opcao_limite='' valor_limite=''
   while [[ $# -gt 0 ]]; do
     case ${1-} in
@@ -72,6 +72,10 @@ dbx_cmd_upload_executar() {
         ;;
       --forcar | --force)
         forcar='sim'
+        ;;
+      # RF-108(a) (fase 7a): sem ler, gravar nem apagar estado de retomada.
+      --sem-retomada | --no-resume)
+        sem_retomada='sim'
         ;;
       --progresso | --progress | -p)
         DBX_CLI_PROGRESSO='sim'
@@ -260,6 +264,11 @@ dbx_cmd_upload_executar() {
         # A gravacao acontece tambem na dispensa: com resumo calculado, guarda;
         # com acerto, renova o carimbo de uso que a poda le (RF-61(g), (i)).
         _dbx_cmd_upload_gravar_cache "$chave" "$hash_local" "$identidade_antes" "$origem"
+        # RF-102(c), C5 (fase 7a): a dispensa vem antes da retomada, e o
+        # registro da chave, que ja nao vale, sai (sob a trava).
+        if [[ $sem_retomada != 'sim' ]] && _dbx_cmd_upload_retomavel "$origem" "$chave"; then
+          dbx_cmd_retomada_limpar upload "$chave" "$remoto"
+        fi
         dbx_cmd_iniciar_saida
         dbx_output_campo operacao upload
         dbx_output_campo origem "$origem"
@@ -281,6 +290,24 @@ dbx_cmd_upload_executar() {
     dbx_cmd_falhar espaco "$DBX_CMD_ESPACO_MOTIVO"
     return $?
   }
+
+  # Fase 7a (RF-102, RF-103): so arquivo regular que vai por sessao retoma, e
+  # so depois da decisao do comando acima (C5). A trava do registro fica com
+  # este processo ate o fim do envio; ocupada, segue sem retomada.
+  local retomavel='nao'
+  if [[ $sem_retomada != 'sim' ]] && _dbx_cmd_upload_retomavel "$origem" "$chave"; then
+    retomavel='sim'
+    if dbx_cmd_retomada_preparar upload "$chave" "$remoto" && dbx_hash_identidade "$origem"; then
+      # shellcheck disable=SC2034  # entradas de lib/transfer
+      DBX_TRANSFER_RETOMADA_ATIVA='sim'
+      # shellcheck disable=SC2034
+      DBX_TRANSFER_RETOMADA_IDENTIDADE=$DBX_HASH_IDENTIDADE
+      # shellcheck disable=SC2034
+      DBX_TRANSFER_AVISAR=dbx_cmd_avisar
+    else
+      dbx_state_retomada_soltar
+    fi
+  fi
 
   dbx_progress_mensagem "[upload] iniciando envio: $origem -> $remoto"
 
@@ -324,6 +351,11 @@ dbx_cmd_upload_executar() {
     # A conferencia so e declarada quando ocorreu. Afirmar verificacao que nao
     # houve e pior que nao verificar — mesmo criterio ja adotado em `download`.
     dbx_output_campo integridade "$DBX_TRANSFER_INTEGRIDADE"
+    # RF-108(b): acrescimo compativel, so no caminho retomavel.
+    if [[ $retomavel == 'sim' ]]; then
+      dbx_output_campo retomada "$DBX_TRANSFER_RETOMADA"
+      dbx_output_campo retomado_de "$DBX_TRANSFER_RETOMADO_DE"
+    fi
   else
     dbx_output_campo modo_de_envio requisicao_unica
   fi
@@ -386,6 +418,15 @@ _dbx_cmd_upload_hash_remoto() {
   fi
   DBX_CMD_UPLOAD_HASH_REMOTO=${DBX_CMD_CAMPOS[1]}
   return 0
+}
+
+# _dbx_cmd_upload_retomavel <origem> <chave> — 0 quando o envio e retomavel
+# entre execucoes (RF-102(a)): arquivo regular, com chave canonica, que vai por
+# sessao (acima de 150 MiB). Entrada padrao e requisicao unica: 1.
+_dbx_cmd_upload_retomavel() {
+  [[ $1 != '-' && -n $2 && -f $1 ]] || return 1
+  dbx_transfer_tamanho_de_arquivo "$1" || return 1
+  dbx_transfer_precisa_de_sessao "$DBX_TRANSFER_TAMANHO"
 }
 
 # _dbx_cmd_upload_checar_espaco <origem> <forcar> — RF-67 no `upload`.

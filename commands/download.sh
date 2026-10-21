@@ -42,8 +42,42 @@ _dbx_cmd_download_pasta() {
   dbx_cmd_sync_executar "${args_sync[@]}"
 }
 
+# _dbx_cmd_download_retomavel <remoto> <alvo> — RF-102(a): 0 quando o remoto e
+# ARQUIVO acima de 150 MiB com `rev`, tamanho e `content_hash` bem formados no
+# `get_metadata` desta execucao (DBX_CMD_DOWNLOAD_REV, _TAMANHO, _HASH). Pasta,
+# arquivo menor, metadado ilegivel ou consulta que falha: 1, e o recebimento e
+# o de hoje (que da a mesma resposta ao mesmo remoto). Remoto inexistente
+# (`not_found`) tambem limpa o registro da chave (RF-106(c)).
+DBX_CMD_DOWNLOAD_REV=''
+DBX_CMD_DOWNLOAD_TAMANHO=''
+DBX_CMD_DOWNLOAD_HASH=''
+_dbx_cmd_download_retomavel() {
+  local remoto=$1 alvo=$2
+  DBX_CMD_DOWNLOAD_REV='' DBX_CMD_DOWNLOAD_TAMANHO='' DBX_CMD_DOWNLOAD_HASH=''
+  [[ -e $alvo && ! -f $alvo ]] && return 1
+  # shellcheck source=lib/transfer.sh
+  . "${BASH_SOURCE[0]%/*}/../lib/transfer.sh"
+  dbx_json_escapar_cadeia "$remoto"
+  if ! dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/get_metadata' \
+    "{\"path\":\"$DBX_JSON_ESCAPADO\"}" sim >/dev/null 2>&1; then
+    if [[ ${DBX_HTTP_CLASSE:-} == 'nao_encontrado' ]] && dbx_path_local_canonico "$alvo"; then
+      dbx_cmd_retomada_limpar download "$DBX_PATH_RESULTADO" "$remoto"
+    fi
+    return 1
+  fi
+  dbx_cmd_ler_corpo_silencioso .tag size rev content_hash || return 1
+  [[ ${DBX_CMD_CAMPOS[0]} == 'file' && ${DBX_CMD_CAMPOS[1]} =~ ^[0-9]{1,18}$ &&
+    ${DBX_CMD_CAMPOS[2]} =~ ^[0-9a-f]{9,64}$ ]] || return 1
+  dbx_hash_formato_valido "${DBX_CMD_CAMPOS[3]}" || return 1
+  dbx_transfer_precisa_de_sessao "${DBX_CMD_CAMPOS[1]}" || return 1
+  DBX_CMD_DOWNLOAD_REV=${DBX_CMD_CAMPOS[2]}
+  DBX_CMD_DOWNLOAD_TAMANHO=$((10#${DBX_CMD_CAMPOS[1]}))
+  DBX_CMD_DOWNLOAD_HASH=${DBX_CMD_CAMPOS[3],,}
+  return 0
+}
+
 dbx_cmd_download_executar() {
-  local caminho='' destino='' opcao tem_limite='nao' opcao_limite='' valor_limite=''
+  local caminho='' destino='' opcao tem_limite='nao' opcao_limite='' valor_limite='' sem_retomada='nao'
   local -a filtros_caminho=() filtros_meta=()
   while [[ $# -gt 0 ]]; do
     case ${1-} in
@@ -82,6 +116,11 @@ dbx_cmd_download_executar() {
         ;;
       --forcar | --force)
         # aceito para paridade operacional
+        ;;
+      # RF-108(a) (fase 7a): sem ler, gravar nem apagar estado de retomada
+      # nem `.part` alheio; o recebimento de antes desta fase.
+      --sem-retomada | --no-resume)
+        sem_retomada='sim'
         ;;
       -)
         # `-` e o destino "saida padrao" (RF-32), e nao uma opcao: o ramo
@@ -238,7 +277,7 @@ dbx_cmd_download_executar() {
   dbx_progress_barra_gerar 0 20 str_barra_inicio
   dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo $str_barra_inicio (0%)"
 
-  local estado_recebimento=0
+  local estado_recebimento=0 retomavel='nao'
   if [[ $alvo == '/dev/stdout' || $alvo == '-' ]]; then
     # O cliente reabre a saida padrao do inicio (limite declarado em lib/http):
     # sobre arquivo que ja tem conteudo — o `>>` — isso o apagaria. Recusa
@@ -250,6 +289,12 @@ dbx_cmd_download_executar() {
     fi
     dbx_auth_conteudo_receber GET \
       'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo"
+    estado_recebimento=$?
+  elif [[ $sem_retomada != 'sim' ]] && _dbx_cmd_download_retomavel "$remoto" "$alvo"; then
+    # Fase 7a (RF-104): arquivo acima de 150 MiB, pela revisao fixa.
+    retomavel='sim'
+    dbx_cmd_receber_retomavel "$remoto" "$alvo" "$DBX_CMD_DOWNLOAD_REV" "$DBX_CMD_DOWNLOAD_TAMANHO" \
+      "$DBX_CMD_DOWNLOAD_HASH"
     estado_recebimento=$?
   else
     dbx_cmd_receber_arquivo "$remoto" "$alvo"
@@ -327,6 +372,11 @@ dbx_cmd_download_executar() {
   dbx_output_campo destino "$alvo"
   dbx_output_campo integridade "$verificacao"
   [[ -n $esperado ]] && dbx_output_campo content_hash "$esperado"
+  # RF-108(b): acrescimo compativel, so no caminho retomavel.
+  if [[ $retomavel == 'sim' ]]; then
+    dbx_output_campo retomada "$DBX_CMD_RETOMADA"
+    dbx_output_campo retomado_de "$DBX_CMD_RETOMADO_DE"
+  fi
   # RF-82(i): acrescimo compativel (RF-35); vazio sem limite.
   dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
   # RF-32(b): em fluxo a saida padrao E o conteudo; o registro do resultado

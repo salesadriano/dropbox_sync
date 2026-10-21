@@ -499,6 +499,31 @@ A tabela de códigos de saída não muda: `0`, `2`, `3`, `4` (pasta inexistente)
 
 ---
 
+## Retomada de transferência interrompida
+
+**`dbx upload` e `dbx download` de arquivo acima de 150 MiB continuam de onde pararam** na próxima execução com os mesmos argumentos, depois de queda de rede, sinal (`Ctrl+C`, `TERM`, `HUP`) ou `kill -9` (`F-03`, `RF-101` a `RF-109`). Não vale para pasta (o `sync` e o upload/download de pasta recomeçam do zero), entrada ou saída padrão, nem `--dry-run`.
+
+- **O estado só acelera, nunca decide.** Uma transferência interrompida deixa um registro `retomada-<resumo>` (`0600`) no diretório de estado, `$XDG_STATE_HOME/dbx` (recuo `~/.local/state/dbx`), o mesmo da memória do `sync`. Ele **não guarda segredo**: nada de token, chave ou conteúdo; o identificador da sessão de envio fica só nele e nunca aparece na saída, no `--debug` nem no `dbx diagnostico`. Registro corrompido, de outra versão, de outra conta, de outro host ou de outro caminho é descartado com um aviso de uma linha e a transferência recomeça do zero, com o mesmo código de saída de uma execução sem estado.
+- **Upload:** o upload só continua se o arquivo local não mudou: a identidade do arquivo (tamanho, `mtime` e `ctime` com nanossegundos, dispositivo, inode) e o trecho já enviado, relido e conferido pelo `content_hash`, precisam bater antes do primeiro byte novo. O servidor é a autoridade sobre onde a sessão está; um deslocamento que não confere com o registro, ou sessão expirada no servidor, recomeça do zero (uma vez) sem falhar. Ao final, o `content_hash` do arquivo inteiro é conferido com o que o Dropbox publicou.
+- **Download:** o arquivo parcial fica junto do destino, como `.<nome>.dbx-part.XXXXXX` (`0600`), e o pedido seguinte usa `Range` sobre a mesma revisão (`rev:<rev>`). O destino só muda depois de conferido o `content_hash` do arquivo inteiro; se o remoto mudou, se o servidor ignorou a faixa ou se o resumo não confere, o recebimento recomeça do zero (uma vez) e o destino anterior fica intacto. Um parcial só é retomado ou apagado pelo `dbx` se for o mesmo arquivo que ele criou (mesmo dono, mesmo inode, nome no padrão e no diretório do destino): arquivo seu com nome parecido nunca é tocado.
+- **Concorrência:** duas execuções do mesmo upload ou download não usam o mesmo registro: a segunda segue do zero, sem retomada, com um aviso que nomeia o `pid` da primeira (trava `trava-<resumo>`, comando `retomada`, visível no `dbx diagnostico`).
+- **`--sem-retomada` (`--no-resume`):** começa do zero e não lê, não grava nem apaga estado de retomada, como antes desta fase.
+- **Saída:** no caminho retomável, `retomada` (`nao`, `sim` ou `recomecada`) e `retomado_de` (bytes já confirmados ou recebidos).
+- **Limpeza:** registros sem uso há mais de 8 dias saem na próxima gravação (no máximo 1.000). Apagar `retomada-*` à mão é sempre seguro: só faz a próxima execução recomeçar do zero; os parciais `.<nome>.dbx-part.*` podem ser apagados com `rm`. O `dbx unlink` apaga os registros e os parciais que passam pela conferência de identidade, e lista os que não passam. O `dbx diagnostico` mostra uma linha por registro (`pendente`, `orfa` ou `ilegivel`).
+
+```bash
+# Interrompido no meio: a mesma linha de comando continua de onde parou
+dbx upload ./imagem.iso /backups/imagem.iso
+dbx download /backups/imagem.iso ./imagem.iso
+
+# Começar do zero, sem ler nem gravar estado de retomada
+dbx upload --sem-retomada ./imagem.iso /backups/imagem.iso
+```
+
+A tabela de códigos de saída não muda.
+
+---
+
 ## Testes e Qualidade
 
 O projeto conta com uma suíte abrangente de testes automatizados com saída **TAP 13**, cobrindo cenários unitários e de integração com dublês de rede e auditorias adversariais:
