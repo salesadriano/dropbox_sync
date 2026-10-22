@@ -38,13 +38,13 @@ _qa_cenario() {
   mkdir -p "$BASE/config/dbx" "$BASE/bin" "$BASE/local"
   _qa_credencial '{"versao":1,"app_key":"ak","app_secret":"as","refresh_token":"rt","raiz_remota":"/"}'
   {
-    printf '#!/usr/bin/env bash\nbase=%q\n' "$BASE"
+    printf '#!/usr/bin/env bash\nbase=%q\nDBX_HARNESS_RAIZ=%q\n' "$BASE" "$DBX_HARNESS_RAIZ"
     cat <<'FIM'
 conf=$(cat 2>/dev/null)
 printf '%s\n' "$conf" >>"$base/opcoes"
-saida='' escrever='' anterior='' url=''
+saida='' escrever='' anterior='' url='' corpo_arquivo=''
 for arg in "$@"; do
-  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac
+  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; --data-binary) corpo_arquivo=${arg#@} ;; esac
   case $arg in http*) url=$arg ;; esac
   anterior=$arg
 done
@@ -79,6 +79,10 @@ case $url in
     else corpo='{"name":"a.txt","rev":"0a1"}'; fi ;;
   *) corpo='{"name":"x","rev":"1"}' ;;
 esac
+LOTE_ECOA_V2=sim
+. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+codigo_anterior=$codigo corpo_anterior=$corpo
+lote_responder "$url" "$corpo_arquivo" || { codigo=$codigo_anterior; corpo=$corpo_anterior; } # a rota nao e de lote: o responder zera `codigo`
 [[ -n $saida ]] && printf '%s' "$corpo" >"$saida"
 [[ -n $escrever ]] && printf '%s' "$codigo"
 exit 0

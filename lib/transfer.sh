@@ -113,6 +113,10 @@ readonly DBX_TRANSFER_TAMANHO_PARTE=4194304
 # maior que isto nao cabe em requisicao unica.
 readonly DBX_TRANSFER_LIMITE_REQUISICAO=157286400
 
+# Limiar de "arquivo pequeno" do envio em lote (RF-137(a), DIV-256): 1 MiB,
+# inclusive. Constante unica, a recalibrar pela bancada (DP-12).
+readonly DBX_TRANSFER_LIMIAR_LOTE=1048576
+
 readonly DBX_TRANSFER_URL_INICIAR='https://content.dropboxapi.com/2/files/upload_session/start'
 readonly DBX_TRANSFER_URL_ANEXAR='https://content.dropboxapi.com/2/files/upload_session/append_v2'
 readonly DBX_TRANSFER_URL_CONCLUIR='https://content.dropboxapi.com/2/files/upload_session/finish'
@@ -788,28 +792,38 @@ _dbx_transfer_percurso() {
   DBX_TRANSFER_CONTENT_HASH=$DBX_HASH_RESULTADO
 
   if _dbx_transfer_ler_campo content_hash; then
-    remoto=$DBX_TRANSFER_LIDO
-    if dbx_hash_iguais "$DBX_TRANSFER_CONTENT_HASH" "$remoto"; then
-      DBX_TRANSFER_INTEGRIDADE='conferida'
-    else
-      # O arquivo EXISTE no destino: o `finish` retornou. O que nao se pode
-      # fazer e chamar isto de sucesso — quem consome a saida decidiria manter
-      # um arquivo que nao confere.
-      {
-        _dbx_transfer_falhar integridade \
-          'o resumo devolvido pelo servico nao confere com o resumo do conteudo enviado; nao considere o item integro'
-        return $?
-      }
-    fi
+    dbx_transfer_conferir_resumo "$DBX_TRANSFER_CONTENT_HASH" "$DBX_TRANSFER_LIDO" || return $?
   else
-    # Sem resumo publicado pelo servico a verificacao NAO ocorreu. Afirmar
-    # conferencia que nao houve e pior que nao conferir.
-    # shellcheck disable=SC2034
-    # Justificativa: veredito publicado pelo comando; sem leitor neste arquivo.
-    DBX_TRANSFER_INTEGRIDADE='nao_aplicavel'
+    dbx_transfer_conferir_resumo "$DBX_TRANSFER_CONTENT_HASH" || return $?
   fi
 
   return 0
+}
+
+# dbx_transfer_conferir_resumo <local> [<devolvido>] — confere o resumo local do
+# conteudo enviado com o `content_hash` devolvido pelo servico (RF-31). Ponto
+# unico do envio unitario por sessao e do envio em lote (F-08, DIV-278): mesma
+# classe, mesmo codigo e mesmo motivo para o mesmo item.
+# Publica DBX_TRANSFER_INTEGRIDADE: `conferida` (iguais) ou `nao_aplicavel` (o
+# servico nao devolveu resumo: a verificacao NAO ocorreu). Divergencia falha com
+# `integridade` (11), e DBX_TRANSFER_CLASSE e DBX_TRANSFER_MOTIVO dizem por que.
+dbx_transfer_conferir_resumo() {
+  local local_h=${1-} remoto=${2-}
+  if (($# < 2)); then
+    # shellcheck disable=SC2034
+    # Justificativa: veredito publicado pelo comando; sem leitor neste arquivo.
+    DBX_TRANSFER_INTEGRIDADE='nao_aplicavel'
+    return 0
+  fi
+  if dbx_hash_iguais "$local_h" "$remoto"; then
+    # shellcheck disable=SC2034  # canal publico, lido por commands/upload
+    DBX_TRANSFER_INTEGRIDADE='conferida'
+    return 0
+  fi
+  # O arquivo EXISTE no destino; o que nao se pode fazer e chamar isto de
+  # sucesso: quem consome a saida decidiria manter um arquivo que nao confere.
+  _dbx_transfer_falhar integridade \
+    'o resumo devolvido pelo servico nao confere com o resumo do conteudo enviado; nao considere o item integro'
 }
 
 # _dbx_transfer_conclusao_recusada — o `finish` falhou. Na retomada (fase 7a),
@@ -1188,4 +1202,68 @@ dbx_transfer_enviar_arquivo() {
     "$commit" "$origem" nao && return 0
   _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
     "envio recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}"
+}
+
+# ---------------------------------------------------------------------------
+# Envio em lote de arquivos pequenos (RF-137)
+# ---------------------------------------------------------------------------
+
+# Saida de dbx_transfer_iniciar_pequeno: sessao aberta e bytes enviados nela.
+DBX_TRANSFER_SESSAO=''
+DBX_TRANSFER_DESLOCAMENTO=0
+
+# dbx_transfer_pequeno_para_lote <bytes> — 0 quando o arquivo vai no lote
+# (ate DBX_TRANSFER_LIMIAR_LOTE, inclusive). Predicado puro, sobre numero.
+dbx_transfer_pequeno_para_lote() {
+  local bytes=${1-}
+  [[ $bytes =~ ^[0-9]+$ ]] || return "$DBX_TRANSFER_ERRO_USO"
+  [[ $bytes -le $DBX_TRANSFER_LIMIAR_LOTE ]]
+}
+
+# dbx_transfer_iniciar_pequeno <origem> — `upload_session/start` com `close=true`
+# e os bytes do arquivo (RF-137(b)). Nada e publicado no destino: a publicacao e
+# o `finish_batch_v2`, que quem chama faz. Sessao abandonada nao tem efeito.
+# Publica DBX_TRANSFER_SESSAO e DBX_TRANSFER_DESLOCAMENTO; falha publica
+# DBX_TRANSFER_CLASSE e DBX_TRANSFER_MOTIVO, como o envio unitario.
+dbx_transfer_iniciar_pequeno() {
+  local origem=${1-} resumo=${2-} argumento
+  DBX_TRANSFER_SESSAO='' DBX_TRANSFER_DESLOCAMENTO=0
+  # shellcheck disable=SC2034  # canais publicos, lidos pelos comandos
+  DBX_TRANSFER_CLASSE='' DBX_TRANSFER_MOTIVO=''
+  [[ ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]] || {
+    _dbx_transfer_falhar uso_invalido \
+      'envio em lote alcancado em modo de simulacao: nenhuma escrita e emitida'
+    return $?
+  }
+  dbx_transfer_tamanho_de_arquivo "$origem" || {
+    _dbx_transfer_falhar nao_encontrado "tamanho do arquivo local indeterminado: $origem"
+    return $?
+  }
+  dbx_transfer_pequeno_para_lote "$DBX_TRANSFER_TAMANHO" || {
+    _dbx_transfer_falhar nao_concluida 'o arquivo passou do limiar do lote depois do planejamento'
+    return $?
+  }
+  # DIV-278: o `start` leva o `content_hash` do conteudo (a API o recomenda e
+  # o aceita em UploadSessionStartArg). Sem resumo do planejamento, calcula.
+  if [[ -z $resumo ]] && dbx_hash_publicar_arquivo "$origem" 2>/dev/null; then
+    resumo=$DBX_HASH_RESULTADO
+  fi
+  argumento='{"close":true}'
+  [[ -z $resumo ]] || argumento="{\"close\":true,\"content_hash\":\"$resumo\"}"
+  _dbx_transfer_emitir "$DBX_TRANSFER_URL_INICIAR" "$argumento" "$origem" nao || {
+    _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
+      "inicio de sessao recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+    return $?
+  }
+  _dbx_transfer_ler_campo session_id || {
+    _dbx_transfer_falhar erro_remoto 'inicio de sessao sem identificador de sessao'
+    return $?
+  }
+  # shellcheck disable=SC2034  # canais publicos, lidos por commands/sync
+  DBX_TRANSFER_SESSAO=$DBX_TRANSFER_LIDO
+  # shellcheck disable=SC2034
+  DBX_TRANSFER_DESLOCAMENTO=$DBX_TRANSFER_TAMANHO
+  # shellcheck disable=SC2034  # canal publico, esvaziado: o `session_id` nao fica
+  DBX_TRANSFER_LIDO=''
+  return 0
 }

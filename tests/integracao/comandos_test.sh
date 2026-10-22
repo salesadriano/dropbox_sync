@@ -32,7 +32,7 @@ _ambiente() {
   printf '%s' "$codigo" >"$base/codigo"
   {
     printf '#!/usr/bin/env bash\n'
-    printf 'base=%s\n' "$base"
+    printf 'base=%s\nDBX_HARNESS_RAIZ=%q\n' "$base" "$DBX_HARNESS_RAIZ"
     printf 'printf "%%s\\n" "$*" >>"$base/argv"\n'
     # O cabecalho NAO viaja em argv: vai pelo arquivo de opcoes na entrada
     # padrao, justamente para o segredo ficar fora da tabela de processos.
@@ -40,9 +40,9 @@ _ambiente() {
     # sobre cabecalhos.
     printf 'opcoes=$(cat)\n'
     printf 'printf "%%s\\n" "$opcoes" >>"$base/opcoes"\n'
-    printf 'saida=""; escrever=""; anterior=""; url=""; fail="nao"; cabecalhos=""\n'
+    printf 'saida=""; escrever=""; anterior=""; url=""; fail="nao"; cabecalhos=""; corpo_arquivo=""\n'
     printf 'for arg in "$@"; do\n'
-    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; esac\n'
+    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; --data-binary) corpo_arquivo=${arg#@} ;; esac\n'
     printf '  case $arg in http*) url=$arg ;; --fail) fail="sim" ;; esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
@@ -65,6 +65,13 @@ _ambiente() {
     printf 'else\n'
     printf '  corpo=$(cat "$base/corpo"); codigo=$(cat "$base/codigo")\n'
     printf 'fi\n'
+    # RF-137: o `upload` de pasta e o `sync --enviar`, que manda 2 ou mais
+    # pequenos por `upload_session/start` + `finish_batch_v2`; as rotas de lote
+    # respondem pelo duplo compartilhado (as demais seguem as regras acima).
+    cat <<'LOTE'
+. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+lote_responder "$url" "$corpo_arquivo" || :
+LOTE
     # RF-61(c): a origem muda DURANTE o envio — mesmo tamanho, `mtime`
     # restaurado — e o duplo so devolve quando o `ctime` ja difere (o relogio de
     # carimbos do nucleo e grosso; espera por condicao, nao por tempo).

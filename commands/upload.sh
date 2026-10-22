@@ -179,6 +179,10 @@ dbx_cmd_upload_executar() {
     [[ $forcar == 'sim' ]] && forcar_sync=(--forcar)
     # RF-82: o limite vai ja convertido, para a variavel nao ser relida no sync.
     [[ -n $DBX_CMD_LIMITE_BANDA ]] && forcar_sync+=(--limite-banda "$DBX_CMD_LIMITE_BANDA")
+    # RF-133: o upload de pasta nunca usa --paralelo nem DBX_PARALELO (fora do
+    # escopo da fase 9).
+    # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico
+    local DBX_CMD_SYNC_CHAMADOR='upload'
     dbx_cmd_sync_executar --enviar ${forcar_sync[@]+"${forcar_sync[@]}"} \
       --origem "$origem" --destino "$alvo_remoto"
     return $?

@@ -36,12 +36,12 @@ _cenario() {
   printf '%s' 'conteudo remoto' >"$base/conteudo_remoto"
   {
     printf '#!/usr/bin/env bash\n'
-    printf 'base=%s\n' "$base"
+    printf 'base=%s\nDBX_HARNESS_RAIZ=%q\n' "$base" "$DBX_HARNESS_RAIZ"
     printf 'conf=$(cat 2>/dev/null)\n'
     printf 'printf "%%s\\n" "$conf" >>"$base/opcoes"\n'
-    printf 'saida=""; escrever=""; anterior=""; url=""; cabecalhos=""\n'
+    printf 'saida=""; escrever=""; anterior=""; url=""; cabecalhos=""; corpo_arquivo=""\n'
     printf 'for arg in "$@"; do\n'
-    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; esac\n'
+    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; --data-binary) corpo_arquivo=${arg#@} ;; esac\n'
     printf '  case $arg in http*) url=$arg ;; esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
@@ -56,6 +56,13 @@ _cenario() {
     printf '  *upload_session/append_v2*) corpo=%s ;;\n' "'{}'"
     printf '  *) corpo=%s ;;\n' "'{\"name\":\"x\",\"rev\":\"1\"}'"
     printf 'esac\n'
+    # RF-136: o lote de exclusao do `--espelhar` (delete_batch + check) responde
+    # aqui; cada item confirmado e ecoado em `chamadas` como `files/delete_v2`.
+    cat <<'LOTE'
+LOTE_ECOA_V2=sim
+. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+lote_responder "$url" "$corpo_arquivo" || :
+LOTE
     # Conflito de rev (RF-49): o envio cujo argumento cita o caminho marcado e
     # recusado como a Dropbox recusa, com 409 e tag `conflict`.
     printf 'if [[ $url == *files/upload && -f "$base/upload_conflito" && $conf == *"$(cat "$base/upload_conflito")"* ]]; then\n'
@@ -84,6 +91,12 @@ for tipo in upload:files/upload download:files/download delete:files/delete_v2; 
     corpo=$(cat "$base/erro_corpo")
   fi
 done
+# RF-137: dois ou mais pequenos vao por `upload_session/start` (lote); o erro de
+# envio dado e o mesmo nessa rota, para o item falhar com a mesma classe e resumo.
+if [[ $url == *upload_session/start && -f "$base/upload_erro" ]]; then
+  codigo=$(cat "$base/upload_erro")
+  corpo=$(cat "$base/erro_corpo")
+fi
 if [[ -f "$base/sinal" && $url == *"$(cat "$base/sinal_url")"* ]]; then
   kill -s "$(cat "$base/sinal")" 0
   sleep 5
@@ -621,7 +634,9 @@ teste_envio_sobre_arquivo_existente_carrega_o_rev_da_listagem() {
   # vai em modo add, sem renomeacao automatica.
   local base opcoes
   base=$(_cenario)
-  printf 'novo conteudo' >"$base/local/x.txt"
+  # x acima do limiar do lote (DIV-256) e y sozinho abaixo dele (DIV-272): ambos
+  # unitarios, que e onde o argumento viaja no cabecalho do cliente.
+  head -c 1048577 /dev/zero >"$base/local/x.txt"
   printf 'arquivo novo' >"$base/local/y.txt"
   printf '{"entries":[%s],"has_more":false}' \
     "$(_entrada_remota_com_rev '/r/x.txt' "$RESUMO_ZERADO" 5 015abc)" >"$base/listagem"
@@ -640,7 +655,9 @@ teste_conflito_de_rev_nao_sobrescreve_e_conta_como_falha() {
   # codigo de saida e o de operacao nao concluida.
   local base
   base=$(_cenario)
-  printf 'novo conteudo' >"$base/local/x.txt"
+  # x acima do limiar do lote (1 MiB, DIV-256) e y sozinho abaixo dele (DIV-272):
+  # os dois seguem o envio unitario, que e o que o RF-49 verifica.
+  head -c 1048577 /dev/zero >"$base/local/x.txt"
   printf 'arquivo novo' >"$base/local/y.txt"
   printf '{"entries":[%s],"has_more":false}' \
     "$(_entrada_remota_com_rev '/r/x.txt' "$RESUMO_ZERADO" 5 015abc)" >"$base/listagem"

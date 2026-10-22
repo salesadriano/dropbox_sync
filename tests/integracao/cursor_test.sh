@@ -1290,13 +1290,17 @@ teste_cuv14_cus04_auditoria_exclusao_so_apos_confirmacao() {
   # Auditoria estatica (TC-CUD-14, TC-CUS-04): em commands/sync.sh, o laco da
   # enumeracao chama a confirmacao ANTES de o plano ser emitido, e a remocao
   # local so existe no laco de exclusao, depois do plano.
-  local texto confirma plano apaga
+  local texto confirma plano
   texto=$(grep -vE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ/commands/sync.sh")
   confirma=$(grep -n 'dbx_sync_confirmar_exclusoes' <<<"$texto" | head -n 1)
   plano=$(grep -n 'dbx_output_campo a_apagar' <<<"$texto" | head -n 1)
-  apaga=$(grep -n '"\$apagar" "\$raiz_do_destino"' <<<"$texto" | head -n 1)
-  [[ -n $confirma && -n $plano && -n $apaga ]] || _harness_falhar 'pontos da auditoria nao encontrados'
-  [[ ${confirma%%:*} -lt ${plano%%:*} && ${plano%%:*} -lt ${apaga%%:*} ]] ||
+  # RF-136: a exclusao remota (sentido enviar) e o lote; a local segue item a item.
+  # As duas ficam DEPOIS do plano.
+  local apaga_remoto apaga_local
+  apaga_remoto=$(grep -n '^ *_dbx_cmd_sync_apagar_remoto_em_lote "\$remoto"' <<<"$texto" | head -n 1)
+  apaga_local=$(grep -n 'if _dbx_cmd_sync_apagar_local "\$raiz_local"' <<<"$texto" | head -n 1)
+  [[ -n $confirma && -n $plano && -n $apaga_remoto && -n $apaga_local ]] || _harness_falhar 'pontos da auditoria nao encontrados'
+  [[ ${confirma%%:*} -lt ${plano%%:*} && ${plano%%:*} -lt ${apaga_remoto%%:*} && ${plano%%:*} -lt ${apaga_local%%:*} ]] ||
     _harness_falhar 'a confirmacao tem de vir antes do plano, e o plano antes da exclusao'
   # A data remota (RF-39) continua com um unico ponto de leitura em lib/sync.
   local codigo_sync

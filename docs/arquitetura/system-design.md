@@ -7,7 +7,7 @@
 - Projeto ou produto: `dropbox_api` — aplicacao de linha de comando em shell script para integracao com a Dropbox API v2
 - Responsavel Business Analyst: Business Analyst (pacote de agents)
 - Responsavel tecnico principal: a definir pelo Tech Lead
-- Data da versao: 2026-10-21 (**v1.17**)
+- Data da versao: 2026-10-22 (**v1.18**)
 - Status: 🔴 **`lib/stream` era componente planejado e NAO se materializou** (`DIV-20`); `RF-31` roda em `lib/transfer` + `lib/hash`. **Tamanho de parte FIXO em 4.194.304 bytes** (`DIV-19`, `DP-30`). **Limite de plataforma registrado em `RSK-36` / `DIV-18`.** **Todas as decisoes do `sync` fechadas.** Quinze comandos na fase 3 (`DIV-68`: o "nove" era anterior as fases 1 e 3), dezessete na fase 5 (`link-temporario` e `compartilhar`, em andamento), dezoito na fase 6 (`reter`, em andamento); `RSK-24` com mitigacao estrutural em vez de aceite. Nenhuma decisao do solicitante em aberto para o `sync`
 
 Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](../requisitos/decisoes-pendentes.md) · [Funcionalidades candidatas](../requisitos/funcionalidades-candidatas.md) · [Riscos e licenciamento](../requisitos/riscos-restricoes-e-licenciamento.md)
@@ -17,6 +17,7 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 | Versao | Mudanca |
 |---|---|
 | v0.1 | Proposta arquitetural inicial |
+| **v1.18** | **Fase 9 (2026-10-22; memoria `2026-10-21-2300-desempenho`; porte G): desempenho (`F-09`, `F-08`, `F-34`; escopo v1.25, secao 5.18).** Secao "Desempenho: paralelismo, lote e bancada" reescrita com o desenho implementado: componente novo `lib/lote.sh`; processo principal unico gravador de estado e auxiliares nas transferencias (`--paralelo`, 1 a 8); exclusao em lote so no `sync --espelhar` (fatias de 250, `check` com recuo); `reter` item a item (`DIV-269`); envio em lote com `start` nos auxiliares, `finish_batch_v2` no principal em grupos de 250 e conferencia de `content_hash` (`DIV-278`); bancada com marcador e limpeza. Diagrama de sequencia do envio em lote. Sem codigo de saida novo e sem estado persistente novo. |
 | **v1.17** | **Fase 8 (2026-10-21; memoria `2026-10-21-1735-perfis`; porte G): perfis nomeados de credencial (`F-18`; escopo v1.24, secao 5.17).** `DP-05` **reaberta e resolvida de novo**: o desenho da v0.6 ("um arquivo, um caminho, sem seletor") e substituido por `credencial.json` como perfil `padrao` mais `perfis/<nome>.json`, selecao por `--perfil`/`--profile` e `DBX_PERFIL`, nome validado antes de qualquer acesso (`RNF-37`), perfil inexistente sem recuo para o `padrao`. Nova secao de componentes "Perfis nomeados de credencial" com a tabela de atribuicao do estado por identidade (a `memoria-*` e chaveada pelo `account_id`, nao por `cred-`), o `unlink` seletivo (`DIV-237`, `DIV-238`, `C8` do DBA) e dois diagramas Mermaid (selecao e `unlink`). **Trava por raiz local canonica** no `sync --receber` (`RF-132`, `DIV-250`). `lib/preflight` passa a inspecionar o caminho resolvido. `DIV-236` a `DIV-251` resolvidas; parecer do DBA aceito (`C1` a `C10`); `F-44` e `RSK-91` a `RSK-93`. Nenhum codigo de saida nem formato de estado novo. |
 | **v1.16** | **Cursor de listagem entre execucoes (fase 7b, 2026-10-21; `F-14`; `RF-110` a `RF-119`; porte G; em andamento).** Secao "Cursor de listagem entre execucoes", com o fluxo em Mermaid. **Estado persistente novo** sob `lib/state`: namespace `cursor-<resumo32>` (formato NUL v1 com magia `dbx-cursor`, cursor mais **retrato remoto sem filtro** e rodape SHA-256 num arquivo so; leitor em fluxo limitado a campo de 8 KiB, 1.000.000 de entradas e 512 MiB). `lib/sync` passa a montar a **tabela remota inteira e filtrar depois** (`DIV-g`), aplica o delta do `list_folder/continue` pela receita do servico e confirma no servidor toda candidata a exclusao do modo incremental. `RNF-26` ganha o item (8) (`DIV-e`); linha de `lib/state` atualizada (o cursor existe; `DIV-a` da 7a fechada); chaves por `cred-` e `account_id` no cabecalho (`DIV-i`). `F-40` corrigida so no caminho do `sync` (`DIV-214` B). Contratos conferidos no Context7 (`DIV-219`). Nenhum codigo de saida novo; nenhuma escrita remota nova. Divergencias de implementacao a partir de `DIV-221`. |
 | **v1.15** | **Retomada entre execucoes (fase 7a, 2026-10-21; `F-03`; `RF-101` a `RF-109`; porte G; em andamento).** Secao "Retomada entre execucoes", com o fluxo em Mermaid do upload e do download. **Estado persistente novo** sob `lib/state`: namespace `retomada-*` (formato NUL v1 com magia `dbx-retomada`, leitor limitado a 16 KiB, chave SHA-256 com separador NUL) e trava de registro (`trava-*` com comando `retomada`); fora do diretorio de estado, o `.part` do download retomavel na arvore do usuario. `RNF-26` emendado (`DIV-b`), linha de `lib/state` corrigida (`DIV-a`: o cursor ainda nao existe), "F-03 segue fora" substituido (`DIV-c`) e o separador `\n` das chaves antigas registrado como risco teorico (`DIV-d`), todos do parecer do DBA da fase 7a (condicoes `C1` a `C6`). Contrato do cliente estendido com `continue-at` (pedido de faixa). Nenhum codigo de saida novo; nenhuma escrita remota nova. Divergencias de implementacao `DIV-191` a `DIV-202`. |
@@ -1298,6 +1299,55 @@ flowchart LR
 ```
 
 ---
+
+## Desempenho: paralelismo, lote e bancada (fase 9, v1.25)
+
+Visao apenas; o detalhe tecnico e do Senior Developer. Requisitos: secao 5.18 do escopo (`RF-133` a `RF-139`, `RNF-21` emendado, `RNF-38`).
+
+```mermaid
+flowchart TD
+  L[Listagem sequencial RES-11] --> P[Plano do sync]
+  P --> G[Guardas: origem vazia, reconhecimento, confirmar]
+  G --> T[Transferencias com --paralelo N, max 8]
+  G --> E[Exclusao em lote: delete_batch + check]
+  G --> U[Envio em lote: upload_session + finish_batch_v2]
+  T --> R[Processo principal serializa cache, trava e resumo]
+  E --> R
+  U --> R
+  R --> S[Saida item a item]
+  B[Bancada: pasta dedicada, ok do solicitante] -. mede .-> T
+```
+
+**Desenho implementado.** O diagrama acima mostra a intencao; a implementacao difere em `reter` e no componente de lote:
+
+- **Componente novo `lib/lote.sh`** (camada de adaptadores; depende de `lib/auth`, `lib/http`, `lib/json`). Expoe `dbx_lote_excluir` (`delete_batch` + `delete_batch/check`) e `dbx_lote_concluir_envio` (`finish_batch_v2`). Nao guarda estado entre execucoes (`DIV-263`, `RNF-38(c)`). A guarda destrutiva nao mora nele: quem chama entrega uma lista que ja passou por todas as guardas, identificada por caminho canonico e `rev`.
+- **Processo principal e auxiliares.** Com `--paralelo N` (1 a 8), as transferencias rodam em ate N processos auxiliares; N=1 nao cria auxiliar. O auxiliar devolve o resultado do item e nunca escreve estado; so o principal grava cache, trava, memoria e resumo, e descarrega a saida na ordem do plano (`DIV-257`). A listagem continua sequencial (`RNF-21`).
+- **Exclusao em lote, so no `sync --espelhar`.** Depois das guardas (origem vazia, reconhecimento, `--confirmar`, protegido), a lista segue em fatias de 250 (`DIV-259`). Cada fatia faz `delete_batch` e depois `check` com recuo de 1 s dobrando ate 10 s e teto de 120 s por fatia (`DIV-262`). Em `complete`, a conferencia e por posicao: so a entrada confirmada conta; entrada com erro, ausente ou de tag desconhecida e falha do item. Estouro do teto ou falha de chamada derruba a fatia inteira, sem repetir a exclusao (`DIV-273`).
+- **`reter` item a item.** Continua com `delete_v2` por item e `RF-97` intacto (`DIV-269`, decisao do solicitante); nao usa `lib/lote.sh`.
+- **Envio em lote de pequenos, no `sync --enviar`.** Pequeno e ate 1 MiB e o lote so ocorre com 2 ou mais (`DIV-256`, `DIV-272`); o skip por `content_hash` vem antes. Os `upload_session/start` rodam nos auxiliares (com `content_hash` local, `DIV-278`); o `finish_batch_v2` roda so no principal, em serie, em grupos de 250 (`DIV-264`, `DIV-270`), apos todos os `start` (`DIV-277`). Cada entrada devolvida tem o `content_hash` conferido com o local: divergente falha so o item com a classe `integridade`. Falha por entrada nao derruba as demais.
+- **Bancada (`scripts/bancada.sh`).** Script POSIX fora da suite, que gera o volume de semente fixa, mede `sync` e `reter` e imprime `chave=valor`. Opera so numa pasta remota dedicada, criada com marcador e recusada se ja existir sem ele; `trap` em `EXIT`, `INT` e `TERM` faz a limpeza; exige `--confirmo-conta-real` a cada execucao (`DIV-265`); os logs passam por mascara de segredo.
+
+```mermaid
+sequenceDiagram
+  participant P as Processo principal
+  participant A as Auxiliares (ate N)
+  participant D as Dropbox API
+  P->>P: plano, guardas, skip por content_hash
+  P->>A: pequenos (>= 2, ate 1 MiB)
+  par ate N em paralelo
+    A->>D: upload_session/start (bytes, content_hash local)
+    D-->>A: session_id
+  end
+  A-->>P: resultado por item (sem escrever estado)
+  loop grupos de 250
+    P->>D: upload_session/finish_batch_v2 (close=true)
+    D-->>P: um resultado por entrada
+    P->>P: confere content_hash; divergente = falha integridade
+  end
+  P->>P: grava cache so das entradas confirmadas, saida na ordem do plano
+```
+
+Componentes: `commands/sync` monta as listas ja guardadas; `lib/transfer` executa as transferencias e fixa o limiar de pequeno; `lib/lote` executa a exclusao e o fechamento do envio em lote; `lib/http` mantem retentativa e `Retry-After`; `lib/state` so e escrito pelo processo principal; a bancada e um script separado da suite (`DIV-265`). Metadados em lote ficam fora (`F-46`) e a conferencia de `content_hash` no `files/upload` unitario vai ao backlog (`F-47`, `DIV-280`). Interrupcao durante o `check` pode deixar a fatia apagada no servidor sem contagem; sai `14` e os itens vao para a lixeira (`DIV-275`).
 
 ## Proximos passos
 

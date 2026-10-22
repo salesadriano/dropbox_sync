@@ -50,13 +50,13 @@ _qa_cenario() {
   printf '%s' 'sl.QAtokenPadrao' >"$base/token"
   {
     printf '#!/usr/bin/env bash\n'
-    printf 'base=%q\n' "$base"
+    printf 'base=%q\nDBX_HARNESS_RAIZ=%q\n' "$base" "$DBX_HARNESS_RAIZ"
     cat <<'FIM'
 conf=$(cat 2>/dev/null)
 printf '%s\n' "$conf" >>"$base/opcoes"
-saida=''; escrever=''; ant=''; url=''; cabecalhos=''; fail=nao
+saida=''; escrever=''; ant=''; url=''; cabecalhos=''; fail=nao; corpo_arquivo=''
 for arg in "$@"; do
-  case $ant in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; esac
+  case $ant in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; --data-binary) corpo_arquivo=${arg#@} ;; esac
   case $arg in http*) url=$arg ;; --fail) fail=sim ;; esac
   ant=$arg
 done
@@ -74,6 +74,44 @@ case $url in
   *get_space_usage*) corpo='{"used":0,"allocation":{".tag":"individual","allocated":1000000000000}}' ;;
   *) corpo='{"name":"x","rev":"1"}' ;;
 esac
+# Rotas de lote (RF-136): delegadas ao duplo compartilhado; a exclusao do sync vai
+# por `delete_batch` + `check`, e cada item confirmado ecoa um `files/delete_v2`.
+LOTE_ECOA_V2=sim
+. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+codigo_anterior=$codigo corpo_anterior=$corpo
+# Falhas por item do envio em lote (equivalem as de `falhar_envio` do `files/upload`):
+# cada linha "<trecho> <codigo> <resumo>" cujo trecho casa com o caminho marca a
+# entrada como falha; o resumo escolhe a classe (conflict | insufficient_space |
+# outra), para as classes seguirem distintas pelo lote.
+if [[ $url == *finish_batch_v2 && -r "$base/falhar_envio" ]]; then
+  mkdir -p "$base/lote/envio_falha"
+  pedido_lote=$(cat "$corpo_arquivo")
+  while IFS= read -r caminho_lote; do
+    while read -r trecho cod resumo; do
+      [[ $caminho_lote == *"$trecho"* ]] && : >"$base/lote/envio_falha/${caminho_lote##*/}"
+    done <"$base/falhar_envio"
+  done < <(_lote_caminhos "$pedido_lote")
+fi
+lote_responder "$url" "$corpo_arquivo" || { codigo=$codigo_anterior; corpo=$corpo_anterior; }
+if [[ $url == *finish_batch_v2 && -r "$base/falhar_envio" ]]; then
+  lit_conflito='{".tag":"failure","failure":{".tag":"path","path":{".tag":"conflict","conflict":{".tag":"file"}}}}'
+  resto_corpo=$corpo saida_corpo=''
+  while IFS= read -r caminho_lote; do
+    [[ -f $base/lote/envio_falha/${caminho_lote##*/} ]] || continue
+    resumo_lote=''
+    while read -r trecho cod resumo; do
+      [[ $caminho_lote == *"$trecho"* ]] && resumo_lote=$resumo
+    done <"$base/falhar_envio"
+    case $resumo_lote in
+      path/conflict*) troca=$lit_conflito ;;
+      path/insufficient_space*) troca='{".tag":"failure","failure":{".tag":"path","path":{".tag":"insufficient_space"}}}' ;;
+      *) troca='{".tag":"failure","failure":{".tag":"other"}}' ;;
+    esac
+    saida_corpo+="${resto_corpo%%"$lit_conflito"*}$troca"
+    resto_corpo=${resto_corpo#*"$lit_conflito"}
+  done < <(_lote_caminhos "$pedido_lote")
+  corpo=$saida_corpo$resto_corpo
+fi
 if [[ $url == *files/upload && -r "$base/falhar_envio" ]]; then
   while read -r trecho cod resumo; do
     if [[ $conf == *"$trecho"* ]]; then
@@ -388,6 +426,10 @@ teste_qa_json_com_tres_falhas_de_classes_distintas_mantem_a_ordem() {
   done < <(_qa_linhas_de_falha "$DBX_ERRO")
   assert_igual "$esperado" "$obtido" 'os pares seguem a ordem e a classe das linhas de falha'
   assert_contem 'falha_caminho=a.txt;' "$obtido" 'o primeiro item falho esta presente'
+  # As tres classes seguem distintas pelo lote (nenhuma colapsa em "erro_remoto").
+  local classes
+  classes=$(tr ';' '\n' <<<"$obtido" | grep '^falha_classe=' | sort -u | wc -l | tr -d ' ')
+  assert_igual 3 "$classes" 'tres classes de falha distintas'
   assert_nao_contem 'b.txt' "$obtido" 'o item enviado nao vira par'
 }
 
@@ -489,10 +531,34 @@ teste_qa_int_durante_a_exclusao_do_espelho_nao_deixa_area() {
   printf '{"entries":[%s],"has_more":false}' "$(_qa_entrada /r/so-remoto.txt ff 15)" >"$base/listagem"
   printf 'x' >"$base/local/a.txt"
   printf 'INT' >"$base/sinal"
-  printf 'files/delete_v2' >"$base/sinal_url"
+  # RF-136: a exclusao do espelho e `files/delete_batch` (nao ha mais `delete_v2`
+  # por item); o sinal chega no lancamento do lote, que e a exclusao.
+  printf 'files/delete_batch' >"$base/sinal_url"
   _qa_rodar_em_sessao "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
   assert_igual "$QA_NAO_CONCLUIDA" "$DBX_ESTADO" 'interrompido e nao concluido'
-  assert_igual 1 "$(_harness_contar 'files/delete_v2' "$base/chamadas")" 'o sinal chegou na exclusao'
+  assert_igual 1 "$(_harness_contar 'files/delete_batch' "$base/chamadas")" 'o sinal chegou na exclusao (lancamento do lote)'
+  assert_igual 0 "$(_harness_contar 'delete_batch/check' "$base/chamadas")" 'nao chegou a consultar o lote'
+  assert_igual '' "$(find "$base/tmp" -mindepth 1)" 'nenhuma area dbx-sync.* nem dbx-http.*'
+}
+
+# Reforco da fase 9: o sinal chega com o lote JA lancado (fatia em voo, durante o
+# `check`). A exclusao pode ter sido concluida no servidor; o cliente nao deixa
+# area nem repete o lancamento, e nao conta nenhum item como excluido.
+teste_qa_int_durante_a_conferencia_do_lote_nao_deixa_area_nem_repete() {
+  local base
+  base=$(_qa_cenario)
+  printf '{"entries":[%s],"has_more":false}' "$(_qa_entrada /r/so-remoto.txt ff 15)" >"$base/listagem"
+  printf 'x' >"$base/local/a.txt"
+  printf 'INT' >"$base/sinal"
+  printf 'delete_batch/check' >"$base/sinal_url"
+  _qa_rodar_em_sessao "$base" sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual "$QA_NAO_CONCLUIDA" "$DBX_ESTADO" 'interrompido e nao concluido'
+  assert_igual 1 "$(_harness_contar 'delete_batch/check' "$base/chamadas")" 'o sinal chegou na conferencia do lote'
+  assert_igual 1 "$(_harness_contar 'files/delete_batch$' "$base/chamadas")" 'o lote foi lancado uma unica vez'
+  # O servidor (duplo) ja concluiu a exclusao antes do sinal: o eco registra a
+  # exclusao no servidor, que o cliente interrompido nao chegou a confirmar.
+  assert_igual 1 "$(_harness_contar 'files/delete_v2' "$base/chamadas")" 'a exclusao em voo ficou concluida no servidor'
+  assert_igual 0 "$(_harness_contar 'apagados=[1-9]' "$base/out")" 'o cliente nao relata exclusao que nao confirmou'
   assert_igual '' "$(find "$base/tmp" -mindepth 1)" 'nenhuma area dbx-sync.* nem dbx-http.*'
 }
 

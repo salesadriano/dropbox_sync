@@ -59,7 +59,7 @@ _qa_cenario() {
   QA_N=0
   QA_AMBIENTE=()
   {
-    printf '#!%s\nQA=%q\n' "$BASH" "$B"
+    printf '#!%s\nQA=%q\nDBX_HARNESS_RAIZ=%q\n' "$BASH" "$B" "$DBX_HARNESS_RAIZ"
     cat <<'FIM'
 conf=''
 IFS= read -r -d '' conf
@@ -85,6 +85,13 @@ else
   [[ $conf =~ Dropbox-API-Arg:\ ([^$'\n']*) ]] && registro=${BASH_REMATCH[1]}
   printf '%s\t%s\t%s\n' "$ep" "$limite" "$registro" >>"$QA/chamadas"
   achou=nao n=0
+  # Rotas de lote (RF-136): o duplo compartilhado responde antes das regras; cada
+  # item confirmado ecoa `files/delete_v2<TAB>limite<TAB>corpo` (3 campos).
+  base=$QA LOTE_ECOA_V2=sim LOTE_ECOA_CAMPO=$limite
+  . "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+  if lote_responder "$url" "$dados"; then
+    achou=sim cod=$codigo
+  else
   while IFS=$'\t' read -r rep rfi rco rar rvz; do
     n=$((n + 1))
     [[ -n $rep ]] || continue
@@ -98,6 +105,7 @@ else
     [[ -r $QA/resp/$rar ]] && IFS= read -r -d '' corpo <"$QA/resp/$rar"
     break
   done <"$QA/regras"
+  fi
   [[ $achou == sim ]] || printf 'SEM_REGRA %s\n' "$ep" >>"$QA/chamadas"
 fi
 [[ -n $o ]] && printf '%s' "$corpo" >"$o"

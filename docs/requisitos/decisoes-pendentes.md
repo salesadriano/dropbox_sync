@@ -635,6 +635,10 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 4. Ha janela de tempo maxima para conclusao de uma rotina?
 5. Banda disponivel e espaco livre na area temporaria dos hosts?
 
+**Fase 9 (2026-10-21):** a bancada de medicao (`RF-138`, `F-34`) fornece os numeros reais (volume misto padrao: 1000 pequenos, 50 medios, 2 grandes, ~500 MB) sobre `334394e` e ao fim da fase; **a calibragem da `DP-12` (e dos valores `DIV-256`, `DIV-258`, `DIV-259`) sai dessas medicoes, nao de estimativa**. Ate haver medicao, a `DP-12` segue parcialmente calibrada.
+
+**Medido na fase 9 (2026-10-22, bancada, conta real, semente 42; 1052 arquivos, 369 MB: 1000 pequenos, 50 medios, 2 de 100 MB):** sobre `334394e` com N=1, o envio levou 1996 s (cerca de 0,18 MB/s, 1056 chamadas), o reenvio sem mudancas 25 s e o recebimento 1328 s. Em `ad17cb0`, o envio levou 1521 s com N=1 e 485 s com N=4; o recebimento levou 1387 s com N=1 e 367 s com N=4. Nenhum `429` apareceu em nenhuma execucao, inclusive com N=4, e a listagem continua sequencial. Efeito nos valores: o limiar de 1 MiB do envio em lote (`DIV-256`) fica, porque o envio com N=1 caiu 23,8%. A reducao dinamica de `N` apos `429` (`DIV-258`, opcao B) nao se justifica, porque nao houve `429` com N=4. A fatia de 250 da exclusao em lote (`DIV-259`) continua sem medicao, porque a bancada nao exercita o `--espelhar`. A `DP-12` continua **parcialmente calibrada**: a bancada mede o custo de um volume representativo, mas os volumes de negocio (frequencia, numero de hosts, janela) continuam com o solicitante. Detalhe na secao 5.4 do [registro da fase 9](../reviews/2026-10-21-2300-registro-desempenho-b9.md).
+
 **Bloqueia:** secao de dimensionamento do System Design, tamanho padrao de parte, politica de retentativa.
 **Nao bloqueia o inicio da implementacao:** valores padrao conservadores permitem comecar. A resposta serve para calibrar, e tambem para reavaliar a promocao de F-03 do backlog caso surjam arquivos de varios gigabytes ou rede instavel.
 
@@ -732,6 +736,8 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 **Pontos propostos pelo Business Analyst e decididos depois pelo Tech Lead (memoria `2026-10-18-2045-detalhes-tecnicos-rede-p2`)** (listados no registro de entrega): leitura de "5 tentativas" como total com a primeira inclusa; cada retomada consumir uma tentativa; tratamento de `Retry-After` em formato de data HTTP (hoje tratado como invalido, caindo no recuo); recusa de arquivo cujo tamanho mudou durante o envio.
 
 ### DP-34 — Cache unico, skip do upload, chave canonica e segredo (fase 3) ✅ **RESOLVIDA (em implementacao em `feature/cache-unico-p3`)**
+
+> **Fase 9 (2026-10-21):** o adiamento do paralelismo e das APIs em lote e encerrado com a condicao cumprida: a medicao previa (`RF-138`) vem **antes** do codigo. Entram `F-09` (`--paralelo`), `F-08` (exclusao e envio em lote) e `F-34`; metadados em lote ficam fora (`F-46`). Ver secao 5.18 do escopo e `DIV-256` a `DIV-265`.
 
 > Escrita **na mesma rodada** em que as decisoes foram recebidas (`RSK-26`). Memorias: `2026-10-18-2243-cache-unico-e-segredo`, `2026-10-18-2243-cache-do-upload`, `2026-10-18-1745-skip-upload-condicionado`. Handoff do DBA: [parecer](../reviews/2026-10-18-2243-parecer-dba-cache-unico.md).
 
