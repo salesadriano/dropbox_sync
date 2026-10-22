@@ -558,6 +558,9 @@ _canal_nao_carrega_credencial() {
   case $1 in
     # Codigos de saida e constantes de classe: valores fixos da taxonomia.
     DBX_ERRORS_STATUS_USO | DBX_ERRORS_CLASSES | DBX_ERRORS_CODIGO) return 0 ;;
+    # Classe e politica publicadas por variavel (P3.4, fase 3): valores tirados
+    # da tabela fixa da taxonomia, os mesmos que DBX_HTTP_CLASSE/POLITICA copiam.
+    DBX_ERRORS_CLASSE | DBX_ERRORS_POLITICA) return 0 ;;
     # Metadados de resposta, nunca conteudo: codigo HTTP, classe, politica e
     # identificador de correlacao emitido pelo servico.
     DBX_HTTP_CODIGO | DBX_HTTP_CLASSE | DBX_HTTP_POLITICA) return 0 ;;
@@ -724,6 +727,127 @@ teste_auxiliar_de_contagem_discrimina() {
     'arquivo ausente conta zero'
   assert_igual 2 "$(_harness_contar alvo "$area/com_alvo")" \
     'duas correspondencias contam duas'
+}
+
+# ---------------------------------------------------------------------------
+# TC-DOC-01 (RNF-34): nenhum texto lido pelo operador ou pelo mantenedor
+# afirma o contrario do que o codigo faz. Cada busca fixa uma contradicao ja
+# encontrada (P5.1); a busca textual ampla fica na revisao.
+# ---------------------------------------------------------------------------
+
+teste_documentacao_nao_contradiz_o_estado_persistente_nem_as_dependencias() {
+  local raiz=$DBX_HARNESS_RAIZ achados readme
+  IFS= read -r -d '' readme <"$raiz/README.md" || :
+  # (a) Existe memoria persistente em `lib/state` (RF-38, RF-61): `lib/http` nao
+  # persiste nada, mas nao pode dizer que nao ha estado local.
+  achados=$(grep -n -i 'nao ha estado local' "$raiz/lib/http.sh" || true)
+  assert_igual '' "$achados" "RNF-34(a): lib/http nega a memoria de lib/state: $achados"
+  # (b) RNF-02: a unica dependencia externa e o cURL, alem do bash e da base.
+  achados=$(grep -n -i -E 'sem depend[eê]ncias externas al[eé]m de|exclusivamente com `bash`' \
+    "$raiz/README.md" || true)
+  assert_igual '' "$achados" "RNF-34(b): README ignora os utilitarios da base: $achados"
+  assert_contem 'única dependência externa' "$readme" 'RNF-34(b): o README diz qual e a dependencia'
+  # (d) Nenhuma verificacao previa confere a versao do cURL.
+  achados=$(grep -n -E 'cURL`? *[0-9]+\.[0-9]+' "$raiz/README.md" || true)
+  assert_igual '' "$achados" "RNF-34(d): versao minima do cURL sem verificacao: $achados"
+  # (e) PRJ-DEC-07 foi revogada para o sync na v0.8.
+  achados=$(grep -n 'PRJ-DEC-07' "$raiz/lib/output.sh" || true)
+  assert_igual '' "$achados" "RNF-34(e): lib/output cita decisao revogada: $achados"
+}
+
+# ---------------------------------------------------------------------------
+# Ponto unico do caminho remoto (F-36, F-37; RNF-20(b1), RNF-10(b))
+# ---------------------------------------------------------------------------
+#
+# RNF-20(b1): nenhum comando dispensa o confinamento, inclusive comando futuro.
+# Regra de disciplina sem conjunto enumerado protege so onde foi escrita; aqui
+# o conjunto deriva do artefato: todo `commands/*.sh` que leva caminho remoto a
+# API (`"path"` num corpo, delegacao ao `sync` ou papel `--origem`).
+
+# Chamada de rede ou delegacao que nao pode vir antes do ponto unico.
+readonly _REDE_DE_COMANDO='dbx_auth_|_dbx_cmd_consultar|_dbx_cmd_escrita_remota|dbx_cmd_espaco_|dbx_cmd_receber_arquivo|dbx_transfer_|dbx_cmd_sync_executar|dbx_sync_enumerar_remoto|_dbx_cmd_[a-z_]+_hash_remoto'
+
+# _auditar_caminho_remoto <nome.sh> <texto> — imprime um achado por linha.
+_auditar_caminho_remoto() {
+  local nome=$1 texto linha corpo primeiro_ponto primeira_rede
+  texto=$(grep -vE '^[[:space:]]*#' <<<"$2")
+  # (a) Ninguem fala com lib/path remoto direto: so o ponto unico.
+  grep -qE 'dbx_path_remoto_' <<<"$texto" && printf '%s: chama lib/path remoto sem o ponto unico\n' "$nome"
+  # (b) A recusa nunca e ignorada nem reemitida: o status so se propaga.
+  while IFS= read -r linha; do
+    [[ $linha =~ _dbx_cmd_caminho_remoto\ \"[^\"]*\"(\ /)?\ \|\|\ return\ \$\?[[:space:]]*$ ]] ||
+      printf '%s: recusa do ponto unico nao propagada: %s\n' "$nome" "${linha#"${linha%%[![:space:]]*}"}"
+    # (c) Raiz explicita so no `config`, que define a raiz.
+    [[ $linha == *'" / ||'* && $nome != config.sh ]] &&
+      printf '%s: raiz explicita fora do config\n' "$nome"
+  done < <(grep -E '_dbx_cmd_caminho_remoto' <<<"$texto")
+  # (d) Comando que leva caminho remoto a API passa pelo ponto unico, e nenhuma
+  # chamada de rede do corpo de `executar` vem antes dele.
+  grep -qE '\\"path\\"|dbx_cmd_sync_executar|--origem' <<<"$texto" || return 0
+  grep -q '_dbx_cmd_caminho_remoto' <<<"$texto" || {
+    printf '%s: leva caminho remoto a API sem o ponto unico\n' "$nome"
+    return 0
+  }
+  corpo=$(awk '/^dbx_cmd_[a-z]+_executar\(\) \{/{dentro=1} dentro{print} dentro && /^\}/{exit}' <<<"$texto")
+  corpo=${corpo#*$'\n'} # a linha de definicao nao e chamada
+  primeiro_ponto=$(grep -nE '_dbx_cmd_caminho_remoto' <<<"$corpo" | head -n 1)
+  primeira_rede=$(grep -nE "$_REDE_DE_COMANDO" <<<"$corpo" | head -n 1)
+  [[ -n $primeiro_ponto ]] || {
+    printf '%s: executar sem o ponto unico\n' "$nome"
+    return 0
+  }
+  [[ -z $primeira_rede || ${primeira_rede%%:*} -gt ${primeiro_ponto%%:*} ]] ||
+    printf '%s: rede antes do ponto unico: %s\n' "$nome" "${primeira_rede#*:}"
+  return 0
+}
+
+teste_todo_caminho_remoto_de_comando_passa_pelo_ponto_unico() {
+  local arquivo achado achados='' cobertos=''
+  for arquivo in "$DBX_HARNESS_RAIZ"/commands/*.sh; do
+    achado=$(_auditar_caminho_remoto "${arquivo##*/}" "$(<"$arquivo")")
+    [[ -n $achado ]] && achados+="${achado//$'\n'/ | } | "
+    grep -q '_dbx_cmd_caminho_remoto' "$arquivo" && cobertos+=" ${arquivo##*/}"
+  done
+  assert_igual '' "$achados" "caminho remoto fora do ponto unico: $achados"
+  # O conjunto derivado nao pode encolher em silencio: os oito de hoje.
+  local esperado
+  for esperado in config delete download info list sync upload verificar; do
+    assert_contem " $esperado.sh" "$cobertos" "comando com caminho remoto: $esperado"
+  done
+}
+
+# Fase 3 (RF-72(b), RF-73(g), RF-75(e), RF-76(b)): os tres comandos novos entram
+# no conjunto derivado; caso proprio para nao reescrever a lista aprovada acima.
+teste_comandos_da_recuperacao_passam_pelo_ponto_unico() {
+  local nome arquivo
+  for nome in revisoes restaurar lixeira; do
+    arquivo="$DBX_HARNESS_RAIZ/commands/$nome.sh"
+    assert_arquivo_existe "$arquivo" "comando $nome"
+    grep -q '_dbx_cmd_caminho_remoto' "$arquivo" ||
+      _harness_falhar "$nome.sh nao passa pelo ponto unico"
+    assert_igual '' "$(_auditar_caminho_remoto "$nome.sh" "$(<"$arquivo")")" "auditoria de $nome.sh"
+  done
+}
+
+teste_auditoria_do_ponto_unico_discrimina() {
+  local base=$'dbx_cmd_x_executar() {\n  local c=$1\n'
+  local fim=$'\n  dbx_json_escapar_cadeia "$r"\n  _dbx_cmd_consultar u "{\\"path\\":\\"$r\\"}"\n}'
+  local bom="${base}  _dbx_cmd_caminho_remoto \"\$c\" || return \$?${fim}"
+  assert_igual '' "$(_auditar_caminho_remoto x.sh "$bom")" 'forma legitima nao e acusada'
+  assert_contem 'nao propagada' \
+    "$(_auditar_caminho_remoto x.sh "${base}  _dbx_cmd_caminho_remoto \"\$c\" || true${fim}")" 'recusa ignorada'
+  assert_contem 'sem o ponto unico' \
+    "$(_auditar_caminho_remoto x.sh "${base}  dbx_path_remoto_para_api \"\$c\"${fim}")" 'lib/path direto'
+  assert_contem 'leva caminho remoto a API sem o ponto unico' \
+    "$(_auditar_caminho_remoto x.sh "${base}  r=\$c${fim}")" 'sem ponto unico'
+  assert_contem 'rede antes do ponto unico' \
+    "$(_auditar_caminho_remoto x.sh "${base}  dbx_auth_requisitar POST u n sim"$'\n'"  _dbx_cmd_caminho_remoto \"\$c\" || return \$?${fim}")" \
+    'rede antes'
+  assert_contem 'raiz explicita fora do config' \
+    "$(_auditar_caminho_remoto x.sh "${base}  _dbx_cmd_caminho_remoto \"\$c\" / || return \$?${fim}")" 'raiz explicita'
+  assert_contem 'leva caminho remoto' \
+    "$(_auditar_caminho_remoto x.sh $'dbx_cmd_x_executar() {\n  dbx_cmd_sync_executar --receber --origem "$c" --destino d\n}')" \
+    'delegacao ao sync sem ponto unico'
 }
 
 harness_executar "$@"

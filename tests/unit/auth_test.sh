@@ -115,11 +115,54 @@ _recon_multiplexacao() {
     grep -vE '^[0-9]*:[[:space:]]*#' || true
 }
 
+# REESCRITA NA FASE 8 (RF-130(c), RSK-90, DIV-249), SEM ENFRAQUECER. A DP-05 foi
+# reaberta e perfil existe so em `lib/config`. Esta auditoria cobre o resto:
+# `lib/auth`, `lib/http`, `lib/state`, `lib/sync`, `lib/transfer` e os comandos
+# de rede NAO recebem identificador de perfil, e `lib/auth`, `lib/http`,
+# `lib/sync` e `lib/transfer` tambem nao recebem identificador de conta
+# (`lib/state` guarda o `account_id` da memoria, RF-52, e nao e auditado por
+# conta). Antes so `lib/auth` era auditado: a cobertura aumentou.
+readonly _CAMADAS_SEM_PERFIL='lib/auth.sh lib/http.sh lib/state.sh lib/sync.sh lib/transfer.sh commands/upload.sh commands/download.sh commands/list.sh commands/delete.sh commands/info.sh commands/space.sh commands/sync.sh commands/verificar.sh commands/revisoes.sh commands/restaurar.sh commands/lixeira.sh commands/link_temporario.sh commands/compartilhar.sh commands/reter.sh'
+readonly _CAMADAS_SEM_CONTA='lib/auth.sh lib/http.sh lib/sync.sh lib/transfer.sh'
+
+# _auditar_selecao_fora_de_config <arquivo> <com_conta|so_perfil> — achados.
+_auditar_selecao_fora_de_config() {
+  local arquivo=$1 escopo=$2 achados
+  achados=$(grep -vE '^[[:space:]]*#' "$arquivo" | grep -nEi '(perfil|profile)' || true)
+  if [[ $escopo == 'com_conta' ]]; then
+    achados+=$(_recon_multiplexacao <"$arquivo")
+  fi
+  printf '%s' "$achados"
+}
+
 teste_nao_recebe_identificador_de_conta_ou_perfil() {
-  assert_arquivo_existe "$DBX_HARNESS_RAIZ/lib/auth.sh" 'sem o arquivo a auditoria seria vacua'
-  local achados
-  achados=$(_recon_multiplexacao <"$DBX_HARNESS_RAIZ/lib/auth.sh")
-  [[ -n $achados ]] && _harness_falhar "nocao de perfil ou selecao de conta em lib/auth: $achados"
+  local arquivo escopo achados falhas=''
+  for arquivo in $_CAMADAS_SEM_PERFIL; do
+    assert_arquivo_existe "$DBX_HARNESS_RAIZ/$arquivo" 'sem o arquivo a auditoria seria vacua'
+    escopo=so_perfil
+    [[ " $_CAMADAS_SEM_CONTA " == *" $arquivo "* ]] && escopo=com_conta
+    achados=$(_auditar_selecao_fora_de_config "$DBX_HARNESS_RAIZ/$arquivo" "$escopo")
+    [[ -n $achados ]] && falhas+=" $arquivo: $achados;"
+  done
+  [[ -n $falhas ]] && _harness_falhar "nocao de perfil ou selecao de conta fora de lib/config:$falhas"
+  return 0
+}
+
+teste_auditoria_fora_de_config_reprova_seletor_em_cada_camada() {
+  # Mutacao: cada camada auditada, com um seletor de perfil acrescentado, tem de
+  # ser reprovada; e a de conta, com `local conta=$1`, tambem (so onde vale).
+  local arquivo mutante achados
+  mutante=$(mktemp "$DBX_TESTES_TMP/mutante-camada.XXXXXX")
+  for arquivo in $_CAMADAS_SEM_PERFIL; do
+    { cat "$DBX_HARNESS_RAIZ/$arquivo"; printf 'usar_selecao() {\n  local perfil=$1\n}\n'; } >"$mutante"
+    achados=$(_auditar_selecao_fora_de_config "$mutante" so_perfil)
+    [[ -n $achados ]] || _harness_falhar "a auditoria nao pegou seletor de perfil em $arquivo"
+  done
+  for arquivo in $_CAMADAS_SEM_CONTA; do
+    { cat "$DBX_HARNESS_RAIZ/$arquivo"; printf 'usar_selecao() {\n  local conta=$1\n}\n'; } >"$mutante"
+    achados=$(_auditar_selecao_fora_de_config "$mutante" com_conta)
+    [[ -n $achados ]] || _harness_falhar "a auditoria nao pegou seletor de conta em $arquivo"
+  done
   return 0
 }
 
@@ -149,6 +192,29 @@ teste_auditoria_de_multiplexacao_discrimina_selecao_de_registro() {
 # ---------------------------------------------------------------------------
 # Renovacao
 # ---------------------------------------------------------------------------
+
+teste_renovacao_expoe_os_escopos_concedidos() {
+  # DIV-35 (memoria 2026-10-19-1050): o `diagnostico` compara os escopos que a
+  # resposta de renovacao declara; o campo e exposto aqui, e nao relido.
+  local dir
+  dir=$(_duplo 200 '{"access_token":"sl.AC_token_curto","expires_in":14400,"scope":"account_info.read files.content.read"}')
+  _credencial
+  PATH=$dir:$PATH dbx_auth_renovar
+  assert_igual 0 $? 'renovacao deve concluir'
+  assert_igual 'sim' "$DBX_AUTH_ESCOPOS_INFORMADOS" 'o campo veio na resposta'
+  assert_igual 'account_info.read files.content.read' "$DBX_AUTH_ESCOPOS" 'escopos publicados como vieram'
+}
+
+teste_renovacao_sem_campo_de_escopo_declara_nao_informados() {
+  local dir
+  dir=$(_duplo 200 "$(_resposta_de_token)")
+  _credencial
+  DBX_AUTH_ESCOPOS='resto de outra renovacao'
+  PATH=$dir:$PATH dbx_auth_renovar
+  assert_igual 0 $? 'renovacao deve concluir'
+  assert_igual 'nao' "$DBX_AUTH_ESCOPOS_INFORMADOS" 'sem o campo, nao informados'
+  assert_igual '' "$DBX_AUTH_ESCOPOS" 'nada sobra de renovacao anterior'
+}
 
 teste_renovacao_obtem_token_de_curta_duracao() {
   local dir
@@ -574,6 +640,98 @@ teste_revogacao_nao_expoe_credencial_na_linha_de_comando() {
   _ler_arquivo "$dir/argv"
   assert_segredo_ausente "$REFRESH" "$DBX_LIDO" 'refresh token em argv'
   assert_segredo_ausente 'sl.AC_token_curto' "$DBX_LIDO" 'access token em argv'
+}
+
+# ---------------------------------------------------------------------------
+# RF-63 — `client_secret` obrigatorio tambem na biblioteca (fase 3)
+#
+# PKCE nao e implementado: sem segredo nao ha caminho de token. A recusa vem
+# ANTES da rede, como credencial incompleta (mesma classe de RF-03).
+# ---------------------------------------------------------------------------
+
+teste_renovacao_sem_segredo_e_recusada_antes_da_rede() {
+  # TC-SCR-01.
+  local dir estado
+  dir=$(_duplo 200 "$(_resposta_de_token)")
+  _credencial
+  DBX_CONFIG_APP_SECRET=''
+  PATH=$dir:$PATH dbx_auth_renovar
+  estado=$?
+  # MUDANCA DECLARADA (ciclo 3, QA-P3-02): o ciclo 1 afirmava `uso_invalido` (2);
+  # RF-63(a) exige a classe e o codigo de RF-03, `configuracao` (3).
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$estado" 'credencial incompleta: classe de RF-03'
+  assert_igual 0 "$(_harness_contar . "$dir/argv")" 'nenhuma chamada de rede'
+  assert_contem 'segredo' "$DBX_AUTH_MOTIVO" 'o motivo nomeia a falta do segredo'
+  assert_segredo_ausente "$REFRESH" "$DBX_AUTH_MOTIVO" 'sem exibir valor algum'
+  assert_igual '' "$DBX_AUTH_TOKEN" 'nenhum token publicado'
+}
+
+teste_troca_de_codigo_sem_segredo_e_recusada_antes_da_rede() {
+  # TC-SCR-01.
+  local dir estado
+  dir=$(_duplo 200 "$(_resposta_de_vinculo)")
+  PATH=$dir:$PATH dbx_auth_trocar_codigo "$APP_KEY" '' 'CODIGO_DE_UMA_VEZ'
+  estado=$?
+  assert_igual "$(dbx_errors_codigo_saida configuracao)" "$estado" 'credencial incompleta: classe de RF-03 (mudanca declarada, QA-P3-02)'
+  assert_igual 0 "$(_harness_contar . "$dir/argv")" 'nenhuma chamada de rede'
+  assert_contem 'segredo' "$DBX_AUTH_MOTIVO" 'o motivo nomeia a falta do segredo'
+  assert_segredo_ausente 'CODIGO_DE_UMA_VEZ' "$DBX_AUTH_MOTIVO" 'sem exibir o codigo'
+  assert_igual '' "$DBX_AUTH_REFRESH_TOKEN" 'nada publicado'
+}
+
+# _formularios_de_token_sem_segredo <arquivo...> — blocos de vetor literal que
+# montam formulario de token (contem `grant_type=`) sem a linha INCONDICIONAL
+# `"client_secret=$VAR"`, ou com o segredo em forma condicional (expansao `:+`,
+# `:-`); e acrescimo de `client_secret` a vetor depois de montado (`+=(`), que e
+# a forma do ramo "sem segredo" que existia antes da fase 3.
+_formularios_de_token_sem_segredo() {
+  awk '
+    /^[[:space:]]*#/ { next }
+    /=\([[:space:]]*$/ { dentro = 1; inicio = FNR; segredo = 0; condicional = 0; token = 0; next }
+    dentro && /^[[:space:]]*\)/ {
+      if (token && (!segredo || condicional))
+        print FILENAME ":" inicio ": formulario de token sem client_secret incondicional"
+      dentro = 0; next
+    }
+    dentro {
+      if ($0 ~ /grant_type=/) token = 1
+      if ($0 ~ /^[[:space:]]*"client_secret=\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"[[:space:]]*$/) segredo = 1
+      else if ($0 ~ /client_secret/) condicional = 1
+      next
+    }
+    /\+=\(.*client_secret/ { print FILENAME ":" FNR ": client_secret acrescentado depois do formulario" }
+  ' "$@"
+}
+
+teste_nenhum_formulario_de_token_sai_sem_client_secret() {
+  # TC-SCR-02 (RF-63(b)), com prova de discriminacao (RSK-27): cada mutacao
+  # reintroduz o ramo "sem segredo" em forma nao obvia e precisa ser acusada.
+  local area mutacao achados
+  area=$(mktemp -d "$DBX_TESTES_TMP/auditoria.XXXXXX")
+  printf '%s\n' 'local -a campos=(' '  "grant_type=refresh_token"' '  "client_id=$k"' ')' \
+    '[[ -n $s ]] && campos+=("client_secret=$s")' >"$area/condicional.sh"
+  printf '%s\n' 'local -a campos=(' '  "grant_type=authorization_code"' \
+    '  ${segredo:+"client_secret=$segredo"}' ')' >"$area/expansao.sh"
+  printf '%s\n' 'local -a form=(' '  "grant_type=refresh_token"' '  "client_id=$k"' ')' >"$area/omitido.sh"
+  printf '%s\n' 'local -a campos=(' '  "grant_type=refresh_token"' '  "client_secret=${s:-}"' ')' >"$area/vazio.sh"
+  for mutacao in condicional expansao omitido vazio; do
+    achados=$(_formularios_de_token_sem_segredo "$area/$mutacao.sh")
+    [[ -n $achados ]] || _harness_falhar "a auditoria nao acusou a mutacao '$mutacao'"
+  done
+  printf '%s\n' 'local -a campos=(' '  "grant_type=refresh_token"' '  "client_secret=$s"' ')' >"$area/bom.sh"
+  assert_igual '' "$(_formularios_de_token_sem_segredo "$area/bom.sh")" 'a forma correta nao e acusada'
+  achados=$(_formularios_de_token_sem_segredo "$DBX_HARNESS_RAIZ"/lib/*.sh)
+  assert_igual '' "$achados" "formulario de token sem client_secret: $achados"
+  assert_contem 'grant_type=refresh_token' "$(cat "$DBX_HARNESS_RAIZ/lib/auth.sh")" \
+    'sem o formulario a auditoria seria vacua'
+}
+
+teste_pkce_nao_e_implementado() {
+  # RF-63(c).
+  local achados
+  achados=$(grep -nE 'code_verifier|code_challenge' "$DBX_HARNESS_RAIZ"/lib/*.sh \
+    "$DBX_HARNESS_RAIZ"/commands/*.sh "$DBX_HARNESS_RAIZ"/bin/dbx || true)
+  assert_igual '' "$achados" "PKCE nao consta do codigo: $achados"
 }
 
 harness_executar "$@"

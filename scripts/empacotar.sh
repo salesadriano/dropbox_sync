@@ -35,12 +35,14 @@ ARQUIVO_SHA="${DIR_DIST}/${NOME_PACOTE}.tar.gz.sha256"
 STAGING=$(mktemp -d "${TMPDIR:-/tmp}/dbx-pack.XXXXXXXX")
 trap 'rm -rf -- "$STAGING"' EXIT
 
-mkdir -p "$STAGING/bin" "$STAGING/lib" "$STAGING/commands"
+mkdir -p "$STAGING/bin" "$STAGING/lib" "$STAGING/commands" "$STAGING/completions"
 
 # Copiar arquivos de runtime
 cp -p "$RAIZ_PROJETO/bin/dbx" "$STAGING/bin/dbx"
 cp -p "$RAIZ_PROJETO/lib/"*.sh "$STAGING/lib/"
 cp -p "$RAIZ_PROJETO/commands/"*.sh "$STAGING/commands/"
+# RF-68: o autocompletar viaja no pacote; o install.sh o instala.
+cp -p "$RAIZ_PROJETO/completions/dbx.bash" "$STAGING/completions/dbx.bash"
 cp -p "$RAIZ_PROJETO/install.sh" "$STAGING/install.sh"
 cp -p "$RAIZ_PROJETO/uninstall.sh" "$STAGING/uninstall.sh"
 cp -p "$RAIZ_PROJETO/README.md" "$STAGING/README.md"
@@ -48,7 +50,8 @@ cp -p "$RAIZ_PROJETO/LICENSE" "$STAGING/LICENSE"
 
 # Permissoes estritas
 chmod 755 "$STAGING/bin/dbx" "$STAGING/install.sh" "$STAGING/uninstall.sh"
-chmod 644 "$STAGING/lib/"*.sh "$STAGING/commands/"*.sh "$STAGING/README.md" "$STAGING/LICENSE"
+chmod 644 "$STAGING/lib/"*.sh "$STAGING/commands/"*.sh "$STAGING/completions/dbx.bash" \
+  "$STAGING/README.md" "$STAGING/LICENSE"
 
 # Gerar tarball
 tar -czf "$ARQUIVO_TAR" -C "$STAGING" .

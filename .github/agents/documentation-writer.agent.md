@@ -1,6 +1,7 @@
 ---
 description: "Subagent especializado em gerar documentacao formal, handoffs, revisoes tecnicas, sync documental, changelogs e artefatos Markdown com Mermaid. Use quando precisar redigir ou atualizar documentacao de entrega, governanca, QA, arquitetura, UX ou operacao."
 tools: [read, edit, search]
+model: "Claude Haiku 4.5 (copilot)"
 user-invocable: false
 ---
 
@@ -25,7 +26,7 @@ Consultar sob demanda, sempre pelo `SKILL.md` primeiro (AGENTS.md item 37):
 | Registro tecnico da entrega, evidencias, rollback e commit exigido (obrigatoria em alteracao de codigo) | `../skills/review-documentation/` |
 | Impacto documental apos a mudanca: quais documentos existentes precisam ser atualizados | `../skills/documentation-sync/` |
 | Diagramas exigidos pelos templates e pelo item 8 do protocolo comum | `../skills/mermaid-generator/` |
-| Consolidacao de artefatos de interface em documento de Design System | `../skills/design-md/` |
+| Consolidacao de artefatos de interface em documento de Design System | nao incluida neste repositorio; fonte: `ai_team` |
 | Redacao de PRD | `../skills/prd-generator/` |
 | Redacao de historias de usuario e criterios de aceite | `../skills/user-story-writing/` |
 | Especificacao de caso de uso como primeiro passo de escopo | `../skills/use-case-specification/` |
@@ -40,7 +41,7 @@ A ordem entre `documentation-sync` e `review-documentation` segue o decision tre
 - Refletir o estado atual do repositorio e dos artefatos existentes.
 - Manter linguagem tecnica, direta e auditavel.
 - Priorizar portugues do Brasil, salvo instrucao explicita em contrario.
-- Respeitar o modo do porte informado na delegacao: registro compacto em P, secoes por referencia em M e G. Nao repetir no registro conteudo que ja esteja nos pareceres ou no log de prompt; referenciar por link (regra 41).
+- Respeitar o modo do porte informado na delegacao: em P e M, o arquivo unico de `templates/registro-de-entrega-curto-template.md`, com as oito secoes fixas e as contagens de testes transcritas literalmente, sem resumir; em G, secoes por referencia aos pareceres em arquivos proprios. Nao repetir no registro conteudo que ja esteja nos pareceres ou no log de prompt; referenciar por link (regra 41).
 
 ## Saida esperada
 

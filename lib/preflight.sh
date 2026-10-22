@@ -70,8 +70,11 @@ readonly DBX_PREFLIGHT_BASH_MENOR=4
 # preflight que aprova ambiente onde a primeira operacao ja falha e pior do que
 # nao existir: cria confianca falsa e empurra o diagnostico para um ponto mais
 # obscuro. Ha caso de teste que reprova se a biblioteca passar a invocar um
-# utilitario ausente desta lista.
-readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep'
+# utilitario ausente desta lista. `df` e `tail` entram pelo diagnostico de
+# `commands/config.sh` (RNF-34(c)); `ln` pela criacao exclusiva da trava de
+# concorrencia (RF-69(j)); `rmdir` pela remocao do diretorio de estado vazio
+# (RF-69(e), `unlink`); a mesma lista esta no README.
+readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir'
 
 DBX_PREFLIGHT_MOTIVO=''
 DBX_PREFLIGHT_DETALHE=''
@@ -111,7 +114,9 @@ dbx_preflight_diretorio_de_configuracao() {
 # `ambiente` e o defeito descrito no topo.
 dbx_preflight_credencial() {
   local diretorio=$1 arquivo modo dono modo_diretorio
-  arquivo="$diretorio/credencial.json"
+  # Perfil nomeado (fase 8, RF-122(d)): o segundo argumento e o arquivo do
+  # PERFIL selecionado, e `diretorio` e o diretorio dele (`perfis/`).
+  arquivo=${2:-$diretorio/credencial.json}
 
   # Credencial ausente e o estado normal antes da configuracao inicial.
   [[ -e $arquivo ]] || return 0
@@ -182,10 +187,42 @@ dbx_preflight_verificar() {
   diretorio=$DBX_PREFLIGHT_DETALHE
 
   if [[ $nivel == 'credencial' ]]; then
-    dbx_preflight_credencial "$diretorio" || return $?
+    # Com perfil nomeado selecionado (lib/config carregada pelo ponto de entrada),
+    # inspeciona o arquivo do PERFIL, nunca o `padrao` (achado A2).
+    if declare -F dbx_config_perfil_nomeado >/dev/null && dbx_config_perfil_nomeado &&
+      dbx_config_caminho; then
+      dbx_preflight_credencial "${DBX_CONFIG_RESULTADO%/*}" "$DBX_CONFIG_RESULTADO" || return $?
+    else
+      dbx_preflight_credencial "$diretorio" || return $?
+    fi
   fi
 
   DBX_PREFLIGHT_DETALHE=''
+  return 0
+}
+
+# dbx_preflight_ausentes — inspecao SEM PARADA das dependencias (RF-66(a)(e)).
+#
+# Mesma lista e mesma pergunta de `dbx_preflight_verificar`, mas percorre tudo:
+# cada utilitario ausente vai para DBX_PREFLIGHT_AUSENTES, na ordem da lista, e
+# a falta do resumo SHA-256 entra como `sha256sum`. So usa recursos do proprio
+# shell (`command -v`), porque quem chama e o `diagnostico`, que roda justamente
+# quando o ambiente pode estar sem os utilitarios. Status 0 sem ausentes; senao
+# `configuracao`.
+declare -ga DBX_PREFLIGHT_AUSENTES=()
+dbx_preflight_ausentes() {
+  local utilitario
+  DBX_PREFLIGHT_AUSENTES=()
+  for utilitario in $DBX_PREFLIGHT_UTILITARIOS; do
+    command -v "$utilitario" >/dev/null 2>&1 || DBX_PREFLIGHT_AUSENTES+=("$utilitario")
+  done
+  if declare -F dbx_hash_verificar_dependencias >/dev/null; then
+    dbx_hash_verificar_dependencias || DBX_PREFLIGHT_AUSENTES+=(sha256sum)
+  else
+    command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 ||
+      command -v openssl >/dev/null 2>&1 || DBX_PREFLIGHT_AUSENTES+=(sha256sum)
+  fi
+  [[ ${#DBX_PREFLIGHT_AUSENTES[@]} -eq 0 ]] || return "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
   return 0
 }
 

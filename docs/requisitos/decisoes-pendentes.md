@@ -4,8 +4,8 @@
 |---|---|
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
-| Data | 2026-08-19 |
-| Versao | **v0.9** |
+| Data | 2026-10-18 |
+| Versao | **v1.7** — `DP-05` **reaberta e resolvida de novo** para a fase 8 (`F-18`, perfis nomeados; 2026-10-21, memoria `2026-10-21-1735-perfis`): `--perfil`/`--profile` e `DBX_PERFIL`, `credencial.json` vira o perfil `padrao`, `perfis/<nome>.json`, `dbx perfis`, `unlink --perfil`, `config --perfil`, nome `[a-z0-9_-]` de 1 a 32; escopo v1.24, secao 5.17; texto antigo mantido como historico; `DIV-236` a `DIV-251` resolvidas em 2026-10-21 (parecer do DBA aceito; `RF-132` novo). *Anterior:* **v1.6** — `DP-09` reaberta para a fase 7b (`F-14`, cursor de listagem; 2026-10-21, memoria `2026-10-21-0713-cursor`): `cursor-*` (cursor mais retrato remoto) entra no estado autorizado (`RNF-26`, item 3); parecer do DBA com condicoes `C1` a `C11`; `DIV-204` a `DIV-220` decididas pelo Tech Lead em 2026-10-21 (`DIV-205`: so `sync --receber`, download de pasta fora). *Registro anterior:* **v1.5** — `DP-09` reaberta para a fase 7a (`F-03`, retomada entre execucoes; 2026-10-20, memoria `2026-10-20-2315-retomada`): o estado de retomada (`retomada-*`) entra no estado autorizado e o DBA da parecer sobre formato, localizacao, versionamento, concorrencia e limpeza; `DP-12` anotada (o limiar e o custo da retomada, `DIV-179`, seguem sem medicao de volume). *Registro anterior:* **v1.4** — `DP-18` (compartilhamento) resolvida (fase 5, 2026-10-20, `DIV-116`). *Registro anterior:* **v1.3** — `DP-37` registrada e resolvida (fase 3: revisoes, restauracao e lixeira). *Registro anterior:* **v1.2** — `DP-36` registrada e resolvida (fase 2: trava de concorrencia e `lib/tmp`). *Registro anterior:* **v1.1** — `DP-35` registrada e resolvida (fase 4: aliases em ingles, `O-1`, `F-32`, `P5.1`). *Registro anterior:* **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
 | Status | 🔴 **Duas decisoes novas, devolvidas pela implementacao de `RF-31`/`RF-08`: `DP-29` e `DP-30`.** Nenhuma delas bloqueia a validacao da entrega atual; ambas bloqueiam declarar o requisito correspondente **integralmente** atendido. 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
@@ -40,11 +40,11 @@
 | DP-02 | Quais funcionalidades novas justificam o projeto | ✅ **Resolvida** | — |
 | DP-03 | Modo de uso predominante | ✅ **Resolvida** | — |
 | DP-04 | Tipo de conta e escopo de acesso | ✅ **Resolvida** | — |
-| DP-05 | Multiplas contas ou perfis | ✅ **Resolvida** | — |
+| DP-05 | Multiplas contas ou perfis | ✅ **Resolvida** *(reaberta e resolvida de novo em 2026-10-21, fase 8: perfis nomeados; ver `DP-05`)* | — |
 | DP-06 | Conjunto de comandos do MVP | ✅ **Resolvida — reabre estado local** | — |
 | DP-07 | Plataformas e shells suportados | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
 | DP-08 | Dependencias e interpretacao de JSON | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
-| DP-09 | Semantica de sincronizacao e estado local | 🔄 **REABERTA por DP-06, redefinida por `DP-27`** | O estado deixou de ser exigido pela correcao e passou a ser escolha de desempenho (`DP-27b`) |
+| DP-09 | Semantica de sincronizacao e estado local | 🔄 **REABERTA por DP-06, redefinida por `DP-27`; reaberta de novo para a fase 7a (`F-03`, 2026-10-20)** | O estado deixou de ser exigido pela correcao e passou a ser escolha de desempenho (`DP-27b`). **7a:** estado de retomada `retomada-*` (escopo 5.15, `RF-101`); parecer do DBA aceito com `C1` a `C6`; `DIV-171` a `DIV-190` decididas. **7b (`F-14`, cursor):** `cursor-*` com retrato remoto (escopo 5.16, `RF-111`); parecer do DBA `C1` a `C11`; `DIV-204` a `DIV-220` decididas em 2026-10-21 |
 | DP-21 | Semantica de resolucao de conflito | ❌ **Sem objeto por `DP-27`** — nao ha conflito quando um lado manda | — |
 | DP-22 | Conflito de exclusao contra alteracao | ❌ **Sem objeto por `DP-27`** | — |
 | DP-23 | Ciclo de vida e localizacao da linha de base | ✅ **Localizacao mantida (`$XDG_STATE_HOME`); tratamento de corrupcao INVERTIDO por `DP-27b`** — descarta e reconstroi, nao recusa | — |
@@ -57,6 +57,13 @@
 | DP-28 | Como o operador declara o sentido do `sync` | ✅ **Resolvida — sinalizador `--enviar` / `--receber`, OBRIGATORIO** | — |
 | **DP-29** | **`RF-31`: aceitar o limite do cano anonimo, ou financiar contrato explicito de tamanho?** | 🔴 **Nova na v0.9 — em aberto** | **P1** |
 | **DP-30** | **`RF-08`: "tamanho de parte configuravel" ainda e requisito?** | 🟡 **Nova na v0.9 — em aberto** | **P1** |
+| **DP-31** | Integridade de dados no `sync` e no `download` (fase P1) | ✅ **Resolvida em 2026-10-18** — ver secao propria; gera `RF-54` a `RF-57`, `RNF-29` | — |
+| **DP-32** | Skip do upload condicionado ao `content_hash` remoto | ✅ **Resolvida em 2026-10-18 — implementacao na fase 3 (backlog `F-26`)** | — |
+| **DP-33** | Timeouts, retentativas, retomada do upload e falhas por item (fase P2) | ✅ **Resolvida em 2026-10-18 — ver secao propria**; gera `RNF-30`, `RF-58`, `RF-59`, emenda `RNF-07`, `RF-09`, `RF-32`; encerra `DIV-22` | — |
+| **DP-34** | Cache unico, skip do upload, chave canonica e segredo obrigatorio (fase 3) | ✅ **Resolvida em 2026-10-18 — ver secao propria**; gera `RF-60` a `RF-63`, `RNF-33`; emenda `RF-33`, `RF-38`, `RF-42`, `RF-51`, `RF-52`, `RNF-02`, `RNF-25`, `RNF-26`, `RNF-32`; resolve `DIV-25`; abre e, no mesmo dia, o Tech Lead resolve `DIV-26` a `DIV-29` | — |
+| **DP-35** | Aliases em ingles, guarda de origem vazia pelo plano, localidade da comparacao e coerencia da documentacao (fase 4) | ✅ **Resolvida em 2026-10-19 (solicitante e Tech Lead; memoria `2026-10-19-0829-aliases-poda-e-comentarios`)**: gera `RF-64` e `RNF-34`; emenda `RF-41(b)` (`O-1`), `RF-54(e)(f)(g)` (`F-32`), `RF-53(f)`, `RF-51(g)`, `RF-01`; abre e, no mesmo dia, o Tech Lead resolve `DIV-30` a `DIV-32` (guarda antiga sai e origem vazia sem `--espelhar` e operacao vazia; repeticao de sentido segue invalida; `C.UTF-8` so dentro da comparacao, aviso so no `sync`). A poda das skills fora da stack e o enxugamento de comentarios nao geram requisito funcional | — |
+| **DP-36** | Trava de concorrencia por par de sync, `--esperar` e `lib/tmp` (fase 2; `F-12`, restante de `F-31`) | ✅ **Resolvida em 2026-10-19 (solicitante; memoria `2026-10-19-1419-trava-de-concorrencia`)**: uma trava por par em `sync` e `verificar`; ocupada recusa na hora (`conflito`/`7`, confirmado pelo Tech Lead, `DIV-43`) dizendo pid e inicio; `--esperar N` (alias `--wait`) espera ate N segundos; orfa do mesmo host retomada com aviso, de outro host nunca, e o `diagnostico` mostra e diz o remedio. Gera `RF-69` a `RF-71`, `RNF-35`, `RNF-36`; emenda `RNF-26`, `RNF-31`. Pontos que a decisao nao cobriu: `DIV-38` a `DIV-44`, resolvidos pelo Tech Lead no mesmo dia (chave sem ordem; trava como excecao explicita de escrita; `sem-conta`; `lib/state` cria a trava; `RNF-29(d)` emendado; `unlink` recusa com `7` diante de trava viva) | — |
+| **DP-37** | Revisoes, restauracao e lixeira com exclusao permanente (fase 3; `F-07`, `F-20`) | ✅ **Resolvida em 2026-10-19 (solicitante; memoria `2026-10-19-1828-recuperacao-e-lixeira`)**: `dbx revisoes` (`revisions`), `dbx restaurar <arq> --rev R` ou `--antes-de DATA` (`restore`, tambem para item apagado), `dbx lixeira [pasta]` (`trash`); exclusao permanente incluida (so Business, escopo `files.permanent_delete`); pasta apagada restaurada recursivamente na ultima revisao, com `--dry-run` e resumo, falha parcial `14`; restaurar sobre arquivo existente permitido, mostrando a revisao substituida. Formalizada em `RF-72` a `RF-78`. **Detalhes de desenho decididos pelo Tech Lead no mesmo dia:** `DIV-54` a `DIV-69` (escopo v1.14, secao 9). Nenhuma decisao nova do solicitante pendente |
 | DP-10 | Auditoria, log e conformidade | ⬜ Em aberto | P1 |
 | DP-11 | Armazenamento de credencial | ✅ **Resolvida** | — |
 | DP-12 | Volume, frequencia e dimensionamento | 🟡 Parcialmente calibrada por medicao | P1 |
@@ -65,7 +72,7 @@
 | DP-15 | Idioma da interface | ⬜ Em aberto | P2 |
 | DP-16 | Monitoramento de alteracoes | ⬜ Em aberto | P2 |
 | DP-17 | Rede corporativa | ⬜ Em aberto | P2 |
-| DP-18 | Compartilhamento | ⬜ Em aberto | P2 |
+| DP-18 | Compartilhamento | ✅ **Resolvida** *(fase 5, 2026-10-20)* | — |
 | DP-19 | Governanca do repositorio | ✅ **Resolvida** *(consumada na pratica)* | — |
 | DP-20 | Titular do copyright e licenca | ✅ **Resolvida — MIT, Adriano Sales Santos** | — |
 | DIV-16b | Formato de saida para nomes com quebra de linha | ✅ **Resolvida** — destrava `lib/output` | — |
@@ -267,7 +274,29 @@ Com DP-01 resolvida como reimplementacao independente, o projeto tem liberdade d
 
 **Bloqueia:** RNF-17, preenchimento do `LICENSE`, cabecalhos de copyright nos arquivos de codigo.
 
-### DP-05 — Multiplas contas ou perfis ✅
+### DP-05 — Multiplas contas ou perfis ✅ *(reaberta e resolvida de novo em 2026-10-21, fase 8, `F-18`)*
+
+#### Resolucao vigente (2026-10-21, fase 8): perfis nomeados de credencial
+
+**Contexto da reabertura.** Na abertura da fase 8 do backlog (memoria `2026-10-21-1735-perfis`; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md`; porte G), o solicitante reabriu esta decisao e a resolveu, na opcao recomendada em todos os pontos (`AskUserQuestion`):
+
+1. **Selecao.** `--perfil NOME` (alias `--profile`) em todos os comandos e `DBX_PERFIL` no ambiente; **a opcao vence a variavel**. A variavel carrega **so o nome**, nunca segredo, e a `DP-11` continua valendo.
+2. **Compatibilidade.** O `credencial.json` atual **continua sendo o perfil `padrao`**, sem mudanca para quem nao usa perfil. Os demais ficam em `perfis/<nome>.json`, `0600`, sob o mesmo diretorio de configuracao.
+3. **Gestao.** `dbx perfis` lista os nomes e diz se a credencial esta completa, sem mostrar segredo; `unlink --perfil NOME` remove o perfil; `config --perfil NOME` o cria.
+4. **Nomes.** `[a-z0-9_-]`, de 1 a 32 caracteres, comecando por letra ou digito; qualquer outro nome sai com `2`; a validacao e estrutural e nunca depende de grafia.
+
+**Principios do Tech Lead para a fase:** o estado continua separado pela identidade da credencial (`cred-`); perfil inexistente nunca recua para o `padrao` (erro de configuracao, sem rede); o nome do perfil e dado de caminho e e validado antes de qualquer acesso a disco; o QA roda tambem `bash tests/run.sh json` e `bash tests/run.sh harness`.
+
+**Consequencias:**
+
+1. **`RF-05` volta ao escopo**, formalizado em `RF-120` a `RF-132` (secao 5.17 do documento de requisitos, v1.24) e `RNF-37`; `F-18` passa a "em andamento, fase 8".
+2. **O desenho "um arquivo, um caminho, sem multiplexacao" de `lib/config` deixa de valer.** Permanece: `0600` sob `0700` sob `$XDG_CONFIG_HOME` com recuo para `~/.config`; **sem** sobrescrita da credencial por ambiente (`DP-11`); so o **nome** do perfil vem do ambiente. A simplificacao verificavel antiga ("nenhum caminho de codigo em `lib/config` recebe seletor de perfil") e **substituida** por: nenhuma outra camada recebe perfil ou conta, e em `lib/config` so uma lista fechada de funcoes o recebe, sempre ja validado (`RF-130(c)`, `RNF-37`). As duas auditorias estaticas que reprovavam a nocao de perfil sao **reescritas, nao removidas**.
+3. **Mudanca aditiva, como previsto em 2026-10-17:** o contrato de saida congelado (`RF-35`) nao se quebra; campos novos so aparecem com selecao explicita ou no comando novo `perfis`; sem perfil, nada muda (`RF-130`).
+4. **Decisoes de desenho resolvidas pelo Tech Lead em 2026-10-21** (`DIV-236` a `DIV-251`, parecer do DBA com `C1` a `C10` aceito): estado selecionado por identidade no `unlink` (a `memoria-*` e chaveada pelo `account_id`, nao por `cred-`; mantida); identidade compartilhada **nao revoga** nem remove estado (substitui a `C7` do DBA); remocao total do estado so quando nao restar nenhuma credencial, igual para o `padrao` e `--perfil X` (`C5`); nome `padrao` reservado; `DBX_PERFIL` vazio = nao definida; opcao depois do subcomando so em `config` e `unlink`; campos de `perfis`; entradas anomalas; `config` recusa `perfis/` inseguro antes de perguntar; `diagnostico` mostra o perfil so com selecao; autocompletar de nomes; recusa global por trava viva; aviso do ambiente.
+5. **Trava por raiz local canonica no `sync --receber`** (`DIV-250`, `RF-132`): decidida a inclusao, independente de perfil.
+6. **Fora da fase:** `memoria-*` por `account_id` colide entre apps de tipo diferente na mesma conta (`DIV-251`, `F-44`, `RSK-91`); tetos globais de poda aceitos (`RSK-92`).
+
+#### Texto original (2026-10-17, mantido como historico; **superado pela resolucao acima**)
 
 **Decisao do solicitante: uma conta so.** Um unico arquivo de credencial, **sem nocao de perfil**. Nao havera opcao `--profile`, nem arquivo por perfil, nem selecao por variavel de ambiente.
 
@@ -391,6 +420,22 @@ Os cinco primeiros sao diretos e ja estavam especificados. O **`sync` reabre o q
 Estava fechada sem impacto porque nenhuma funcionalidade do MVP exigia estado. `DP-06` mudou isso. O estado agora autorizado esta delimitado em `RNF-26`: **linha de base de sincronizacao** e **cursor de enumeracao**, ambos vinculados ao par de raizes. Qualquer outra persistencia continua fora de escopo.
 
 As perguntas remanescentes desta decisao foram desdobradas em `DP-21` a `DP-24`, por serem especificas demais para caber num item so.
+
+#### Reabertura para a fase 7a — estado de retomada (`F-03`, 2026-10-20) 🔄
+
+> Escrita **na mesma rodada** em que a decisao foi recebida (`RSK-26`). Memoria: `2026-10-20-2315-retomada`; escopo v1.21, secao 5.15.
+
+O solicitante promoveu `F-03` (retomada de **upload e download** entre execucoes), o que exige estado local persistente novo. **Principios do Tech Lead (nao reabrir):** o estado nunca decide sozinho uma escrita destrutiva nem a integridade do resultado; estado corrompido, de outra versao ou de outra conta e descartado e a operacao recomeca do zero, **nunca falhando por causa do estado**; o estado tem dono, permissao `0600` e nunca guarda segredo.
+
+**O que ja esta especificado (escopo 5.15):** um `retomada-<resumo>` por chave (tipo, conta pelo resumo local da credencial, origem e destino canonicos) no diretorio de estado de `lib/state`, gravado so por `lib/state` de forma atomica (`RF-101`); `RNF-26` ganha os itens 5 (estado de retomada) e 6 (trava de retomada).
+
+**Parecer do DBA (regra 26), aceito pelo Tech Lead com as condicoes `C1` a `C6`:** formato NUL com magia `dbx-retomada` v1, sem mudar `DBX_STATE_VERSAO`; chave SHA-256 com separador NUL e reconferencia byte a byte; nome do host gravado; `prefixo_hash` obrigatorio no upload (`C1`); trava `trava-<resumo>` com comando `retomada` (`C2`); leitor limitado a 16 KiB, tambem para `upload-*` (`C3`); retomada depois da decisao do comando (`C5`); `session_id` fora de toda saida (`C6`). **Divergencias `DIV-171` a `DIV-190`: decididas pelo Tech Lead em 2026-10-20**, todas na opcao recomendada; `DIV-172` B substitui a frequencia de gravacao do DBA e `DIV-185` A reve a pendencia `D1` do DBA. A retomada no `sync` e em pastas foi ao backlog como `F-42`. As emendas do System Design (`DIV-a` a `DIV-d` do parecer) ficam com o SD. Nenhuma pendencia do solicitante resta na 7a.
+
+#### Reabertura para a fase 7b — cursor de listagem (`F-14`, 2026-10-21) 🔄
+
+> Memoria: `2026-10-21-0713-cursor`; escopo v1.23, secao 5.16.
+
+Decisoes do solicitante (nao reabrir): o cursor serve so ao `sync` remoto para local; o estado so acelera; cursor invalido, expirado ou `reset` volta a varredura completa sem falhar; exclusao local vinda do cursor so e aplicada depois de confirmada no servidor na mesma execucao. **Achado:** o cursor sozinho nao reconstroi a arvore remota; o estado e `cursor + retrato remoto sem filtro` num unico arquivo `cursor-<resumo>` (`RF-111`). **Parecer do DBA (regra 26) recebido, aprovado com condicoes `C1` a `C11`:** arquivo unico NUL (magia `dbx-cursor` v1), chave por `cred-`, raiz local e remota e assinatura da listagem (filtros fora da chave), `account_id` no cabecalho, leitor em fluxo limitado, confirmacao no servidor de todo candidato a exclusao, varredura completa apos 7 dias ou 100 incrementais, trava do par sem trava de registro, poda de 8 dias e teto de 100. **`DIV-204` a `DIV-220` decididas pelo Tech Lead em 2026-10-21:** recomendacoes aceitas, exceto `DIV-205` (so `sync --receber` usa o cursor; download de pasta fica com `F-42`); `DIV-213` e `DIV-216` aceitas (parecer do DBA aceito); `DIV-219`: o SD confere os contratos. Nenhuma pendencia do solicitante.
 
 ---
 
@@ -590,6 +635,10 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 4. Ha janela de tempo maxima para conclusao de uma rotina?
 5. Banda disponivel e espaco livre na area temporaria dos hosts?
 
+**Fase 9 (2026-10-21):** a bancada de medicao (`RF-138`, `F-34`) fornece os numeros reais (volume misto padrao: 1000 pequenos, 50 medios, 2 grandes, ~500 MB) sobre `334394e` e ao fim da fase; **a calibragem da `DP-12` (e dos valores `DIV-256`, `DIV-258`, `DIV-259`) sai dessas medicoes, nao de estimativa**. Ate haver medicao, a `DP-12` segue parcialmente calibrada.
+
+**Medido na fase 9 (2026-10-22, bancada, conta real, semente 42; 1052 arquivos, 369 MB: 1000 pequenos, 50 medios, 2 de 100 MB):** sobre `334394e` com N=1, o envio levou 1996 s (cerca de 0,18 MB/s, 1056 chamadas), o reenvio sem mudancas 25 s e o recebimento 1328 s. Em `ad17cb0`, o envio levou 1521 s com N=1 e 485 s com N=4; o recebimento levou 1387 s com N=1 e 367 s com N=4. Nenhum `429` apareceu em nenhuma execucao, inclusive com N=4, e a listagem continua sequencial. Efeito nos valores: o limiar de 1 MiB do envio em lote (`DIV-256`) fica, porque o envio com N=1 caiu 23,8%. A reducao dinamica de `N` apos `429` (`DIV-258`, opcao B) nao se justifica, porque nao houve `429` com N=4. A fatia de 250 da exclusao em lote (`DIV-259`) continua sem medicao, porque a bancada nao exercita o `--espelhar`. A `DP-12` continua **parcialmente calibrada**: a bancada mede o custo de um volume representativo, mas os volumes de negocio (frequencia, numero de hosts, janela) continuam com o solicitante. Detalhe na secao 5.4 do [registro da fase 9](../reviews/2026-10-21-2300-registro-desempenho-b9.md).
+
 **Bloqueia:** secao de dimensionamento do System Design, tamanho padrao de parte, politica de retentativa.
 **Nao bloqueia o inicio da implementacao:** valores padrao conservadores permitem comecar. A resposta serve para calibrar, e tambem para reavaliar a promocao de F-03 do backlog caso surjam arquivos de varios gigabytes ou rede instavel.
 
@@ -602,6 +651,8 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 | Redacao de erro | ~n^1.5; 256 KiB em 4,56 s | Unico ponto de atencao; irrelevante em mensagens de erro reais |
 
 **O que ainda falta:** os volumes de negocio — tamanhos e quantidades reais, frequencia, numero de hosts, janela de tempo, banda e espaco em `$TMPDIR`. A medicao acima informa o **custo unitario**; falta o **volume** para dimensionar.
+
+**Nota da fase 7a (2026-10-20):** `F-03` foi promovida por decisao do solicitante **sem** a resposta desta `DP` (era a condicao registrada para reavaliar a candidata). Ficam dependentes dela, e por isso propostos com valor conservador: o **limiar** da retomada (150 MiB nos dois sentidos, `DIV-179`), o custo aceito de **reler o arquivo** antes de retomar (`RF-103(h)`, ate duas leituras completas a ~320 MB/s) e o **espaco** ocupado pelo `.part` no diretorio do destino (`RSK-71`). Nenhum deles bloqueia a 7a.
 
 ---
 
@@ -648,6 +699,66 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 
 ---
 
+## Decisoes do solicitante de 2026-10-18 (analise de melhorias)
+
+> Origem: `docs/sources/2026-10-18-analise-melhorias.md`. Os achados foram divididos em quatro demandas (P1; P2 rede; P3+P4 cache/SQL/skip/PKCE; P5 documentacao e aliases), cada uma com branch e PR proprios. Esta secao foi escrita **na mesma rodada** em que as decisoes foram recebidas (`RSK-26`).
+
+### DP-31 — Integridade de dados no `sync` e no `download` ✅ **RESOLVIDA (fase P1, em implementacao)**
+
+**Decisoes do solicitante (2026-10-18):**
+
+1. O `sync` compara caminhos **sem diferenciar caixa**, como o Dropbox; colisao de caixa local (`a.txt` e `A.txt`) e **recusada antes de qualquer escrita** → `RF-54`.
+2. O recebimento (`download` e `sync --receber`) grava em temporario no mesmo diretorio, confere o `content_hash` e so entao substitui de forma atomica; hash divergente mantem o arquivo antigo, descarta o temporario e falha → `RF-55`.
+3. O `download` de pasta **nunca** apaga arquivo regular existente no destino (recusa) → `RF-56`.
+4. Arquivos baixados seguem o `umask` do usuario; so a area temporaria com o token fica em `077`; o `umask` do processo e preservado; a area temporaria de cada requisicao HTTP e sempre removida, inclusive na reemissao diagnostica → `RNF-29`.
+5. `sync --enviar` mantem "origem vence" entre execucoes (`DP-27`), com o `rev` da listagem da execucao (update) ou modo add para arquivo novo, e usa sessao de upload acima de 150 MiB e envia `client_modified`, como o `upload` → `RF-57`, `RNF-27`.
+
+6. Arquivo local existente sem permissao de escrita para o usuario (ex.: `0444`) **nao e substituido** pelo recebimento (`download` com destino e `sync --receber`): falha com diagnostico de destino somente leitura, arquivo intacto (conteudo e modo), sem temporario; no `sync --receber` e falha do item e o `sync` sai como nao concluido → `RF-55(f)`, `TC-ATM-05`. *(Decisao posterior, 2026-10-18.)*
+
+**Divergencias `DIV-23` e `DIV-24` — RESOLVIDAS em 2026-10-18 por decisao do solicitante:** `RF-49` e MANTIDO (recusa da Dropbox por mudanca concorrente vira falha do item, sem sobrescrever; o `sync` sai como nao concluido; `TC-REV-01..02` exigidos na P1; `RF-57(c)` emendado). `RNF-04` emendado: `0600` na credencial e na area temporaria com o token, sem alterar o `umask` do processo; arquivos baixados seguem o `umask` do usuario.
+
+### DP-32 — Skip do upload condicionado ao `content_hash` remoto ✅ **RESOLVIDA — implementacao na fase 3**
+
+**Decisao do solicitante (2026-10-18):** o upload so dispensa o envio quando o `content_hash` remoto, obtido por `get_metadata`, for igual ao do arquivo local. O cache local passa a ser **apenas otimizacao do calculo de hash** e nao decide sozinho. Isso restabelece o invariante de `RSK-23` ("nenhum artefato persistente participa de decisao") para o `upload`, hoje violado: o skip olha so o lado local e dispensa o envio indevidamente se o remoto foi apagado ou alterado, inclusive com `--modo overwrite`. **Nao e implementado na P1**; registrado como `F-26` e `RSK-37`. Ajusta o criterio de `RF-33` (omissao decidida por `content_hash` de **origem e destino**), que o codigo atual nao cumpre para o `upload`.
+
+### DP-33 — Robustez de rede (fase P2) ✅ **RESOLVIDA (em implementacao em `feature/robustez-de-rede-p2`)**
+
+> Escrita **na mesma rodada** em que as decisoes foram recebidas (`RSK-26`). Memoria: `2026-10-18-2045-padroes-rede-p2`.
+
+**Decisoes do solicitante (2026-10-18):**
+
+1. **Timeouts:** `connect-timeout` de 15 s; corte abaixo de 1 KB/s por 60 s; ambos ajustaveis por ambiente; valor invalido recusado como uso invalido, nunca ignorado; timeout e falha transitoria de rede, retentada so onde a operacao for idempotente → `RNF-30`, `RNF-07(f)`.
+2. **Retentativas:** 5 tentativas configuraveis, recuo exponencial com variacao a partir de 1 s, teto de 60 s; `Retry-After` prevalece, limitado a 300 s; o criterio de `RNF-07` e exigido nesta fase → emenda de `RNF-07` e `RF-09`; **`DIV-22` encerrada**.
+3. **Retomada do upload por sessao:** so na mesma execucao e so para arquivo regular, a partir do `correct_offset` (recusado se fora de `[0, tamanho]`); entrada padrao sem retomada → `RF-58`. `F-03` (entre execucoes) segue fora de escopo.
+4. **Falhas por item no `sync`:** uma linha `falha <caminho>: <classe> <resumo>` no stderr e campo `falhas` no `--json`, sem segredo nem corpo bruto → `RF-59`.
+5. **Entram na fase 2:** `F-28` (→ `RF-32(b)`), `F-30` e `F-33` e `QA-05` (→ `RNF-32`), `F-31` (→ `RNF-31`).
+
+**Pontos propostos pelo Business Analyst e decididos depois pelo Tech Lead (memoria `2026-10-18-2045-detalhes-tecnicos-rede-p2`)** (listados no registro de entrega): leitura de "5 tentativas" como total com a primeira inclusa; cada retomada consumir uma tentativa; tratamento de `Retry-After` em formato de data HTTP (hoje tratado como invalido, caindo no recuo); recusa de arquivo cujo tamanho mudou durante o envio.
+
+### DP-34 — Cache unico, skip do upload, chave canonica e segredo (fase 3) ✅ **RESOLVIDA (em implementacao em `feature/cache-unico-p3`)**
+
+> **Fase 9 (2026-10-21):** o adiamento do paralelismo e das APIs em lote e encerrado com a condicao cumprida: a medicao previa (`RF-138`) vem **antes** do codigo. Entram `F-09` (`--paralelo`), `F-08` (exclusao e envio em lote) e `F-34`; metadados em lote ficam fora (`F-46`). Ver secao 5.18 do escopo e `DIV-256` a `DIV-265`.
+
+> Escrita **na mesma rodada** em que as decisoes foram recebidas (`RSK-26`). Memorias: `2026-10-18-2243-cache-unico-e-segredo`, `2026-10-18-2243-cache-do-upload`, `2026-10-18-1745-skip-upload-condicionado`. Handoff do DBA: [parecer](../reviews/2026-10-18-2243-parecer-dba-cache-unico.md).
+
+**Decisoes do solicitante (2026-10-18):**
+
+1. **Cache unico:** o `lib/state` e o unico cache de `content_hash`; o `lib/db` (SQLite) e a dependencia de `sqlite3`/`python3` saem; o `upload` passa a usar o `lib/state` → `RF-38(a)`, `RNF-02`, `RNF-26`, `RNF-33`; resolve `DIV-25`.
+2. **Skip do upload** (`DP-32`, agora com criterios): dispensa so com `content_hash` remoto (`get_metadata`) igual ao local, inclusive com `--modo overwrite`; remoto ausente ou falha da consulta leva ao envio; pasta remota mantem o conflito atual; nenhum skip so pelo cache → `RF-60`; fecha `RSK-37`.
+3. **O cache do `upload` nao se vincula a conta:** emenda do `RF-52` para o `upload`, porque o registro so guarda dado local e a protecao entre contas vem do hash remoto → `RF-52(b)`, `RF-61(h)`.
+4. **Poda:** acima de 10.000 entradas, remover as nao usadas ha mais de 90 dias → `RF-61(i)`.
+5. **Autenticacao:** `client_secret` obrigatorio tambem na biblioteca; PKCE nao e implementado e sai do System Design como disponivel; fica no backlog como alternativa futura → `RF-63`, `F-35`.
+6. **Paralelismo e APIs em lote:** adiados, no backlog, com medicao previa → `F-34`.
+
+**Recomendacoes do DBA aceitas pelo Tech Lead (memoria `2026-10-18-2243-cache-do-upload`):** namespace proprio do `upload`; sem cache para entrada padrao, origem nao regular e arquivo vazio; identidade com inode, dispositivo e `mtime`/`ctime` em ns, `stat` antes e depois, regra anti-corrida de 2 s → `RF-61`; diretorio de estado em `0700` → `RNF-25(b)`; o `sync` grava so as entradas visitadas e, sem conta, segue sem memoria → `RF-38(b)`, `RF-52(a)`; `dbx.db*` legado intacto e documentado → `RNF-33`; chave pelo caminho fisico canonico, tambem na raiz do `sync` → `RF-62`.
+
+**Tambem no escopo da fase, sem decisao nova:** `F-29` (`DBX_TRANSFER_HASH`) → `RF-61(j)`; testes diretos de `lib/state.sh` e `lib/cmd.sh` → `RNF-32(d)`; `install.sh` sem `sqlite3` → `RNF-33(d)`; subshells duplicados em `lib/http` (P3.4) sao refatoracao sem mudanca de comportamento observavel, sem requisito novo, coberta pela suite existente de `lib/http`.
+
+**Pontos que o Business Analyst nao resolveu, RESOLVIDOS em 2026-10-18 por decisao do Tech Lead (memoria `2026-10-18-2243-cache-do-upload`): `RF-38(e)` identidade forte tambem no `sync`; `RF-60(i)` sem skip com `--rev`; `RF-52(a)` falha segura documentada na ajuda e no `README` (REVISTA no mesmo dia apos achado de seguranca do Senior Developer: sem identidade de conta a propagacao de exclusao fica desabilitada na execucao e `--confirmar` nao reabilita, `RF-41(e)`); `RNF-25(b1)` correcao para `0700` do diretorio do usuario ou recusa como `permissao`. Registro original:** `DIV-26` (identidade fraca da memoria do `sync`), `DIV-27` (`upload --rev` com hash igual), `DIV-28` (sem conta, `RF-48` trata o par como nunca visto), `DIV-29` (diretorio de estado ja existente em `0755`). **Interpretacao do Business Analyst, CONFIRMADA pelo Tech Lead em 2026-10-18:** em `RF-61(i)`, "uso" inclui o acerto de cache, que renova o carimbo do arquivo; sem isso, uma entrada usada a cada dia mas nunca regravada seria podada.
+
+
+---
+
 ## P2 — Refinamento
 
 ### DP-13 — Shell interativo
@@ -674,6 +785,11 @@ Ha proxy HTTP obrigatorio, inspecao TLS corporativa com autoridade certificadora
 ### DP-18 — Compartilhamento
 
 Links compartilhados precisam de controle de expiracao, senha ou restricao de audiencia (F-16)? Esses recursos dependem do plano Dropbox contratado.
+
+✅ **Resolvida em 2026-10-20 (fase 5, DIV-116):** sim, os tres controles estao no escopo:
+- `dbx compartilhar` exige visibilidade explicita (`--publico`, `--equipe` ou `--senha`) e aceita `--expira`;
+- a restricao do plano contratado sai com o codigo 6;
+- ver RF-85..90 e a memoria `2026-10-20-1110-compartilhamento`.
 
 ---
 
@@ -778,5 +894,5 @@ DP-13 shell interativo · DP-14 empacotamento · DP-15 idioma · DP-16 monitoram
 | DP-11 | Arquivo `0600` sob XDG (`$XDG_CONFIG_HOME`, recuo `~/.config`); sem sobrescrita por ambiente | Destrava `lib/config`; acrescenta verificacao de permissao ao preflight |
 | DIV-16b | Linha por padrao; `--null` com terminador `\0` | Destrava `lib/output`; `RNF-22` vale nos dois modos |
 | DP-19 | Repositorio publicado; Gitflow com `develop` e `feature/*` | Encerrada. Desvios consumados registrados |
-| **DP-05** | **Uma conta so, sem nocao de perfil** | Fecha o desenho de `lib/config`: um arquivo, um caminho, sem multiplexacao. `RF-05` e `F-18` saem para o backlog como incremento **aditivo**, que nao quebra o contrato de `RF-35` |
+| **DP-05** | **Uma conta so, sem nocao de perfil** *(reaberta e superada em 2026-10-21: perfis nomeados, fase 8; ver `DP-05`)* | Fecha o desenho de `lib/config`: um arquivo, um caminho, sem multiplexacao. `RF-05` e `F-18` saem para o backlog como incremento **aditivo**, que nao quebra o contrato de `RF-35` |
 | **RSK-24** | **Aceite do TOCTOU reconfirmado**, com `DP-07` ja resolvida | Reabertura encerrada. A fundamentacao passa a repousar **apenas** nos dois argumentos tecnicos verificados, sem o argumento de portabilidade que havia caido |

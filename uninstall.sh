@@ -90,6 +90,14 @@ if [[ -d "$DIR_SHARE" ]]; then
   removido='sim'
 fi
 
+# RF-68(d): o autocompletar instalado pelo install.sh, e so ele.
+DIR_COMPLETAR="${DIR_SHARE%/dropbox_sync}/bash-completion/completions"
+if [[ -f "$DIR_COMPLETAR/dbx" ]]; then
+  rm -f -- "$DIR_COMPLETAR/dbx"
+  ok "Removido: $DIR_COMPLETAR/dbx"
+  removido='sim'
+fi
+
 if [[ $EXPURGAR == "sim" ]]; then
   DIR_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/dropbox_sync"
   if [[ -d "$DIR_CONFIG" ]]; then

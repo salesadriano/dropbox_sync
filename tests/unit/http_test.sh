@@ -58,7 +58,7 @@ _duplo() {
     printf 'dir=%s\n' "$dir"
     printf 'printf "%%s\\n" "$*" >>"$dir/argv"\n'
     printf 'cat >"$dir/entrada" 2>/dev/null\n'
-    printf 'saida=""; cabecalhos=""; escrever=""\n'
+    printf 'saida=""; cabecalhos=""; escrever=""; fail="nao"\n'
     printf 'anterior=""\n'
     printf 'for arg in "$@"; do\n'
     printf '  case $anterior in\n'
@@ -68,12 +68,19 @@ _duplo() {
     printf '  esac\n'
     printf '  case $arg in\n'
     printf '    --data-binary) : ;;\n'
+    printf '    --fail) fail="sim" ;;\n'
     printf '    @*) [[ -r ${arg#@} ]] && cat "${arg#@}" >>"$dir/enviado" ;;\n'
     printf '  esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
-    printf '[[ -n $saida ]] && cp "$dir/corpo" "$saida"\n'
+    printf '[[ -n $cabecalhos ]] && stat -c %%a "${cabecalhos%%/*}" >>"$dir/modo_area"\n'
     printf '[[ -n $cabecalhos ]] && cp "$dir/cabecalhos" "$cabecalhos"\n'
+    # `--fail` diante de 4xx/5xx: o cliente real nao emite corpo e sai com 22.
+    printf 'if [[ $fail == "sim" && $(cat "$dir/status") -ge 400 ]]; then\n'
+    printf '  [[ -n $escrever ]] && printf "%%s" "$(cat "$dir/status")"\n'
+    printf '  exit 22\n'
+    printf 'fi\n'
+    printf '[[ -n $saida ]] && cp "$dir/corpo" "$saida"\n'
     printf 'if [[ -n $escrever ]]; then printf "%%s" "$(cat "$dir/status")"; fi\n'
     printf 'exit "$(cat "$dir/saida_curl" 2>/dev/null || printf 0)"\n'
   } >"$dir/curl"
@@ -306,12 +313,56 @@ teste_nao_introduz_estado_local_persistente() {
 }
 
 teste_nao_deixa_residuo_temporario() {
-  local dir antes depois
+  # TMPDIR privado: no diretorio compartilhado, outro processo criando ou
+  # removendo `dbx-http*` mudaria a contagem sem relacao com este caso.
+  local dir area restantes
   dir=$(_duplo 200 '{"ok":true}')
-  antes=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'dbx-http*' 2>/dev/null | wc -l)
+  area=$(mktemp -d "$DBX_TESTES_TMP/tmpdir.XXXXXX")
+  TMPDIR=$area PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  restantes=$(find "$area" -mindepth 1 -maxdepth 1 | wc -l)
+  assert_igual 0 "$restantes" 'a requisicao nao pode deixar temporario para tras'
+}
+
+# RNF-29(a): a mascara e estado do PROCESSO. Deixa-la em 077 faria todo arquivo
+# que o usuario receber depois da primeira chamada nascer 0600.
+teste_umask_do_processo_e_preservado_apos_chamada_http() {
+  local dir
+  dir=$(_duplo 200 '{"ok":true}')
+  umask 022
   PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
-  depois=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'dbx-http*' 2>/dev/null | wc -l)
-  assert_igual "$antes" "$depois" 'a requisicao nao pode deixar temporario para tras'
+  assert_igual 0022 "$(umask)" 'a chamada nao pode alterar o umask do chamador'
+}
+
+# RNF-29(b): o 077 continua valendo para a area que recebe o token e o corpo.
+teste_area_temporaria_da_requisicao_nasce_restrita() {
+  local dir
+  dir=$(_duplo 200 '{"ok":true}')
+  umask 022
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 700 "$(head -n 1 "$dir/modo_area")" 'a area com o segredo e restrita ao dono'
+}
+
+# RNF-29(c) e (d): a reemissao diagnostica do canal de fluxo e chamada
+# recursiva; cada nivel precisa remover a propria area, e nenhum gancho de
+# limpeza pode sobreviver ao retorno.
+teste_reemissao_diagnostica_nao_deixa_area_temporaria() {
+  local dir area restantes
+  dir=$(_duplo 409 '{"error_summary":"path/not_file/.."}')
+  area=$(mktemp -d "$DBX_TESTES_TMP/tmpdir.XXXXXX")
+  TMPDIR=$area PATH="$dir:$PATH" dbx_http_conteudo_receber POST 'https://c/2/files/download' \
+    'tok' '{"path":"/p"}' "$area/destino"
+  assert_igual 409 "$DBX_HTTP_CODIGO" 'o codigo observado e preservado'
+  assert_igual 2 "$(wc -l <"$dir/argv")" 'houve a requisicao original e a reemissao'
+  restantes=$(find "$area" -maxdepth 1 -name 'dbx-http*' | wc -l)
+  assert_igual 0 "$restantes" 'nenhuma area temporaria pode restar apos a reemissao'
+  assert_igual '' "$(trap -p RETURN)" 'nenhum gancho RETURN pode ficar armado'
+}
+
+teste_nenhum_gancho_de_limpeza_fica_armado_apos_requisicao() {
+  local dir
+  dir=$(_duplo 200 '{"ok":true}')
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual '' "$(trap -p RETURN)" 'o gancho RETURN nao pode sobreviver ao retorno'
 }
 
 # ---------------------------------------------------------------------------
@@ -471,12 +522,286 @@ teste_mensagem_do_cliente_e_publicada_e_nao_descartada() {
     'pedir show-error e descartar o stderr era pedir diagnostico para nao le-lo'
 }
 
+# ---------------------------------------------------------------------------
+# RNF-30 — timeouts de rede (TC-TMO-01..04)
+# ---------------------------------------------------------------------------
+
+teste_opcoes_carregam_timeouts_padrao_em_todos_os_modos() {
+  # TC-TMO-01: sem variavel definida, toda requisicao leva os tres valores.
+  local dir arquivo
+  # O duplo guarda so as opcoes da ULTIMA chamada: confere-se modo a modo.
+  local modo
+  arquivo="$DBX_TESTES_TMP/corpo-tmo.$$"
+  printf 'x' >"$arquivo"
+  for modo in bearer conteudo fluxo; do
+    dir=$(_duplo 200 '{"ok":true}')
+    case $modo in
+      bearer) PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim ;;
+      conteudo)
+        PATH="$dir:$PATH" dbx_http_conteudo POST 'https://c/2/files/upload' 'tok' \
+          '{"path":"/a"}' "$arquivo" nao
+        ;;
+      fluxo)
+        PATH="$dir:$PATH" dbx_http_conteudo_receber POST 'https://c/2/files/download' 'tok' \
+          '{"path":"/a"}' "$DBX_TESTES_TMP/destino-tmo.$$"
+        ;;
+    esac
+    assert_igual 1 "$(_harness_contar '^connect-timeout = 15$' "$dir/entrada")" \
+      "connect-timeout de 15 s no modo $modo"
+    assert_igual 1 "$(_harness_contar '^speed-limit = 1024$' "$dir/entrada")" \
+      "corte abaixo de 1024 B/s no modo $modo"
+    assert_igual 1 "$(_harness_contar '^speed-time = 60$' "$dir/entrada")" \
+      "janela de 60 s no modo $modo"
+  done
+  rm -f "$arquivo" "$DBX_TESTES_TMP/destino-tmo.$$"
+}
+
+teste_timeouts_sao_ajustaveis_por_ambiente() {
+  # TC-TMO-02.
+  local dir
+  dir=$(_duplo 200 '{"ok":true}')
+  DBX_HTTP_CONNECT_TIMEOUT_S=7 DBX_HTTP_VELOCIDADE_MINIMA_BPS=2048 DBX_HTTP_VELOCIDADE_JANELA_S=30 \
+    PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  local opcoes
+  opcoes=$(cat "$dir/entrada")
+  assert_contem 'connect-timeout = 7' "$opcoes" 'connect-timeout vem do ambiente'
+  assert_contem 'speed-limit = 2048' "$opcoes" 'velocidade minima vem do ambiente'
+  assert_contem 'speed-time = 30' "$opcoes" 'janela vem do ambiente'
+}
+
+teste_variavel_de_ambiente_invalida_e_recusada_antes_da_rede() {
+  # TC-TMO-03 e TC-RTY-06 (RNF-30(c), RNF-07(e)): vazio, nao numerico, zero,
+  # negativo, fracionario e zero a esquerda (que a aritmetica leria em octal).
+  local dir variavel valor estado
+  dir=$(_duplo 200 '{"ok":true}')
+  for variavel in DBX_HTTP_CONNECT_TIMEOUT_S DBX_HTTP_VELOCIDADE_MINIMA_BPS \
+    DBX_HTTP_VELOCIDADE_JANELA_S DBX_HTTP_TENTATIVAS_MAXIMAS DBX_HTTP_ESPERA_BASE_MS \
+    DBX_HTTP_ESPERA_TETO_MS DBX_HTTP_RETRY_AFTER_TETO_S; do
+    for valor in '' 0 -1 abc 05 1.5 '9 9'; do
+      (
+        export "$variavel=$valor"
+        PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+        estado=$?
+        assert_igual "$DBX_HTTP_ERRO_USO" "$estado" "$variavel=[$valor] e uso invalido"
+        assert_contem "$variavel" "$DBX_HTTP_MOTIVO_AMBIENTE" 'o motivo nomeia a variavel'
+        assert_contem "[$valor]" "$DBX_HTTP_MOTIVO_AMBIENTE" 'o motivo nomeia o valor recusado'
+      ) || exit 1
+    done
+  done
+  assert_arquivo_ausente "$dir/argv" 'nenhuma chamada de rede com valor invalido'
+}
+
+teste_validacao_de_ambiente_e_publica_e_aceita_o_padrao() {
+  assert_sucesso dbx_http_validar_ambiente
+  DBX_HTTP_TENTATIVAS_MAXIMAS=0 assert_status "$DBX_HTTP_ERRO_USO" dbx_http_validar_ambiente
+}
+
+teste_servidor_mudo_termina_como_falha_transitoria_de_rede() {
+  # TC-TMO-04: o cliente sai com 28 quando o tempo se esgota. Em operacao nao
+  # idempotente o resultado e `indeterminado` e nao ha repeticao (RNF-07(f)).
+  local dir
+  dir=$(_duplo 000 '')
+  printf '28\n' >"$dir/saida_curl"
+  _com_sono "$dir"
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' nao
+  assert_igual "$DBX_HTTP_ERRO_REDE" "$?" 'tempo esgotado sai com o codigo de rede'
+  assert_igual 'rede' "$DBX_HTTP_CLASSE" 'tempo esgotado e falha de rede'
+  assert_igual 'indeterminado' "$DBX_HTTP_POLITICA" 'nao idempotente nao repete'
+  assert_igual 1 "$(_harness_contar . "$dir/argv")" 'uma chamada so'
+}
+
+teste_servidor_mudo_em_operacao_idempotente_e_repetido() {
+  local dir
+  dir=$(_duplo 000 '')
+  printf '28\n' >"$dir/saida_curl"
+  _com_sono "$dir"
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 'rede' "$DBX_HTTP_CLASSE" 'tempo esgotado e falha de rede'
+  assert_igual 5 "$(_harness_contar . "$dir/argv")" 'idempotente repete ate o limite'
+}
+
+# ---------------------------------------------------------------------------
+# RNF-07, RF-09 — retentativa (TC-RTY-01..06). A espera e observada por um
+# substituto de `sleep`: a suite nao dorme de verdade (RNF-07(g), RNF-14).
+# ---------------------------------------------------------------------------
+
+# _com_sono <dir> — instala no mesmo diretorio do duplo um `sleep` que so
+# registra o argumento, um por linha, em `<dir>/esperas`.
+_com_sono() {
+  local dir=$1
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'printf "%%s\\n" "$1" >>%q\n' "$dir/esperas"
+  } >"$dir/sleep"
+  chmod +x "$dir/sleep"
+}
+
+# _esperas_ms <dir> — cada espera registrada, em milissegundos.
+_esperas_ms() {
+  local valor
+  [[ -r $1/esperas ]] || return 0
+  while IFS= read -r valor; do
+    [[ $valor =~ ^([0-9]+)\.([0-9]{3})$ ]] ||
+      _harness_falhar "espera em formato inesperado: [$valor]"
+    printf '%s\n' "$((10#${BASH_REMATCH[1]} * 1000 + 10#${BASH_REMATCH[2]}))"
+  done <"$1/esperas"
+}
+
+teste_padrao_e_de_cinco_tentativas_contando_a_primeira() {
+  # TC-RTY-01.
+  local dir
+  dir=$(_duplo 503 '{"error_summary":"internal_error/..."}')
+  _com_sono "$dir"
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 5 "$(_harness_contar . "$dir/argv")" '5 tentativas, a primeira inclusa'
+  assert_igual 4 "$(_harness_contar . "$dir/esperas")" 'uma espera entre cada par de tentativas'
+}
+
+teste_numero_de_tentativas_e_configuravel() {
+  local dir
+  dir=$(_duplo 503 '{"error_summary":"internal_error/..."}')
+  _com_sono "$dir"
+  DBX_HTTP_TENTATIVAS_MAXIMAS=2 PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 2 "$(_harness_contar . "$dir/argv")" 'o limite vem do ambiente'
+  dir=$(_duplo 503 '{"error_summary":"internal_error/..."}')
+  _com_sono "$dir"
+  DBX_HTTP_TENTATIVAS_MAXIMAS=1 PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 1 "$(_harness_contar . "$dir/argv")" 'uma tentativa e nenhuma repeticao'
+  assert_arquivo_ausente "$dir/esperas" 'sem repeticao nao ha espera'
+}
+
+teste_recuo_tem_base_de_um_segundo_com_variacao() {
+  # TC-RTY-02: espera n = base * 2^(n-1) mais variacao de 0 a base.
+  local dir n=1 ms piso
+  dir=$(_duplo 503 '{"error_summary":"internal_error/..."}')
+  _com_sono "$dir"
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  while IFS= read -r ms; do
+    piso=$((1000 * (1 << (n - 1))))
+    [[ $ms -ge $piso && $ms -le $((piso + 1000)) ]] ||
+      _harness_falhar "espera $n fora de [$piso, $((piso + 1000))] ms" "obtido: $ms"
+    n=$((n + 1))
+  done < <(_esperas_ms "$dir")
+  assert_igual 5 "$n" 'quatro esperas verificadas'
+}
+
+teste_recuo_respeita_o_teto_por_espera() {
+  local dir ms vistos=0
+  dir=$(_duplo 503 '{"error_summary":"internal_error/..."}')
+  _com_sono "$dir"
+  DBX_HTTP_ESPERA_TETO_MS=2500 PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  while IFS= read -r ms; do
+    vistos=$((vistos + 1))
+    [[ $ms -le 2500 ]] || _harness_falhar "espera acima do teto de 2500 ms: $ms"
+  done < <(_esperas_ms "$dir")
+  assert_igual 4 "$vistos" 'todas as esperas conferidas'
+  assert_igual 60000 "$DBX_HTTP_ESPERA_TETO_MS_PADRAO" 'teto padrao de 60 s por espera'
+}
+
+teste_429_com_retry_after_de_5_espera_ao_menos_5_segundos() {
+  # TC-RTY-03: o criterio de RNF-07 que a DIV-22 apontou como nao cumprido.
+  local dir ms vistos=0
+  dir=$(_duplo 429 '{"error_summary":"too_many_requests/..."}' 'Retry-After: 5')
+  _com_sono "$dir"
+  PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  while IFS= read -r ms; do
+    vistos=$((vistos + 1))
+    assert_igual 5000 "$ms" 'Retry-After prevalece sobre o recuo calculado'
+  done < <(_esperas_ms "$dir")
+  assert_igual 4 "$vistos" 'cada repeticao esperou o que o servidor pediu'
+}
+
+teste_retry_after_acima_do_teto_e_limitado_a_300_segundos() {
+  # TC-RTY-04.
+  local dir
+  dir=$(_duplo 429 '{"error_summary":"too_many_requests/..."}' 'retry-after: 400')
+  _com_sono "$dir"
+  DBX_HTTP_TENTATIVAS_MAXIMAS=2 PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 300000 "$(_esperas_ms "$dir")" 'Retry-After: 400 vira 300 s'
+  dir=$(_duplo 429 '{"error_summary":"too_many_requests/..."}' 'Retry-After: 400')
+  _com_sono "$dir"
+  DBX_HTTP_RETRY_AFTER_TETO_S=10 DBX_HTTP_TENTATIVAS_MAXIMAS=2 PATH="$dir:$PATH" \
+    dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 10000 "$(_esperas_ms "$dir")" 'o teto do Retry-After e configuravel'
+  # Inteiro valido, mas grande demais para a aritmetica: vale o teto, e nao o
+  # recuo, e nunca um valor que transbordou.
+  dir=$(_duplo 429 '{"error_summary":"too_many_requests/..."}' 'Retry-After: 99999999999999999999')
+  _com_sono "$dir"
+  DBX_HTTP_TENTATIVAS_MAXIMAS=2 PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 300000 "$(_esperas_ms "$dir")" 'inteiro enorme e limitado ao teto'
+}
+
+teste_retry_after_invalido_ou_em_data_cai_no_recuo() {
+  # TC-RTY-05: formato de data HTTP vale como invalido (decisao do Tech Lead).
+  local dir valor ms
+  for valor in 'abc' 'Wed, 21 Oct 2015 07:28:00 GMT' '-3' '1.5' '5s' ''; do
+    dir=$(_duplo 429 '{"error_summary":"too_many_requests/..."}' "Retry-After: $valor")
+    _com_sono "$dir"
+    DBX_HTTP_TENTATIVAS_MAXIMAS=2 PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+    ms=$(_esperas_ms "$dir")
+    [[ $ms =~ ^[0-9]+$ && $ms -ge 1000 && $ms -le 2000 ]] ||
+      _harness_falhar "Retry-After [$valor] deveria cair no recuo de 1 a 2 s" "obtido: [$ms]"
+  done
+}
+
+teste_retry_after_zero_e_valido_e_nao_espera() {
+  local dir
+  dir=$(_duplo 503 '{"error_summary":"internal_error/..."}' 'Retry-After: 0')
+  _com_sono "$dir"
+  DBX_HTTP_TENTATIVAS_MAXIMAS=2 PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 0 "$(_esperas_ms "$dir")" 'Retry-After: 0 e inteiro nao negativo e vale'
+}
+
+teste_retry_after_depois_do_identificador_de_correlacao_ainda_e_lido() {
+  # A leitura de cabecalhos parava no identificador de correlacao.
+  local dir
+  dir=$(_duplo 429 '{"error_summary":"too_many_requests/..."}' \
+    'X-Dropbox-Request-Id: req-1' 'Retry-After: 7')
+  _com_sono "$dir"
+  DBX_HTTP_TENTATIVAS_MAXIMAS=2 PATH="$dir:$PATH" dbx_http_requisitar POST 'https://api/2/x' 'tok' '' sim
+  assert_igual 7000 "$(_esperas_ms "$dir")" 'Retry-After lido mesmo depois da correlacao'
+  assert_igual 'req-1' "$DBX_HTTP_CORRELACAO" 'a correlacao continua capturada'
+}
+
 teste_mensagem_do_cliente_e_redigida_antes_de_publicar() {
   local dir
   dir=$(_duplo_que_falha 2 'curl: option header: Authorization: Bearer sl.SEGREDO_NA_MENSAGEM')
   PATH=$dir:$PATH dbx_http_requisitar POST https://exemplo/api tok '{}' sim
   assert_segredo_ausente 'sl.SEGREDO_NA_MENSAGEM' "$DBX_HTTP_DIAGNOSTICO" \
     'o cliente reclama citando a opcao, que carrega o segredo'
+}
+
+# ---------------------------------------------------------------------------
+# P3.4 — sem subshell evitavel no caminho de cada requisicao (fase 3)
+# ---------------------------------------------------------------------------
+
+teste_conducao_da_requisicao_nao_captura_a_taxonomia_por_subshell() {
+  # Classe, politica e codigo de saida sao consultados por variavel. As duas
+  # substituicoes que restam sao necessarias: a area temporaria (mktemp, com o
+  # umask isolado) e o codigo HTTP que o cliente escreve na saida padrao.
+  local corpo achados
+  corpo=$(awk '/^_dbx_http_conduzir\(\) \{/ { dentro = 1 } dentro { print } dentro && /^\}/ { exit }' \
+    "$DBX_HARNESS_RAIZ/lib/http.sh")
+  assert_contem 'curl -K -' "$corpo" 'sem o corpo da funcao a auditoria seria vacua'
+  achados=$(grep -vE '^[[:space:]]*#' <<<"$corpo" | grep -nE '\$\((dbx_errors_|_dbx_errors_)' || true)
+  assert_igual '' "$achados" "consulta a taxonomia por substituicao de comando: $achados"
+  assert_igual 0 "$(grep -c 'dbx_errors_codigo_saida' <<<"$corpo")" \
+    'o codigo de saida vem da tabela, sem chamada dupla'
+}
+
+teste_codigo_de_saida_da_requisicao_segue_a_taxonomia() {
+  # O comportamento nao muda com a publicacao por variavel.
+  local dir http estado esperado
+  for http in 400 401 403 404 409; do
+    dir=$(_duplo "$http" '{"error_summary":"path/not_found/.."}')
+    PATH=$dir:$PATH dbx_http_requisitar POST https://exemplo/api tok '{}' nao
+    estado=$?
+    assert_diferente '' "$DBX_HTTP_CLASSE" "classe publicada para $http"
+    esperado=$(dbx_errors_codigo_saida "$DBX_HTTP_CLASSE")
+    assert_igual "$esperado" "$estado" "codigo de saida da classe publicada ($http)"
+    assert_igual "$(dbx_errors_classificar "$http" 'path/not_found/..')" "$DBX_HTTP_CLASSE" \
+      "a classe e a da taxonomia ($http)"
+  done
 }
 
 harness_executar "$@"

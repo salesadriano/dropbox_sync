@@ -112,6 +112,10 @@ DBX_ERRORS_QUALIFICADORES=(
   from_write
   to
   lookup_failed
+  # RF-90(a) (fase 5): `SharedLinkSettingsError` vem como
+  # `settings_error/<tag>` em `create_shared_link_with_settings` e
+  # `modify_shared_link_settings`.
+  settings_error
 )
 
 DBX_ERRORS_TAGS=(
@@ -143,6 +147,36 @@ DBX_ERRORS_TAGS=(
   'not_closed=nao_concluida'
   'transient_error=erro_remoto'
   'internal_error=erro_remoto'
+  # DIV-58 (fase 3): `list_revisions`, `restore` e `permanently_delete`. So
+  # classes existentes; `in_progress` e repetido pela politica abaixo e o
+  # comando que o recebe ao fim das tentativas o le como `nao_concluida`.
+  'invalid_revision=nao_encontrado'
+  'invalid_before_rev=uso_invalido'
+  'before_rev_not_supported=uso_invalido'
+  'unsupported_content_type=uso_invalido'
+  'locked=conflito'
+  'team_folder=permissao'
+  'operation_suppressed=permissao'
+  'access_restricted=permissao'
+  'in_progress=erro_remoto'
+  'too_many_files=nao_concluida'
+  # RF-90(a) (fase 5): rotas `files/get_temporary_link` e `sharing/*`, so
+  # classes existentes. `shared_link_already_exists` e tratado pelo comando
+  # (RF-87); se escapar, e conflito. `unsupported_parameter_field` e membro de
+  # `SharedLinkError` na especificacao (`sharing.stone`, DIV-121).
+  'not_authorized=permissao'
+  'invalid_settings=uso_invalido'
+  'shared_link_already_exists=conflito'
+  'shared_link_not_found=nao_encontrado'
+  'shared_link_access_denied=permissao'
+  'shared_link_malformed=uso_invalido'
+  'unsupported_link_type=uso_invalido'
+  'unsupported_parameter_field=uso_invalido'
+  'unsupported_file=uso_invalido'
+  'not_allowed=permissao'
+  'email_not_verified=permissao'
+  'banned_member=permissao'
+  'too_many_shared_folders=permissao'
   'other=desconhecido'
 )
 
@@ -179,6 +213,7 @@ DBX_ERRORS_CHAVES_SENSIVEIS=(
   access_token refresh_token client_secret app_secret oauth_token id_token
   api_key apikey app_key auth authorization proxy_authorization cookie set_cookie
   password passwd secret token tokens code
+  link_password
 )
 
 # Chaves cujo valor se estende ate o fim da linha, e nao ate um delimitador.
@@ -270,13 +305,19 @@ _dbx_errors_prefixo_casa() {
 
 # _dbx_errors_classe_da_tag <resumo> — casa o resumo contra a tabela de tags,
 # respeitando a fronteira de componente. Imprime a classe, ou status 1.
+#
+# P3.4: publica tambem em DBX_ERRORS_CLASSE_DA_TAG, para a classificacao
+# consultar sem substituicao de comando (sem subshell por requisicao).
+DBX_ERRORS_CLASSE_DA_TAG=''
 _dbx_errors_classe_da_tag() {
   local resumo=$1 entrada tag classe
+  DBX_ERRORS_CLASSE_DA_TAG=''
   [[ -n $resumo ]] || return 1
   for entrada in "${DBX_ERRORS_TAGS[@]}"; do
     tag=${entrada%%=*}
     classe=${entrada#*=}
     if _dbx_errors_prefixo_casa "$resumo" "$tag"; then
+      DBX_ERRORS_CLASSE_DA_TAG=$classe
       printf '%s' "$classe"
       return 0
     fi
@@ -304,24 +345,37 @@ _dbx_errors_remover_qualificador() {
   return 1
 }
 
-# dbx_errors_classificar <codigo_http> <error_summary> — imprime a classe.
+# dbx_errors_classificar <codigo_http> <error_summary> — imprime a classe e a
+# publica em DBX_ERRORS_CLASSE.
 # Codigo HTTP `0` significa ausencia de resposta (falha de transporte).
+#
+# P3.4: quem chama a cada requisicao (`lib/http`) le a variavel com a saida
+# descartada, sem substituicao de comando; a saida padrao continua o contrato
+# dos demais consumidores.
+DBX_ERRORS_CLASSE=''
 dbx_errors_classificar() {
-  local http=${1:-} resumo=${2:-} classe
+  _dbx_errors_classificar "$@" || return $?
+  printf '%s\n' "$DBX_ERRORS_CLASSE"
+  return "$DBX_ERRORS_STATUS_OK"
+}
+
+_dbx_errors_classificar() {
+  local http=${1:-} resumo=${2:-}
+  DBX_ERRORS_CLASSE=''
   [[ $http =~ ^[0-9]+$ ]] || return "$DBX_ERRORS_STATUS_USO"
 
   if [[ $http -ge 200 && $http -lt 300 ]]; then
-    printf 'sucesso\n'
+    DBX_ERRORS_CLASSE='sucesso'
     return "$DBX_ERRORS_STATUS_OK"
   fi
   if [[ $http -eq 0 ]]; then
-    printf 'rede\n'
+    DBX_ERRORS_CLASSE='rede'
     return "$DBX_ERRORS_STATUS_OK"
   fi
   # Corpo de 5xx nao segue o contrato de `error_summary` e pode vir de um proxy
   # no caminho. Deixar o prefixo decidir aqui produziria classificacao arbitraria.
   if [[ $http -ge 500 ]]; then
-    printf 'erro_remoto\n'
+    DBX_ERRORS_CLASSE='erro_remoto'
     return "$DBX_ERRORS_STATUS_OK"
   fi
 
@@ -329,8 +383,8 @@ dbx_errors_classificar() {
   # O teto de voltas encerra qualquer composicao inesperada sem laco aberto.
   local restante=$resumo voltas=0
   while [[ -n $restante && $voltas -le 4 ]]; do
-    if classe=$(_dbx_errors_classe_da_tag "$restante"); then
-      printf '%s\n' "$classe"
+    if _dbx_errors_classe_da_tag "$restante" >/dev/null; then
+      DBX_ERRORS_CLASSE=$DBX_ERRORS_CLASSE_DA_TAG
       return "$DBX_ERRORS_STATUS_OK"
     fi
     _dbx_errors_remover_qualificador "$restante" || break
@@ -339,13 +393,38 @@ dbx_errors_classificar() {
   done
 
   case $http in
-    400) printf 'uso_invalido\n' ;;
-    401) printf 'autenticacao\n' ;;
-    403) printf 'permissao\n' ;;
-    429) printf 'limite_taxa\n' ;;
-    *) printf 'desconhecido\n' ;;
+    400) DBX_ERRORS_CLASSE='uso_invalido' ;;
+    401) DBX_ERRORS_CLASSE='autenticacao' ;;
+    403) DBX_ERRORS_CLASSE='permissao' ;;
+    429) DBX_ERRORS_CLASSE='limite_taxa' ;;
+    *) DBX_ERRORS_CLASSE='desconhecido' ;;
   esac
   return "$DBX_ERRORS_STATUS_OK"
+}
+
+# dbx_errors_tag_reconhecida <error_summary> — a TAG da tabela que classifica o
+# resumo (depois de tirar os qualificadores conhecidos), em DBX_ERRORS_TAG;
+# vazia quando nenhuma casa. O valor sai SEMPRE do vocabulario fechado da
+# tabela, nunca do texto do servico: e o que pode ser citado quando o resumo
+# cru nao pode (QA-B5-08, rotas que levam a senha do link).
+DBX_ERRORS_TAG=''
+dbx_errors_tag_reconhecida() {
+  local restante=${1-} voltas=0 entrada tag
+  DBX_ERRORS_TAG=''
+  while [[ -n $restante && $voltas -le 4 ]]; do
+    for entrada in "${DBX_ERRORS_TAGS[@]}"; do
+      tag=${entrada%%=*}
+      if _dbx_errors_prefixo_casa "$restante" "$tag"; then
+        # shellcheck disable=SC2034  # canal publico, lido por commands/compartilhar
+        DBX_ERRORS_TAG=$tag
+        return 0
+      fi
+    done
+    _dbx_errors_remover_qualificador "$restante" || break
+    restante=$DBX_ERRORS_RESTANTE
+    voltas=$((voltas + 1))
+  done
+  return 1
 }
 
 # dbx_errors_politica_retentativa <codigo_http> <error_summary> [idempotente]
@@ -367,8 +446,19 @@ dbx_errors_classificar() {
 # (`download`, `list_folder`, `get_metadata`) a ambiguidade nao existe e a
 # retentativa e liberada: sem isso, um RST de TCP encerra um lote de cron por
 # falha trivialmente recuperavel (PRJ-DEC-02).
+#
+# P3.4: publica tambem em DBX_ERRORS_POLITICA, pelo mesmo motivo da
+# classificacao.
+DBX_ERRORS_POLITICA=''
 dbx_errors_politica_retentativa() {
+  _dbx_errors_politica_retentativa "$@" || return $?
+  printf '%s\n' "$DBX_ERRORS_POLITICA"
+  return "$DBX_ERRORS_STATUS_OK"
+}
+
+_dbx_errors_politica_retentativa() {
   local http=${1:-} resumo=${2:-} idempotente=${3:-nao} classe
+  DBX_ERRORS_POLITICA=''
   [[ $http =~ ^[0-9]+$ ]] || return "$DBX_ERRORS_STATUS_USO"
   case $idempotente in
     sim | nao) ;;
@@ -380,7 +470,8 @@ dbx_errors_politica_retentativa() {
   # como limite de taxa e recebia politica `nenhuma`, embora seja a contencao de
   # lock de namespace da Dropbox, que o servico manda repetir. O mesmo valia para
   # `path/rate_limit`, `transient_error`, `internal_error` e `incorrect_offset`.
-  classe=$(dbx_errors_classificar "$http" "$resumo") || return "$DBX_ERRORS_STATUS_USO"
+  _dbx_errors_classificar "$http" "$resumo" || return "$DBX_ERRORS_STATUS_USO"
+  classe=$DBX_ERRORS_CLASSE
 
   # Duas condicoes especificas de sessao, distinguidas pela tag: uma reinicia o
   # percurso, a outra retoma do deslocamento informado pelo servico. Tratar as
@@ -389,43 +480,49 @@ dbx_errors_politica_retentativa() {
     local restante=$resumo voltas=0
     while [[ -n $restante && $voltas -le 4 ]]; do
       if _dbx_errors_prefixo_casa "$restante" reset; then
-        printf 'reiniciar\n'
+        DBX_ERRORS_POLITICA='reiniciar'
         return "$DBX_ERRORS_STATUS_OK"
       fi
       if _dbx_errors_prefixo_casa "$restante" incorrect_offset; then
-        printf 'retomar\n'
+        DBX_ERRORS_POLITICA='retomar'
+        return "$DBX_ERRORS_STATUS_OK"
+      fi
+      # DIV-58: `in_progress` diz que a operacao ainda corre do outro lado e
+      # nao foi aplicada por esta chamada; repetir e seguro mesmo em escrita.
+      if _dbx_errors_prefixo_casa "$restante" in_progress; then
+        DBX_ERRORS_POLITICA='recuo_exponencial'
         return "$DBX_ERRORS_STATUS_OK"
       fi
       _dbx_errors_remover_qualificador "$restante" || break
-    restante=$DBX_ERRORS_RESTANTE
+      restante=$DBX_ERRORS_RESTANTE
       voltas=$((voltas + 1))
     done
   fi
 
   case $classe in
     limite_taxa)
-      printf 'respeitar_retry_after\n'
+      DBX_ERRORS_POLITICA='respeitar_retry_after'
       ;;
     autenticacao)
-      printf 'renovar_token_uma_vez\n'
+      DBX_ERRORS_POLITICA='renovar_token_uma_vez'
       ;;
     erro_remoto | rede)
       # Sem confirmacao de que a operacao NAO foi aplicada, repetir e decisao do
       # chamador, que conhece a operacao. Para operacao idempotente a
       # ambiguidade nao existe.
       if [[ $idempotente == 'sim' ]]; then
-        printf 'recuo_exponencial\n'
+        DBX_ERRORS_POLITICA='recuo_exponencial'
       else
-        printf 'indeterminado\n'
+        DBX_ERRORS_POLITICA='indeterminado'
       fi
       ;;
     *)
       # `408` e tempo limite de requisicao: retentavel, e nao classificado por
       # tag alguma.
       if [[ $http -eq 408 ]]; then
-        printf 'recuo_exponencial\n'
+        DBX_ERRORS_POLITICA='recuo_exponencial'
       else
-        printf 'nenhuma\n'
+        DBX_ERRORS_POLITICA='nenhuma'
       fi
       ;;
   esac
@@ -529,12 +626,20 @@ dbx_errors_redigir() {
     chave=${termo,,}
     chave=${chave//-/_}
 
-    # Prefixo documentado do access token da Dropbox: `sl` `.` `<termo>`.
+    # Prefixo documentado do access token da Dropbox: `sl` `.` `<termo>`. O
+    # formato atual, `sl.u.<corpo>`, tem mais de um ponto (QA-P2-04): mascarar so
+    # ate o primeiro deixava o `<corpo>` em claro. Cada `.` `<termo>` seguinte
+    # tambem e consumido; ponto seguido de espaco ou fim e pontuacao e fica.
     if [[ $chave == 'sl' && ${partes[indice + 1]:-} == '.' && -n ${partes[indice + 2]:-} ]]; then
       partes[indice]='[REDIGIDO]'
       partes[indice + 1]=''
       partes[indice + 2]=''
       indice=$((indice + 2))
+      while [[ ${partes[indice + 1]:-} == '.' && ${partes[indice + 2]:-} == [A-Za-z0-9_-]* ]]; do
+        partes[indice + 1]=''
+        partes[indice + 2]=''
+        indice=$((indice + 2))
+      done
       continue
     fi
 

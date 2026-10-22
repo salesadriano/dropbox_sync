@@ -57,7 +57,7 @@ Exemplos de referencia. A opcao exata depende da versao da ferramenta: confirmar
 
 Ferramenta sem opcao de parada no primeiro teste falho: o runner roda o menor grupo possivel por comando (arquivo ou modulo) e o script orquestrador para no primeiro comando falho. A limitacao e registrada no parecer.
 
-Os blocos de teste das skills de stack seguem esta tabela: todo comando de execucao de testes ali ja traz a opcao de parada (ou o laco por arquivo, quando nao ha opcao), e a configuracao de exemplo do runner a inclui (`addopts = -x`, `bail: 1`, `stopOnDefect="true"`). Aplicado em `django-expert`, `django-tdd`, `fastapi-expert`, `fastify-best-practices`, `nodejs-best-practices`, `bats-testing-patterns` e `review-documentation`.
+Os blocos de teste das skills de stack seguem esta tabela: todo comando de execucao de testes ali ja traz a opcao de parada (ou o laco por arquivo, quando nao ha opcao), e a configuracao de exemplo do runner a inclui (`addopts = -x`, `bail: 1`, `stopOnDefect="true"`). Aplicado em `bats-testing-patterns` e `review-documentation`; skills de outras stacks: nao incluida neste repositorio; fonte: `ai_team`.
 
 ## Orquestracao em script
 

@@ -29,7 +29,7 @@ _sem() {
   # `timeout` e os utilitarios usados pela propria sonda precisam existir no
   # PATH reduzido, senao a sonda mede a si mesma em vez do componente.
   for alvo in bash curl sha256sum shasum openssl timeout env head wc mktemp stat \
-    readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od; do
+    readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od tail df sleep ln rmdir; do
     for faltante in "${ausentes[@]}"; do
       [[ $alvo == "$faltante" ]] && continue 2
     done
@@ -215,7 +215,7 @@ teste_diagnostico_do_preflight_nao_ecoa_conteudo_da_credencial() {
 
 teste_todo_utilitario_ausente_reprova_e_e_nomeado() {
   local utilitario caminho saida
-  for utilitario in mktemp mv rm chmod mkdir stat head wc readlink dirname; do
+  for utilitario in mktemp mv rm chmod mkdir stat head wc readlink dirname ln; do
     caminho=$(_sem "$utilitario")
     saida=$(PATH="$caminho" timeout 30 bash -c '
       . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
@@ -227,6 +227,38 @@ teste_todo_utilitario_ausente_reprova_e_e_nomeado() {
     assert_contem "$utilitario" "$saida" \
       "RNF-02 exige nomear o utilitario ausente: $utilitario"
   done
+}
+
+teste_inspecao_sem_parada_nomeia_cada_ausente() {
+  # RF-66(a)(e): o `diagnostico` nao para no primeiro item. A lista e a MESMA do
+  # preflight, perguntada a ele, e a inspecao so usa o proprio shell.
+  local caminho saida
+  caminho=$(_sem stat mktemp readlink)
+  saida=$(PATH="$caminho" timeout 30 bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
+    dbx_preflight_ausentes
+    printf "%s|%s" "$?" "${DBX_PREFLIGHT_AUSENTES[*]}"
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  assert_igual "$DBX_PREFLIGHT_ERRO_CONFIGURACAO|mktemp stat readlink" "$saida" \
+    'cada ausente nomeado, na ordem da lista do preflight'
+  caminho=$(_sem)
+  saida=$(PATH="$caminho" timeout 30 bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
+    dbx_preflight_ausentes
+    printf "%s|%s" "$?" "${DBX_PREFLIGHT_AUSENTES[*]}"
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  assert_igual '0|' "$saida" 'ambiente completo: nada ausente'
+}
+
+teste_inspecao_sem_parada_inclui_o_resumo_sha256() {
+  local caminho saida
+  caminho=$(_sem sha256sum shasum openssl)
+  saida=$(PATH="$caminho" timeout 30 bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
+    dbx_preflight_ausentes
+    printf "%s" "${DBX_PREFLIGHT_AUSENTES[*]}"
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  assert_contem 'sha256sum' "$saida" 'a falta do utilitario de resumo e nomeada'
 }
 
 # _comandos_externos_de <arquivo...> — candidatos a comando externo, extraidos
@@ -277,10 +309,35 @@ _comandos_externos_de() {
   # (R3-01), e as tres primeiras sao idiomaticas, nao estilo de conveniencia.
   sed -e 's/^[[:space:]]*#.*//' -e "s/'[^']*'/ /g" -e 's/"[^"]*"/ /g' "$@" |
     awk '
-      /^[[:space:]]*(declare[[:space:]]+-[a-zA-Z]+[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?=\(/ { dentro = 1; next }
-      dentro && /^[[:space:]]*\)/ { dentro = 0; next }
-      dentro { next }
-      { print }
+      # Saldo de parenteses da linha (as aspas ja sairam). O bloco termina
+      # quando o saldo volta a zero, e NAO na proxima linha que comeca com `)`:
+      # um vetor aberto e fechado na mesma linha (`x=()`, `x=(a b)`) nao abre
+      # bloco nenhum. Com a regra antiga, cada `x=()` cegava a auditoria ate
+      # o fim do arquivo ou o proximo `)` em inicio de linha (QA, fase 2).
+      #
+      # Antes do saldo, sai o que nao e posicao de comando e so ficava oculto
+      # pela cegueira: expansao `${...}` (inclusive `${!nome-}`), aritmetica
+      # `((...))`, descritor nomeado `{fd}<` e redirecao (`2>/dev/null`, `<&3`).
+      # Vetor de uma linha (`x=(a b)`, `x+=(a)`) vira so `=`: o conteudo e dado.
+      function limpar(s,   antes) {
+        do { antes = s; gsub(/\$\{[^{}]*\}/, " ", s) } while (s != antes)
+        do { antes = s; gsub(/\(\([^()]*\)\)/, " ", s) } while (s != antes)
+        gsub(/\{[A-Za-z_][A-Za-z0-9_]*\}[<>]/, " ", s)
+        gsub(/[0-9]*[<>]+&?[^[:space:];|&()]*/, " ", s)
+        return s
+      }
+      function saldo(s,   t, abre, fecha) {
+        t = s; abre = gsub(/\(/, "", t)
+        t = s; fecha = gsub(/\)/, "", t)
+        return abre - fecha
+      }
+      { $0 = limpar($0) }
+      dentro { profundidade += saldo($0); if (profundidade <= 0) dentro = 0; next }
+      /^[[:space:]]*(declare[[:space:]]+-[a-zA-Z]+[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?=\(/ {
+        profundidade = saldo(substr($0, index($0, "=(")))
+        if (profundidade > 0) { dentro = 1; next }
+      }
+      { gsub(/[A-Za-z0-9_\]][+]?=\([^()]*\)/, "= "); print }
     ' |
     grep -vE '^[[:space:]]*[^|&;()]+([[:space:]]*\|[[:space:]]*[^|&;()]+)*[[:space:]]*\)' |
     sed -E -e 's/&&/\n/g' -e 's/\|\|/\n/g' -e 's/[;&|(){}!]/\n/g' \
@@ -381,6 +438,35 @@ teste_auditoria_de_comandos_enxerga_utilitario_fora_de_qualquer_lista() {
     assert_contem "$esperado" "$extraidos" \
       "a extracao precisa enxergar '$esperado', que nao consta de lista alguma"
   done
+}
+
+teste_auditoria_de_comandos_nao_fica_cega_depois_de_vetor_de_uma_linha() {
+  # Vetor aberto e fechado na MESMA linha (`x=()`, `x=(a b) y=$z`) nao abre
+  # bloco de literal: o comando nas linhas seguintes e enxergado. O bloco de
+  # varias linhas continua descartado ate o saldo de parenteses voltar a zero,
+  # inclusive com `)` que nao comeca a linha.
+  local amostra extraidos
+  amostra=$(mktemp "$DBX_TESTES_TMP/amostra.XXXXXX")
+  {
+    printf '%s\n' 'lista=()'
+    printf '%s\n' 'cut -d: -f1 "$a"'
+    printf '%s\n' '  segmentos=() resto=$campo'
+    printf '%s\n' '  paste "$a" "$b"'
+    printf '%s\n' 'declare -ga VETOR=(um dois)'
+    printf '%s\n' 'expr 1 + 1'
+    printf '%s\n' 'BLOCO=('
+    printf '%s\n' '  falsopositivo'
+    printf '%s\n' '  outrofalso)'
+    printf '%s\n' 'touch "$a"'
+  } >"$amostra"
+  extraidos=$(_comandos_externos_de "$amostra")
+  rm -f "$amostra"
+  local esperado
+  for esperado in cut paste expr touch; do
+    assert_contem "$esperado" "$extraidos" "comando depois de vetor de uma linha: '$esperado'"
+  done
+  assert_nao_contem 'falsopositivo' "$extraidos" 'linha de continuacao do bloco de varias linhas'
+  assert_nao_contem 'outrofalso' "$extraidos" 'ultima linha do bloco, fechada sem `)` no inicio'
 }
 
 teste_auditoria_de_comandos_ignora_o_que_nao_e_comando() {
@@ -535,6 +621,126 @@ teste_nivel_fora_do_vocabulario_e_recusado() {
   XDG_CONFIG_HOME=$area dbx_preflight_verificar quase_credencial
   assert_igual "$DBX_PREFLIGHT_ERRO_USO" $? \
     'nivel desconhecido e erro de uso, e nao aprovacao'
+}
+
+# ---------------------------------------------------------------------------
+# Fase 3 — sem `sqlite3`/`python3` (RNF-02 emendado) e sem `lib/db` (RNF-33)
+# ---------------------------------------------------------------------------
+
+# _codigo_do_produto — os arquivos que a auditoria cobre (scripts de governanca
+# em `scripts/` ficam fora, RNF-02(a)).
+_codigo_do_produto() {
+  printf '%s\n' "$DBX_HARNESS_RAIZ/bin/dbx" "$DBX_HARNESS_RAIZ"/lib/*.sh "$DBX_HARNESS_RAIZ"/commands/*.sh
+}
+
+# _interpretadores_em <arquivo...> — mencao a `sqlite3` ou `python3` fora de
+# comentario, em QUALQUER posicao (o nome atribuido a variavel conta, porque e
+# a forma de esconder a invocacao), e invocacao de interpretador por variavel
+# com `-c`, que e a forma nao obvia de executar codigo de outra linguagem.
+_interpretadores_em() {
+  grep -nE '(^|[^A-Za-z0-9_])(sqlite3?|python[0-9.]*)([^A-Za-z0-9_]|$)|"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"[[:space:]]+-c([[:space:]]|$)' "$@" |
+    grep -vE '^[0-9]+:[[:space:]]*#' || true
+}
+
+teste_nenhum_codigo_do_produto_invoca_sqlite3_nem_python3() {
+  # TC-DEP-01 (RNF-02(a)), com prova de discriminacao (RSK-27): cada forma nao
+  # obvia precisa ser acusada antes de a varredura valer.
+  local area mutacao arquivo achados=''
+  area=$(mktemp -d "$DBX_TESTES_TMP/dep.XXXXXX")
+  printf '%s\n' 'motor=python3' 'x=$("$motor" -c "print(1)")' >"$area/variavel.sh"
+  printf '%s\n' 'if command -v sqlite3 >/dev/null; then :; fi' >"$area/command_v.sh"
+  printf '%s\n' 'interp=$1' '"$interp" -c "$programa"' >"$area/interp_c.sh"
+  printf '%s\n' 'printf "%s" "$sql" | sqlite3 "$db"' >"$area/direto.sh"
+  for mutacao in variavel command_v interp_c direto; do
+    [[ -n $(_interpretadores_em "$area/$mutacao.sh") ]] ||
+      _harness_falhar "a auditoria nao acusou a forma '$mutacao'"
+  done
+  printf '%s\n' '# sqlite3 em comentario nao e invocacao' 'printf "%s" ok' >"$area/limpo.sh"
+  assert_igual '' "$(_interpretadores_em "$area/limpo.sh")" 'comentario nao e acusado'
+  while IFS= read -r arquivo; do
+    achados+=$(_interpretadores_em "$arquivo" | sed "s|^|${arquivo##*/}:|")
+  done < <(_codigo_do_produto)
+  assert_igual '' "$achados" "interpretador no codigo do produto: $achados"
+}
+
+teste_preflight_nao_lista_nem_sonda_sqlite3_e_python3() {
+  # TC-DEP-02 (RNF-02(b)).
+  case " $DBX_PREFLIGHT_UTILITARIOS " in
+    *' sqlite3 '* | *' python3 '* | *' python '*)
+      _harness_falhar "lista do preflight cita interpretador: $DBX_PREFLIGHT_UTILITARIOS" ;;
+  esac
+  assert_igual '' "$(_interpretadores_em "$DBX_HARNESS_RAIZ/lib/preflight.sh")" 'nem sonda'
+  local utilitario
+  for utilitario in stat readlink find mktemp mv; do
+    case " $DBX_PREFLIGHT_UTILITARIOS " in
+      *" $utilitario "*) ;;
+      *) _harness_falhar "o cache usa $utilitario e ele precisa constar do preflight" ;;
+    esac
+  done
+}
+
+teste_lib_db_e_suas_chamadas_nao_existem_mais() {
+  # TC-LEG-01 (RNF-33(a)).
+  assert_arquivo_ausente "$DBX_HARNESS_RAIZ/lib/db.sh" 'lib/db.sh removido'
+  local achados
+  achados=$(_codigo_do_produto | xargs grep -nE 'dbx_db_|DBX_DB_|dbx\.db|lib/db\.sh' || true)
+  assert_igual '' "$achados" "referencia ao lib/db no codigo do produto: $achados"
+}
+
+teste_instalador_nao_detecta_nem_recomenda_sqlite3() {
+  # TC-LEG-03 (RNF-33(d)).
+  assert_arquivo_existe "$DBX_HARNESS_RAIZ/install.sh" 'sem o instalador a auditoria seria vacua'
+  assert_igual '' "$(grep -niE 'sqlite|python' "$DBX_HARNESS_RAIZ/install.sh" || true)" \
+    'o install.sh nao detecta nem recomenda sqlite3'
+}
+
+teste_canal_de_hash_do_envio_por_sessao_tem_nome_unico() {
+  # RF-61(j), F-29: o canal e DBX_TRANSFER_CONTENT_HASH; o nome antigo, que nao
+  # existia, fazia o hash da sessao nunca chegar ao cache.
+  local achados
+  achados=$(_codigo_do_produto | xargs grep -nE 'DBX_TRANSFER_HASH([^_A-Z]|$)' || true)
+  assert_igual '' "$achados" "canal inexistente referenciado: $achados"
+}
+
+# ---------------------------------------------------------------------------
+# TC-DOC-01 (RNF-34(c), RNF-02): o README e o preflight nomeiam os mesmos
+# utilitarios. O preflight e quem diz ao operador o que falta; um README que
+# lista outra coisa manda instalar o que nao e preciso e omite o que e.
+# ---------------------------------------------------------------------------
+
+# _utilitarios_do_readme — nomes entre crases da linha "Utilitarios" da secao
+# "Requisitos do Sistema", um por linha, ordenados.
+_utilitarios_do_readme() {
+  local linha
+  linha=$(grep -m1 -E '^- \*\*Utilit' "$DBX_HARNESS_RAIZ/README.md") || return 0
+  grep -oE '`[a-z0-9]+`' <<<"$linha" | tr -d '`' | sort -u
+}
+
+teste_lista_de_utilitarios_do_readme_e_a_do_preflight() {
+  # O `cURL` tem linha propria ("Rede"); a familia de resumo SHA-256 e verificada
+  # em conjunto por `lib/hash`, entao entra pelos tres nomes que ele aceita.
+  local esperado obtido
+  esperado=$({
+    tr ' ' '\n' <<<"$DBX_PREFLIGHT_UTILITARIOS"
+    printf '%s\n' sha256sum shasum openssl
+  } | grep -vx -e curl -e '' | sort -u)
+  obtido=$(_utilitarios_do_readme)
+  assert_diferente '' "$obtido" 'o README precisa trazer a linha de utilitarios'
+  assert_igual "$esperado" "$obtido" 'README e preflight listam os mesmos utilitarios'
+}
+
+teste_preflight_exige_os_utilitarios_do_diagnostico_do_config() {
+  # `commands/config.sh` invoca `df` e `tail` no diagnostico de `--debug`; a
+  # auditoria de comandos externos so varre `lib/`, entao o par e fixado aqui.
+  local utilitario
+  for utilitario in df tail; do
+    grep -qE "(^|[|(;&[:space:]])${utilitario}[[:space:]]" "$DBX_HARNESS_RAIZ/commands/config.sh" ||
+      _harness_falhar "commands/config.sh nao invoca mais $utilitario: revise este caso"
+    case " $DBX_PREFLIGHT_UTILITARIOS " in
+      *" $utilitario "*) ;;
+      *) _harness_falhar "commands/config.sh invoca $utilitario e o preflight nao o exige" ;;
+    esac
+  done
 }
 
 harness_executar "$@"

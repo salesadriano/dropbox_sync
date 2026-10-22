@@ -7,10 +7,13 @@
 #   sh scripts/memoria-index.sh --escopo projeto     # filtra por escopo: pacote | projeto
 #   sh scripts/memoria-index.sh --tipo decisao       # filtra por tipo: decisao | aceite | bloqueio | backlog | stack | contexto | reserva
 #   sh scripts/memoria-index.sh --tipo reserva       # reservas de escopo ativas das demais instancias (regra 47)
-#   sh scripts/memoria-index.sh --status todas       # inclui substituidas e encerradas (padrao: so ativas)
+#   sh scripts/memoria-index.sh --status todas       # inclui substituidas e encerradas (padrao: so ativas); --todas e atalho
+#   sh scripts/memoria-index.sh --desde 2026-07-16   # so entradas cuja data no nome do arquivo e >= a data dada
 #   sh scripts/memoria-index.sh --agente qa-expert   # so entradas pertinentes ao agente (campo agentes:); tech-lead ve tudo
 #   sh scripts/memoria-index.sh --agente dba --corpo # extrato com o corpo de cada entrada, para o Tech Lead transpor na delegacao
-#   sh scripts/memoria-index.sh --check              # valida frontmatter e unicidade de id; exit 1 em erro
+#   sh scripts/memoria-index.sh --check              # valida frontmatter e unicidade de id; exit 1 em erro.
+#                                                    # AVISO (sem reprovar) para `agentes: todos` fora de `tipo: decisao` + `escopo: pacote`;
+#                                                    # a entrada `branch-principal` (regra 46) e isenta
 #   sh scripts/memoria-index.sh --write              # grava .github/agents/memoria/INDICE.md (ignorado pelo git)
 
 set -eu
@@ -19,14 +22,16 @@ repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 dir="$repo_root/.github/agents/memoria/entradas"
 out="$repo_root/.github/agents/memoria/INDICE.md"
 
-escopo=""; tipo=""; status="ativa"; agente=""; corpo=0; check=0; write=0
+escopo=""; tipo=""; status="ativa"; agente=""; desde=""; corpo=0; check=0; write=0
 AGENTES="tech-lead senior-developer qa-expert ux-expert dba business-analyst documentation-writer commit-writer todos"
 while [ $# -gt 0 ]; do
   case "$1" in
     --escopo) escopo="$2"; shift 2 ;;
     --tipo) tipo="$2"; shift 2 ;;
     --status) status="$2"; shift 2 ;;
+    --todas) status="todas"; shift ;;
     --agente) agente="$2"; shift 2 ;;
+    --desde) if [ $# -lt 2 ] || [ -z "$2" ]; then echo "--desde exige uma data YYYY-MM-DD" >&2; exit 2; fi; desde="$2"; shift 2 ;;
     --corpo) corpo=1; shift ;;
     --check) check=1; shift ;;
     --write) write=1; shift ;;
@@ -35,6 +40,16 @@ while [ $# -gt 0 ]; do
 done
 
 [ -d "$dir" ] || { echo "diretorio nao encontrado: $dir" >&2; exit 1; }
+if [ -n "$desde" ]; then
+  case "$desde" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) desde_n=$(printf '%s' "$desde" | tr -d -) ;;
+    *) echo "data invalida em --desde: $desde (use YYYY-MM-DD)" >&2; exit 2 ;;
+  esac
+  mes=$(echo "$desde" | cut -d- -f2); dia=$(echo "$desde" | cut -d- -f3)
+  if [ "$mes" -lt 1 ] || [ "$mes" -gt 12 ] || [ "$dia" -lt 1 ] || [ "$dia" -gt 31 ]; then
+    echo "data invalida em --desde: $desde (mes ou dia fora do calendario)" >&2; exit 2
+  fi
+fi
 if [ -n "$agente" ]; then
   case " $AGENTES " in *" $agente "*) ;; *) echo "agente desconhecido: $agente (validos: $AGENTES)" >&2; exit 2 ;; esac
   [ "$agente" != "todos" ] || agente=""
@@ -81,6 +96,11 @@ if [ "$check" -eq 1 ]; then
     for a in $(echo "$ag" | tr ',' ' '); do
       case " $AGENTES " in *" $a "*) ;; *) echo "ERRO $file: agente invalido '$a' em agentes"; err=1 ;; esac
     done
+    # `todos` fora de decisao de pacote entra no bootstrap de todo agent sem que nenhum a tenha pedido. Aviso, nao erro.
+    # A entrada `branch-principal` leva `todos` por exigencia da regra 46 e fica isenta.
+    if [ "$(echo "$ag" | tr -d ' ')" = "todos" ] && { [ "$t" != "decisao" ] || [ "$e" != "pacote" ]; } && [ "${file%-branch-principal}" = "$file" ]; then
+      echo "AVISO $file: 'agentes: todos' fora de tipo decisao + escopo pacote; nomeie os papeis (README das entradas)"
+    fi
     echo "$file" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}-[a-z0-9-]+$' || { echo "ERRO $file: nome fora do padrao YYYY-MM-DD-HHMM-slug"; err=1; }
     [ "$err" -eq 0 ] || exit 1
   done || exit 1
@@ -93,7 +113,7 @@ fi
 render() {
   echo "# Indice de entradas de memoria (gerado por scripts/memoria-index.sh; nao editar, nao versionar)"
   echo
-  echo "Filtros: escopo=${escopo:-todos} tipo=${tipo:-todos} status=${status} agente=${agente:-tech-lead (tudo)}"
+  echo "Filtros: escopo=${escopo:-todos} tipo=${tipo:-todos} status=${status} agente=${agente:-tech-lead (tudo)} desde=${desde:-inicio}"
   echo
   [ "$corpo" -eq 1 ] || { echo "| Id | Tipo | Escopo | Agentes | Dono | Status | Substitui | Regra | Titulo |"; echo "|---|---|---|---|---|---|---|---|---|"; }
   printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r file id t e d o s sub_ r ti ag og inst; do
@@ -101,6 +121,8 @@ render() {
     [ -z "$escopo" ] || [ "$e" = "$escopo" ] || continue
     [ -z "$tipo" ] || [ "$t" = "$tipo" ] || continue
     [ "$status" = "todas" ] || [ "$s" = "$status" ] || continue
+    # A data do filtro e a do NOME do arquivo (hora real da gravacao), nao o campo data: e o nome que ordena o indice.
+    [ -z "$desde" ] || [ "$(printf '%s' "$file" | cut -c1-10 | tr -d -)" -ge "$desde_n" ] || continue
     if [ -n "$agente" ]; then
       case ",$(echo "$ag" | tr -d ' ')," in *",todos,"*|*",$agente,"*) ;; *) continue ;; esac
     fi

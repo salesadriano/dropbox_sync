@@ -391,6 +391,18 @@ teste_redacao_de_token_entre_aspas_em_prosa() {
     'token entre aspas em texto corrido'
 }
 
+teste_redacao_de_token_no_formato_sl_u_consome_o_corpo_inteiro() {
+  # QA-P2-04: formato atual `sl.u.<corpo>`. Redigir so ate o primeiro ponto
+  # deixava o corpo em claro.
+  local saida
+  _assert_redige 'CorpoDoTokenNovo42' 'token: sl.u.CorpoDoTokenNovo42 recusado' 'sl.u em prosa'
+  _assert_redige 'CorpoDoTokenNovo42' '{"access_token":"sl.u.CorpoDoTokenNovo42"}' 'sl.u em JSON'
+  _assert_redige 'Parte3' 'x sl.A.B-2.Parte3 y' 'varios pontos'
+  # Ponto final de frase nao e parte do token: a pontuacao e o resto ficam.
+  saida=$(dbx_errors_redigir 'falhou com sl.u.Corpo9. Repita depois')
+  assert_contem '. Repita depois' "$saida" 'o texto depois do token sobrevive'
+}
+
 teste_redacao_ignora_caixa_do_prefixo_de_token() {
   _assert_redige 'SL.TOKENMAIUSCULO' 'valor recebido: SL.TOKENMAIUSCULO' \
     'prefixo de token em caixa alta'
@@ -840,6 +852,78 @@ teste_valor_sem_delimitador_de_fechamento_e_mascarado_ate_o_fim() {
       "valor sem fechamento precisa ser mascarado ate o fim em [$entrada]"
     assert_contem 'REDIGIDO' "$saida"
   done
+}
+
+# ---------------------------------------------------------------------------
+# P3.4 — classificacao e politica publicadas por variavel (fase 3)
+#
+# `lib/http` consulta as duas a cada requisicao. Publicar por variavel permite
+# chamar sem substituicao de comando, isto e, sem subshell; a saida padrao
+# continua a mesma para os demais consumidores.
+# ---------------------------------------------------------------------------
+
+teste_classificacao_publica_a_classe_sem_subshell() {
+  local codigo resumo esperado
+  for codigo in 200 0 503 409 401 403 429 400 418; do
+    for resumo in '' 'path/not_found/..' 'too_many_write_operations/' 'expired_access_token/'; do
+      esperado=$(dbx_errors_classificar "$codigo" "$resumo")
+      DBX_ERRORS_CLASSE='residuo'
+      dbx_errors_classificar "$codigo" "$resumo" >/dev/null
+      assert_igual "$esperado" "$DBX_ERRORS_CLASSE" "classe publicada para $codigo [$resumo]"
+    done
+  done
+}
+
+teste_politica_publica_o_valor_sem_subshell() {
+  local codigo resumo idempotente esperado
+  for codigo in 200 0 503 409 401 429 400; do
+    for resumo in '' 'path/not_found/..' 'too_many_write_operations/' 'reset/' 'incorrect_offset/'; do
+      for idempotente in sim nao; do
+        esperado=$(dbx_errors_politica_retentativa "$codigo" "$resumo" "$idempotente")
+        DBX_ERRORS_POLITICA='residuo'
+        dbx_errors_politica_retentativa "$codigo" "$resumo" "$idempotente" >/dev/null
+        assert_igual "$esperado" "$DBX_ERRORS_POLITICA" \
+          "politica publicada para $codigo [$resumo] idempotente=$idempotente"
+      done
+    done
+  done
+}
+
+teste_classificacao_e_politica_nao_criam_subshell_por_dentro() {
+  # A politica consulta a classificacao, e a classificacao consulta a tabela de
+  # tags: as duas consultas eram substituicoes de comando.
+  local achados
+  achados=$(grep -vE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ/lib/errors.sh" |
+    grep -nE '\$\((dbx_errors_classificar|_dbx_errors_classe_da_tag)' || true)
+  assert_igual '' "$achados" "consulta interna por substituicao de comando: $achados"
+}
+
+# ---------------------------------------------------------------------------
+# DIV-58 (fase 3): tags de list_revisions, restore e permanently_delete
+# mapeadas a classes EXISTENTES; nenhum codigo novo.
+# ---------------------------------------------------------------------------
+
+teste_div58_tags_da_recuperacao_mapeadas_a_classes_existentes() {
+  local par resumo esperado
+  for par in 'path/invalid_revision/.=nao_encontrado' 'invalid_revision/.=nao_encontrado' \
+    'invalid_before_rev/.=uso_invalido' 'before_rev_not_supported/.=uso_invalido' \
+    'path_write/unsupported_content_type/.=uso_invalido' 'path_lookup/locked/.=conflito' \
+    'path_write/team_folder/.=permissao' 'path_write/operation_suppressed/.=permissao' \
+    'path_write/access_restricted/.=permissao' 'in_progress/.=erro_remoto' \
+    'path_write/too_many_files/.=nao_concluida' 'too_many_files/.=nao_concluida'; do
+    resumo=${par%=*} esperado=${par##*=}
+    assert_igual "$esperado" "$(dbx_errors_classificar 409 "$resumo")" "classe de $resumo"
+  done
+  # Fronteira de componente vale para as tags novas.
+  assert_igual desconhecido "$(dbx_errors_classificar 409 'path_lookup/lockedx/.')" 'lockedx nao e locked'
+}
+
+teste_div58_in_progress_e_repetido_mesmo_em_escrita() {
+  assert_igual recuo_exponencial "$(dbx_errors_politica_retentativa 409 'in_progress/.' nao)" \
+    'restore em andamento: repetir e seguro'
+  assert_igual recuo_exponencial "$(dbx_errors_politica_retentativa 409 'path/in_progress/.' sim)"
+  assert_igual nenhuma "$(dbx_errors_politica_retentativa 409 'path/invalid_revision/.' nao)" \
+    'invalid_revision nao e repetido'
 }
 
 harness_executar "$@"

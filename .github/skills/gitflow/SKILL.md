@@ -21,7 +21,7 @@ This skill does not replace security hardening.
 1.  **Declared Main Branch**: The project's main branch is declared explicitly by the requester on the first request and stored in memory (`branch-principal` entry). Never infer it from `origin/HEAD`, `init.defaultBranch` or the current checkout.
 2.  **Source Branch**: Every new demand starts from the declared main branch, fetched from the remote, unless the requester explicitly names another source branch. The per-type Gitflow sources below apply only when they are the main branch or are explicitly named.
 3.  **Worktree by Default**: Every demand gets its own branch and its own `git worktree` in a sibling directory (`../<repo>.worktrees/<type>-<slug>`). The main checkout stays on the main branch.
-4.  **Sync First**: Before creating a worktree and again after the merge, sync with the remote: local branches (and their worktrees) deleted on the remote are removed when all local work was already pushed; otherwise they are preserved and listed for explicit confirmation.
+4.  **Sync First**: Before creating a worktree and again after the merge, sync with the remote. After the merge, run `sh scripts/limpar-worktrees.sh` first (dry-run, then `--executar`): merged, clean worktrees and their local branches are removed, everything else is listed as pending. Then the sync: local branches (and their worktrees) deleted on the remote are removed when all local work was already pushed; otherwise they are preserved and listed for explicit confirmation.
 5.  **Open PRs First**: After syncing and before creating the worktree, check open PRs against the demand's expected scope and tell the requester which merges are needed (merge first, start from the PR branch, or proceed). Never merge, approve or change a PR on your own.
 6.  **Strict Naming**: Enforce the `feature/*`, `bugfix/*`, `release/*`, `hotfix/*`, and `support/*` naming conventions defined in the references.
 7.  **Correct Targets**: PRs target the demand's source branch. Additional targets (e.g., back-merging a hotfix into `develop`) only when explicitly requested.
@@ -70,4 +70,5 @@ Re-run the local gates over the integrated diff; push only when the branch conta
 *Ref: [references/coordenacao-multi-instancia.md](references/coordenacao-multi-instancia.md), section 4*
 
 ### 4. Finishing Work
-After the PR is merged and the remote branch deleted, sync again from the main checkout: the demand's worktree and local branch are removed. The demand's scope reservation is closed in the same commit that closes the demand.
+After the PR is merged and the remote branch deleted, run `sh scripts/limpar-worktrees.sh` (dry-run) and then `--executar`: merged, clean worktrees and their local branches are removed; anything else is listed as pending and never touched without the requester's explicit confirmation. Then sync again from the main checkout. The demand's scope reservation is closed in the same commit that closes the demand.
+*Ref: [references/limpeza-de-worktrees.md](references/limpeza-de-worktrees.md)*

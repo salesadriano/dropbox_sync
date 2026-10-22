@@ -185,4 +185,48 @@ teste_nenhum_ponto_da_travessia_reconstroi_caminho_absoluto() {
   assert_igual '' "$achados" "descida por caminho montado alem da raiz: $achados"
 }
 
+# ---------------------------------------------------------------------------
+# RF-38(e), RF-61(b) — identidade forte do arquivo (fase 3, DIV-26)
+#
+# A memoria do `sync` e o cache do `upload` so reaproveitam um resumo quando a
+# identidade inteira coincide: `mtime` e `ctime` com nanossegundos, dispositivo,
+# inode e tamanho. A identidade vem da MESMA leitura de `stat` que a travessia
+# ja fazia, para nao pagar um processo a mais por arquivo; a definicao e de
+# lib/hash (dominio), e as propriedades dela sao verificadas em hash_test.
+# ---------------------------------------------------------------------------
+
+teste_registro_da_travessia_traz_a_identidade_forte() {
+  local base
+  base=$(_arvore)
+  touch -d '@1700000000.123456789' "$base/raiz/um.txt"
+  _registros "$base/raiz" "$base/reg"
+  local -a caminhos=() tamanhos=() identidades=()
+  dbx_walk_ler "$base/reg" caminhos tamanhos identidades
+  local indice achada=''
+  for indice in "${!caminhos[@]}"; do
+    [[ ${caminhos[$indice]} == 'um.txt' ]] && achada=${identidades[$indice]}
+  done
+  local esperada
+  esperada=$(stat -c '%Y|%y|%z|%d|%i|%s' -- "$base/raiz/um.txt")
+  assert_igual "$esperada" "$achada" 'a identidade do registro e a do stat, campo a campo'
+  assert_contem '.123456789' "$achada" 'o mtime precisa chegar com nanossegundos'
+  assert_igual '1700000000|' "${achada%%|*}|" 'o primeiro campo e o mtime em segundos'
+}
+
+teste_identidade_publicada_coincide_com_a_da_travessia() {
+  local base
+  base=$(_arvore)
+  _registros "$base/raiz" "$base/reg"
+  local -a caminhos=() tamanhos=() identidades=()
+  dbx_walk_ler "$base/reg" caminhos tamanhos identidades
+  local indice
+  for indice in "${!caminhos[@]}"; do
+    dbx_hash_identidade "$base/raiz/${caminhos[$indice]}"
+    assert_igual 0 $? 'identidade de arquivo legivel'
+    assert_igual "${identidades[$indice]}" "$DBX_HASH_IDENTIDADE" \
+      'uma unica definicao de identidade (lib/hash) para a travessia e para o upload'
+    assert_igual "${tamanhos[$indice]}" "$DBX_HASH_TAMANHO_ARQUIVO" 'tamanho publicado junto'
+  done
+}
+
 harness_executar "$@"

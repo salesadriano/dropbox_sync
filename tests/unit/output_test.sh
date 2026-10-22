@@ -369,4 +369,61 @@ teste_assert_status_nao_descarta_estado_da_funcao_observada() {
   unset -f _dbx_sonda
 }
 
+# QA-P2-02 (b): defesa em profundidade. A redacao reconhece FORMAS (`sl.`
+# depois de delimitador); o segredo em memoria colado a outro texto nao tem
+# forma reconhecivel e precisa ser mascarado pelo VALOR.
+teste_diagnostico_mascara_os_segredos_em_memoria_pelo_valor() {
+  # shellcheck disable=SC2034  # canais de lib/auth e lib/config, lidos por lib/output
+  DBX_AUTH_TOKEN='tokenqasentinela'
+  # shellcheck disable=SC2034
+  DBX_AUTH_REFRESH_TOKEN='refreshqasentinela'
+  # shellcheck disable=SC2034
+  DBX_CONFIG_REFRESH_TOKEN='configrefreshqa'
+  # shellcheck disable=SC2034
+  DBX_CONFIG_APP_SECRET='segredoappqa'
+  dbx_output_iniciar
+  dbx_output_diagnostico erro 'x_tokenqasentinela y-refreshqasentinela zconfigrefreshqa/segredoappqa'
+  local valor=${DBX_OUTPUT_DIAG_VALORES[0]}
+  assert_segredo_ausente 'tokenqasentinela' "$valor" 'token de acesso mascarado'
+  assert_segredo_ausente 'refreshqasentinela' "$valor" 'refresh token da troca mascarado'
+  assert_segredo_ausente 'configrefreshqa' "$valor" 'refresh token da credencial mascarado'
+  assert_segredo_ausente 'segredoappqa' "$valor" 'segredo do aplicativo mascarado'
+  assert_contem 'x_' "$valor" 'o restante do diagnostico continua legivel'
+}
+
+teste_mascara_pelo_valor_cobre_a_chave_do_aplicativo() {
+  # D-2 (QA, fase 1 do backlog): o `diagnostico` repete o resumo de erro do
+  # servico, que pode ecoar a app key; ela e campo da credencial e e mascarada
+  # pelo valor como os demais.
+  # shellcheck disable=SC2034  # canal de lib/config, lido por lib/output
+  DBX_CONFIG_APP_KEY='chaveappqasentinela'
+  dbx_output_mascarar_segredos 'invalid_client/chaveappqasentinela x'
+  assert_segredo_ausente 'chaveappqasentinela' "$DBX_OUTPUT_MASCARADO" 'app key mascarada'
+  assert_contem 'invalid_client/' "$DBX_OUTPUT_MASCARADO" 'o restante continua legivel'
+}
+
+teste_diagnostico_redige_token_sl_u_fora_da_memoria_pela_forma() {
+  # QA-P2-04: token de OUTRA conta num corpo de erro nao esta em memoria; so a
+  # forma `sl.u.<corpo>` o alcanca, e o corpo inteiro precisa sumir.
+  local valor contexto
+  for contexto in 'falhou: sl.u.QAcorpoForaDaMemoria99' 'token=sl.u.QAcorpoForaDaMemoria99' \
+    'path/sl.u.QAcorpoForaDaMemoria99/..' '"sl.u.QAcorpoForaDaMemoria99"'; do
+    dbx_output_iniciar
+    dbx_output_diagnostico erro "$contexto"
+    valor=${DBX_OUTPUT_DIAG_VALORES[0]}
+    assert_segredo_ausente 'QAcorpoForaDaMemoria99' "$valor" "corpo do token redigido em [$contexto]"
+  done
+}
+
+teste_diagnostico_mascara_pelo_valor_antes_da_redacao_por_forma() {
+  # A redacao por forma podia trocar so o prefixo `sl.u` e quebrar o valor em
+  # memoria, que entao nao casava mais: a mascara pelo valor vem primeiro.
+  # shellcheck disable=SC2034  # canal de lib/auth, lido por lib/output
+  DBX_AUTH_TOKEN='sl.u.QAcorpoDoTokenEmMemoria7'
+  dbx_output_iniciar
+  dbx_output_diagnostico erro 'path/sl.u.QAcorpoDoTokenEmMemoria7 x_sl.u.QAcorpoDoTokenEmMemoria7'
+  assert_segredo_ausente 'QAcorpoDoTokenEmMemoria7' "${DBX_OUTPUT_DIAG_VALORES[0]}" \
+    'nenhum pedaco do token em memoria sobra'
+}
+
 harness_executar "$@"

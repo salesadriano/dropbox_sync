@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/walk.sh — travessia local por descida (RNF-28, RF-41a, RF-50).
 #
-# Camada: adaptadores. Depende de lib/errors.sh, de dominio.
+# Camada: adaptadores. Depende de lib/errors.sh e lib/hash.sh (identidade do arquivo), de dominio.
 #
 # POR QUE DESCIDA COM NOME RELATIVO, E NAO CAMINHO MONTADO EM TEXTO
 #
@@ -44,6 +44,12 @@ _dbx_walk_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_walk_diretorio=$(cd -P -- "$_dbx_walk_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_walk_diretorio/errors.sh"
+# shellcheck source=lib/hash.sh
+. "$_dbx_walk_diretorio/hash.sh"
+# shellcheck source=lib/tmp.sh
+. "$_dbx_walk_diretorio/tmp.sh"
+# shellcheck source=lib/filtro.sh
+. "$_dbx_walk_diretorio/filtro.sh"
 unset _dbx_walk_diretorio
 
 DBX_WALK_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -60,6 +66,10 @@ readonly DBX_WALK_PROFUNDIDADE_MAXIMA=64
 DBX_WALK_PARCIAL='nao'
 DBX_WALK_MOTIVO=''
 DBX_WALK_TOTAL=0
+# RF-80(b): pastas (e entradas que nao sao arquivo comum) fora do escopo que a
+# descida PODOU, por caminho relativo. Quem consome as conta como filtradas.
+declare -ga DBX_WALK_PODADAS=()
+_dbx_walk_filtrar='nao'
 
 # _dbx_walk_descer <profundidade> <prefixo>
 #
@@ -67,14 +77,15 @@ DBX_WALK_TOTAL=0
 # descritor 3. Roda SEMPRE dentro do subshell montado por `dbx_walk_local`, para
 # que a mudanca de diretorio nao escape para o processo do chamador.
 #
-# Formato do registro: `tamanho<TAB>mtime<TAB>caminho\0`.
+# Formato do registro: `tamanho<TAB>identidade<TAB>caminho\0` (identidade sem TAB;
+# vazia quando o `stat` nao a oferece).
 # O caminho vai POR ULTIMO e o registro termina em byte nulo, porque nome de
 # arquivo aceita tabulacao e quebra de linha — e nao aceita nulo. Qualquer outra
 # ordem perderia nomes legitimos, que e a classe de defeito ja vista tres vezes
 # neste projeto.
 _dbx_walk_descer() {
   local profundidade=$1 prefixo=$2
-  local nome relativo tamanho mtime
+  local nome relativo tamanho identidade
 
   if [[ $profundidade -gt $DBX_WALK_PROFUNDIDADE_MAXIMA ]]; then
     printf 'profundidade maxima excedida em: %s\n' "${prefixo:-.}" >&3
@@ -83,6 +94,27 @@ _dbx_walk_descer() {
 
   for nome in *; do
     relativo="${prefixo}${nome}"
+
+    # RF-80(b): pasta que casa `--excluir` NAO E PERCORRIDA — nem listada, nem
+    # inspecionada, nem resumida —, e erro dentro dela (ilegivel, ciclo) nao
+    # existe para a execucao. A conferencia vem ANTES da de legibilidade, para
+    # a propria pasta excluida ilegivel tambem nao marcar a travessia parcial.
+    # Vinculo e entrada que nao e arquivo comum so saem em silencio se ficam
+    # fora do escopo tanto como arquivo quanto como pasta: assim o par do outro
+    # lado, seja do tipo que for, tambem esta fora, e nada e apagado por eles.
+    if [[ $_dbx_walk_filtrar == 'sim' ]]; then
+      if [[ -d $nome && ! -L $nome ]]; then
+        if dbx_filtro_pasta_excluida "$relativo"; then
+          printf '%s\0' "$relativo" >&4
+          continue
+        fi
+      elif [[ -L $nome || ! -f $nome ]]; then
+        if ! dbx_filtro_classificar "$relativo" nao && ! dbx_filtro_classificar "$relativo" sim; then
+          printf '%s\0' "$relativo" >&4
+          continue
+        fi
+      fi
+    fi
 
     # A ordem importa: `-L` antes de `-d`, porque uma ligacao PARA diretorio
     # satisfaz `-d` e seria percorrida.
@@ -121,13 +153,20 @@ _dbx_walk_descer() {
       continue
     fi
 
-    if ! tamanho=$(stat -c '%s' -- "$nome" 2>/dev/null || stat -f '%z' "$nome" 2>/dev/null) ||
-      ! mtime=$(stat -c '%Y' -- "$nome" 2>/dev/null || stat -f '%m' "$nome" 2>/dev/null); then
+    # Uma leitura so: tamanho e identidade. Sem `stat -c` (BSD) a identidade
+    # fica vazia, e quem a consome nao reaproveita resumo algum — mais lento,
+    # nunca errado.
+    if dbx_hash_identidade "$nome"; then
+      tamanho=$DBX_HASH_TAMANHO_ARQUIVO
+      identidade=$DBX_HASH_IDENTIDADE
+    elif tamanho=$(stat -f '%z' "$nome" 2>/dev/null); then
+      identidade=''
+    else
       printf 'nao foi possivel inspecionar: %s\n' "$relativo" >&3
       continue
     fi
 
-    printf '%s\t%s\t%s\0' "$tamanho" "$mtime" "$relativo"
+    printf '%s\t%s\t%s\0' "$tamanho" "$identidade" "$relativo"
   done
   return 0
 }
@@ -141,16 +180,25 @@ _dbx_walk_descer() {
 # corrente de quem chamou.
 dbx_walk_local() {
   [[ $# -eq 2 ]] || return "$DBX_WALK_ERRO_USO"
-  local raiz=$1 destino=$2 motivos
+  local raiz=$1 destino=$2 motivos podadas
 
   DBX_WALK_PARCIAL='nao'
   DBX_WALK_MOTIVO=''
   DBX_WALK_TOTAL=0
+  DBX_WALK_PODADAS=()
+  _dbx_walk_filtrar='nao'
+  dbx_filtro_ativo && _dbx_walk_filtrar='sim'
 
   [[ -d $raiz ]] || return "$DBX_WALK_ERRO_NAO_ENCONTRADO"
   [[ -r $raiz && -x $raiz ]] || return "$DBX_WALK_ERRO_NAO_ENCONTRADO"
 
-  motivos=$(mktemp "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX") || return "$DBX_WALK_ERRO_USO"
+  dbx_tmp_arquivo "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX" || return "$DBX_WALK_ERRO_USO"
+  motivos=$DBX_TMP_CAMINHO
+  dbx_tmp_arquivo "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX" || {
+    dbx_tmp_remover "$motivos"
+    return "$DBX_WALK_ERRO_USO"
+  }
+  podadas=$DBX_TMP_CAMINHO
 
   : >"$destino"
   (
@@ -161,7 +209,7 @@ dbx_walk_local() {
     shopt -s nullglob dotglob
     cd -P -- "$raiz" || exit 1
     _dbx_walk_descer 1 ''
-  ) >"$destino" 3>"$motivos"
+  ) >"$destino" 3>"$motivos" 4>"$podadas"
 
   if [[ -s $motivos ]]; then
     # shellcheck disable=SC2034  # canais publicos, ver nota no topo
@@ -185,7 +233,12 @@ dbx_walk_local() {
       DBX_WALK_MOTIVO="${DBX_WALK_MOTIVO}${DBX_WALK_MOTIVO:+; }${_linha}"
     done <"$motivos"
   fi
-  rm -f -- "$motivos" 2>/dev/null
+  dbx_tmp_remover "$motivos"
+  local _podada
+  while IFS= read -r -d '' _podada; do
+    DBX_WALK_PODADAS+=("$_podada")
+  done <"$podadas"
+  dbx_tmp_remover "$podadas"
 
   # Contagem por registro, e nao por linha: o separador e o byte nulo justamente
   # porque nome de arquivo carrega quebra de linha, e contar linhas devolveria
@@ -199,7 +252,7 @@ dbx_walk_local() {
 }
 
 # dbx_walk_ler <arquivo> <nome_do_vetor_de_caminhos> <nome_do_vetor_de_tamanhos>
-#   <nome_do_vetor_de_mtimes>
+#   <nome_do_vetor_de_identidades>
 #
 # Vetores por NOME, como em lib/output e lib/http: passar por cadeia unica
 # perderia nome com quebra de linha, e o nome mantem a procedencia visivel no
@@ -207,16 +260,16 @@ dbx_walk_local() {
 dbx_walk_ler() {
   [[ $# -eq 4 ]] || return "$DBX_WALK_ERRO_USO"
   local arquivo=$1
-  local -n _caminhos=$2 _tamanhos=$3 _mtimes=$4
+  local -n _caminhos=$2 _tamanhos=$3 _identidades=$4
   local registro resto
   _caminhos=()
   _tamanhos=()
-  _mtimes=()
+  _identidades=()
   [[ -r $arquivo ]] || return 0
   while IFS= read -r -d '' registro; do
     _tamanhos+=("${registro%%$'\t'*}")
     resto=${registro#*$'\t'}
-    _mtimes+=("${resto%%$'\t'*}")
+    _identidades+=("${resto%%$'\t'*}")
     _caminhos+=("${resto#*$'\t'}")
   done <"$arquivo"
   return 0

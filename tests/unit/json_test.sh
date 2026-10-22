@@ -885,4 +885,37 @@ teste_codificador_nao_altera_texto_sem_escape() {
     'texto sem caractere especial nao pode ser alterado'
 }
 
+# ---------------------------------------------------------------------------
+# QA-B3-04 — U+0000 nao cabe em variavel de shell: descarta-lo em silencio
+# fazia "/x.txt\u0000" valer "/x.txt". Todo documento com ele e malformado.
+# ---------------------------------------------------------------------------
+
+teste_qa_b3_04_escape_u0000_e_malformado_em_todo_documento() {
+  local doc
+  for doc in '{"a":"/x.txt\u0000"}' '{"a":"\u0000"}' '["\u0000x"]' '{"\u0000":1}' \
+    '{"o":{"p":["ok","a\u0000b"]}}'; do
+    assert_status "$DBX_JSON_ERRO_REMOTO" dbx_json_analisar "$doc"
+    dbx_json_analisar "$doc" >/dev/null 2>&1
+    assert_igual malformado "$DBX_JSON_MOTIVO" "U+0000 recusado: $doc"
+  done
+  dbx_json_analisar '{"a":"\u0001é"}'
+  dbx_json_valor a >/dev/null
+  assert_igual $'\001é' "$DBX_JSON_RESULTADO" 'os demais pontos de codigo seguem'
+}
+
+# QA-B3-05 — chave duplicada continua aceita (E2-08, E3-03: vence a ultima),
+# mas a analise conta as duplicadas num canal proprio, para quem precisa recusar.
+teste_qa_b3_05_chave_duplicada_e_contada_sem_mudar_a_analise() {
+  dbx_json_analisar '{"a":1,"b":2}'
+  assert_igual 0 "$DBX_JSON_DUPLICADAS" 'sem duplicada'
+  dbx_json_analisar '{"a":1,"a":2}'
+  assert_igual 1 "$DBX_JSON_DUPLICADAS" 'duplicada no topo'
+  dbx_json_valor a >/dev/null
+  assert_igual 2 "$DBX_JSON_RESULTADO" 'vence a ultima, como antes'
+  dbx_json_analisar '{"o":{"x":1,"x":2,"x":3}}'
+  assert_igual 2 "$DBX_JSON_DUPLICADAS" 'duplicadas aninhadas tambem contam'
+  dbx_json_analisar '{"a":1}'
+  assert_igual 0 "$DBX_JSON_DUPLICADAS" 'a analise seguinte zera o canal'
+}
+
 harness_executar "$@"

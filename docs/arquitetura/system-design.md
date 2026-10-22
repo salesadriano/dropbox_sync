@@ -7,8 +7,8 @@
 - Projeto ou produto: `dropbox_api` — aplicacao de linha de comando em shell script para integracao com a Dropbox API v2
 - Responsavel Business Analyst: Business Analyst (pacote de agents)
 - Responsavel tecnico principal: a definir pelo Tech Lead
-- Data da versao: 2026-08-19 (**v1.2**)
-- Status: 🔴 **`lib/stream` era componente planejado e NAO se materializou** (`DIV-20`); `RF-31` roda em `lib/transfer` + `lib/hash`. **Tamanho de parte FIXO em 4.194.304 bytes** (`DIV-19`, `DP-30`). **Limite de plataforma registrado em `RSK-36` / `DIV-18`.** **Todas as decisoes do `sync` fechadas.** Nove comandos definidos; `RSK-24` com mitigacao estrutural em vez de aceite. Nenhuma decisao do solicitante em aberto para o `sync`
+- Data da versao: 2026-10-22 (**v1.18**)
+- Status: 🔴 **`lib/stream` era componente planejado e NAO se materializou** (`DIV-20`); `RF-31` roda em `lib/transfer` + `lib/hash`. **Tamanho de parte FIXO em 4.194.304 bytes** (`DIV-19`, `DP-30`). **Limite de plataforma registrado em `RSK-36` / `DIV-18`.** **Todas as decisoes do `sync` fechadas.** Quinze comandos na fase 3 (`DIV-68`: o "nove" era anterior as fases 1 e 3), dezessete na fase 5 (`link-temporario` e `compartilhar`, em andamento), dezoito na fase 6 (`reter`, em andamento); `RSK-24` com mitigacao estrutural em vez de aceite. Nenhuma decisao do solicitante em aberto para o `sync`
 
 Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](../requisitos/decisoes-pendentes.md) · [Funcionalidades candidatas](../requisitos/funcionalidades-candidatas.md) · [Riscos e licenciamento](../requisitos/riscos-restricoes-e-licenciamento.md)
 
@@ -17,6 +17,22 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 | Versao | Mudanca |
 |---|---|
 | v0.1 | Proposta arquitetural inicial |
+| **v1.18** | **Fase 9 (2026-10-22; memoria `2026-10-21-2300-desempenho`; porte G): desempenho (`F-09`, `F-08`, `F-34`; escopo v1.25, secao 5.18).** Secao "Desempenho: paralelismo, lote e bancada" reescrita com o desenho implementado: componente novo `lib/lote.sh`; processo principal unico gravador de estado e auxiliares nas transferencias (`--paralelo`, 1 a 8); exclusao em lote so no `sync --espelhar` (fatias de 250, `check` com recuo); `reter` item a item (`DIV-269`); envio em lote com `start` nos auxiliares, `finish_batch_v2` no principal em grupos de 250 e conferencia de `content_hash` (`DIV-278`); bancada com marcador e limpeza. Diagrama de sequencia do envio em lote. Sem codigo de saida novo e sem estado persistente novo. |
+| **v1.17** | **Fase 8 (2026-10-21; memoria `2026-10-21-1735-perfis`; porte G): perfis nomeados de credencial (`F-18`; escopo v1.24, secao 5.17).** `DP-05` **reaberta e resolvida de novo**: o desenho da v0.6 ("um arquivo, um caminho, sem seletor") e substituido por `credencial.json` como perfil `padrao` mais `perfis/<nome>.json`, selecao por `--perfil`/`--profile` e `DBX_PERFIL`, nome validado antes de qualquer acesso (`RNF-37`), perfil inexistente sem recuo para o `padrao`. Nova secao de componentes "Perfis nomeados de credencial" com a tabela de atribuicao do estado por identidade (a `memoria-*` e chaveada pelo `account_id`, nao por `cred-`), o `unlink` seletivo (`DIV-237`, `DIV-238`, `C8` do DBA) e dois diagramas Mermaid (selecao e `unlink`). **Trava por raiz local canonica** no `sync --receber` (`RF-132`, `DIV-250`). `lib/preflight` passa a inspecionar o caminho resolvido. `DIV-236` a `DIV-251` resolvidas; parecer do DBA aceito (`C1` a `C10`); `F-44` e `RSK-91` a `RSK-93`. Nenhum codigo de saida nem formato de estado novo. |
+| **v1.16** | **Cursor de listagem entre execucoes (fase 7b, 2026-10-21; `F-14`; `RF-110` a `RF-119`; porte G; em andamento).** Secao "Cursor de listagem entre execucoes", com o fluxo em Mermaid. **Estado persistente novo** sob `lib/state`: namespace `cursor-<resumo32>` (formato NUL v1 com magia `dbx-cursor`, cursor mais **retrato remoto sem filtro** e rodape SHA-256 num arquivo so; leitor em fluxo limitado a campo de 8 KiB, 1.000.000 de entradas e 512 MiB). `lib/sync` passa a montar a **tabela remota inteira e filtrar depois** (`DIV-g`), aplica o delta do `list_folder/continue` pela receita do servico e confirma no servidor toda candidata a exclusao do modo incremental. `RNF-26` ganha o item (8) (`DIV-e`); linha de `lib/state` atualizada (o cursor existe; `DIV-a` da 7a fechada); chaves por `cred-` e `account_id` no cabecalho (`DIV-i`). `F-40` corrigida so no caminho do `sync` (`DIV-214` B). Contratos conferidos no Context7 (`DIV-219`). Nenhum codigo de saida novo; nenhuma escrita remota nova. Divergencias de implementacao a partir de `DIV-221`. |
+| **v1.15** | **Retomada entre execucoes (fase 7a, 2026-10-21; `F-03`; `RF-101` a `RF-109`; porte G; em andamento).** Secao "Retomada entre execucoes", com o fluxo em Mermaid do upload e do download. **Estado persistente novo** sob `lib/state`: namespace `retomada-*` (formato NUL v1 com magia `dbx-retomada`, leitor limitado a 16 KiB, chave SHA-256 com separador NUL) e trava de registro (`trava-*` com comando `retomada`); fora do diretorio de estado, o `.part` do download retomavel na arvore do usuario. `RNF-26` emendado (`DIV-b`), linha de `lib/state` corrigida (`DIV-a`: o cursor ainda nao existe), "F-03 segue fora" substituido (`DIV-c`) e o separador `\n` das chaves antigas registrado como risco teorico (`DIV-d`), todos do parecer do DBA da fase 7a (condicoes `C1` a `C6`). Contrato do cliente estendido com `continue-at` (pedido de faixa). Nenhum codigo de saida novo; nenhuma escrita remota nova. Divergencias de implementacao `DIV-191` a `DIV-202`. |
+| **v1.14** | **Retencao e rotacao de backup (fase 6, 2026-10-20; `F-10`; `RF-93` a `RF-100`; porte G; em andamento).** Comando `reter` (`retain`), secao "Retencao e rotacao de backup" com o fluxo em Mermaid (plano, guarda no ponto do `delete_v2`, falha parcial). Componentes novos `lib/retencao` (puro) e `commands/reter.sh`; `lib/filtro` passa a expor validacao e casamento de nome avulso; `lib/http` passa a expor o cabecalho `Date` (`DIV-134`). Sem estado persistente, sem trava (`DIV-140`), sem codigo de saida novo. Pontos de desenho `DIV-130` a `DIV-147` decididos em 2026-10-20 conforme as recomendacoes. Achados do QA, ciclos 1 a 3 (`DIV-158` a `DIV-166`): chave sem caixa de `RF-54` e caminho canonico nas tres barreiras contra caminho duplicado (listagem, plano e guarda (7)); marca combinante recusada (`RSK-68`). Achados do QA, ciclos 4 e 5 (`DIV-167` a `DIV-170`): **barreira estrutural por identidade** (`id` e `rev` obrigatorios e unicos entre os arquivos da listagem; guarda (7) compara tambem `rev`/`id` de quem sai com os de quem fica, assinatura nova de `dbx_retencao_guarda` com 12 argumentos); `name` e `path_lower` em UTF-8 valido por bytes (`dbx_retencao_utf8_valido`, `DIV-168`); barreiras por grafia ficam como defesa adicional; risco residual da `DIV-170` aceito pelo solicitante (`RSK-68`). |
+| **v1.13** | **Link temporario e link compartilhado (fase 5, 2026-10-20; `F-15`, `F-16`; `RF-84` a `RF-92`; porte G; em andamento).** Comandos `link-temporario` (`temp-link`) e `compartilhar` (`share`, com `--listar` e `--revogar`), secao "Link temporario e link compartilhado", com diagramas da criacao/reuso/modificacao e da revogacao confinada. Componente novo `lib/compartilhamento` (decidido, `DIV-117`); leitura de segredo sem eco unica em `lib/cli`. Integracao "Compartilhamento" reescrita com os contratos lidos pelo Context7 (`get_temporary_link`, `create_shared_link_with_settings`, `list_shared_links`, `modify_shared_link_settings`, `revoke_shared_link`, `get_shared_link_metadata`); `sharing.write` e `sharing.read` como escopos opcionais; `DIV-14` deixa de valer para `create_shared_link_with_settings` (`sharing.write` confirmado). Sem estado persistente, sem trava, sem codigo de saida novo. `DIV-104` a `DIV-120` decididas conforme as recomendacoes (`DIV-106`: `sharing.read` habilitado pelo solicitante); `DIV-121` a `DIV-127` decididas; `lib/compartilhamento` implementado; ciclos 1 a 3 do QA (`QA-B5-01..19`, `DIV-128`, `DIV-129`) refletidos na fronteira de seguranca e nos fluxos. |
+| **v1.12** | **Filtros e limite de banda (fase 4, 2026-10-19; `F-13`, `F-17`; `RF-79` a `RF-83`; porte M; em andamento).** Componente novo **`lib/filtro`** (decidido, `DIV-94`), puro, consumido por `lib/walk` e `lib/sync`; limite de banda como opcao `limit-rate` de `lib/http` so no modo de conteudo; secao "Filtros e limite de banda", com diagrama da avaliacao de escopo. Sem estado persistente novo e sem codigo de saida novo. |
+| **v1.11** | **Revisoes, restauracao e lixeira (fase 3, 2026-10-19; `F-07`, `F-20`; `RF-72` a `RF-78`; porte G; em andamento).** Comandos `commands/revisoes.sh`, `commands/restaurar.sh` e `commands/lixeira.sh` (secao "Revisoes, restauracao e lixeira"), com diagramas da restauracao (arquivo e pasta recursiva) e da exclusao permanente; integracoes `list_revisions`, `restore`, `list_folder`/`get_metadata` com `include_deleted` e `permanently_delete`, confirmadas contra `files.stone` (ramo `main`); escopo opcional `files.permanent_delete`. Nenhum componente novo em `lib/`, nenhum estado persistente, nenhum codigo de saida novo. Status corrigido (`DIV-68`). `DIV-54` a `DIV-69` decididas pelo Tech Lead (exclusao permanente sem terminal so com `--confirmar-caminho` identico ao alvo; unica opcao de confirmacao; nenhum dos tres comandos trava). `DIV-70` a `DIV-77` (parecer do Senior Developer): escopo opcional dentro da linha `escopos`; `lixeira -R` so em pastas vivas; `restaurar` sobre pasta viva sai `2`; confirmacao literal ou normalizada, caixa exata; item de pasta fora da raiz ou sem revisao e falha (`14`), `--dry-run` sai `0`; `in_progress` vira `14` apos retentativas; aviso de pasta conta um nivel. Ciclo de QA: guarda do expurgo pelo `path_lower` do proprio alvo (dobra so ASCII sob `LC_ALL=C`) e sem chave repetida, senao `10` (`QA-B3-02`, `QA-B3-05`); `in_progress` vira `14` em `_dbx_cmd_escrita_remota` (`delete`, `restore`, expurgo) e o `upload` mantem `10` (`QA-B3-03`); `lib/json` recusa `\u0000`, substituto isolado e escape incompleto (`QA-B3-04`); descida so por descendente estrito com pastas visitadas (`QA-B3-06`); item fora da pasta pedida e falha (`DIV-78`). Riscos baixos aceitos: corte do corpo HTTP no primeiro NUL cru; fila quadratica da descida (fase 9). Versao anterior preservada nesta tabela (a regra de `historico/` do `AGENTS.md` vale para memoria, nao para este documento). |
+| **v1.10** | **Fase 2 implementada (2026-10-19).** `lib/tmp` descrito como existe: um tratador por sinal (`EXIT`, `INT`, `TERM`, `HUP`) armado uma vez por processo; lista de acoes e lista de areas, por processo (subshell nao limpa as do pai); acoes em ordem inversa e depois areas; criacao e registro com sinais retidos; sinal durante a limpeza nao a interrompe; saida `14` em sinal; removida a descricao de gancho/canal de sinal por modulo. Trava em `lib/state` na ordem trava, leitura, `mv`, liberacao. `DIV-47` (conta da chave = resumo local da credencial; `RSK-50`), `DIV-48` (estado alheio ou sem escrita segue sem trava, com aviso) e `DIV-49` (`download` de pasta trava). Diagrama de sequencia ajustado: o tratador e armado pela aquisicao. |
+| **v1.9** | **Trava de concorrencia e `lib/tmp` (fase 2, 2026-10-19; `F-12`, restante de `F-31`; `RF-69` a `RF-71`, `RNF-35`, `RNF-36`; em andamento).** `lib/tmp` entra como registro unico de areas e de acoes de limpeza (a linha anterior o dava como existente: `DIV-42`); a trava por (conta x origem x destino) entra no ciclo do `sync` e do `verificar` (secao "Trava de concorrencia e area temporaria unica"), com diagrama de aquisicao e liberacao; `RNF-26` autoriza o arquivo de trava como estado transitorio que nao decide. Classe de erro da trava ocupada: `conflito`/`7`, **confirmada** (`DIV-43`); sem codigo novo. `DIV-38` a `DIV-44` **resolvidas pelo Tech Lead**: chave sem ordem entre sentidos, trava como unica escrita permitida no `verificar` e na simulacao (diretorio de estado byte a byte igual), `lib/state` cria e remove a trava, `RNF-29(d)` emendado, nomes `dbx-sync.*` mantidos, `unlink` recusa com `7` diante de trava viva. |
+| **v1.8** | **Fase 1b (2026-10-19; `F-36`, `F-37`).** `lib/path` aplica a `raiz_remota` a todo comando com caminho remoto (`RNF-20(b1..b6)`: componente, sem caixa, `..` normalizado, `caminho_recusado`/`13` antes da API) e recusa caminho remoto com controle (`RNF-10(b)`); raiz local configuravel (`RNF-20(c)`) fica fora, em `F-38`. |
+| **v1.7** | **Consulta, diagnostico, espaco e autocompletar (fase 1, 2026-10-19; `RF-65` a `RF-68`; em andamento).** Tres comandos novos na tabela de comandos (`verificar`, `diagnostico`, `completar`), a checagem previa de espaco em `upload` e `sync --enviar`, `completions/dbx.bash` e a nota do preflight contornado pelo `diagnostico` (secao "Comandos de consulta, diagnostico e autocompletar"). Nenhum componente de `lib/` entra; sem estado persistente novo (`RNF-26` intacto); sem classe de erro nova. |
+| **v1.6** | **Aliases em ingles, localidade da comparacao e guarda de origem vazia pelo plano (fase 4, 2026-10-19, `DP-35`).** Nenhum componente entra ou sai. `commands/sync`, `commands/unlink` e `commands/config` aceitam os aliases em ingles de `RF-64` (nomes em portugues mantidos); `C.UTF-8` e fixada so dentro da comparacao sem caixa de `lib/sync`, nunca no processo, quando a localidade existe, e o `sync` avisa, sem recusar, quando ela falta (`RF-54(e)(f)(g)`, `F-32`); a guarda de origem vazia do `sync --receber` sai do caminho anterior ao plano (`RF-41(b)`, `O-1`). Novos: secao "Aliases e localidade (fase 4)". Contradicoes remanescentes entre documentacao e codigo listadas em `RNF-34`. `DIV-30` a `DIV-32` resolvidas pelo Tech Lead no mesmo dia |
+| **v1.5** | **Cache unico e segredo obrigatorio (fase 3, 2026-10-18, `DP-34`).** 🔴 **`lib/db` REMOVIDO** da arquitetura (SQLite via `sqlite3`/`python3`; nunca havia constado deste documento, `DIV-25`): `lib/state` passa a ser o **unico** cache de `content_hash`, com **dois namespaces** — `memoria-*` do `sync` e `upload-*` do `upload` (`RF-61`), chave pelo caminho fisico canonico (`RF-62`). O `upload` so dispensa o envio com `content_hash` **remoto** igual ao local (`RF-60`); o cache so poupa o calculo local. `sqlite3`/`python3` saem (`RNF-02`); o `dbx.db*` legado fica inerte e documentado (`RNF-33`). **PKCE deixa de constar como disponivel**: `client_secret` obrigatorio tambem na biblioteca (`RF-63`; PKCE em `F-35`). **Handoff do DBA consolidado** na secao "Plano de dimensionamento e expansao do banco" (regra 26). Novos: secao "Estado local unico (fase 3)", decisoes de arquitetura, riscos `RSK-42` a `RSK-45` e diagramas "Estado local: componentes" e "Ciclo de leitura e escrita do cache". **Mesma data, decisoes do Tech Lead:** `DIV-26` a `DIV-29` resolvidas (identidade forte tambem na memoria do `sync`; sem skip com `--rev`; falha segura sem conta documentada, REVISTA para desabilitar a propagacao de exclusao sem identidade de conta (`RF-41(e)`, `--confirmar` nao reabilita); diretorio de estado corrigido para `0700` ou recusa como `permissao`). Linha "Natureza do dado" do plano do banco atualizada para o formato v2 da `memoria-*` e do `upload-*`. Achado `QA-P3-01`: memoria existente descartada na carga desabilita a exclusao na execucao (`RF-41(f)`, `RSK-46`). **Decisao do solicitante apos `QA-P3-05..07`:** no `--espelhar`, origem vazia com algo a apagar e sempre recusada (codigo `14`), independente da memoria, nos dois sentidos; so a opcao nova `--permitir-origem-vazia` dispensa (`RF-41(b)` reescrito, `RF-53(e)`); `RF-41(e)` e `(f)` ficam como defesa em profundidade |
+| **v1.4** | **Robustez de rede (fase P2, 2026-10-18).** Registrado o comportamento decidido para `lib/http` (timeouts, recuo, `Retry-After`), `lib/transfer` (retomada na mesma execucao) e `commands/sync` (falhas por item), na secao "Robustez de rede (P2)". Sem novo componente; sem estado persistente novo (`RNF-26` intacto). `DIV-22` encerrada |
+| **v1.3** | **Integridade de dados (fase P1, 2026-10-18).** Registrado o comportamento decidido para `lib/sync`, `commands/download`, `lib/transfer` e `lib/http` (secao "Integridade de dados no recebimento e no `sync`"). Sem novo componente; backlog das fases P2 a P5 em `F-23`..`F-27` |
 | **v1.2** | **Correcoes devolvidas pela implementacao de `RF-31`/`RF-08`/`RF-09` (2026-08-19).** 🔴 **`lib/stream` reclassificado como PLANEJADO E NAO MATERIALIZADO** (`DIV-20`): verificado por leitura direta de `lib/`, o arquivo nunca foi criado; `RF-31` ficou em `lib/transfer` + `lib/hash` (API incremental), e `RF-32` segue nao implementado, com o componente **em aberto**. A linha da tabela e o no do diagrama sao **riscados, nao removidos**. **Dimensionamento corrigido:** a celula de estrategia por tamanho de arquivo afirmava tamanho de parte **configuravel** com faixa sugerida de 8 a 32 MiB — **falso em relacao ao implementado e nunca medido**; a parte esta **fixa em 4.194.304 bytes** (`DIV-19`), e o estagio "ajuste fino" do plano de expansao passa a constar como **indisponivel**. **Contrato de conteudo revalidado** contra `files.stone` do ramo **`main`**, incluindo `offset` e `incorrect_offset` como base documentada da retentativa por parte, e a **validade de 7 dias da sessao** (`RES-18`); ⚠️ `DIV-21` registra que o ramo `master` esta **desatualizado** (48 horas, sem `session_type`). **Criterio de aceite de transferencia por fluxo qualificado** por `DIV-18`/`RSK-36`. *(A numeracao salta de v1.1 para v1.2 sem v1.1.x intermediaria; nao ha versao omitida neste registro.)* |
 | v0.2 | Incorpora DP-01 (reimplementacao independente), DP-03 (uso interativo **e** automatizado, exigindo camada de saida com duas apresentacoes) e DP-04 (conta pessoal com acesso amplo, exigindo menor privilegio e confinamento de raiz). Contratos de integracao **revalidados via Context7** sobre `/websites/dropbox_developers_http`, corrigindo hosts, unidades, o requisito de multiplo de 4 MiB, a paginacao de busca e a restricao de concorrencia em listagem. Nota de nao verificacao do Context7 removida por erro factual |
 
@@ -29,7 +45,7 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 | **v0.9** | **Politica de conflito decidida: `DP-21` ultimo a escrever vence · `DP-22` honrar a exclusao · `DP-24` sem teto · `DP-23` base sob `$XDG_STATE_HOME`, corrompida recusa.** Decisoes tomadas contra a recomendacao do Business Analyst, com custo apresentado e aceito; recomendacao e razao registradas para revisao futura. **Desenho ajustado para minimizar o custo dentro da decisao:** incerteza **confinada a ordenacao** (`RF-39` proibe carimbo de tempo na deteccao); qualidade do sinal elevada (`RF-39a`, `RNF-27` — diferencas contra a base cancelam offset de relogio, `client_modified` substitui `server_modified`); desempate prefere o **lado recuperavel** (`RF-40a`); perda **nominal e visivel depois da acao** (`RF-47`); reconhecimento obrigatorio na primeira execucao (`RF-48`); concorrencia otimista por `rev` (`RF-49`). **`RF-41(a)` elevada a bloqueante** — unica protecao restante contra exclusao em massa. `RSK-33` criado (assimetria de recuperabilidade) |
 | **v0.8** | **`DP-06` resolvida com `sync` bidirecional — maior mudanca de escopo do projeto.** `PRJ-DEC-07` **revogado no escopo do `sync`**; `DP-09` reaberta; **handoff do DBA acionado**. Componentes novos: **`lib/state`** (linha de base e cursor, unico autorizado a escrever estado alem de `lib/config`) e **`lib/sync`** (matriz de tres estados, conflitos, salvaguardas). Requisitos `RF-37` a `RF-46`, `RNF-25` e `RNF-26`. Riscos criticos novos: `RSK-29` a `RSK-32`; **`RSK-24` reescalado** de Medio/Baixa para Alto/Media, porque o percurso recursivo que seu aceite pressupunha inexistente agora existe e apaga. Cinco decisoes bloqueantes: `DP-21` a `DP-24` e `DP-26` |
 | **v0.7** | **`RNF-24` criado (`E3-01`)**: contexto nomeado em `lib/json`, permitindo analisar corpo de erro sem destruir analise em curso — com o nome **sempre de origem interna**, restricao que preserva a injetividade que fechou `E2-01`. **Vocabulario do projeto ampliado**: secao "separar dado de canal" na visao geral, e classe *"instrumento de observacao interfere na propriedade observada"* registrada como `RSK-28`. `RSK-27` criado a partir de auditoria estatica furada. Ciclo 2 de QA aprovado com ressalva — 223 casos, `shellcheck -x` exit 0 |
-| **v0.6** | **`DP-05` fecha o desenho de `lib/config`** — um arquivo, um caminho, sem multiplexacao; `RF-05` sai para o backlog como incremento aditivo. **`RNF-23` acopla `lib/http` a `lib/json`:** o teto de entrada de 256 KiB do analisador, fixado por medicao, torna obrigatorio o `limit`/`max_results` explicito em toda chamada de colecao. **`RSK-24` encerrado** com aceite reconfirmado sob `DP-07` ja resolvida |
+| **v0.6** | *(historico; superado na v1.17: `DP-05` reaberta e resolvida com perfis nomeados)* **`DP-05` fecha o desenho de `lib/config`** — um arquivo, um caminho, sem multiplexacao; `RF-05` sai para o backlog como incremento aditivo. **`RNF-23` acopla `lib/http` a `lib/json`:** o teto de entrada de 256 KiB do analisador, fixado por medicao, torna obrigatorio o `limit`/`max_results` explicito em toda chamada de colecao. **`RSK-24` encerrado** com aceite reconfirmado sob `DP-07` ja resolvida |
 | **v0.5** | **Correcao de registro e tres decisoes novas.** `DP-07` (Linux, `bash` 4.4) e `DP-08` (apenas `cURL`, JSON proprio) **ja estavam decididas** e foram enfim propagadas: `lib/preflight` e `lib/json` destravados, e a **camada de compatibilidade GNU/BSD eliminada do desenho**. `DP-11` fixa credencial `0600` sob XDG sem sobrescrita por ambiente, destravando `lib/config`. `DIV-16b` adota `--null` com terminador nulo, destravando `lib/output`. `RSK-24` **reaberto**: com Linux confirmado, `/proc/self/fd` deixa de ser inadmissivel por portabilidade. `DIV-15` retirada e `RSK-25` encerrado |
 
 > **Condicao de validade.** Nao ha decisao bloqueante pendente. As pendencias remanescentes sao estruturantes (DP-07, DP-08, DP-11, DP-20) e afetam componentes especificos, nao a arquitetura geral — ver a secao "O que o Senior Developer precisa para comecar" em [decisoes-pendentes.md](../requisitos/decisoes-pendentes.md). As secoes de dimensionamento contem premissas provisorias explicitamente marcadas, a substituir pelos numeros reais quando DP-12 for respondida.
@@ -44,7 +60,8 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 >
 > | Escopo | Estado persistente |
 > |---|---|
-> | `upload`, `download`, `list`, `delete`, `info` | ❌ **Nenhum.** O invariante original continua valendo integralmente |
+> | `download`, `list`, `delete`, `info` | ❌ **Nenhum.** O invariante original continua valendo integralmente |
+> | `upload` *(v1.5)* | ✅ **So a memoria auxiliar do hash local** (`upload-*`, `RF-61`), que **nao decide**: a dispensa do envio exige `content_hash` remoto igual (`RF-60`). Apagar o cache nao muda decisao alguma (`RNF-26`) |
 > | `sync` | ✅ **Autorizado e delimitado** por `RNF-26`: linha de base de sincronizacao e cursor de enumeracao, vinculados ao par de raizes. Nada alem disso |
 >
 > **Consequencias formais:** `DP-09` **reaberta** · **handoff do DBA acionado** · `RSK-23` reescrito de "nao criar estado" para "nao exceder o estado autorizado" · `RSK-24` reescalado, porque o percurso recursivo que seu aceite pressupunha inexistente agora existe e apaga.
@@ -154,28 +171,455 @@ A dependencia e unidirecional, do topo para a base. Nenhuma funcao de `lib/` con
 | Componente | Responsabilidade | Entradas | Saidas | Dependencias | Observacoes |
 |---|---|---|---|---|---|
 | `bin/dbx` | Ponto de entrada unico. Verificacao previa de ambiente, interpretacao de opcoes globais e despacho para o comando | Argumentos de linha de comando, variaveis de ambiente | Codigo de saida do processo | `lib/preflight`, `lib/cli` | Deve permanecer fino; sem regra de negocio |
-| `lib/preflight` | Verificar versao minima de shell, presenca dos utilitarios obrigatorios e **a permissao do arquivo de credencial** | Ambiente de execucao | Sucesso ou falha nomeando o item ausente ou a permissao incorreta | Utilitarios do sistema | ✅ **Destravado na v0.5.** Piso `bash` **4.4** (DP-07); dependencia externa unica de `cURL` (DP-08); **recusa a execucao** se o arquivo de credencial nao estiver em `0600` (DP-11) — recusa, nao alerta. Atende RNF-01, RNF-02 e RNF-04 |
-| `lib/cli` | Interpretacao de opcoes, validacao de aridade, ajuda de uso, modo de simulacao e deteccao de terminal interativo | Argumentos | Estrutura de invocacao normalizada | `lib/output` | Atende RF-15, RF-27 e RNF-19 |
-| `lib/config` | Localizar, validar e carregar **a** credencial; aplicar e verificar permissoes restritas; carregar as raizes permitidas | Nenhum seletor | Credenciais em memoria, raizes permitidas | Sistema de arquivos | ✅ **Desenho INTEGRALMENTE fechado na v0.6: um arquivo, um caminho, sem multiplexacao.** Arquivo `0600` sob `$XDG_CONFIG_HOME` com recuo para `~/.config` (DP-11); **sem nocao de perfil e sem seletor** (DP-05); **credencial nao pode vir de variavel de ambiente**, e nenhum caminho de codigo a le do ambiente. Atende RF-03, RNF-04, RNF-20. Verificavel: nenhuma funcao do componente recebe identificador de conta ou de perfil |
-| `lib/auth` | Trocar codigo de autorizacao por refresh token; obter e renovar access token; revogar token | Credenciais, codigo de autorizacao | Access token em memoria com prazo de validade | `lib/http`, `lib/config` | **Unico componente autorizado a manipular segredo.** Atende RF-01, RF-02, RF-04, RNF-03 |
-| `lib/http` | Unico ponto de saida de rede. Montagem de requisicao, injecao de credencial fora do `argv`, retentativa com recuo, captura de codigo HTTP e do cabecalho de correlacao. **Enviar `limit`/`max_results` explicito em toda chamada de colecao e paginar por cursor** | Endpoint, cabecalhos, corpo, arquivo | Corpo de resposta, codigo HTTP, metadados de diagnostico | `cURL`, `lib/errors`, `lib/log` | Concentra RNF-03, RNF-06, RNF-07, RNF-08 e **RNF-23**. **Acoplamento novo na v0.6:** o teto de 256 KiB de `lib/json` e uma restricao **de projeto** sobre `lib/http`, nao um detalhe interno do analisador. Sem `limit` explicito, pasta grande falharia por recusa de analise — erro interno sem relacao aparente com o tamanho da pasta — em vez de paginar corretamente |
+| `lib/preflight` | Verificar versao minima de shell, presenca dos utilitarios obrigatorios e **a permissao do arquivo de credencial** | Ambiente de execucao | Sucesso ou falha nomeando o item ausente ou a permissao incorreta | Utilitarios do sistema | ✅ **Destravado na v0.5.** Piso `bash` **4.4** (DP-07); dependencia externa unica de `cURL` (DP-08); **recusa a execucao** se o arquivo de credencial nao estiver em `0600` (DP-11) — recusa, nao alerta. Atende RNF-01, RNF-02 e RNF-04. **v1.17 (fase 8):** deixa de fixar `credencial.json`; inspeciona o **caminho do perfil selecionado** (e `dbx/` e `perfis/`: modo, dono, sem ligacao simbolica; `C1`, `C2`) |
+| `lib/cli` | Interpretacao de opcoes, validacao de aridade, ajuda de uso, modo de simulacao e deteccao de terminal interativo | Argumentos | Estrutura de invocacao normalizada | `lib/output` | Atende RF-15, RF-27 e RNF-19. **v1.17:** opcao global `--perfil`/`--profile` (valida o nome na analise; repeticao sai `2`), comando `perfis` (alias `profiles`) nas tabelas literais |
+| `lib/config` | Localizar, validar e carregar a credencial **do perfil selecionado**; aplicar e verificar permissoes restritas; carregar as raizes permitidas; validar o nome do perfil e compor o caminho (unico ponto, `RNF-37`); listar perfis; calcular a identidade `cred-` | Perfil selecionado (ja validado, em estado interno; a assinatura das funcoes publicas nao muda) | Credenciais em memoria, raizes permitidas, lista de perfis com o veredito da credencial | Sistema de arquivos | 🔄 **Redesenhado na v1.17 (`DP-05` reaberta, fase 8).** O texto da v0.6 ("um arquivo, sem seletor") e historico. `padrao` = `credencial.json` (inalterado); demais = `perfis/<nome>.json`; **sem recuo** para o `padrao`; sem sobrescrita do **segredo** por ambiente (`DP-11`: so o nome do perfil vem do ambiente). So uma lista fechada de funcoes de `lib/config` lida com nome de perfil, e **nenhuma outra camada** recebe perfil ou conta (auditorias reescritas, `RSK-90`). Atende RF-03, RNF-04, RNF-20, RF-120 a RF-125, RF-131 e RNF-37. Ver secao "Perfis nomeados de credencial" |
+| `lib/auth` | Trocar codigo de autorizacao por refresh token; obter e renovar access token; revogar token | Credenciais, codigo de autorizacao | Access token em memoria com prazo de validade | `lib/http`, `lib/config` | **Unico componente autorizado a manipular segredo.** Atende RF-01, RF-02, RF-04, RNF-03. **v1.5 (`RF-63`):** renovacao e troca de codigo **exigem** `client_secret` e recusam antes da rede quando ele falta; nao ha ramo sem segredo nem PKCE (`F-35`) |
+| `lib/http` | Unico ponto de saida de rede. Montagem de requisicao, injecao de credencial fora do `argv`, retentativa com recuo, captura de codigo HTTP e do cabecalho de correlacao. **Enviar `limit`/`max_results` explicito em toda chamada de colecao e paginar por cursor** | Endpoint, cabecalhos, corpo, arquivo | Corpo de resposta, codigo HTTP, metadados de diagnostico | `cURL`, `lib/errors`, `lib/log` | Concentra RNF-03, RNF-06, RNF-07, RNF-08 e **RNF-23**. **Acoplamento novo na v0.6:** o teto de 256 KiB de `lib/json` e uma restricao **de projeto** sobre `lib/http`, nao um detalhe interno do analisador. Sem `limit` explicito, pasta grande falharia por recusa de analise — erro interno sem relacao aparente com o tamanho da pasta — em vez de paginar corretamente. 🔄 **v1.16 (`DIV-214` B, parte de `F-40`):** no caminho do `sync` (varredura completa e delta), o `list_folder/continue` leva **so** o `cursor` — o limite vai so no `list_folder` inicial e viaja dentro do cursor; o restante de `F-40` segue no backlog |
 | `lib/errors` | Taxonomia de erro: traduzir codigo HTTP e resumo de erro **ja extraido** em classe de erro, mensagem acionavel e codigo de saida | Codigo HTTP, resumo de erro em texto, indicador de idempotencia da operacao | Classe de erro e codigo de saida | **Nenhuma.** Componente de dominio puro | Correspondencia por prefixo do resumo de erro, conforme orientacao da Dropbox. Atende RF-29 e RNF-08. **Corrigido na v0.4 (DIV-A.1):** a v0.3 atribuia dependencia de `lib/json`, contradizendo a classificacao de dominio. A extracao do campo e responsabilidade de quem chama; `lib/errors` recebe texto. Ha teste que reprova se o componente referenciar `jq`, `lib/json` ou qualquer adaptador |
 | `lib/json` | Extrair campos de resposta de forma resistente a variacao de formatacao e a valores com delimitadores, **dentro de um teto de entrada de 256 KiB**, mantendo estado em **contextos nomeados** | Corpo de resposta ate 256 KiB, nome de contexto de origem interna | Valores de campo | Nenhuma dependencia externa | ✅ **Entregue.** DP-08 fixou **interpretador proprio em shell, sem `jq`**. Atende RNF-11, RNF-23 e **RNF-24**. **Teto de 256 KiB** fixado por medicao (4 MiB extrapolava para ~86 s): fronteira explicita em vez de degradacao aparecendo como travamento. **Contexto nomeado (v0.7, `E3-01`):** permite analisar corpo de erro **sem destruir uma analise em curso** — padrao previsto para a Etapa 3, quando `lib/http` interpretar erro no meio de listagem paginada. ~50 linhas, **sem mudanca de assinatura** das funcoes publicas. ⚠️ **O nome do contexto e escolhido pelo projeto e nunca deriva de dado externo**, restrito a `[a-z_]+`: a composicao de chave que fechou `E2-01` so e injetiva porque o espaco de nomes e controlado |
 | `lib/transfer` | **Orquestracao** da transferencia: decidir entre requisicao unica e sessao em partes, dimensionar partes, coordenar retentativa por parte, verificar `content_hash` e **decidir a omissao quando origem e destino tiverem conteudo identico** | Caminho local ou fluxo, caminho remoto, politicas | Resultado da transferencia | `lib/http`, `lib/tmp`, `lib/hash` ~~, `lib/stream`~~ | Nucleo de RF-07 a RF-11, RF-31, RF-33, RNF-09. **Atualizado na v1.2 com a entrega de 2026-08-19:** a dependencia de `lib/stream` **cai — o componente nao existe** (`DIV-20`); `lib/transfer` absorveu o caminho de fluxo de `RF-31` e consome a **API incremental** de `lib/hash`. ⚠️ **Tamanho de parte FIXO em 4.194.304 bytes** (`readonly DBX_TRANSFER_TAMANHO_PARTE`), roteamento por sessao acima de 157.286.400 bytes: a **parte de rede e a mesma grandeza que o bloco do `content_hash`**, e e essa coincidencia que torna o teto de ocupacao de `RF-31` **consequencia estrutural** em vez de promessa a vigiar. Separar as duas grandezas e o trabalho que fecharia a lacuna de `RF-08` (`DIV-19`, `DP-30`). ⚠️ **Limite declarado (`DIV-18`, `RSK-36`):** produtor de cano anonimo que morre no meio e indistinguivel de fim de fluxo legitimo, e **nao ha mitigacao dentro do processo**. A decisao de omissao compara `content_hash`, **nunca** nome, tamanho ou data. **Reclassificado na v0.4 (DIV-A.2):** a v0.3 o listava como dominio, o que era incompativel com a dependencia de `lib/http`. Pertence a camada de Orquestracao |
 | ~~`lib/stream`~~ | 🔴 **COMPONENTE PLANEJADO QUE NAO SE MATERIALIZOU (v1.2, `DIV-20`).** Previsto na v0.3 para adaptar entrada e saida padrao a transferencia | — | — | — | **Verificado por leitura direta de `lib/` em 2026-08-19: o arquivo nao existe e nunca foi criado.** A responsabilidade que ele nomeava para **`RF-31`** ficou em **`lib/transfer`** (laco de sessao, buffer de um bloco, area temporaria) e em **`lib/hash`** (API incremental `dbx_hash_acumular_iniciar` / `_bloco` / `_encerrar`). **`RF-32` nao foi implementado**, e onde alojar o caminho de saida por fluxo permanece **decisao de desenho em aberto** — o precedente de `RF-31` sugere `lib/transfer`, mas isso e do Senior Developer sob o Tech Lead e **nao esta decidido aqui**. **A linha e mantida riscada, e nao removida:** um componente previsto que nao nasceu e informacao de rastreabilidade |
-| `lib/state` | **Novo na v0.8.** Persistir e recuperar a **linha de base de sincronizacao** e o **cursor de enumeracao**, vinculados ao par de raizes **e a identidade da conta**; versionar o formato, verificar integridade e gravar de forma atomica | Par de raizes, identidade da conta, estado convergido **verificado pela descida** | Linha de base carregada ou recusa explicita | Sistema de arquivos | Atende RF-38, RF-42, RF-43, **RF-50**, **RF-52**, RNF-25, RNF-26. 🔴 **`RF-50` (v1.0):** grava **apenas** caminhos que a propria descida de `lib/walk` verificou — **nunca por re-resolucao de texto**. Sem essa regra, uma travessia que escapasse gravaria caminhos de fora da raiz, que na execucao seguinte virariam orfaos e seriam apagados **com o atacante ja ausente** (`RSK-34`): a janela de ataque e transitoria, a consequencia e persistente. 🔴 **`RF-52`:** base vinculada a **identidade da conta**; relink a conta diferente com base preservada faria caminhos ausentes no novo remoto casarem a linha "apagado no remoto" da matriz e **apagarem arquivos locais do usuario**. **Unico componente autorizado a escrever estado persistente** alem de `lib/config`. Escrita atomica por arquivo temporario e substituicao; permissao `0600`; **nao guarda credencial nem conteudo de arquivo**. ⚠️ **Separa estritamente linha de base e cursor de enumeracao** — a Dropbox invalida o segundo com `reset`, e aplicar isso ao primeiro apagaria a memoria do que foi sincronizado (`RSK-32`) |
+| `lib/state` | **Novo na v0.8.** Persistir e recuperar a **linha de base de sincronizacao** e o **cursor de enumeracao**, vinculados ao par de raizes **e a identidade da conta**; versionar o formato, verificar integridade e gravar de forma atomica | Par de raizes, identidade da conta, estado convergido **verificado pela descida** | Linha de base carregada ou recusa explicita | Sistema de arquivos | Atende RF-38, RF-42, RF-43, **RF-50**, **RF-52**, RNF-25, RNF-26. 🔴 **`RF-50` (v1.0):** grava **apenas** caminhos que a propria descida de `lib/walk` verificou — **nunca por re-resolucao de texto**. Sem essa regra, uma travessia que escapasse gravaria caminhos de fora da raiz, que na execucao seguinte virariam orfaos e seriam apagados **com o atacante ja ausente** (`RSK-34`): a janela de ataque e transitoria, a consequencia e persistente. 🔴 **`RF-52`:** base vinculada a **identidade da conta**; relink a conta diferente com base preservada faria caminhos ausentes no novo remoto casarem a linha "apagado no remoto" da matriz e **apagarem arquivos locais do usuario**. **Unico componente autorizado a escrever estado persistente** alem de `lib/config`. Escrita atomica por arquivo temporario e substituicao; permissao `0600`; **nao guarda credencial nem conteudo de arquivo**. ⚠️ **Separa estritamente linha de base e cursor de enumeracao** — a Dropbox invalida o segundo com `reset`, e aplicar isso ao primeiro apagaria a memoria do que foi sincronizado (`RSK-32`). 🔄 **v1.15 (`DIV-a` do parecer do DBA da fase 7a):** o **cursor de enumeracao ainda NAO existe no codigo** — `lib/state` guarda so a linha de base; o cursor entra na fase 7b (`F-14`) como namespace proprio, `cursor-*`, nunca dentro da `memoria-*`. 🔄 **v1.5 (`DP-34`): cache UNICO de `content_hash`, com dois namespaces** no diretorio `$XDG_STATE_HOME/dbx` (criado em `0700`, `RNF-25(b)`): **`memoria-<resumo>`** do `sync` (um arquivo por conta, raiz local canonica e raiz remota; grava so as entradas visitadas em travessia completa, `RF-38(b)`; sem conta, nao le nem grava, `RF-52(a)`) e **`upload-<resumo>`** do `upload` (um arquivo por origem canonica, registro unico com `content_hash`, tamanho, `mtime`/`ctime` em ns, dispositivo e inode; sem vinculo a conta; poda acima de 10.000 arquivos dos nao usados ha 90 dias; `RF-61`, `RF-62`). O `upload` **nunca** toca `memoria-*` (protecao de `RF-48`, `RSK-45`). Formato NUL versionado, carga em array associativo (consulta O(1)), gravacao unica por `mktemp` no mesmo diretorio e `mv`; corrupcao descarta e reconstroi (`RF-42`). **Nenhuma dependencia externa**: so `stat`, `readlink`, `find`, `mktemp` e `mv`, ja no `lib/preflight`. 🔄 **v1.15 (fase 7a, `F-03`):** namespace **`retomada-<resumo32>`** (registro de retomada de `upload`/`download`, um por transferencia interrompida) e **trava de registro** `trava-<mesmo resumo>` com comando `retomada`; o **leitor NUL limitado** (16 KiB, contagem fixa, regex por campo, `LC_ALL=C`, por descritor) vale para `retomada-*` e passa a valer para `upload-*` (`C3`); detalhes na secao "Retomada entre execucoes". 🔄 **v1.16 (fase 7b, `F-14`; `DIV-e`, `DIV-i` do parecer do DBA da 7b):** o cursor de enumeracao **passa a existir** como namespace proprio, **`cursor-<resumo32>`**, um por conta, raiz local canonica e raiz remota: guarda o cursor do `list_folder` **e um retrato remoto sem filtro** (arquivos e pastas com `id`, `rev`, `content_hash`, tamanho, `path_lower`, `path_display` e, quando lida, a data remota) — dado **remoto** novo no diretorio de estado, da mesma classe de privacidade da `memoria-*`. Chave por `cred-` (sem rede, como `trava-*` e `retomada-*`), com o `account_id` de `get_current_account` no cabecalho e reconferido na carga; a `memoria-*` continua com o `account_id` na chave (`DIV-i`). Leitor **em fluxo** (campo de 8 KiB, ate 1.000.000 de entradas e 512 MiB, rodape SHA-256 conferido antes do uso, cada caminho confinado por `dbx_sync_relativo`) e variante so-cabecalho para o `diagnostico`. `cursor-*` e `memoria-*` sao independentes nos dois sentidos (`RF-43`, `RSK-32`): nenhum descarte de um toca o outro, e `cursor-*` nao vale como "par visto" (`RF-48`). O cursor **so acelera** a enumeracao remota; nao decide integridade nem exclusao (secao "Cursor de listagem entre execucoes") |
+| ~~`lib/db`~~ | 🔴 **REMOVIDO NA v1.5 (`DP-34`).** Cache de metadados e historico de operacoes em SQLite (`dbx.db`, modo WAL), via `sqlite3` ou recuo para `python3`, introduzido em 2026-10-08 **sem passar por este documento nem pelo `RNF-26`** (`DIV-25`) | — | — | — | Saiu por decisao do solicitante: dependencia contraria a `RNF-02`, estado fora de `RNF-26`, e o skip do `upload` apoiado nele decidia so pelo lado local (`RSK-37`). Custo medido pelo DBA: ~10 ms por processo, de 4 a 6 processos por `upload` e 1 a 2 por arquivo no `sync` (100–200 s de processos com 10 mil arquivos, contra ~0,2 s do `lib/state`). O `dbx.db*` existente fica **inerte**: nada o le, escreve, migra ou apaga (`RNF-33`). **A linha fica riscada, e nao removida**, pelo mesmo motivo de `lib/stream` |
 | `lib/sync` | **Novo na v0.8. Orquestracao.** Aplicar a matriz de decisao de tres estados, classificar conflitos, ordenar vencedores, decidir propagacao de exclusao e aplicar as salvaguardas | Raizes, linha de base, opcoes | Plano de acoes e resultado | `lib/state`, `lib/transfer`, `lib/walk`, `lib/hash`, `lib/http`, `lib/report` | Atende RF-37, RF-39, RF-39a, RF-40, RF-40a, RF-41, RF-44, RF-46, RF-47, RF-48. **Separacao interna obrigatoria (v0.9):** a **deteccao** de conflito usa exclusivamente `content_hash` contra a linha de base — **nenhum carimbo de tempo**, com mutacao que reprova se vazar; carimbo participa **somente** da **ordenacao**, e essa e a unica etapa declaradamente sujeita a erro. **Nenhuma exclusao e emitida antes de `RF-41` ser avaliada**, e `RF-41(a)` e a unica protecao estrutural restante apos `DP-24` dispensar o teto. O plano de simulacao (RF-44) e **identico** ao conjunto de acoes da execucao real sobre o mesmo estado |
 | `lib/report` | Acumular contagens e metricas da execucao e produzir o relatorio final | Eventos de resultado por item | Estrutura de relatorio | `lib/output` | **Novo na v0.3.** Atende RF-36. Acumula **em memoria durante a execucao**; nao persiste entre execucoes, preservando a invariante de ausencia de estado local |
 | `lib/hash` | Calcular o `content_hash` da Dropbox para verificacao de integridade e para a decisao de omissao por conteudo identico | Arquivo local ou fluxo | Valor de resumo em 64 caracteres hexadecimais | Utilitario de resumo SHA-256 do sistema | ✅ **Algoritmo confirmado na v0.3, componente desbloqueado.** Procedimento oficial: dividir em blocos de 4 MiB (4.194.304 bytes) · aplicar SHA-256 a cada bloco · concatenar os resumos **em formato binario**, nao hexadecimal · aplicar SHA-256 a concatenacao · emitir em hexadecimal. Ha vetor de teste oficial, adotado como criterio de aceite em RF-34. Load-bearing para RF-07, RF-11, RF-33 e RF-34. **Ponto de atencao de implementacao:** a concatenacao e de bytes brutos; concatenar as representacoes hexadecimais produz resultado errado que so aparece na comparacao com a API |
-| `lib/tmp` | Criar area temporaria imprevisivel e garantir limpeza deterministica, inclusive em interrupcao por sinal | Requisicao de espaco temporario | Caminho temporario | `mktemp`, `trap` | Atende RNF-05 |
+| `lib/tmp` | ✅ **ENTREGUE NA FASE 2 (v1.10; `DIV-42`).** **Registro unico** de areas temporarias e de acoes de limpeza do processo, e **unico dono de `trap`** (e de `mktemp` para areas). **Tratadores:** um por sinal (`EXIT`, `INT`, `TERM`, `HUP`), **armados uma vez por processo** na primeira criacao ou registro; nenhum modulo chama `trap`, de modo que nenhum tratador sobrescreve outro. **Registro:** lista de **acoes** de limpeza (funcao nomeada mais um argumento, como a liberacao da trava) e lista de **areas** (diretorios e arquivos `0700`/`0600`, `umask` preservado), cada entrada com o `BASHPID` de quem a registrou: **subshell herda o registro mas nao o tratador, e o tratador de um processo so limpa as entradas dele** (o resumo calculado em `$( )` nao apaga a area nem libera a trava de quem o chamou). **Ordem da limpeza:** primeiro as acoes, em ordem inversa ao registro; depois as areas, tambem em ordem inversa; cada entrada sai do registro antes de executar, para nunca repetir. **Criacao + registro com sinais retidos:** a criacao da area e o seu registro ocorrem numa secao critica em que `INT`, `TERM` e `HUP` sao apenas anotados e entregues no fim, ja com a area registrada (sem janela, `OBS-03`); a mesma secao e exposta a `lib/state` para criar a trava e registrar a sua liberacao sem janela. **Sinal durante a limpeza** nao a interrompe (a limpeza inteira e secao critica; o sinal anotado e descartado). **Codigo de saida:** termino normal preserva o original (o tratador de `EXIT` nao chama `exit`); termino por sinal sai com `nao_concluida` (**14**, `RNF-31`). Nao ha mais canal de sinal proprio por modulo. Os nomes de area (`dbx-sync.*`) nao mudam | Pedido de area ou arquivo temporario; acao a registrar; cancelamento ou esquecimento | Caminho temporario; limpeza garantida em todo termino | `mktemp`, `trap`, `rm` | Atende `RNF-05`, `RNF-29(c)`, `RNF-31`, **`RNF-35`** e **`RNF-36`**. Cobre `OBS-02`, `OBS-03` e `OBS-04`. Depende so de `lib/errors` |
 | `lib/walk` | Percorrer arvore local ou remota aplicando padroes de inclusao e exclusao, **por descida um nivel por vez com nome relativo** | Caminho raiz, padroes | Sequencia de itens verificados pela propria descida | `lib/path` | Suporta RF-12, RF-13 e o percurso do `sync`. 🔴 **`RNF-28` (v1.0):** desce mantendo o diretorio aberto e opera sempre com **nome relativo**; em `bash`, `cd` referencia o **inode**, nao o texto — equivalente em shell de `openat` com `O_NOFOLLOW` por componente. **Nunca reconstroi caminho absoluto em texto para reabrir componente ja percorrido.** Verificado experimentalmente: com caminho absoluto reconstruido o ataque de troca por symlink alcanca alvo fora da raiz; com descida, na mesma janela, o alvo sobrevive. ⚠️ **Limite declarado:** protege os componentes **ja percorridos**, nao a troca imediatamente antes de descer — reducao de superficie, nao eliminacao |
+| `lib/filtro` | 🔧 **Novo na v1.12 (fase 4; decidido, `DIV-94`).** Validar e compilar os padroes de `--excluir`/`--incluir` (sintaxe gitignore com os desvios de `DIV-79`), as faixas de data e tamanho e a taxa de banda; decidir se um caminho relativo (e, para data e tamanho, seus atributos) esta no escopo, pela chave sem caixa de `RF-54` | Padroes, faixas, caminho relativo, tipo (pasta ou arquivo), `mtime`/`server_modified`, tamanho | Valido/malformado (`2`); dentro/fora do escopo; "nao desca nesta pasta"; contagem de casamentos por padrao (avisos de `RF-80(m)`) | `lib/sync` (funcao de chave sem caixa) | **Puro:** sem rede, sem disco, sem estado, sem `eval` nem expansao de nome de arquivo (`RF-79(l)`). **Por que modulo novo:** o casamento tem de ser **o mesmo** no percurso local (`lib/walk`) e na enumeracao remota (`lib/sync`); em cada lado seria codigo gemeo (`RNF-36`), e a regra que protege o espelhamento (`RF-80(d)`) depende de os dois lados casarem igual. Testavel por unidade, entra no mapa de modulos (`RF-83`). **Alternativa** (filtro dentro de `lib/walk`, como a linha acima ja previa): rejeitada porque `lib/walk` nao enumera o remoto |
+| `lib/compartilhamento` | ✅ **Implementado na fase 5 (v1.13; `DIV-117`).** Monta tambem o corpo das chamadas (`DIV-121`). Validar visibilidade e combinacoes, `--expira` e URL de link; montar o `settings`; comparar estado efetivo e pedido (antes e depois); filtrar links por `path_lower` dentro da raiz | Opcoes do `compartilhar`, `SharedLinkMetadata` | `settings` JSON, decisao de reuso ou modificacao, links confinados | `lib/path`, `lib/json` | Puro, sem rede e sem estado; atende `RF-85` a `RF-89` |
 | `lib/path` | Normalizar caminho, tratar raiz, separadores, codificacao e caracteres especiais; **recusar caminho fora da raiz permitida nos dois espacos de nomes** — remoto, antes de qualquer chamada de rede, e local, antes de qualquer acesso a disco | Caminho informado, raiz remota permitida, raiz local permitida, opt-in de raiz `/` | Caminho normalizado ou recusa | — | Componente de dominio puro. Atende RNF-10 e RNF-20. **Ampliado na v0.4, com aceite do solicitante:** o confinamento local usa **resolucao fisica de symlinks**, nao comparacao textual de prefixo; oito vetores de ataque foram exercitados e resistidos (symlink absoluto, relativo, para arquivo de sistema, ciclo, `..` acima da raiz, absoluto externo, raiz que e ela propria symlink, prefixo semelhante `/backups2` contra `/backups`); a raiz `/` exige **opt-in explicito** e, sem ele, **falha fechado**. Risco residual TOCTOU aceito e documentado em `RSK-24`. Medicao: profundidade 5.000 em 0,88 s |
 | `lib/output` | Manter o modelo de resultado unico e renderiza-lo em **duas apresentacoes** — legivel por humano e estruturada por maquina — e em **dois terminadores de registro**: linha por padrao, byte nulo com `--null`. Selecionar a apresentacao por deteccao de terminal associado, sobreponivel por sinalizador. Separar saida padrao de saida de erro | Resultado estruturado do comando | Texto renderizado | `lib/cli` para o contexto de execucao | ✅ **Destravado na v0.5** por DIV-16b. Atende RF-28, RNF-19 e RNF-22. **Nenhum comando emite texto diretamente** — regra verificavel por analise estatica. ⚠️ **RNF-22 vale nos dois modos:** a redacao de cabecalho sensivel opera sobre **quebras de linha**, nao sobre terminadores de registro; em `--null` varios registros compartilham a mesma linha fisica, de modo que concatenar diagnostico a cabecalho sensivel pode destruir **mais** conteudo que no modo padrao. Caso de teste dedicado por modo |
 | `lib/log` | Registro de diagnostico por nivel, com filtro obrigatorio de segredo | Eventos internos | Registro na saida de erro ou destino configurado | — | Atende RF-30. Politica de retencao depende de DP-10 |
-| `commands/*` | Um caso de uso por comando: `config`, `upload`, `download`, `list`, `stat`, `mkdir`, `move`, `copy`, `delete`, `search`, `share`, `account`, `unlink` e condicionais `saveurl` e `monitor` | Invocacao normalizada | Resultado e codigo de saida | `lib/*` | Nao invocam `cURL` diretamente. Regra verificavel por analise estatica |
+| `commands/*` | Um caso de uso por comando (*v1.11: mais `revisoes`, `restaurar` e `lixeira`, secao "Revisoes, restauracao e lixeira"; a lista abaixo e a do desenho inicial e inclui comandos nunca criados, `DIV-68`; os existentes estao em `commands/`*) (*v1.7: mais `verificar`, `diagnostico` e `completar`; tabela na secao "Comandos de consulta, diagnostico e autocompletar"*): `config`, `upload`, `download`, `list`, `stat`, `mkdir`, `move`, `copy`, `delete`, `search`, `share`, `account`, `unlink` e condicionais `saveurl` e `monitor` | Invocacao normalizada | Resultado e codigo de saida | `lib/*` | Nao invocam `cURL` diretamente. Regra verificavel por analise estatica |
 | `tests/` | Suite automatizada executavel sem credencial real, com duplo de teste do servico HTTP | — | Relatorio de execucao | Arcabouco a definir pelo Senior Developer | Atende RNF-14 |
 
+### Comandos de consulta, diagnostico e autocompletar *(v1.7, fase 1, em andamento)*
+
+Tabela de comandos acrescida (`RF-65` a `RF-68`; as fontes de cada decisao estao em [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.9):
+
+| Comando | Alias | Requisito de ambiente declarado | Papel | Escrita | Codigos de saida proprios |
+|---|---|---|---|---|---|
+| `verificar` | `verify` | `credencial` | Compara arvore local e remota por `content_hash`, com os argumentos e as guardas do `sync` (`RF-65`; `F-11`). Reusa `lib/sync` (chave sem caixa, planejamento) e `lib/walk` | **Nenhuma**, nem estado de `lib/state` (a memoria so e lida e nao decide) | `0` igual; `11` (`integridade`) diverge; `14` travessia parcial; demais, a classe do erro |
+| `diagnostico` | `doctor` | **`nenhum`** (ver nota abaixo) | Sete checagens com remedio: dependencias, credencial, conectividade (`check/user`), escopos, espaco, localidade, diretorio de estado (`RF-66`; `F-22`) | **Nenhuma** (nao cria nem corrige nada) | `0` sem falha; `3` (`configuracao`) com ao menos uma falha |
+| `completar` | `completion` | `nenhum` | `dbx completar bash` imprime `completions/dbx.bash` (`RF-68`; `F-19`) | **Nenhuma** | `0`; `2` sem argumento ou shell nao suportado |
+
+> **Preflight contornado pelo `diagnostico` (e pelo `completar`).** `bin/dbx` executa o preflight **bloqueante** (`lib/preflight`, para no primeiro problema e responde com a classe `configuracao`) para os comandos que declaram `ambiente` ou `credencial`. O `diagnostico` existe para **diagnosticar** exatamente o que o preflight recusa, entao declara `nenhum` e faz sua **propria inspecao, que nao para no primeiro item**: reporta cada utilitario ausente, a permissao da credencial e o resto, e sai com `3` se houver falha. Consequencias de desenho: (1) o comando so usa recursos do proprio shell ate emitir o relatorio, sem utilitario externo (mesma razao de `lib/preflight`, `TL-30`); (2) a inspecao reaproveita a **mesma lista** `DBX_PREFLIGHT_UTILITARIOS`, para nunca discordar do preflight (`DIV-36`, encerrada: `tail` e `df` ja constam da lista); (3) o contorno vale **so** para este comando, e os demais continuam recusados pelo preflight (regressao testada, `TC-DIA-04`); (4) `diagnostico` nao e rota para executar operacao com ambiente quebrado: ele nao escreve, local ou remotamente.
+
+**Checagem previa de espaco (`RF-67`, `F-21`).** Etapa nova do `upload` e do `sync --enviar`, **depois** do plano e das guardas de `RF-41` e `RF-48` e **antes** da primeira acao: uma consulta `get_space_usage`, comparacao do total a transferir com a folga, e recusa `espaco` (`12`) sem escrita quando nao cabe. `--forcar` pula a etapa; `--dry-run` so avisa; falha da consulta so avisa; `upload -` nao e checado. Sobrescrita conta o total novo (criterio conservador). Diagrama:
+
+```mermaid
+flowchart TD
+  A[Plano calculado e guardas RF-41 e RF-48 aprovadas] --> B{--forcar, entrada padrao ou total zero?}
+  B -->|Sim| G[Executa sem consultar]
+  B -->|Nao| C[get_space_usage, uma vez]
+  C -->|Falhou| W[Aviso em stderr] --> G
+  C -->|Folga obtida| D{Total a transferir maior que a folga?}
+  D -->|Nao| G
+  D -->|Sim, execucao real| R[Recusa, classe espaco, codigo 12, nenhuma escrita]
+  D -->|Sim, --dry-run| P[Plano avisa que recusaria, codigo 0]
+```
+
+**Autocompletar (`RF-68`, `F-19`).** `completions/dbx.bash` e artefato estatico versionado, sem chamada de rede, sem leitura de credencial ou estado. O `install.sh` o grava em `~/.local/share/bash-completion/completions/dbx` (modo usuario, sem sudo); `dbx completar bash` o imprime a partir da arvore de instalacao. Deve acompanhar as ajudas de `bin/dbx` (teste de desvio `TC-CPL-02`) e entrar no pacote de `scripts/empacotar.sh`.
+
+### Revisoes, restauracao e lixeira *(v1.11, fase 3, em andamento)*
+
+Decisao do solicitante (`DP-37`, memoria `2026-10-19-1828-recuperacao-e-lixeira`); requisitos `RF-72` a `RF-78` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.11); divergencias `DIV-54` a `DIV-69`. Tres comandos novos, **nenhum componente novo em `lib/`**, **nenhum estado persistente** (`RNF-26` intacto) e **nenhum codigo de saida novo**. As tags de erro novas entram em `lib/errors` como mapeamento a classes existentes (`DIV-58`).
+
+| Comando | Alias | Requisito de ambiente | Papel | Endpoints | Escrita | Codigos proprios |
+|---|---|---|---|---|---|---|
+| `commands/revisoes.sh` | `revisions` | `credencial` | Lista revisoes de um arquivo (`RF-72`) | `list_revisions` (modo `path` ou `id`, `limit` 1..100) | Nenhuma | `0`; `2` pasta ou uso; `4` |
+| `commands/restaurar.sh` | `restore` | `credencial` | Restaura arquivo por `--rev` ou `--antes-de`, inclusive apagado (`RF-73`); pasta apagada recursiva, arquivo por arquivo (`RF-74`) | `get_metadata` (`include_deleted`), `list_revisions` (paginado por `before_rev`), `list_folder`/`continue` (`include_deleted`), `restore` | Remota (`restore`) | `0`; `14` falha parcial na pasta; demais pela classe |
+| `commands/lixeira.sh` | `trash` | `credencial` | Lista apagados (`RF-75`); `--excluir`/`--purge` expurga com confirmacao (`RF-76`, forma decidida em `DIV-55`) | `list_folder`/`continue` (`include_deleted`, `include_restorable_info`), `get_metadata`, `permanently_delete` | Remota irreversivel (so `--excluir`) | `0`; `2` item vivo ou sem confirmacao; `5` escopo; `6` conta pessoal; `14` caminho digitado errado |
+
+**Reuso, sem codigo gemeo (`RNF-36`):** emissao de metadados por `_dbx_cmd_metadado_em` (mesmos campos de `info`/`list`); toda escrita remota por `_dbx_cmd_escrita_remota` (simulacao, mapeamento de erro; `in_progress` retentado e depois `14`, `QA-B3-03`); `lib/json` recusa `\u0000`, substituto UTF-16 isolado e escape incompleto como `malformado` (`QA-B3-04`); confinamento por `lib/path` (`RNF-20(b1..b6)`) antes de qualquer chamada; descida remota um nivel por vez pelo mesmo percurso do `sync` (`RNF-28`); relatorio por item como `RF-59`; areas e sinal por `lib/tmp`. **Trava:** os tres comandos nao travam nem consultam a trava (decidido, `DIV-63`). **Escopo novo:** `files.permanent_delete`, **opcional**; so `lixeira --excluir` o exige, e o `diagnostico` o mostra como opcional (`RF-77`).
+
+Fluxo de restauracao (arquivo e pasta):
+
+```mermaid
+flowchart TD
+  A[dbx restaurar caminho] --> B{Argumentos validos? rev hexadecimal com 9 ou mais; --rev e --antes-de exclusivos; data UTC}
+  B -->|Nao| X2[Recusa uso_invalido 2, sem rede]
+  B -->|Sim| C{Dentro da raiz_remota?}
+  C -->|Nao| X13[Recusa caminho_recusado 13, sem rede]
+  C -->|Sim| D[get_metadata include_deleted]
+  D -->|Nao existe| X4[nao_encontrado 4]
+  D -->|Arquivo vivo ou apagado| E[list_revisions modo path, paginado por before_rev]
+  E --> F{Revisao escolhida: --rev no historico, ou mais recente ate a data, ou ultima se apagado}
+  F -->|Nenhuma| X4
+  F -->|Igual a vigente| J[ja_atual, codigo 0, sem restore]
+  F -->|Encontrada| G{--dry-run?}
+  G -->|Sim| S[Anuncia rev_escolhida e rev_substituida, codigo 0]
+  G -->|Nao| H[restore path e rev] --> I[Saida com rev_substituida e comando para desfazer, codigo 0]
+  D -->|Pasta viva| X2v[uso_invalido 2, sem escrita]
+  D -->|Pasta apagada| P[Descida um nivel por vez com list_folder include_deleted]
+  P --> Q[Para cada arquivo apagado: list_revisions limit 1 e restore; fora da raiz, fora da pasta pedida ou sem revisao conta como falha; so descendente estrito, pastas visitadas sem caixa; in_progress retentado e depois 14]
+  Q --> R{Alguma falha de item ou travessia parcial?}
+  R -->|Nao| R0[Resumo, codigo 0]
+  R -->|Sim| R14[Resumo com o que faltou, nao_concluida 14]
+```
+
+Fluxo da exclusao permanente:
+
+```mermaid
+flowchart TD
+  A[dbx lixeira --excluir caminho] --> B{Uso valido e alvo diferente da raiz?}
+  B -->|Nao| X2[uso_invalido 2]
+  B -->|Sim| C{Dentro da raiz_remota?}
+  C -->|Nao| X13[caminho_recusado 13, sem rede]
+  C -->|Sim| K{--confirmar-caminho identico ao alvo, terminal ou --dry-run?}
+  K -->|Sem opcao e sem terminal| X2b[uso_invalido 2, sem chamada a API]
+  K -->|Ok| D[get_metadata include_deleted]
+  D -->|Item vivo| XV[uso_invalido 2: apague antes com dbx delete]
+  D -->|Inexistente| X4[nao_encontrado 4]
+  D -->|DeletedMetadata| GA{path_lower presente e igual ao alvo, dobra so ASCII, sem chave repetida?}
+  GA -->|Nao| X10[erro_remoto 10, sem expurgo]
+  GA -->|Sim| W[Aviso de irreversibilidade em stderr; pasta: contagem do primeiro nivel]
+  W --> G{--dry-run?}
+  G -->|Sim| S[Anuncia o que seria expurgado, codigo 0]
+  G -->|Nao| T{Confirmado? --confirmar-caminho ou caminho digitado igual ao literal ou ao normalizado, caixa exata}
+  T -->|Digitado diferente| X14[nao_concluida 14, nada feito]
+  T -->|Sim| P[permanently_delete]
+  P -->|Sucesso| OK[expurgado, codigo 0]
+  P -->|Conta pessoal| X6[permissao 6, remedio: dbx delete]
+  P -->|missing_scope| X5[autenticacao 5, remedio: App Console, dbx unlink e dbx config]
+```
+
+### Filtros e limite de banda *(v1.12, fase 4, em andamento)*
+
+Decisao do solicitante (memoria `2026-10-19-2141-filtros-e-banda`); requisitos `RF-79` a `RF-83` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.12); divergencias `DIV-79` a `DIV-94` decididas pelo Tech Lead conforme as recomendacoes (memoria `2026-10-19-2141-filtros-e-banda`). **Um componente novo (`lib/filtro`, `DIV-94`)**, **nenhum estado persistente novo** (filtros fora da memoria e da chave da trava), **nenhum codigo de saida novo**.
+
+| Ponto | Onde | Desenho |
+|---|---|---|
+| Validacao | `lib/cli` chama `lib/filtro` | Padroes, datas, tamanhos e taxa validados **antes** da trava, da memoria e da rede (`2`) |
+| Percurso local | `lib/walk` | Pergunta a `lib/filtro` antes de descer: pasta excluida nao e aberta (`RF-80(b)`); erro dentro dela nao chega a `RF-41(a)` |
+| Enumeracao remota | `lib/sync` | `list_folder` recursivo continua; entradas fora do escopo descartadas (`DIV-82`) |
+| Plano | `lib/sync` | Escopo aplicado **aos dois lados** antes da tabela de decisao: filtrado nunca vira "apagar" (`RF-80(d)`); guarda de origem vazia sobre o escopo (`RF-80(e)`) |
+| Data e tamanho | `lib/filtro`, depois do escopo de caminho | So arquivos da origem; recusados com `--espelhar` (`RF-81(b)`) |
+| Banda | `lib/http` (`_dbx_http_opcoes`) | `limit-rate = <inteiro>` so com `_DBX_HTTP_MODO=conteudo`, por requisicao (`RF-82(d)(e)(f)`); piso de 2 x `speed-limit` (`DIV-88`) |
+| Saida | `lib/output` | `filtros`, `filtrados_origem`, `filtrados_destino`, `limite_banda` como acrescimo (`RF-35`) |
+
+```mermaid
+flowchart TD
+  A[Caminho relativo e tipo] --> B{Ele ou pasta ancestral casa --excluir?}
+  B -->|Sim| F[Filtrado nos dois lados: nao transfere, nao apaga; pasta nao e percorrida]
+  B -->|Nao| C{Ha --incluir?}
+  C -->|Nao| D{Arquivo da origem com data ou tamanho fora da faixa?}
+  C -->|Sim| E{Ele ou pasta ancestral casa --incluir?}
+  E -->|Nao, e pasta| P[Percorrida implicitamente]
+  E -->|Nao, e arquivo| F
+  E -->|Sim| D
+  D -->|Sim| G[Filtrado so na origem: nao transfere; recusado com --espelhar]
+  D -->|Nao| H[No escopo: entra na tabela de decisao]
+```
+
+### Link temporario e link compartilhado *(v1.13, fase 5, em andamento)*
+
+Decisao do solicitante (memoria `2026-10-20-1110-compartilhamento`); requisitos `RF-84` a `RF-92` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.13); divergencias `DIV-104` a `DIV-120` **decididas em 2026-10-20 conforme as recomendacoes**. Dois comandos novos, **um componente novo (`lib/compartilhamento`, decidido, `DIV-117`)**, **nenhum estado persistente** (`RNF-26` intacto), **nenhuma trava**, **nenhum codigo de saida novo**; tags de erro novas mapeadas a classes existentes (`RF-90(a)`). Porte G: integracao externa nova, exposicao de dado para fora da conta e segredo novo.
+
+| Comando | Alias | Requisito de ambiente | Papel | Endpoints | Escrita | Codigos proprios |
+|---|---|---|---|---|---|---|
+| `commands/link_temporario.sh` (nome em `DIV-117`) | `temp-link` | `credencial` | URL direta de 4 h para arquivo (`RF-84`) | `get_temporary_link`; `get_metadata` so no `--dry-run` | Nenhuma no conteudo; o link criado e a exposicao | `0`; `2` pasta ou `unsupported_file`; `6` `not_allowed`; `10` resposta fora da raiz; `13` |
+| `commands/compartilhar.sh` | `share` | `credencial` | Cria link com visibilidade explicita (`RF-85`), senha (`RF-86`), reuso ou modificacao de link existente (`RF-87`), `--listar` (`RF-88`), `--revogar` (`RF-89`) | `create_shared_link_with_settings`, `list_shared_links` (com `path` e `direct_only` no reuso; sem `path`, paginado, no `--listar`), `modify_shared_link_settings`, `get_shared_link_metadata`, `revoke_shared_link` | Remota (link) | `0`; `2` sem visibilidade ou combinacao invalida; `6` plano; `7` mais de um link existente; `13` fora da raiz, inclusive link revogado cujo `path_lower` sai da raiz; `14` senha divergente |
+
+| Componente | Papel na fase |
+|---|---|
+| `lib/compartilhamento` *(novo, implementado)* | Puro, sem rede: valida visibilidade e combinacoes, `--expira` (datas e duracoes, no futuro, sem `date`), URL de link (esquema, host exato, prefixo); monta o `settings` (`audience`, `require_password`, `expires`; nunca `requested_visibility`); compara estado efetivo e pedido (antes e depois); filtra links por `path_lower` dentro da raiz e da pasta pedida |
+| `lib/cli` | Opcoes e aliases; leitura de segredo sem eco **unica**, compartilhada com `config` (`RNF-36`, `DIV-117`), com eco restaurado pelo proprio `read -s` (sem `stty`, `DIV-126`) |
+| `lib/path` | Confinamento do argumento (`RNF-20(b1..b6)`, `RNF-10(b)`) e comparacao por componente usada no filtro e na guarda da revogacao |
+| `lib/http` | Corpo JSON (com a senha) **so** pelo arquivo da area de `lib/tmp`; `curl -K -` continua levando so o token |
+| `lib/errors` | Qualificador `settings_error`, tags de `RF-90(a)`, `link_password` entre as chaves sensiveis (`DIV-111`) |
+| `commands/diagnostico` | `sharing.write` e `sharing.read` opcionais na linha `escopos` (`RF-91`) |
+
+**Fronteira de seguranca.** A guarda do `--revogar` decide so pela resposta de `get_shared_link_metadata` **da mesma execucao** (`path_lower` presente, sem chave repetida, dentro da raiz); nunca por estado local. A senha nunca passa por `argv`, ambiente, configuracao do cURL, log ou saida (`RF-86`). O link temporario nao tem revogacao na API (`RSK-60`). **Ciclos do QA (escopo 5.13):** com senha no pedido, nenhum texto bruto do servico em stderr ou `--debug` (`QA-B5-08/09`, `DIV-128`); corpo `0600`; toda resposta 2xx e conferida: `url` presente e em `^[!-~]+$`, coerencia `resolved_visibility` x `require_password` na criacao, no `modify` e no reuso (`DIV-129`); senao `erro_remoto` `10`. `--listar` com teto de 1000 paginas.
+
+Fluxo do `compartilhar` (criacao, reuso e modificacao):
+
+```mermaid
+flowchart TD
+  A[dbx compartilhar caminho] --> B{Visibilidade explicita e combinacao valida? --expira valido e no futuro?}
+  B -->|Nao| X2[uso_invalido 2, sem senha e sem rede]
+  B -->|Sim| C{Caminho absoluto, sem controle, dentro da raiz_remota e diferente de /?}
+  C -->|Fora da raiz ou controle| X13[caminho_recusado 13, sem rede]
+  C -->|Alvo /| X2r[uso_invalido 2]
+  C -->|Sim| D{--dry-run?}
+  D -->|Sim| DL[list_shared_links path e direct_only, anuncia criaria, reusaria ou modificaria, senha nao lida, codigo 0]
+  D -->|Nao| S{--senha ou --senha-stdin?}
+  S -->|Sim| SL[Le a senha: terminal sem eco duas vezes, ou uma linha da entrada, vazia, controle ou CR recusa 2, divergente 14]
+  S -->|Nao| CR
+  SL --> CR[create_shared_link_with_settings: audience e require_password, corpo por arquivo de lib/tmp]
+  CR -->|Criado| OK[situacao criado, codigo 0]
+  CR -->|shared_link_already_exists| L[list_shared_links path e direct_only]
+  L --> M{Candidatos com path_lower igual ao alvo}
+  M -->|Nenhum| X10[erro_remoto 10]
+  M -->|Mais de um| X7[conflito 7, URLs em stderr]
+  M -->|Um| E{Estado efetivo coerente, igual ao pedido e sem --senha?}
+  E -->|Sim, link coerente| RE[situacao existente, sem escrita, codigo 0]
+  E -->|Nao| MO[modify_shared_link_settings so com os campos pedidos]
+  MO --> MC{Resposta com url valida e coerente com require_password?}
+  MC -->|Nao| X10m[erro_remoto 10]
+  MC -->|Sim| MD[situacao modificado com antes e depois lido da resposta, visibilidade conferida, aviso se a exposicao aumentou]
+  CR -->|settings_error not_authorized| X6[permissao 6: restricao de plano]
+```
+
+Fluxo do `--revogar` (guarda sem estado):
+
+```mermaid
+flowchart TD
+  A[dbx compartilhar --revogar url] --> B{https, host www.dropbox.com ou dropbox.com, prefixo de link, sem controle, ate 2048 bytes?}
+  B -->|Host de link temporario| XT[uso_invalido 2: link temporario nao se revoga]
+  B -->|Nao| X2[uso_invalido 2, sem rede]
+  B -->|Sim| G[get_shared_link_metadata url, na mesma execucao]
+  G -->|Malformado ou chave repetida| X10[erro_remoto 10, sem revoke]
+  G -->|path_lower ausente, mesmo com raiz /| X13a[caminho_recusado 13, sem revoke]
+  G -->|path_lower fora da raiz_remota| X13b[caminho_recusado 13, sem revoke]
+  G -->|path_lower dentro da raiz| D{--dry-run?}
+  D -->|Sim| S[revogaria, codigo 0]
+  D -->|Nao| R[revoke_shared_link url]
+  R -->|Sucesso| OK[revogado, codigo 0]
+  R -->|shared_link_not_found| X4[nao_encontrado 4: pode ja ter sido revogado]
+  R -->|shared_link_access_denied| X6[permissao 6]
+```
+
 ---
+
+### Retencao e rotacao de backup *(v1.14, fase 6, em andamento)*
+
+Decisao do solicitante (memoria `2026-10-20-2010-retencao`); requisitos `RF-93` a `RF-100` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.14); divergencias `DIV-130` a `DIV-147` **decididas pelo Tech Lead em 2026-10-20, todas conforme as recomendacoes** (memoria `2026-10-20-2010-retencao`). Um comando novo, **dois componentes novos**, **nenhum estado persistente** (`RNF-26` intacto), **nenhuma trava** (decidido, `DIV-140`), **nenhum codigo de saida novo**, **nenhum escopo OAuth novo**. Porte G: exclusao em lote no destino remoto, sem operador.
+
+| Comando | Alias | Requisito de ambiente | Papel | Endpoints | Escrita | Codigos proprios |
+|---|---|---|---|---|---|---|
+| `commands/reter.sh` *(novo)* | `retain` | `credencial` | Rotacao de artefatos de uma pasta: lista o nivel de cima, aplica `--manter N` ou `--dias D` sobre os arquivos que casam `--padrao`, mostra o plano e, so com `--confirmar`, apaga o excedente para a lixeira (`RF-93` a `RF-99`) | `list_folder` (`recursive=false`) e `list_folder/continue`; `delete_v2` com `parent_rev`, um por item | Remota (exclusao para a lixeira) | `0` (inclusive plano e nada a apagar); `2`; `3` relogio local a mais de 300 s do `Date` do servidor, com `--dias` (`DIV-134`); `4` pasta inexistente; `10` listagem ou resposta incoerente, `server_modified` invalido, teto; `13`; `14` falha parcial, `reset`, sinal |
+
+| Componente | Papel na fase |
+|---|---|
+| `lib/retencao` *(novo)* | **Puro**, sem rede, sem disco e sem estado: valida `--manter`/`--dias`; valida o carimbo `server_modified`; ordena candidatos (`server_modified` decrescente, desempate pelo nome sem caixa, `DIV-144`); calcula o corte de `--dias` a partir de um agora recebido; separa o que fica e o que sai, com o minimo de 1; e a **guarda por item** (`RF-97(b)`: `.tag`, pai, `name` x `path_lower`, padrao, sem marca combinante, dentro da raiz, pertence ao que sai e nao e o mais novo e (7) caminho, `rev` e `id` diferentes dos de todo item que fica). Assinatura (`DIV-167`): `dbx_retencao_guarda <tag> <path_lower> <name> <pasta> <raiz_remota> <acao> <e_primeiro: sim|nao> <vetor_ficam> <rev> <id> <vetor_revs_ficam> <vetor_ids_ficam>`, com os tres vetores passados por nome; `rev` ou `id` vazio, vetor de `rev`/`id` ausente, inexistente, vazio, com elemento vazio ou de tamanho diferente do vetor de caminhos recusa (falha fechada). Funcoes de caminho, usadas tambem por `commands/reter.sh` na conferencia da listagem: `dbx_retencao_chave` (chave sem caixa de `RF-54` via `dbx_filtro_chave`; status 1, falha fechada, para texto fora do ASCII sem `C.UTF-8`, `DIV-161`), `dbx_retencao_caminho_normalizado` (absoluto, sem barra final, sem `//` nem segmento `.`/`..`, `DIV-159`), `dbx_retencao_sem_combinante` (sem marca combinante dos blocos U+0300-036F, U+1AB0-1AFF, U+1DC0-1DFF, U+20D0-20FF e U+FE20-FE2F, detectada pelos bytes UTF-8 sob `LC_ALL=C`, `DIV-164`) e `dbx_retencao_caminho_canonico` (as tres anteriores e o caminho igual a propria chave, `DIV-165`) e `dbx_retencao_utf8_valido` (UTF-8 valido pelos bytes, RFC 3629, sem depender da localidade: recusa sequencia longa (overlong), surrogate, sequencia truncada, continuacao solta e sequencia de 5 ou 6 bytes, `DIV-168`) |
+| `commands/reter.sh` *(novo)* | Orquestra: uso, confinamento, renovacao, listagem paginada com teto e conferencia de coerencia, plano, `delete_v2` por item pelo ponto unico de escrita, resumo e codigo |
+| `lib/filtro` | Expoe validacao e casamento de **nome avulso** (sem `/`), com a chave sem caixa de `RF-54`; uma so implementacao do glob (`RNF-36`) |
+| `lib/cmd` | Ajudante de colecao paginada (`RNF-23`), `dbx_cmd_remoto_confinado`, `_dbx_cmd_escrita_remota` (silencioso, idempotente por `parent_rev`) |
+| `lib/path` | Confinamento do argumento (`RNF-20(b1..b6)`, `RNF-10(b)`) e comparacao por componente |
+| `lib/http` | Expoe o cabecalho `Date` da resposta, como ja expoe o `Retry-After` (decidido, `DIV-134`): o `reter --dias` confere o relogio local contra ele |
+| `lib/cli` | Opcoes e aliases do `reter`; `--confirmar`/`--yes`/`-y` aceitos porque a exclusao vai para a lixeira e e recuperavel, ao contrario do expurgo de `RF-76`, que so aceita `--confirmar-caminho` (decidido, `DIV-135`) |
+| `lib/output` | Plano, resultado e resumo em texto, `--json` e `--null` (`RF-99`) |
+
+**Fronteira de seguranca.** A unica fonte da autorizacao e a listagem **da mesma execucao**: o plano so existe depois da ultima pagina, a listagem incoerente derruba tudo antes de qualquer exclusao, e cada `delete_v2` passa de novo pela guarda e leva `parent_rev`, o que impede apagar um backup novo de mesmo nome e impede apagar pasta. Nada vem de `lib/state`, de cache nem de plano anterior. **Barreiras contra o mesmo arquivo em duas entradas: as tres por caminho e a por identidade.** A decisiva e a **por identidade** (`DIV-167`), estrutural e independente de tabela Unicode: o mesmo arquivo no servidor tem o mesmo `id` e o mesmo `rev`, seja qual for a grafia do nome. **(I) identidade na listagem** (`_dbx_cmd_reter_identidade`, `commands/reter.sh`): todo arquivo traz `id` nao vazio e `rev` no formato `Rev`, e nenhum dos dois se repete entre os arquivos, em pagina nenhuma; falta ou repeticao sai `10` com zero `delete_v2`; **(II) identidade na guarda (7)** (`dbx_retencao_guarda`): o `rev` (o `parent_rev` do `delete_v2`) e o `id` de quem sai diferem dos de todo item que fica, e as listas de `rev` e de `id` de quem fica sao obrigatorias e nao vazias, como a de caminhos (`DIV-162`). Antes delas, a listagem exige `name` e `path_lower` em UTF-8 valido pelos bytes (`dbx_retencao_utf8_valido`, chamada por `_dbx_cmd_reter_utf8`, `DIV-168`), senao `10`. As **tres barreiras por caminho** (`DIV-158`, `DIV-161`, `DIV-162`, `DIV-164`, `DIV-165`) ficam como defesa adicional, todas pela chave sem caixa de `RF-54` (`dbx_retencao_chave`) e nenhuma por indice: **(1) listagem** (`commands/reter.sh`), em toda entrada de qualquer `.tag` e pagina: `path_lower` normalizado, sem marca combinante, igual a propria chave e com chave inedita, senao `10` e zero `delete_v2`; **(2) plano** (`dbx_retencao_planejar`), os candidatos com chave unica, senao status 1 e nenhum plano; **(3) guarda (7)** (`dbx_retencao_guarda`), no ponto de cada `delete_v2`: a chave de quem sai difere da de todo item que fica, a lista de quem fica e obrigatoria e nao vazia, e cada elemento dela passa por `dbx_retencao_caminho_canonico`. Fora do ASCII sem `C.UTF-8`, ou com tabela Unicode da Dropbox diferente da do sistema, o resultado e `10`, nunca exclusao (`RSK-68`). Composicoes NFC fora dos cinco blocos de marcas (ex.: `が`, `한`, `ऩ`) escapam as barreiras por grafia; so as barreiras por identidade as cobrem, e o escape exigiria o servidor listar o mesmo arquivo com dois `id` e dois `rev`, contra o contrato: risco residual aceito pelo solicitante (`DIV-170`, `RSK-68`). O primeiro da ordem nunca chega ao `delete_v2`. A exclusao e sempre para a lixeira (`delete_v2`); `permanently_delete` e `delete_batch` nao aparecem no comando.
+
+Fluxo do `reter`:
+
+```mermaid
+flowchart TD
+  A[dbx reter pasta --padrao GLOB --manter N ou --dias D] --> B{Uso valido? padrao unico, sem barra, bem formado, uma politica, N e D na faixa}
+  B -->|Nao| X2[uso_invalido 2, sem rede]
+  B -->|Sim| C{Pasta absoluta, sem controle nem quebra de linha, dentro da raiz_remota?}
+  C -->|Nao| X13[caminho_recusado 13, sem rede]
+  C -->|Sim| L[list_folder recursive false, limit explicito, e continue ate has_more false]
+  L -->|Falha de rede, auth ou limite| XC[codigo da classe, zero delete_v2]
+  L -->|reset| X14r[nao_concluida 14, zero delete_v2]
+  L -->|Cursor repetido ou mais de 1000 paginas| X10p[erro_remoto 10, zero delete_v2]
+  L -->|Inexistente ou arquivo| X4[4 ou 2, zero delete_v2]
+  L -->|Completa| T{Politica dias e relogio local a mais de 300 s do Date da listagem?}
+  T -->|Sim| X3[configuracao 3, zero delete_v2]
+  T -->|Date ausente ou malformado| X10d[erro_remoto 10, zero delete_v2]
+  T -->|Nao, ou politica manter| K{Toda entrada coerente? pai igual a pasta, name sem barra, path_lower normalizado, sem marca combinante e igual a sua chave RF-54, sem chave repetida, UTF-8 valido, arquivo com id e rev unicos, candidato com rev e server_modified validos}
+  K -->|Nao| X10[erro_remoto 10, zero delete_v2]
+  K -->|Sim| P[lib/retencao: so arquivos que casam o padrao, ordem server_modified e nome, politica, minimo de 1]
+  P --> M{--confirmar e sem --dry-run?}
+  M -->|Nao| PL[Plano: o que fica e o que sai, modo plano ou simulado, codigo 0, nada apagado]
+  M -->|Sim| D[Proximo item que sai, do mais velho ao mais novo]
+  D --> G{Guarda do item com a listagem desta execucao: file, filho direto, name igual ao path_lower, casa o padrao, sem marca combinante, dentro da raiz, nao e o mais novo, chave, rev e id diferentes dos de todo item que fica}
+  G -->|Falha| X10g[erro_remoto 10, para antes do proximo]
+  G -->|Passa| DEL[delete_v2 path_lower e parent_rev listado]
+  DEL -->|Sucesso com metadata coerente| D
+  DEL -->|not_found| JA[ja_ausente, segue] --> D
+  DEL -->|parent_rev divergente ou falha do item| F[falha do item, segue] --> D
+  DEL -->|5, 8 ou 9 esgotados| PA[para, restantes nao_tentados]
+  DEL -->|2xx incoerente| X10g
+  D -->|Acabou| R{Alguma falha ou parada?}
+  PA --> R
+  R -->|Nao| OK[apagados para a lixeira, codigo 0]
+  R -->|Sim| X14[nao_concluida 14 com o resumo]
+```
+
+### Retomada entre execucoes *(v1.15, fase 7a, em andamento)*
+
+Decisao do solicitante (memoria `2026-10-20-2315-retomada`); requisitos `RF-101` a `RF-109` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.15); parecer do DBA aceito com as condicoes `C1` a `C6`; divergencias `DIV-171` a `DIV-190` decididas pelo Tech Lead; divergencias de implementacao `DIV-191` a `DIV-202` (registro de entrega da fase). **Nenhum comando novo, nenhum codigo de saida novo, nenhuma escrita remota nova**: a retomada usa as mesmas chamadas de `RF-08` e de `RF-55`, mais um `get_metadata` (leitura) antes do download de arquivo (`DIV-192`). Porte G: estado persistente novo entre execucoes.
+
+**Principio de seguranca: o estado so acelera.** O registro diz onde a transferencia parou; quem prova a integridade e a execucao corrente, sempre: o prefixo relido e conferido antes do primeiro `append_v2` (`C1`), o deslocamento do servidor conferido, o `content_hash` final contra o do servidor e o `.part` inteiro conferido antes do `mv`. Estado invalido (corrompido, de outra versao, conta, host, sentido ou caminho, ou acima de 16 KiB) e **descartado** com uma linha de aviso, e a transferencia recomeca do zero com o codigo de uma execucao sem estado. O `.part` **so** e apagado pela barreira de identidade (dono, arquivo regular, mesmo `dev:inode` conferido pelo descritor, padrao de nome, diretorio do alvo). O `session_id` fica so no registro `0600` (`C6`).
+
+| Componente | Papel na fase |
+|---|---|
+| `lib/state` | Namespace `retomada-<resumo32>` no diretorio de estado: contexto (sentido, conta `cred-<32hex>`, nome do host, remoto, local canonico), carga pelo **leitor NUL limitado** (`_dbx_state_ler_limitado`, tambem aplicado ao `upload-*`), validacao por regex e reconferencia byte a byte do cabecalho (`C4`), gravacao atomica pela funcao existente (`.retomada.*` + `mv`, sem `fsync`), poda (mais de 8 dias por `mtime`, teto de 1.000; uma vez por execucao, `DIV-191`), barreira do `.part`, trava de registro (`trava-<resumo>`, comando `retomada`, alem da trava de par; ocupada, a transferencia segue sem retomada, `C2`) e listagem para o `diagnostico` e o `unlink`. Nao decide nada |
+| `lib/transfer` | Liga a retomada so quando o `upload` a pede: grava o registro depois do `start` e antes de cada `append_v2` e do `finish` (`DIV-172`); na carga, identidade forte e `prefixo_hash` (o prefixo relido alimenta o acumulador do `content_hash`, que cobre o arquivo inteiro); primeiro `append_v2` retomado com o `correct_offset` restrito ao confirmado ou ao confirmado mais a parte em voo com SHA-256 relido igual; `not_found`/`closed`/`lookup_failed` recomecam do zero uma vez (`DIV-171`); `too_large` e `10` (`DIV-196`) |
+| `lib/cmd` | `dbx_cmd_retomada_preparar` (diretorio de estado utilizavel, contexto, trava, avisos) e `dbx_cmd_receber_retomavel`: `.part` no diretorio do alvo, sai de `lib/tmp` so depois de o registro gravado; aberto para anexar pelo descritor conferido; pedido sempre por `rev:<rev>`; so `206` coerente (`Content-Range` e `rev` do `Dropbox-API-Result`) e anexado; `416` com o `.part` completo vai direto a conferencia; incoerencia ou resumo divergente recomecam do zero uma vez pelo recebimento atomico de hoje (`DIV-194`) |
+| `lib/http` | Pedido de faixa: `continue-at` na configuracao do cliente (`Range: bytes=N-`, anexo ao destino); status 33 do cliente (resposta `200` ou `206` de outro inicio, nada escrito) publicado como `DBX_HTTP_FAIXA_IGNORADA`; `Content-Range` publicado; sem reemissao diagnostica para 33 e `416` (`DIV-202`) |
+| `commands/upload`, `commands/download` | `--sem-retomada` (`--no-resume`); retomada so depois da decisao do comando (`C5`: `RF-60`, `--rev`, espaco; `RF-55(f)`, `RF-56`); campos `retomada` e `retomado_de` so no caminho retomavel |
+| `commands/unlink`, `commands/diagnostico` | `unlink` apaga os `.part` que passam a barreira e lista os que nao passam (`DIV-185`); trava de registro viva recusa com `7`. `diagnostico` ganha a checagem `retomada`, uma linha por registro (`pendente`, `orfa`, `ilegivel`), so lendo (`DIV-197`) |
+
+```mermaid
+flowchart TD
+  D[Decisao do comando: confinamento, RF-60, --rev, espaco, RF-55/56] --> R{Retomavel? arquivo acima de 150 MiB, sem --sem-retomada}
+  R -->|nao| H[Transferencia de hoje, sem estado]
+  R -->|sim| E{Diretorio de estado utilizavel?}
+  E -->|nao| H2[Segue sem retomada, aviso]
+  E -->|sim| T{Trava do registro}
+  T -->|ocupada, outro host, ilegivel| H2
+  T -->|obtida| L[Le registro limitado: 16 KiB, regex, cabecalho byte a byte]
+  L -->|ausente| Z[Do zero, gravando registro]
+  L -->|invalido| X[Descarta registro, aviso] --> Z
+  L -->|valido upload| U{Identidade forte e prefixo_hash relido conferem?}
+  U -->|nao| X
+  U -->|sim| A[Primeiro append_v2 no confirmado]
+  A -->|aceito| P[Partes seguintes: registro antes de cada append_v2]
+  A -->|correct_offset = confirmado + voo e SHA relido igual| P
+  A -->|outro valor, not_found, closed| X2[Recomeca do zero uma vez] --> Z
+  P --> F[finish e content_hash do arquivo inteiro]
+  L -->|valido download| B{rev, tamanho e hash iguais e barreira do .part pelo descritor?}
+  B -->|nao| XB[.part antigo so pela barreira; registro sai] --> Z
+  B -->|sim| G[Range bytes=T- sobre rev:R]
+  G -->|206 coerente| C[Anexa ao .part]
+  G -->|200, outro inicio, outro total ou rev| X3[Descarta .part pela barreira; recebimento de hoje]
+  C --> K{content_hash do .part inteiro confere?}
+  K -->|sim| M[mv atomico; registro sai depois]
+  K -->|nao| X3
+  Z --> F
+  F --> S[Registro sai depois do finish; trava liberada]
+```
+
+**Interrupcao (`RF-106`).** Em `INT`, `TERM`, `HUP`, rede, limite de taxa e `SIGKILL`, ficam o `retomada-*` e o `.part` registrado (e so eles); a area de trabalho sai e a trava de registro e liberada (exceto `SIGKILL`, que a deixa orfa e retomavel). Sucesso, dispensa e falha definitiva removem o registro. A seguinte conclui com o mesmo resultado de uma execucao sem interrupcao, sem reenviar o confirmado nem descartar o recebido, salvo quando o servidor recusa a sessao.
+
+**Contrato com o cliente HTTP, estendido (`DIV-202`).** Medido com curl 8.18 contra um servidor local: com `continue-at = N`, o cliente pede `Range: bytes=N-`, abre o destino para anexar e recusa (status 33, nada escrito, codigo pelo `-w`) resposta `200` ou `206` que nao comeca em `N`; `416` sai com status 0 e nada escrito; `206` com total diferente e anexado, e e o `dbx` que confere `Content-Range` e descarta (`DIV-193`). O duplo de teste segue exatamente isso.
+
+**Divergencias do parecer do DBA tratadas aqui:** `DIV-a` (linha de `lib/state`: o cursor ainda nao existe), `DIV-b` (`RNF-26` com `retomada-*`, trava de registro e o `.part` persistente; secao "Criterios de aceite"), `DIV-c` ("F-03 segue fora", secao "Robustez de rede") e `DIV-d` (as chaves antigas de `memoria-*`, `upload-*` e `trava-*` usam `\n` como separador na entrada do resumo; risco teorico de colisao, mitigado pela reconferencia do cabecalho na `memoria-*` e sem reconferencia do par na trava; nao bloqueante, vai para o backlog junto da migracao para magia por namespace; o `retomada-*` ja nasce com separador NUL e reconferencia).
+
+
+### Cursor de listagem entre execucoes *(v1.16, fase 7b, em andamento)*
+
+Decisao do solicitante (memorias `2026-10-20-2315-retomada` e `2026-10-21-0713-cursor`); requisitos `RF-110` a `RF-119` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.16); parecer do DBA aceito com as condicoes `C1` a `C11`; divergencias `DIV-204` a `DIV-220` decididas pelo Tech Lead (`DIV-205`: **so o `sync --receber`**; o `download` de pasta, o `--enviar` e o `verificar` nunca usam o cursor). **Nenhum comando novo, nenhum codigo de saida novo, nenhuma escrita remota nova**: so leituras (`list_folder/continue` e `get_metadata`). Porte G: estado persistente novo entre execucoes.
+
+**O cursor sozinho nao reconstroi a arvore remota (`DIV-204`).** O plano do `sync` compara a tabela remota **inteira** com a travessia local inteira; o `continue` devolve so o delta. Por isso o registro e `cursor + retrato` num arquivo so (um `mv`, os dois nunca discordam), e o mapa remoto desta execucao e `retrato ⊕ delta`. A **travessia local continua completa** em toda execucao (`DIV-f`): so a arvore remota deixa de ser listada.
+
+**Principio de seguranca: o estado so acelera.** O registro decide so quais chamadas de listagem fazer. Tudo daqui ate o plano e o **mesmo codigo** da varredura completa: `lib/sync` monta a tabela remota sem filtro (`dbx_sync_listar_completo` ou retrato mais `dbx_sync_listar_delta`) e so depois emite o escopo filtrado (`dbx_sync_tabela_emitir`, `DIV-g`), com as mesmas contagens de `filtrados`, o mesmo aviso de padrao sem efeito e o mesmo planejador. Toda candidata a exclusao do modo incremental — entrada `deleted` do delta **e** ausencia no retrato (`DIV-m`) — e confirmada no servidor por `get_metadata` **na mesma execucao, antes do plano**, com ou sem `--espelhar` e tambem na simulacao: so `path/not_found` confirma; metadado presente e contradicao, nada e apagado e a execucao faz a varredura completa; mais de 50 alvos vao direto a varredura completa (`DIV-209`). As guardas de sempre (`RF-41`, `RF-48`, `RF-80(d)`, `_dbx_cmd_sync_protegido`) rodam sem mudanca sobre a tabela reconstruida.
+
+| Componente | Papel na fase |
+|---|---|
+| `lib/state` | Namespace `cursor-<resumo32>`: contexto (`cred-`, `account_id`, raiz local canonica, raiz remota, assinatura da listagem), leitor em fluxo com rodape SHA-256 conferido pelo mesmo descritor, descarte (apaga so arquivo regular do usuario, nunca em simulacao), gravacao atomica pela funcao existente com rodape (`.cursor.*` + `mv`), poda (mais de 8 dias, teto de 100, uma vez por execucao), varredura periodica vencida (7 dias, 100 incrementais, relogio mais de 5 min no passado) e listagem so do cabecalho para o `diagnostico`. Nao decide nada |
+| `lib/sync` | Tabela remota sem filtro com a receita do servico (`file` substitui e remove filhos; `folder` substitui arquivo; `deleted` remove a subarvore; desconhecido ignorado); delta com guarda de cursor repetido e teto de paginas (`DIV-h`); coerencia do delta (`id`, `rev`, confinamento, sem `.`/`..`/controle, `id` unico) com recuo para a varredura completa; confinamento de cada caminho do retrato; confirmacao das exclusoes agrupada por raiz apagada; emissao do escopo filtrado depois da tabela |
+| `commands/sync` | Decide o modo (`_dbx_cmd_sync_cursor_preparar`): sem registro, registro invalido, `reset`, outro `409`, `4xx`, `5xx`/rede/`429` esgotados, laco, mapa esvaziado, filtro de data sem data no retrato, contradicao, periodica, `--varredura-completa` e `--sem-cursor` levam a varredura completa na mesma execucao, com uma linha de aviso; `401`/`403` mantem a classe. Grava o registro uma vez, depois da `memoria-*`, sob a trava do par, so com codigo final `0`; download `not_found` de item incremental apaga o registro. Campos `varredura`, `cursor_motivo`, `cursor_mudancas`, `cursor_confirmadas` so no `--receber` |
+| `commands/download` | O `sync` interno do `download` de pasta roda com o cursor desligado e sem os campos novos (`DIV-205`) |
+| `commands/diagnostico` | Checagem `cursor`: uma linha por registro (`valido`, `vencido` ou `ilegivel`), so do cabecalho; sem registros, nenhuma linha |
+
+```mermaid
+flowchart TD
+  T[trava do par + cred- + account_id] --> O{--sem-cursor?}
+  O -->|sim| F[list_folder completo, registro intocado]
+  O -->|nao| L{registro valido, rodape confere, C2 e nao vencido?}
+  L -->|nao, ou --varredura-completa| F2[list_folder completo]
+  L -->|sim| D[list_folder/continue so com cursor: delta sobre o retrato]
+  D -->|reset, 409, 4xx, transitorio, laco, incoerente, mapa esvaziado| X[descarta cursor-*, memoria intacta] --> F2
+  D -->|401 ou 403| Z[falha com a classe de hoje]
+  D --> R[tabela remota reconstruida]
+  F --> R
+  F2 --> R
+  R --> E[escopo filtrado, guardas, plano]
+  E --> C{incremental e candidatas a apagar?}
+  C -->|sim, ate 50| M{get_metadata: so not_found confirma}
+  C -->|mais de 50| X
+  M -->|metadado presente ou duvida| X
+  M -->|transporte esgotado| Z2[falha da enumeracao: nenhum plano, registro intacto]
+  M -->|confirmadas| P[plano emitido e executado]
+  C -->|nao| P
+  P --> G{real, --receber, codigo final 0?}
+  G -->|sim| W[grava memoria, depois cursor + retrato num mv]
+  G -->|nao| N[registro nao avanca; not_found de item incremental o apaga]
+```
+
+**Contratos conferidos (`DIV-219`, Context7 `/websites/dropboxapi_dropbox-api`, 2026-10-21; lidos, nao exercitados contra o servico real).** (1) `DeletedMetadata` traz so `name`, `path_lower` e `path_display` (os dois ultimos nulos quando o item nao esta montado), **sem `id` nem `rev`**: a classificacao da contradicao usa o `id` do retrato. (2) A receita de aplicacao das entradas (`file`, `folder`, `deleted`) e a documentada no `list_folder`. (3) `include_deleted` (padrao falso) e documentado so no `list_folder` inicial; **nao foi possivel confirmar** se o `continue` com `include_deleted` falso sempre relata exclusoes: se nao relatar, o efeito e so manter arquivo local extra ate a varredura periodica (direcao segura; `RSK-78`). (4) Cursores "sao de vida longa, mas podem expirar se nao usados por muito tempo": cursor expirado devolve `409 reset`; a raiz apagada devolve `409 path`; nenhum prazo documentado — so o servidor decide a validade, e o relogio so forca varredura a mais. (5) `get_metadata` sem `include_deleted` devolve `path/not_found` para item apagado. (6) Mudanca **so de caixa** nao e relatada pelo `continue`: a grafia antiga fica no retrato ate a varredura periodica; o casamento sem caixa (`RF-54`) mantem o plano igual, e so o nome de um arquivo local **novo** pode nascer com a grafia antiga (`DIV-227`).
+
+**Divergencias do parecer do DBA da 7b tratadas aqui:** `DIV-e` (linha de `lib/state` e `RNF-26` com `cursor-*` e o retrato remoto; secao "Criterios de aceite"), `DIV-f` (so a arvore remota deixa de ser varrida), `DIV-g` (tabela inteira, filtro depois), `DIV-h` (guarda de cursor repetido e teto de paginas no `sync`, tambem na varredura completa), `DIV-i` (`cred-` na chave e `account_id` no cabecalho), `DIV-k` (atomicidade so de cursor + retrato, sem acoplar a `memoria-*`).
+
+---
+
+### Perfis nomeados de credencial *(v1.17, fase 8, em andamento)*
+
+Decisao do solicitante de 2026-10-21 (memoria `2026-10-21-1735-perfis`; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md`), que **reabriu e resolveu de novo a `DP-05`** (antes: "uma conta so, sem perfil"; o desenho da v0.6 fica como historico). Requisitos `RF-120` a `RF-132` e `RNF-37` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.17); divergencias `DIV-236` a `DIV-251` resolvidas pelo Tech Lead em 2026-10-21; parecer do DBA aceito com `C1` a `C10` (a `C7` substituida por `DIV-237`, a `C5` ampliada por `DIV-238`). Porte G. **Nao ha interface grafica**: Design System nao se aplica. **Nenhum formato de estado muda** (`C9`) e **nenhum codigo de saida e novo**.
+
+**Principios (Tech Lead):** o estado segue separado pela identidade da credencial (`cred-`), com a ressalva do achado abaixo; perfil inexistente **nunca** recua para o `padrao` (erro de configuracao `3`, sem rede); o nome do perfil e **dado de caminho**, validado antes de qualquer acesso a disco (`RNF-37`).
+
+**Desenho de `lib/config` (substitui o da v0.6).** Um unico ponto recebe o perfil: a selecao e validada por `lib/cli` (opcao) ou no primeiro uso (variavel) e fica **em estado interno de `lib/config`**; as funcoes publicas (`dbx_config_caminho`, `dbx_config_carregar`, `dbx_config_gravar`, `dbx_config_remover`, `dbx_config_identidade`) **mantem a assinatura**, e uma **lista fechada** de funcoes (validar nome, selecionar, resolver caminho, listar perfis, carregar de outro perfil para comparar identidade) e a unica que lida com nome de perfil. **Nenhuma outra camada** (`lib/auth`, `lib/http`, `lib/state`, `lib/sync`, `lib/transfer`, comandos de rede) recebe perfil ou conta; so `lib/config` compoe caminho a partir de nome (`RF-121`, `RF-130(c)`). As duas auditorias estaticas de `DP-05` (`tests/unit/config_test.sh:72`, `tests/unit/auth_test.sh:118`) sao **reescritas, nao removidas**, pelo Senior Developer, com **mutacao que demonstra que continuam reprovando seletor fora de `lib/config`** (`RSK-90`); o QA revisa a diferenca.
+
+| Aspecto | Desenho |
+|---|---|
+| Selecao | `--perfil NOME` (alias `--profile`): global antes do subcomando em todos os comandos, e depois do subcomando em `config` e `unlink` (`DIV-241`, opcao C); repetir sai `2`. `DBX_PERFIL`: so o nome; vazio = nao definida; so lida quando o comando resolve credencial (`help`, `version` e `completar` nao a leem); precedencia **opcao > variavel > `padrao`** (`RF-120`, `DIV-240`) |
+| Nome | `^[a-z0-9][a-z0-9_-]{0,31}$` por caracteres explicitos sob `LC_ALL=C`; validacao estrutural, antes de disco e rede; invalido sai `2`; valor invalido de `DBX_PERFIL` nao e ecoado (`RF-121`) |
+| Caminho | `padrao` -> `$XDG_CONFIG_HOME/dbx/credencial.json` (inalterado, `DP-11`); outro -> `.../dbx/perfis/<nome>.json`; `perfis/padrao.json` reservado, nunca lido nem criado (`DIV-239`) |
+| Verificacao | As do `credencial.json` mais: `dbx/` e `perfis/` com modo `^[0-7]00$`, do dono e **sem ligacao simbolica**; arquivo do perfil sem ligacao simbolica; `perfis/` criado **so** por `config --perfil`, `0700` sob `umask 077` (`C2`, `RF-122`). O `lib/preflight` deixa de fixar `credencial.json` e inspeciona o **caminho resolvido** (`C1`) |
+| Gravacao | `dbx_config_gravar` com o diretorio do perfil; temporario `perfis/.credencial.<pid>.*` para a varredura de orfaos existente funcionar sem mudanca; varredura ao gravar ou remover perfil e no `unlink` do `padrao` (`C3`, `RF-123`) |
+| `dbx perfis` | Comando novo (alias `profiles`), nivel `ambiente`: `padrao` (se existir) e `perfis/*.json` de nome valido, em ordem de bytes; registro por perfil com `perfil`, `credencial` (`completa`, `incompleta`, `ilegivel`, `permissao`, `ligacao_simbolica`), `ativo`, `arquivo`, e `total`; nunca segredo nem `cred-`; sem rede e sem escrita (`RF-126`, `DIV-242`, `DIV-243`) |
+| Visibilidade | `diagnostico`: linha `perfil` so com selecao explicita (sem selecao, saida identica); `info` sem mudanca; aviso em stderr quando o perfil vem de `DBX_PERFIL` (`RF-127`, `RF-128`) |
+| Autocompletar | Completa `--perfil` e os **nomes** de `perfis/` por nome de arquivo (sem abrir arquivo, sem rede) e `padrao`; a declaracao do script deixa de dizer "nunca le arquivo do dbx" e passa a dizer "nao abre arquivo do dbx; lista nomes de `perfis/`" (`DIV-246`, `RF-129`) |
+
+**Estado por identidade: o que vale e o que nao vale (achado A5, corrige a premissa de (P1)).**
+
+| Registro | Chave do nome | Identidade no conteudo | Atribuivel por `cred-` sem rede? |
+|---|---|---|---|
+| `retomada-*` | hash com `cred-` | `cred-` no cabecalho | **Sim** (le so o cabecalho) |
+| `trava-<r>` da retomada | mesmo resumo do `retomada-<r>` | so pelo pareamento de nomes | **Sim**, pelo nome do par |
+| `cursor-*` | hash com `cred-` | `cred-` no cabecalho (e `account_id`) | **Sim** (le so o cabecalho) |
+| `trava-*` do par | hash de `cred-`, raiz local e remota | nenhuma | **Nao** |
+| `memoria-*` | hash de `account_id`, origem, destino | `account_id`, **sem `cred-`** | **Nao** (`DIV-251`, `F-44`, `RSK-91`) |
+| `upload-*` | sem conta (`RF-52(b)`) | nenhuma | **Nao** |
+
+Cada `config` gera um refresh token novo, logo um `cred-` novo: dois perfis so compartilham identidade com copia do arquivo; dois perfis da mesma conta normalmente **nao** compartilham trava, retomada nem cursor, mas **compartilham `memoria-*`**.
+
+**`unlink` seletivo (regra unica, `DIV-238`, vale para o `padrao` e para `--perfil X`).** (1) Perfil inexistente: `3` antes de advertencia, confirmacao, rede e remocao. (2) A identidade e calculada da credencial carregada **antes** da revogacao. (3) Trava viva de **qualquer** par recusa com `7`, e a mensagem diz que pode ser um `sync` de outro perfil (`DIV-247`, `C6`). (4) Se outro(s) perfil(is) tem a **mesma identidade**: **nao revoga**, remove so o arquivo do perfil, **nao remove o estado** daquele `cred-`, avisa nomeando o(s) outro(s) e sai `0` (`DIV-237`; substitui a `C7`). (5) Senao revoga, reconfere a identidade antes do `rm` (se mudou, nao apaga, nao revoga de novo, `7`: `C8`) e remove o arquivo. (6) Estado: se **nao restar nenhuma credencial** (nem `credencial.json` nem `perfis/*.json` valido), remocao **total** como hoje; **senao seletiva**: so `retomada-*` e `cursor-*` com aquele `cred-`, os `.part` pela barreira de identidade e a `trava-<r>` da retomada se nao viva e inalterada; **mantem** `memoria-*`, `upload-*` e as travas do par; credencial ilegivel nao remove estado e avisa (`C5`, `RF-124`, `RF-125`).
+
+```mermaid
+flowchart TD
+  A["dbx unlink --perfil X"] --> B{"nome valido?"}
+  B -- nao --> E2["saida 2, sem disco nem rede"]
+  B -- sim --> C{"perfil existe?"}
+  C -- nao --> E3["saida 3 antes de advertencia e rede"]
+  C -- sim --> D{"trava viva de qualquer par?"}
+  D -- sim --> E7["saida 7: pode ser sync de outro perfil"]
+  D -- nao --> F["calcula identidade cred- da credencial carregada"]
+  F --> G{"outro perfil com a mesma identidade?"}
+  G -- sim --> H["nao revoga; remove so o arquivo; mantem o estado; avisa nomeando o outro; saida 0"]
+  G -- nao --> I["advertencia de cascata e confirmacao"]
+  I --> J["revoga o refresh token"]
+  J --> K{"identidade reconferida igual?"}
+  K -- nao --> E7b["nao apaga, nao revoga de novo, saida 7"]
+  K -- sim --> L["remove o arquivo do perfil"]
+  L --> M{"resta alguma credencial?"}
+  M -- nenhuma --> N["remocao total do estado, como hoje"]
+  M -- alguma --> O["remocao seletiva: retomada, cursor, .part e trava da retomada desse cred-; mantem memoria, upload e travas do par"]
+```
+
+```mermaid
+flowchart LR
+  subgraph Selecao["Selecao do perfil, antes de qualquer acesso"]
+    O1["--perfil ou --profile"] --> P{"precedencia"}
+    O2["DBX_PERFIL nao vazia"] --> P
+    O3["nenhuma"] --> P
+    P --> V["validar nome: 1 a 32, a-z 0-9 _ -, inicia por letra ou digito"]
+  end
+  V -- invalido --> X["saida 2, sem disco nem rede, sem ecoar DBX_PERFIL"]
+  V -- padrao --> C1["XDG_CONFIG_HOME/dbx/credencial.json"]
+  V -- outro nome --> C2["XDG_CONFIG_HOME/dbx/perfis/nome.json"]
+  C1 --> R["verificar arquivo, dbx/ e perfis/: modo, dono, sem ligacao simbolica"]
+  C2 --> R
+  R -- inexistente --> E3["saida 3, sem recuo para o padrao, sem rede"]
+  R -- ok --> I["carregar credencial e calcular identidade cred-"]
+  I --> S["estado separado por cred-: retomada, cursor e trava da retomada"]
+```
+
+**Trava por raiz local canonica no `sync --receber` (`RF-132`, `DIV-250`, risco `R1` do DBA).** A trava do par inclui a identidade; perfis com credenciais diferentes teriam travas diferentes e dois `sync --receber` rodariam juntos sobre a mesma raiz local. O `sync --receber` (e o `download` de pasta) adquire **tambem** uma trava chaveada pela identidade fisica `dev:inode` da raiz local canonica, sem `cred-`, conta nem perfil: mesmo registro, mesma aquisicao atomica, mesma deteccao de orfa e mesmos sinais da trava existente (`lib/state`, `lib/tmp`), nome com prefixo `trava-` para `unlink` e `diagnostico` a tratarem como as demais. Ordem fixa: **par, depois raiz** (libera na ordem inversa; a falha da segunda libera a primeira); ocupada recusa com `7` e respeita `--esperar` dentro de um unico teto; `--dry-run` adquire as duas; `sync --enviar` e `verificar` nao a usam; raizes aninhadas nao sao cobertas.
+
+**Dimensionamento (DBA).** Cerca de **300 B por perfil** (um arquivo de credencial); nenhum crescimento de estado alem dos tetos globais de `retomada-*` (1000) e `cursor-*` (100), que valem para todos os perfis juntos (`RSK-92`, aceito: so desempenho). `perfis/` e **configuracao**, nao estado (`RNF-26` inalterado). Nenhum plano de expansao novo.
+
+**Riscos da fase:** `RSK-85` (cascata entre perfis de mesma identidade), `RSK-86` (estado nao atribuivel), `RSK-87` (nome virando caminho), `RSK-88` (comando destrutivo no perfil errado por `DBX_PERFIL`), `RSK-89` (superficie nova de segredo), `RSK-90` (auditorias de `DP-05`), `RSK-91` (`memoria-*` por `account_id`, `F-44`), `RSK-92` (tetos globais), `RSK-93` (dois `sync --receber` na mesma raiz, mitigado por `RF-132`).
+
+**Fora desta fase:** memoria v3 com `cred-` (`F-44`); raizes locais aninhadas na trava de raiz; mover, renomear ou copiar perfil; `info` com campo de perfil.
 
 ## Integracoes e contratos
 
@@ -183,14 +627,15 @@ Endpoints vigentes da Dropbox API v2. **Endpoints retirados e depreciados sao pr
 
 | Integracao | Tipo | Origem | Destino | Contrato ou protocolo | Risco principal |
 |---|---|---|---|---|---|
-| Autorizacao do usuario | Navegador externo (fora do processo) | Operador humano | `https://www.dropbox.com/oauth2/authorize` | Fluxo de codigo de autorizacao com `token_access_type=offline`, que e o que determina a emissao do refresh token de longa duracao. PKCE disponivel por `code_challenge` e `code_challenge_method`, dispensando o segredo do aplicativo na troca | Passo manual; codigo de autorizacao expira rapidamente. **Host distinto do de API** |
+| Autorizacao do usuario | Navegador externo (fora do processo) | Operador humano | `https://www.dropbox.com/oauth2/authorize` | Fluxo de codigo de autorizacao com `token_access_type=offline`, que e o que determina a emissao do refresh token de longa duracao. ~~PKCE disponivel por `code_challenge` e `code_challenge_method`, dispensando o segredo do aplicativo na troca~~ **(v1.5, `DP-34`):** a plataforma oferece PKCE, mas **esta aplicacao nao o implementa**; o `client_secret` e obrigatorio no `config` e na biblioteca (`RF-63`). PKCE fica no backlog como alternativa futura (`F-35`) | Passo manual; codigo de autorizacao expira rapidamente. **Host distinto do de API** |
 | Emissao e renovacao de token | HTTPS `POST` | `lib/auth` | `https://api.dropbox.com/oauth2/token` | `grant_type=authorization_code` e `grant_type=refresh_token`. Autenticacao do aplicativo por **HTTP Basic ou por parametros no corpo**, ambos suportados. Resposta traz `access_token`, `token_type`, `expires_in` (exemplo documentado: `14400`) e `scope` | Exposicao de segredo se enviado por `argv` (RSK-03). **Inconsistencia documental:** o bloco de referencia indica `api.dropboxapi.com`; todos os exemplos executaveis usam `api.dropbox.com`. Ver DIV-11 |
 | Revogacao de token | HTTPS `POST` | `lib/auth` | `https://api.dropboxapi.com/2/auth/token/revoke` | Sem corpo; autenticado por token | **Efeito em cascata:** invalida tambem o refresh token e todos os access tokens dele derivados (RES-12). Exige advertencia e confirmacao (RF-06a) |
 | Metadados e operacoes de arquivos | HTTPS `POST` JSON | `lib/http` | `https://api.dropboxapi.com/2/files/*` | `get_metadata`, `list_folder`, `list_folder/continue`, `create_folder_v2`, `move_v2`, `copy_v2`, `delete_v2`. As variantes `_v2` retornam envelope com campo `metadata` | Uso inadvertido de variante ausente da documentacao vigente (RSK-04). **Chamadas simultaneas de listagem para o mesmo usuario produzem erro de limite de taxa** (RES-11, RSK-22) |
 | Busca | HTTPS `POST` JSON | `commands/search` | `https://api.dropboxapi.com/2/files/search_v2` e `search/continue_v2` | Corpo com `query`, `options` (`path`, `max_results`, `file_status`, `filename_only`) e `match_field_options`. Paginacao por `cursor`, com `has_more` | Teto de **10.000 correspondencias**; resultados podem vir duplicados entre paginas ou ser omitidos por atraso de indexacao — deduplicacao e responsabilidade do cliente (RES-14, DIV-12) |
 | Conteudo de arquivos | HTTPS `POST` binario | `lib/transfer` | `https://content.dropboxapi.com/2/files/*` | `upload`, `upload_session/start`, `upload_session/append_v2`, `upload_session/finish`, `download`. Parametros no cabecalho `Dropbox-API-Arg` com `Content-Type: application/octet-stream`. `start` aceita `session_type` (sequencial ou concorrente) e `close`; `finish` recebe `cursor` (`session_id` e `offset`) e `commit`. ✅ **Revalidado em 2026-08-19 contra `dropbox/dropbox-api-spec`, `files.stone`, ramo `main`** — contrato **documentado e lido, NAO exercitado** contra o servico real. **`UploadSessionCursor.offset`** e documentado como *"The amount of data that has been uploaded so far. We use this to make sure upload data isn't lost or duplicated in the event of a network error"*, e **`UploadSessionAppendError.incorrect_offset`** carrega `correct_offset` e cobre o caso em que *"a previous request was received and processed successfully but the client did not receive the response, e.g. due to a network error"*: **a retentativa por parte e suportada, e o deslocamento no cursor e a chave de deduplicacao** | **150 MiB** por requisicao, inclusive nas de sessao; maximo de 2^41 − 2^22 bytes por sessao; **a sessao vale no maximo 7 dias, apos o que o `session_id` devolve `not_found`** (`RES-18`); corrupcao em interrupcao. ⚠️ **Procedencia (`DIV-21`): consultar o ramo `main`.** O `master` do mesmo repositorio diz **48 horas** e **nao tem `session_type`** — quem revalidar por ele obtera numero errado e concluira que a distincao sequencial/concorrente nao existe, distincao da qual `RES-10` depende |
-| Compartilhamento | HTTPS `POST` JSON | `lib/http` | `https://api.dropboxapi.com/2/sharing/*` | `create_shared_link_with_settings`, `list_shared_links`. **Nao usar** `create_shared_link` nem `get_shared_links`, explicitamente marcados como depreciados na documentacao | Conflito quando o link ja existe; recursos avancados dependem do plano contratado (DP-18) |
+| Compartilhamento *(v1.13, fase 5)* | HTTPS `POST` JSON | `commands/link_temporario`, `commands/compartilhar` via `lib/http` | `https://api.dropboxapi.com/2/files/get_temporary_link` e `https://api.dropboxapi.com/2/sharing/*` | `get_temporary_link` (`path`; `link` + `metadata`; 4 h, depois `410`), `create_shared_link_with_settings` (`path`, `settings`: `audience`, `require_password`, `link_password`, `expires`; `requested_visibility` depreciado, nao usado), `list_shared_links` (`path`, `direct_only`, `cursor`; **cursor so sem `path`**; com `path` traz ancestrais), `modify_shared_link_settings` (`url`, `settings`, `remove_expiration`), `revoke_shared_link` (`url`), `get_shared_link_metadata` (`url`; `path_lower` opcional). **Nao usar** `create_shared_link` nem `get_shared_links`, depreciados. Lido pelo Context7 em 2026-10-20 (`/websites/dropboxapi_dropbox-api`); nao exercitado | `shared_link_already_exists` sem metadados quando ha `settings` (`DIV-107`); plano Basic so cria link publico sem senha nem expiracao (`DP-18`, `RSK-61`); exposicao publica (`RSK-57`); senha (`RSK-58`); revogacao fora da raiz (`RSK-59`); link temporario irrevogavel (`RSK-60`) |
 | Conta e espaco | HTTPS `POST` JSON | `lib/http` | `https://api.dropboxapi.com/2/users/*` | `get_current_account`, `get_space_usage` | Baixo |
+| Revisoes, restauracao e lixeira *(v1.11)* | HTTPS `POST` JSON | `commands/revisoes`, `commands/restaurar`, `commands/lixeira` via `lib/http` | `https://api.dropboxapi.com/2/files/*` | `list_revisions` (`path`, `mode` `path`/`id`, `limit` 1..100, `before_rev` so no modo `path`; `ListRevisionsError`), `restore` (`path`, `rev` `[0-9a-f]{9,}`; `RestoreError`: `invalid_revision`, `in_progress`), `list_folder`/`get_metadata` com `include_deleted` (`DeletedMetadata`, sem tipo nem data), `permanently_delete` (`DeleteArg`; `DeleteError`; **so Dropbox Business**; apaga antes se o item estiver vivo). Lido em `files.stone`, ramo `main`, 2026-10-19; nao exercitado | Expurgo de item vivo (`DIV-54`, `RSK-51`); `rev` de outro arquivo (`DIV-59`); custo da restauracao recursiva (`RSK-53`); resposta em conta pessoal nao documentada (`DIV-57`) |
 | Monitoramento por espera longa | HTTPS `POST` JSON | `commands/monitor` | `https://notify.dropboxapi.com/2/files/list_folder/longpoll` | Requisicao nao autenticada com cursor; tempo limite configuravel | Condicional a DP-16; consumo de conexao prolongada |
 | Importacao por URL | HTTPS `POST` JSON | `commands/saveurl` | `https://api.dropboxapi.com/2/files/save_url` e `save_url/check_job_status` | Job assincrono com consulta de estado | Condicional a DP-06 |
 
@@ -203,11 +648,12 @@ Com acesso amplo concedido ao aplicativo (DP-04), o unico controle de granularid
 | Recebimento de conteudo | `files.content.read` | Confirmado na documentacao |
 | Envio de conteudo | `files.content.write` | Confirmado na documentacao |
 | Metadados e listagem | `files.metadata.read` | Confirmado na documentacao |
-| Compartilhamento — leitura | `sharing.read` | Confirmado para endpoints de sharing |
-| Compartilhamento — escrita | `sharing.write` | Confirmado para endpoints de sharing |
+| Compartilhamento — leitura *(v1.13, opcional)* | `sharing.read` | Confirmado para `list_shared_links` (Context7, 2026-10-20); `get_shared_link_metadata` presumido; habilitado pelo solicitante (`DIV-106`). Usado por `compartilhar --listar`, pelo reuso de link existente e pela guarda do `--revogar` |
+| Compartilhamento — escrita *(v1.13, opcional)* | `sharing.write` | Confirmado para `create_shared_link_with_settings` (Context7, 2026-10-20); `modify` e `revoke` pela especificacao. Habilitado pelo solicitante em 2026-10-20. `link-temporario` usa `files.content.read`, ja exigido |
 | Informacoes de conta | `account_info.read` | Confirmado na documentacao |
+| Exclusao permanente *(v1.11, opcional)* | `files.permanent_delete` | Confirmado em `files.stone` (`route permanently_delete`). So `lixeira --excluir`; habilitar no App Console, `dbx unlink` e `dbx config` (`DIV-56`). `list_revisions` usa `files.metadata.read` e `restore` usa `files.content.write`, ja exigidos |
 
-> **Nao confirmado (DIV-14).** Os escopos especificos de `files/search_v2`, `sharing/create_shared_link_with_settings`, `users/get_current_account` e `users/get_space_usage` nao foram localizados na documentacao indexada. Devem ser confirmados diretamente em `developers.dropbox.com` antes de fixar o procedimento de configuracao, e nao presumidos por analogia.
+> **Nao confirmado (DIV-14).** *(v1.13: `sharing/create_shared_link_with_settings` confirmado como `sharing.write` e `files/get_temporary_link` como `files.content.read`, Context7, 2026-10-20.)* Os escopos especificos de `files/search_v2`, ~~`sharing/create_shared_link_with_settings`~~, `users/get_current_account` e `users/get_space_usage` nao foram localizados na documentacao indexada. Devem ser confirmados diretamente em `developers.dropbox.com` antes de fixar o procedimento de configuracao, e nao presumidos por analogia.
 
 ### Semantica de erro adotada
 
@@ -244,7 +690,7 @@ O corpo de erro segue o formato `{"error":{".tag":"<tag>"},"error_summary":"<tag
 ## Arquitetura de producao
 
 - **Topologia:** nao ha servidor nem servico exposto. A aplicacao e um artefato de script instalado no host que precisa da integracao, executado sob demanda pelo operador ou por agendador. Nao ha componente compartilhado entre hosts alem do proprio aplicativo registrado no Dropbox App Console, cuja cota de chamadas e comum a todas as instalacoes que o utilizam.
-- **Componentes implantados:** artefato executavel instalado em diretorio de binarios do sistema; bibliotecas em diretorio de suporte; arquivo de configuracao por usuario com permissao restrita; unidade de agendamento (`cron` ou `systemd timer`) quando houver rotina nao assistida.
+- **Componentes implantados:** artefato executavel instalado em diretorio de binarios do sistema; bibliotecas em diretorio de suporte; arquivo de configuracao por usuario com permissao restrita; unidade de agendamento (`cron` ou `systemd timer`) quando houver rotina nao assistida. *(v1.5)* Por usuario, o diretorio de estado `$XDG_STATE_HOME/dbx` (`0700`) com as memorias descartaveis de `lib/state`; nenhum banco de dados nem dependencia alem de `cURL` e coreutils.
 - **Observabilidade:** saida de diagnostico por nivel na saida de erro; registro do `X-Dropbox-Request-Id` em falhas de API para suporte junto a Dropbox; codigo de saida como sinal primario para o orquestrador. Integracao com `syslog`, `journald` ou coletor centralizado depende de DP-10. Nao ha metricas nem rastreamento distribuido no escopo.
 - **Alta disponibilidade e resiliencia:** nao aplicavel no sentido de servico, por ausencia de processo residente. A resiliencia relevante e a da execucao individual: retentativa com recuo, sessao de envio em partes com retentativa por parte, ausencia de estado parcial publicado no destino e limpeza deterministica de temporarios. A indisponibilidade da Dropbox e absorvida pela politica de retentativa e, esgotada, reportada por codigo de saida ao orquestrador.
 - **Politica de rollback:** substituicao do artefato pela versao anterior, que e uma operacao de arquivo. O formato do arquivo de configuracao deve ser versionado e retrocompativel dentro de uma mesma linha principal; mudanca incompativel exige migracao explicita e aviso na atualizacao. Operacoes ja executadas contra a Dropbox **nao sao revertidas pelo rollback do artefato**; reversao de conteudo, quando necessaria, depende do historico de versoes da propria Dropbox.
@@ -268,6 +714,7 @@ O corpo de erro segue o formato `{"error":{".tag":"<tag>"},"error_summary":"<tag
 3. **Provisionar a credencial:** executar o comando de configuracao com o usuario que efetivamente executara a rotina; confirmar permissao `0600` no arquivo resultante; definir a **raiz remota permitida** para a rotina, limitando o alcance mesmo com acesso amplo concedido (RNF-20). Para execucao agendada, a configuracao deve pertencer ao mesmo usuario do agendamento e o caminho do arquivo deve ser informado explicitamente, pois o diretorio pessoal nem sempre e resolvido corretamente no ambiente do agendador.
 4. **Configurar a rotina:** criar a unidade de agendamento com caminho absoluto do executavel, caminho absoluto da configuracao, modo silencioso e tratamento do codigo de saida pelo orquestrador.
 5. **Validacoes apos implantacao:** executar comando de leitura de conta e confirmar codigo de saida `0`; executar um ciclo completo de envio e recebimento com verificacao de `content_hash` em area de teste remota; executar uma operacao em modo de simulacao e confirmar ausencia de escrita; confirmar que o registro de diagnostico nao contem segredo; confirmar que uma execucao sem terminal associado nao bloqueia aguardando entrada.
+6. **Atualizacao a partir de versao com `lib/db` (v1.5):** nenhuma migracao. O `dbx.db*` antigo fica inerte no diretorio de estado e contem caminhos absolutos de arquivos enviados; removê-lo a mao com `rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/dbx/dbx.db"*`, ou deixar que o `unlink` o remova (`RNF-33`, `RF-51(f)`). O primeiro `upload`/`sync` apos a atualizacao recalcula os hashes. A memoria `1` de cada par espelhado e descartada: essa primeira execucao **nao propaga exclusoes e sai com codigo diferente de `0`** (`RF-41(f)`, `RSK-46`); a seguinte volta ao normal. Avisar nas notas da versao para rotinas agendadas. Origem vazia com algo a apagar no destino e recusada sempre (codigo `14`, `RF-41(b)`); rotina que precise esvaziar o destino de proposito usa `--permitir-origem-vazia`. O `install.sh` deixa de recomendar `sqlite3`.
 
 ---
 
@@ -331,6 +778,33 @@ Obtidas pelo QA e pelo Tech Lead apos a correcao do defeito de complexidade quad
 
 > 🔴 **HANDOFF DO DBA ACIONADO NA v0.8.** O gatilho registrado nas versoes anteriores era exatamente este: promover `F-03`, `F-06`, `F-12` ou `F-14` reintroduz estado persistente. **`F-06` entrou por `DP-06`.** Esta secao deixa de ser nao aplicavel e passa a exigir o handoff formal previsto no item 24 do protocolo comum, usando `.claude/agents-protocol/templates/plano-dimensionamento-expansao-banco-template.md` — ainda que o mecanismo seja armazenamento em arquivo, e nao banco relacional.
 
+> ✅ **v1.5 — HANDOFF DO DBA RECEBIDO E CONSOLIDADO (regra 26).** Os itens abaixo do bloco "Registro da v0.8" ficam como historico; o plano vigente e este.
+
+- **Fonte do handoff do DBA:** [parecer do DBA — cache unico de `content_hash` em `lib/state` (fase 3)](../reviews/2026-10-18-2243-parecer-dba-cache-unico.md), aprovado com ressalvas; ressalvas bloqueantes atendidas por `RF-61(a)` e (b) e pela decisao do solicitante sobre `RF-52` (`DP-34`).
+- **Natureza do dado (formato v2, `DBX_STATE_VERSAO=2` em `lib/state.sh`):** nao ha banco. Dois tipos de arquivo de campos terminados em NUL sob `$XDG_STATE_HOME/dbx`, nomeados pelo resumo da chave (nenhum texto de caminho no nome):
+  - **`memoria-<resumo>`** (`sync`, uma por tripla conta + raiz local canonica + raiz remota): cabecalho de 4 campos — `2`, conta, origem, destino — seguido de um registro por caminho visitado, `content_hash<TAB>identidade<TAB>caminho_relativo` (caminho por ultimo, por aceitar qualquer byte exceto NUL).
+  - **`upload-<resumo>`** (`upload`, um por origem canonica, sem conta): `2`, `upload`, caminho canonico e um unico registro `content_hash<TAB>identidade`.
+  - **Identidade** (definicao unica em `lib/hash`, `DBX_HASH_FORMATO_IDENTIDADE`): saida de `stat -c '%Y|%y|%z|%d|%i|%s'` — `mtime` em segundos, `mtime` e `ctime` em texto com nanossegundos, dispositivo, inode e tamanho (`RF-38(e)`, `RF-61(b)`); comparada como cadeia.
+  - Memoria de versao `1` (tamanho e `mtime` em segundos) e descartada na carga como versao desconhecida; o arquivo continua existindo, entao o par segue "visto" para `RF-48`; por isso a primeira execucao com memoria descartada nao propaga exclusao e sai com codigo diferente de `0` (`RF-41(f)`, `RSK-46`), regravando a memoria em v2. Corrupcao, cabecalho divergente ou campo invalido descartam e reconstroem (`RF-42`). Tamanho estimado pelo formato (nao medido na v2): cerca de 170 B de hash e identidade mais o caminho relativo, por caminho, na `memoria-*`; um bloco de disco por `upload-*`. Tudo descartavel e reconstruivel: perda custa so recalculo. *(Redacao anterior, que descrevia a `memoria-*` com "hash, tamanho, `mtime`, caminho", superada pela v2; divergencia apontada no [parecer de conformidade](../reviews/2026-10-18-2243-parecer-conformidade-cache-unico.md).)*
+- **Premissas de crescimento:** `memoria-*` cresce com o numero de arquivos da raiz, **nao** com o historico, porque so as entradas visitadas sao regravadas (`RF-38(b)`); `upload-*` cresce com o numero de origens distintas e e podado acima de **10.000** arquivos, removendo os nao usados ha **90 dias** (`RF-61(i)`).
+- **Medicoes do DBA (WSL2, bash):**
+
+| Entradas no arquivo NUL | Tamanho | Carga para o mapa | Regravacao |
+|---|---|---|---|
+| 1 | 117 B | < 1 ms | < 1 ms |
+| 1.000 | 105 KB | 16 ms | 3 ms |
+| 10.000 | 1,06 MB | 174 ms | 38 ms |
+| 50.000 | 5,3 MB | 913 ms | 233 ms |
+
+- **Estrategia de capacidade:** indice desnecessario (array associativo em memoria, consulta O(1)); gravacao em lote unica por execucao; `upload` com custo constante abaixo de 5 ms por arquivo de um registro. **Gatilho de revisao:** raiz com mais de ~100 mil arquivos (carga ~2 s) — avaliar `mapfile -d ''` no lugar do laco `read` ou particionar a memoria do `sync` por subdiretorio de primeiro nivel.
+- **Concorrencia:** `upload` x `upload` de origens diferentes nao disputa arquivo; da mesma origem, grava o mesmo valor; `upload` x `sync` usam namespaces diferentes; dois `sync` do mesmo par: ultimo `mv` vence, sem trava (`RNF-25(d)`).
+- **Riscos de persistencia:** hash obsoleto reaproveitado (`RSK-42`), precisao de `stat` (`RSK-43`), legado `dbx.db*` esquecido (`RSK-44`), `upload` tocando a memoria do `sync` (`RSK-45`); a memoria do `sync` usa a mesma identidade forte (`RF-38(e)`, `DIV-26` resolvida).
+- **Nao aplicavel:** replica, backup, sharding e monitoracao operacional — cache local por usuario, descartavel, sem servidor e sem telemetria no produto.
+- **v1.15 (fase 7a, `F-03`; parecer do DBA da fase 7a, secao 10):** terceiro namespace de dado, **`retomada-<resumo32>`**: abaixo de 1 KiB tipico, **16 KiB no maximo** (o leitor recusa acima), um por transferencia em andamento ou interrompida, apagado no sucesso; cresce com as **interrupcoes**, nao com os arquivos (dezenas, no caso realista), com poda acima de 8 dias e teto de **1.000** registros. O maior custo de disco e o `.part` do download, que pode chegar ao tamanho do arquivo remoto, fica na arvore do usuario e nao entra no diretorio de estado. Regravacao a cada parte de 4 MiB (um `mktemp` e um `mv`) e uma releitura do prefixo na retomada (~320 MB/s, `DP-12`; `RSK-72`). Consulta O(1) pelo nome; indice so se houver milhares de transferencias paralelas. Na 7b entra `cursor-*` pelo mesmo mecanismo.
+- **v1.16 (fase 7b, `F-14`; parecer do DBA da 7b, secao 11):** quarto namespace de dado, **`cursor-<resumo32>`**, um por (conta, raiz local, raiz remota) sincronizado com `--receber`: cerca de 1 KiB mais ~250 B por entrada remota (arquivo ou pasta) — 10 mil entradas ≈ 2,5 MB, 100 mil ≈ 25 MB; teto de 1.000.000 de entradas e 512 MiB (acima, sem cursor: so varredura completa). Cresce com o tamanho das arvores remotas, nao com as execucoes (regravado inteiro a cada sucesso); teto de 100 registros e poda de 8 dias. Custo por execucao incremental: leitura e SHA-256 do registro, as paginas do delta e uma reescrita, contra uma pagina de 100 entradas por `lib/json` na completa (medicao na `F-34`, como o `RSK-72`). **Expansao:** acima de ~1 milhao de entradas, ou se a reescrita inteira pesar, reavaliar um formato em segmentos (base mais diario de deltas) ou indice; ate la, o arquivo unico e o que garante a atomicidade com um `mv`.
+
+**Registro da v0.8 (historico):**
+
 - **Fonte do handoff do DBA:** ⏳ **acionado, aguardando elaboracao.** O Business Analyst incorporara o plano a esta secao quando recebido.
 - **Natureza do dado a dimensionar:** **linha de base de sincronizacao** — um registro por caminho rastreado, contendo ao menos `content_hash` (64 caracteres) e identificador de revisao remota, mais o caminho. Ordem de grandeza estimada: **algumas centenas de bytes por caminho**. Para 100 mil arquivos, dezenas de megabytes. Cresce **linearmente com a quantidade de caminhos sincronizados**, nao com o volume de dados transferidos.
 - **Questoes que o plano do DBA precisa responder:** politica de crescimento e eventual compactacao; comportamento com centenas de milhares de caminhos em um interpretador em shell sem indice; custo de leitura integral a cada execucao contra leitura incremental; recuperacao de consistencia apos interrupcao, ja parcialmente coberta pela escrita atomica de `RNF-25`; e se o formato deve ser textual delimitado — coerente com a ausencia de dependencias de `DP-08` — ou outro.
@@ -378,7 +852,7 @@ Obtidas pelo QA e pelo Tech Lead apos a correcao do defeito de complexidade quad
 | Duplo modo de uso | Nenhum comando emite texto diretamente; toda saida passa por `lib/output`. Ambas as apresentacoes sao exercitadas na suite por sobreposicao explicita do sinalizador |
 | Menor privilegio | O conjunto de escopos OAuth solicitado esta documentado e limitado aos comandos habilitados; caminho remoto fora da raiz configurada e recusado antes de qualquer chamada de rede |
 | Nao derivacao | Declaracao formal de que nenhum trecho de codigo, estrutura de funcoes, nome interno ou mensagem literal do `Dropbox-Uploader` foi incorporado (RES-02) |
-| **Ausencia de estado local** | Nenhuma escrita persistente fora do arquivo de configuracao. Verificado por inspecao dos caminhos de escrita e por teste de ausencia de residuo apos execucao completa e apos interrupcao por sinal (RSK-23) |
+| **Estado local delimitado** *(reescrito na v1.5; antes "Ausencia de estado local")* | Nenhuma escrita persistente fora do arquivo de configuracao e do diretorio de estado; neste, so `lib/state` escreve, e so `memoria-*` e `upload-*` (`RNF-26`). Nenhum artefato persistente decide: apagar o diretorio de estado nao muda nenhuma operacao decidida por `sync` ou `upload` (`RF-37`, `RF-60(f)`, `RSK-23`). Nenhuma invocacao de `sqlite3`/`python3` (`RNF-02`). Verificado por auditoria dos caminhos de escrita e por teste de residuo apos execucao completa e apos interrupcao por sinal. **Fase 2 (v1.9):** o arquivo de trava (`trava-*`, `RF-69`) entra como **estado transitorio que nao decide nada** (`RNF-26` emendado); existe so durante um `sync` ou `verificar` e e removido em todo caminho de saida. **Fase 7a (v1.15, `DIV-b`):** `RNF-26` ganha **(5)** o registro de retomada (`retomada-*`), vinculado a conta, ao sentido, a origem e ao destino, que **nao decide integridade nem exclusao** (`RF-101(j)`: apaga-lo so muda o custo); **(6)** a trava de registro (`trava-*` com comando `retomada`), transitoria como a de par; e, **fora do diretorio de estado**, **(7)** o `.part` do download retomavel, na arvore do usuario junto do alvo, que **sobrevive a execucao interrompida** e so e apagado pela barreira de identidade (`RF-104(e)`). E a unica escrita persistente fora do diretorio de estado e do de configuracao; o teste de residuo apos sinal passa a excluir so ela (e o `retomada-*`), e a area de trabalho (`dbx-*`) continua sendo removida (`RNF-35`). **Fase 7b (v1.16, `DIV-e`):** `RNF-26` ganha **(8)** o registro de cursor de listagem (`cursor-*`): cursor mais retrato da arvore **remota** (ids, revs, hashes e caminhos remotos), vinculado a conta, a raiz local e a raiz remota, que **nao decide integridade nem exclusao** (`RF-116`): apaga-lo so torna a proxima execucao completa. O cursor e identificador operacional sensivel e nunca sai do arquivo `0600` |
 | **Transferencia por fluxo** | Envio a partir da entrada padrao nao materializa o conteudo integral em disco, mantendo no maximo uma parte em buffer; recebimento para a saida padrao nao emite diagnostico na saida padrao (RF-31, RF-32). 🔴 **Qualificado na v1.2 (`DIV-18`):** o criterio "interrupcao nao deixa arquivo truncado no destino" vale para **falha de leitura**, verificavel e verificada. **NAO vale para produtor de cano anonimo que morre depois de escrever um prefixo** — caso **indistinguivel de fim de fluxo legitimo dentro do processo**, sem mitigacao interna, medido e registrado em `RSK-36`. Um aceite que declare este criterio integralmente cumprido estaria declarando o que nao foi verificado, porque **nao e verificavel** |
 | **Integridade e omissao** | O `content_hash` calculado localmente coincide com o vetor de teste oficial e com o retornado pela API em arquivos de tamanhos limitrofes; a omissao por conteudo identico nunca se baseia em nome, tamanho ou data (RF-33, RF-34) |
 | Qualidade | Analise estatica sem alerta nao suprimido; suite automatizada aprovada sem rede e sem credencial real |
@@ -391,12 +865,97 @@ Obtidas pelo QA e pelo Tech Lead apos a correcao do defeito de complexidade quad
 |---|---|---|
 | QA Expert | Validacao independente da implementacao; testes de exaustao alimentando a secao de dimensionamento; justificativa formal do desvio de Cypress e do desvio do template de validacao de frontend | Aplicavel |
 | UX Expert | Design System no formato padrao | **Nao aplicavel.** Recomendado, com peso elevado apos DP-03, um padrao de experiencia de linha de comando que especifique as duas apresentacoes exigidas por RF-28 |
-| DBA | Plano de dimensionamento e expansao do banco | **Nao aplicavel por ora.** Torna-se obrigatorio se DP-02 confirmar F-03, F-06, F-12 ou F-14 |
+| DBA | Plano de dimensionamento e expansao do banco | ✅ **Recebido na v1.5** ([parecer](../reviews/2026-10-18-2243-parecer-dba-cache-unico.md)) e consolidado na secao propria. *Redacao anterior, superada por `DP-06`:* nao aplicavel por ora |
 | Senior Developer | Confirmacao dos contratos nao verificados em DIV-14 antes da implementacao | **Aplicavel** |
 | Tech Lead | Aprovacao final por `.claude/agents-protocol/templates/aprovacao-final-tech-lead-template.md`, incluindo a declaracao de nao derivacao; decisao sobre a contaminacao da memoria de projeto (DIV-09) | Aplicavel |
 | Solicitante | Resposta a DP-02 (quais funcionalidades novas); aprovacao explicita dos testes de QA | **Bloqueante** |
 
 ---
+
+### Integridade de dados no recebimento e no `sync` (P1, 2026-10-18)
+
+Decisoes do solicitante (`DP-31`), sem novo componente:
+
+- **`lib/sync`**: a chave de comparacao dos mapas local/remoto e o caminho em minusculas (`path_lower` no remoto); a grafia original e mantida so para exibicao e escrita. Colisao de caixa na arvore local e detectada na fase de planejamento e recusada antes de qualquer escrita (`RF-54`).
+- **Recebimento (`commands/download`, `commands/sync --receber`)**: escrita em temporario no mesmo diretorio do alvo (mesmo sistema de arquivos, para a renomeacao ser atomica), conferencia de `content_hash` e `mv` atomico; falha descarta o temporario e preserva o alvo (`RF-55`). `download` de pasta recusa destino que seja arquivo regular (`RF-56`).
+- **Envio (`sync --enviar`)**: reutiliza o helper de publicacao e o roteamento por tamanho do `upload` (requisicao unica ate 150 MiB, sessao acima), com `client_modified`; sobrescreve em modo `update` com o `rev` da listagem da execucao e usa `add` para arquivo novo; recusa da Dropbox vira falha do item, sem sobrescrever (`RF-57`, `RF-49`); a origem vence entre execucoes (`DP-27`; `DIV-23` resolvida).
+- **`lib/http`**: `umask 077` restrito a criacao da area temporaria com o token; `umask` do processo preservado; area temporaria de cada requisicao removida sempre, inclusive na reemissao diagnostica, sem gancho armado apos o retorno (`RNF-29`; `RNF-04` emendado, `DIV-24` resolvida). Na fase 2 (v1.10) a gestao de areas passou a `lib/tmp`, registro unico com um tratador por sinal.
+- **Fora da P1 (registrado, nao implementado)**: skip do upload condicionado ao `content_hash` remoto, com o cache de `lib/db`/`lib/state` reduzido a otimizacao de calculo de hash (`DP-32`, `F-26`); politica `Retry-After` de `lib/http` (`DIV-22`, tratada na fase P2; ver secao seguinte).
+
+### Robustez de rede (P2, 2026-10-18)
+
+- **`lib/http`, timeouts (`RNF-30`)**: toda requisicao leva `--connect-timeout` (padrao 15 s) e corte por velocidade minima (`--speed-limit` 1024 B/s por `--speed-time` 60 s), ajustaveis por `DBX_HTTP_CONNECT_TIMEOUT_S`, `DBX_HTTP_VELOCIDADE_MINIMA_BPS` e `DBX_HTTP_VELOCIDADE_JANELA_S`; valor invalido e recusado como uso invalido (codigo `2`) antes da rede. Timeout (`cURL` 28) e falha transitoria de rede.
+- **`lib/http`, retentativa (`RNF-07`)**: `DBX_HTTP_TENTATIVAS_MAXIMAS` deixa de ser constante e passa a ser configuravel (padrao 5); `DBX_HTTP_ESPERA_BASE_MS` passa de 250 para 1000 ms; novos `DBX_HTTP_ESPERA_TETO_MS` (60000) e `DBX_HTTP_RETRY_AFTER_TETO_S` (300). O `Retry-After` e lido do cabecalho de resposta (mesmo ponto de captura do identificador de correlacao) e substitui o recuo calculado. A tabela de semantica de erro acima continua valida para `429` e `5xx`.
+- **`lib/transfer`, retomada (`RF-58`)**: diante de `incorrect_offset`, so para arquivo regular, o laco de sessao relê a partir do `correct_offset` validado em `[0, min(tamanho, bytes ja enviados)]`; sessao e deslocamento ficam na memoria do processo. A entrada padrao nao retoma. ~~`F-03` segue fora.~~ **v1.15 (`DIV-c`):** a retomada **entre execucoes** (`F-03`) entrou na fase 7a, com secao propria ("Retomada entre execucoes"); `RF-58` continua valendo **dentro** de uma execucao, e uma reposicao de `RF-58` desliga a retomada entre execucoes naquela execucao (`DIV-195`).
+- **`commands/sync` e `lib/output` (`RF-59`)**: cada item falho emite `falha <caminho>: <classe> <resumo>` no stderr; o `--json` mantem `falhas` (contagem) e ganha o par `falha_caminho`/`falha_classe` por item. Sem segredo nem corpo bruto.
+- **Sinais e suite (`RNF-31`, `RNF-32`)**: a area `dbx-sync.*` e removida em `EXIT`, `INT`, `TERM` e `HUP` pelo tratador unico de `lib/tmp` (v1.10, `F-31`; saida `14` em sinal); `tests/run.sh` para no primeiro erro; mapa de modulos em `docs/testes/mapa-modulos.md`.
+
+### Aliases e localidade (fase 4, 2026-10-19)
+
+Decisoes do solicitante e do Tech Lead (`DP-35`); nenhum componente novo, so contrato de borda e ambiente de execucao.
+
+- **Aliases em ingles (`RF-64`)**: cada comando (`commands/sync`, `commands/unlink`, `commands/config`) reconhece os dois nomes de uma opcao **no mesmo ramo do analisador de argumentos**, de modo que alias e nome em portugues sao a mesma opcao por construcao — mesmo efeito, mesmas recusas e a mesma regra de repeticao (ultimo valor vence nas opcoes com valor; opcao sem valor idempotente; segundo sentido de `--enviar`/`--receber` recusado). Um alias tratado em ramo separado e o desenho que o `TC-ALI-01..03` existe para reprovar. A ajuda em `bin/dbx` lista os dois nomes. Pares: `sync` (`--origem`/`--source`, `--destino`/`--dest`, `--enviar`/`--push`, `--receber`/`--pull`, `--espelhar`/`--mirror`, `--confirmar`/`--yes`, `--permitir-origem-vazia`/`--allow-empty-source`), `unlink` (`--confirmar`/`--yes`, `--manter-aplicativo`/`--keep-app`) e `config` (`--substituir`/`--replace`, `--raiz`/`--root`).
+- **Localidade da comparacao sem caixa (`RF-54(e)(f)`, `F-32`)**: `C.UTF-8` e fixada **somente dentro de `_dbx_sync_chave`** (`lib/sync`, unico ponto da chave), **nunca no processo**, quando a localidade existe; a fixacao local vale sobre `LC_ALL` do ambiente e nenhuma contagem em bytes muda fora dela (`DIV-32`). Sem a localidade, a comparacao vale so no ASCII e o `sync` (so ele) emite um aviso em stderr, uma vez por execucao, sem recusar e sem alterar codigo de saida nem saida padrao.
+- **`commands/sync`, guarda de origem vazia (`RF-41(b)`, `O-1`)**: a recusa acontece **depois** do plano e antes de qualquer escrita, nos dois sentidos, e o plano traz `recusada=origem vazia`; a guarda anterior ao plano, que citava a memoria, sai. Sem `--espelhar`, origem vazia e operacao vazia com saida `0`; raiz inexistente segue recusada (`DIV-30`). A simulacao segue anunciando `recusaria=origem vazia` com codigo `0`.
+- **Fora desta fase**: poda das skills fora da stack e enxugamento de comentarios em `lib/http` e `lib/transfer` nao alteram arquitetura; o historico vai para `docs/registros`.
+
+### Trava de concorrencia e area temporaria unica (fase 2, 2026-10-19; implementada)
+
+Decisao do solicitante (`DP-36`, memoria `2026-10-19-1419-trava-de-concorrencia`); requisitos `RF-69` a `RF-71`, `RNF-35`, `RNF-36`. Componentes: **`lib/tmp`** (registro unico de areas e de acoes de limpeza; ver a linha do componente), **`lib/state`** (cria e remove o arquivo de trava no diretorio de estado, `DIV-41`, decidido) e `commands/sync` e `commands/verificar`, que passam a usar a **mesma** funcao de abertura e de encerramento (`RNF-36`).
+
+- **Onde entra no ciclo do `sync` e do `verificar`:** depois da validacao de argumentos e das recusas de caminho (que nao escrevem nem leem memoria) e **antes** de qualquer leitura de memoria, escrita ou area de dados. Sai em todo caminho: termino normal, falha, recusa por guarda, `INT`, `TERM`, `HUP`.
+- **Chave:** conta x origem canonica x destino, **sem ordem entre os sentidos** (`RF-69(a)`, `DIV-38`); a parte "conta" e um **resumo local da credencial** (`cred-` mais 32 hex de `APP_KEY` e `REFRESH_TOKEN`; `DIV-47`), nao o `account_id`, que exigiria rede e quebraria `RF-69(d)`, `RF-65(b)` e `RF-65(c)`; duas credenciais da mesma conta no mesmo diretorio de estado nao se excluem (`RSK-50`); sem credencial, marcador `sem-conta`. Arquivo `trava-<resumo>`, `0600`, no diretorio de estado `0700`. Conteudo: pid, host, inicio e comando; **nunca** segredo.
+- **Aquisicao:** gravar em temporario do mesmo diretorio e publicar por operacao atomica que falha se o destino existe, de modo que ninguem ve trava vazia ou parcial e so um processo vence a corrida.
+- **Ocupada:** recusa imediata (`conflito`/`7`, proposta), com pid, host e inicio; com `--esperar N`, sondagem de 1 s ate N s. **Orfa** (mesmo host, pid sem processo): retomada com aviso, tambem de forma exclusiva. **Outro host ou ilegivel:** nunca retomada; o `diagnostico` mostra e diz o remedio (`RF-71`).
+- **Handoff do DBA incorporado** ([parecer](../reviews/2026-10-19-1419-parecer-dba-trava.md), regra 26; aprovado com condicoes; sem migracao, `DBX_STATE_VERSAO` nao muda): criacao por `mktemp` em `.trava.*` mais `ln`, com sucesso aferido pelo mesmo inode (`-ef`) e recusa de trava que seja diretorio ou ligacao simbolica; conteudo em linha unica (`dbx-trava`, versao 1, pid, `host_id`, inicio, comando, `fim`; ate 512 bytes) lido sem `source`, `eval` nem `read` sem limite, e qualquer falha de validacao e trava **ilegivel**, nunca retomada nem apagada; `host_id` = nome do host (`$HOSTNAME`, recuo `/proc/sys/kernel/hostname`) + `boot_id` + namespace de pid; `unlink` recusa com `7` diante de trava viva e mantem as nao vivas, com aviso; retomada de orfa serializada por `trava-*.r`; ordem **trava, leitura de `memoria-*`, `mv`, liberacao**; `.trava.*` varrido apos 1 dia como `.memoria.*` e `.upload.*`; poda por idade nunca atinge trava; NFS como melhor esforco, com aviso no `diagnostico` (`RSK-49`); `ln` entra na lista do preflight (`RNF-34(g)`). Requisitos: `RF-69(j)` a `(q)`, `TC-TRV-21..36`.
+- **Liberacao:** `lib/state` cria a trava e registra em `lib/tmp` a acao de liberar **dentro da mesma secao critica** (sinais retidos), sem janela entre criar e registrar; a acao roda no tratador unico de `EXIT`, `INT`, `TERM` e `HUP`, **antes** da remocao das areas (acoes primeiro, em ordem inversa; depois areas), e confere o dono (pid e inicio) antes de apagar. A trava nao e uma area: so a acao a libera.
+- **Ordem em `lib/state` (RF-69(n)):** **trava, leitura de `memoria-*`, gravacao atomica (`mktemp` mais `mv`), liberacao**. A gravacao atomica usa `dbx_tmp_arquivo` no diretorio de estado e `dbx_tmp_esquecer` depois do `mv`; a liberacao so ocorre depois do `mv`.
+- **Diretorio de estado alheio ou sem escrita (`DIV-48`):** a execucao segue **sem trava**, com uma linha de aviso em stderr; nao recusa (coerente com `TC-EST-04`).
+- **`download` de pasta (`DIV-49`):** executa um `sync --receber` por dentro (`commands/download`) e por isso passa pelo mesmo ciclo e pega a trava do par; `download` de arquivo e os demais comandos avulsos nao travam.
+- **Ciclo unico (`RNF-36`, `C-1`):** `dbx_cmd_ciclo_iniciar` (`lib/cmd`) executa, nesta ordem, resumo local da credencial, trava, area temporaria `sync`; `sync` e `verificar` nao tem codigo gemeo.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as commands/sync ou verificar
+  participant T as lib/tmp
+  participant S as lib/state
+  participant D as diretorio de estado
+  C->>C: valida argumentos e caminho (2 ou 13 saem sem travar)
+  C->>S: adquirir trava (chave, esperar N)
+  S->>T: arma o tratador unico (EXIT, INT, TERM, HUP), uma vez por processo
+  S->>D: secao critica: grava temporario, publica de forma exclusiva e registra a liberacao
+  alt publicada
+    S-->>C: adquirida
+    C->>T: registrar a area temporaria (secao critica)
+    C->>C: le memoria, planeja, executa
+  else ocupada
+    S->>D: le pid, host, inicio
+    alt mesmo host e pid morto
+      S->>D: retoma de forma exclusiva e avisa
+      S-->>C: adquirida
+    else pid vivo, outro host ou ilegivel
+      S-->>C: ocupada (espera ate N s, sondando a cada 1 s)
+      C-->>C: recusa com conflito/7, nada lido nem escrito
+    end
+  end
+  Note over C,T: termino normal, falha ou sinal
+  T->>S: acoes em ordem inversa: libera a propria trava (confere o dono)
+  T->>T: depois remove as areas, em ordem inversa (sinal na limpeza nao a interrompe; sinal sai com 14)
+```
+
+> **Leitura do diagrama.** A trava e adquirida depois do tratador e antes de tudo o que le ou escreve, e a liberacao e uma acao do mesmo registro das areas: um sinal em qualquer ponto cai no mesmo caminho de saida. O tratador e armado na primeira aquisicao, pois e a trava quem registra a primeira acao. `SIGKILL` nao e capturavel e deixa a trava orfa, que o proximo processo do mesmo host retoma. **Decidido pelo Tech Lead:** `DIV-38` (chave sem ordem de sentido), `DIV-39` (a trava e a unica escrita permitida na simulacao e no `verificar`; o diretorio de estado termina byte a byte igual, e se a trava teve de cria-lo a liberacao o remove, vazio), `DIV-41` (`lib/state` escreve), `DIV-43` (classe `7`) e `DIV-44` (`unlink` recusa com `7` se ha trava viva no mesmo host). O parecer do DBA sai em `docs/reviews/`.
+
+### Estado local unico (fase 3, 2026-10-18)
+
+Decisoes do solicitante (`DP-34`) e recomendacoes do DBA aceitas pelo Tech Lead; um componente sai (`lib/db`), nenhum entra.
+
+- **`lib/state`, cache unico**: unico cache de `content_hash`, com os namespaces `memoria-*` (`sync`) e `upload-*` (`upload`), detalhados na tabela de componentes e no diagrama "Estado local: componentes". O `sync` deixa de consultar e gravar um segundo nivel em `lib/db`.
+- **`commands/upload`, dispensa do envio (`RF-60`)**: `get_metadata` no destino; remoto ausente envia sem calcular o hash para comparar; remoto arquivo com hash igual dispensa; diferente envia conforme o modo; falha da consulta envia; pasta remota mantem a colisao atual; `--forcar` e entrada padrao nao consultam. O cache entra **so** para obter o hash local sem reler o arquivo, e so com identidade forte (`RF-61(b)` a (d)).
+- **Chave canonica (`RF-62`)**: caminho fisico absoluto com ligacoes resolvidas para a origem do `upload` e para a raiz local do `sync`; o texto do caminho nunca entra no nome do arquivo de cache e o caminho canonizado nunca entra em decisao.
+- **`lib/auth` (`RF-63`)**: `client_secret` obrigatorio; o ramo sem segredo sai; PKCE fora (`F-35`).
+- **`lib/sync` e `commands/sync`, guardas de exclusao do `--espelhar`**: a guarda de origem vazia deixa de depender da linha de base — origem vazia (raiz local no `--enviar`, listagem remota no `--receber`) com algo a apagar e recusada sem escrita, codigo `14`, e so `--permitir-origem-vazia` a dispensa (`RF-41(b)`, `RF-53(e)`; decisao do solicitante apos `QA-P3-05..07`). Para origem parcial, a exclusao fica desabilitada na execucao quando a conta nao e identificada (`RF-41(e)`) ou quando a memoria existente e descartada ou ilegivel (`RF-41(f)`), com regravacao em v2 so apos travessia completa. A memoria deixou de ser defesa contra exclusao em massa: a recusa olha o que seria apagado agora.
+- **Fora desta fase**: paralelismo limitado e APIs em lote (`F-34`, com medicao previa). **Resolvidas pelo Tech Lead em 2026-10-18**: `DIV-26` (identidade forte tambem no `sync`, `RF-38(e)`), `DIV-27` (sem skip com `--rev`, `RF-60(i)`), `DIV-28` (sem conta, a propagacao de exclusao fica desabilitada na execucao, como em `RF-41(a)`; `--confirmar` nao reabilita; saida diferente de `0`; efeito descrito na ajuda e no `README` — `RF-41(e)`; revisao da decisao anterior "pede reconhecimento"), `DIV-29` (diretorio do usuario corrigido para `0700`, de outro dono recusado como `permissao`, `RNF-25(b1)`).
 
 ## Decisoes e trade-offs
 
@@ -413,8 +972,12 @@ Obtidas pelo QA e pelo Tech Lead apos a correcao do defeito de complexidade quad
 | **Confinamento de raiz remota na aplicacao** *(v0.2)* | (a) Confiar no confinamento da plataforma; (b) validar a raiz permitida na aplicacao | DP-04 fixou acesso amplo, o que **remove** o confinamento que a opcao de pasta do aplicativo daria. Sem controle proprio, uma rotina automatizada com caminho mal formado alcanca qualquer area da conta (RSK-19) | `lib/path` ganha responsabilidade de dominio: recusar caminho fora da raiz **antes** de qualquer chamada de rede. Custo baixo, reducao direta do raio de dano |
 | **Ordem de precedencia entre deteccao de contexto e sinalizador explicito** *(v0.2)* | (a) Deteccao de terminal sempre decide; (b) sinalizador explicito sempre prevalece | Sem a sobreposicao explicita, o caminho de saida para humano fica impossivel de exercitar em teste automatizado, que roda sem terminal associado — e justamente o caminho menos testado seria o mais visivel ao usuario | O sinalizador prevalece nos dois sentidos. Permite cobrir ambas as apresentacoes na suite (RNF-19) |
 | **Sessao em partes obrigatoria para transferencia por fluxo** *(v0.3)* | (a) Bufferizar o fluxo inteiro em disco e decidir depois entre requisicao unica e sessao; (b) usar sessao sempre | Bufferizar o fluxo inteiro anula o proposito de F-01, que existe justamente para nao exigir espaco em disco equivalente ao conteudo. A sessao aceita conteudo de tamanho desconhecido e admite conteudo pequeno sem prejuizo | Toda transferencia por fluxo emite ao menos `start` e `finish`, mesmo para poucos bytes — custo de duas chamadas extras em troca da remocao de uma restricao dura de infraestrutura |
-| **Ausencia deliberada de estado local persistente** *(v0.3)* | (a) Introduzir cache de resumos e cursores desde o inicio, antecipando funcionalidades futuras; (b) nao persistir nada alem da credencial | O escopo aprovado nao exige persistencia. Antecipa-la introduziria consistencia a recuperar apos interrupcao, migracao de formato e crescimento a dimensionar — custo real, em troca de beneficio hipotetico. A decisao mantem a secao de banco formalmente nao aplicavel | Cada execucao consulta os metadados remotos de que precisa. Custo: chamadas repetidas entre execucoes que um cache evitaria. Aceito conscientemente; e o gatilho de reabertura se DP-12 revelar volumes que tornem esse custo relevante |
+| **Ausencia deliberada de estado local persistente** *(v0.3)* — 🔴 **REVOGADA (registro historico):** revogada para o `sync` por `DP-06` (v0.8) e `DP-27b`, e superada pelo cache unico de `lib/state` (`RF-38`, `RF-61`, `RNF-26`); vale so como registro historico, fora do `sync` e do `upload` (ver "Invariante da v0.3"). Texto original preservado abaixo | (a) Introduzir cache de resumos e cursores desde o inicio, antecipando funcionalidades futuras; (b) nao persistir nada alem da credencial | O escopo aprovado nao exige persistencia. Antecipa-la introduziria consistencia a recuperar apos interrupcao, migracao de formato e crescimento a dimensionar — custo real, em troca de beneficio hipotetico. A decisao mantem a secao de banco formalmente nao aplicavel | Cada execucao consulta os metadados remotos de que precisa. Custo: chamadas repetidas entre execucoes que um cache evitaria. Aceito conscientemente; e o gatilho de reabertura se DP-12 revelar volumes que tornem esse custo relevante |
 | **Omissao por conteudo, nao por metadados** *(v0.3)* | (a) Comparar nome, tamanho e data, como o modelo; (b) comparar `content_hash` | Comparacao por metadados erra nos dois sentidos: ignora arquivo alterado que manteve tamanho e data (perda de dado) e retransmite arquivo identico cuja data mudou (desperdicio). A comparacao por conteudo e exata | Exige leitura integral e resumo do arquivo local. Custo de processamento em troca de correcao e de reducao de banda. Relevante em arquivos muito grandes, onde o resumo local pode custar mais que o envio em rede rapida — mitigado pelo sinalizador de forcar transferencia |
+| **Cache unico de `content_hash` em `lib/state`; `lib/db` removido** *(v1.5, `DP-34`)* | (a) Manter os dois caches (`lib/state` + `lib/db`); (b) so `lib/db` (SQLite); (c) so `lib/state` (arquivo NUL) | (a) duplicava o mesmo dado com chaves diferentes e custava 100–200 s de processos em 10 mil arquivos; (b) traz `sqlite3`/`python3`, contra `RNF-02`, e estado fora de `RNF-26`; (c) nao tem dependencia, ja era o estado autorizado e mede ~0,2 s em 10 mil entradas | Remove um componente e uma dependencia; o `upload` ganha namespace proprio; o `dbx.db*` legado fica inerte e documentado, sem migracao (`RNF-33`) |
+| **Cache do `upload` sem vinculo a conta** *(v1.5, `DP-34`)* | (a) Vincular a conta, com `get_current_account` por `upload`; (b) emendar `RF-52`: vinculo so para memoria com dado derivado do remoto; (c) persistir o `account_id` na credencial | O registro so guarda dado local; a protecao entre contas vem do hash remoto da conta corrente (`RF-60`). (a) custa uma requisicao por `upload`; (c) muda o formato da credencial | Sem requisicao extra; `RF-52(b)` registra a razao; o `unlink` continua apagando tudo |
+| **Identidade forte do arquivo no cache do `upload`** *(v1.5)* | (a) Tamanho e `mtime` em segundos, como antes; (b) tamanho, `mtime`/`ctime` em ns, dispositivo, inode, `stat` antes e depois e regra anti-corrida de 2 s | Com (a), reescrita no mesmo segundo e mesmo tamanho reaproveita hash obsoleto e, contra um remoto com o conteudo antigo, dispensa envio necessario (`RSK-42`) | Custo de um `stat` extra por arquivo; *(decisao do Tech Lead, `DIV-26`)* a memoria do `sync` adota tambem (b) (`RF-38(e)`) |
+| **`client_secret` obrigatorio, sem PKCE** *(v1.5, `DP-34`)* | (a) PKCE S256 sem segredo; (b) segredo obrigatorio em todo caminho | O `config` ja exigia o segredo; o ramo sem segredo da biblioteca era caminho morto e nao testado. PKCE fica como alternativa futura (`F-35`) | Um unico fluxo de autenticacao; `RNF-03` intacto |
 | Ausencia de processo residente | (a) Daemon com estado; (b) execucao por invocacao | Execucao por invocacao e compativel com agendadores, containers efemeros e ambientes headless, e elimina a superficie de um servico em execucao continua | Sem deteccao de mudanca em tempo real, exceto pelo comando de monitoramento condicional |
 
 ---
@@ -425,6 +988,13 @@ Detalhamento completo em [riscos-restricoes-e-licenciamento.md](../requisitos/ri
 
 | Risco | Impacto | Probabilidade | Mitigacao | Owner |
 |---|---|---|---|---|
+| Revogacao em cascata entre perfis de mesma identidade (`RSK-85`) | Alto | Media | `unlink` nao revoga nem remove o estado quando outro perfil tem a mesma identidade; avisa nomeando-o (`DIV-237`) | Senior Developer, QA |
+| Nome de perfil virando caminho (`RSK-87`) | Alto | Muito baixa | Validacao estrutural antes de qualquer acesso, ponto unico de composicao, auditoria e mutacao (`RNF-37`) | Senior Developer, QA |
+| Comando destrutivo no perfil errado por `DBX_PERFIL` (`RSK-88`) | Alto | Media | Aviso em stderr quando o perfil vem da variavel; `config`/`unlink` dizem o perfil; `dbx perfis` mostra `ativo` | Tech Lead |
+| Dois `sync --receber` sobre a mesma raiz local (`RSK-93`) | Alto | Media | Trava por raiz local canonica (`dev:inode`), independente de perfil (`RF-132`) | Senior Developer, QA |
+| Auditorias de `DP-05` enfraquecidas (`RSK-90`) | Alto | Media | Reescritas, nao removidas, com mutacao que pega seletor fora de `lib/config` | Senior Developer, QA |
+| `memoria-*` por `account_id` colide entre apps de tipo diferente (`RSK-91`) | Medio | Baixa | Fora da fase: `F-44` (memoria v3 faz todos os pares voltarem a "nao visto") | Tech Lead, DBA |
+| Estado nao atribuivel a um perfil e tetos globais de poda (`RSK-86`, `RSK-92`) | Medio / Baixo | Alta / Baixa | `unlink` seletivo so remove o atribuivel; poda global aceita (so desempenho) | Tech Lead, DBA |
 | ✅ Obrigacao copyleft GPLv3 por derivacao de codigo (RSK-01) | Alto | **Baixa** — mitigado por DP-01 | Reimplementacao independente. Risco residual de disciplina, endereçado por RES-02 e pela declaracao formal de nao derivacao no fechamento | Senior Developer, verificado pelo Tech Lead |
 | **Escopo funcional indefinido apesar da premissa de valor resolvida (RSK-20)** | Alto | Alta ate DP-02 ser fechada | Proposta de 22 candidatas com valor, esforco e dependencias, em folha de resposta. Recomendacao de fixar de quatro a seis no primeiro ciclo | Solicitante |
 | **Raio de exposicao ampliado pelo acesso a Dropbox inteira (RSK-19)** | Alto | Media | RNF-20: escopos minimos, confinamento de raiz em `lib/path` e confirmacao obrigatoria em operacao destrutiva. DP-11 ganha peso: o refresh token e o unico controle entre um usuario local e a conta inteira | Solicitante e Senior Developer |
@@ -438,6 +1008,10 @@ Detalhamento completo em [riscos-restricoes-e-licenciamento.md](../requisitos/ri
 | Divergencia entre utilitarios GNU e BSD (RSK-09) | Medio | Media se macOS/BSD entrarem no escopo | DP-07; camada de compatibilidade isolando chamadas de sistema; matriz de teste por plataforma | Senior Developer |
 | Corrupcao de nomes com caracteres especiais (RSK-10) | Medio | Media | `lib/path` como componente de dominio testavel; conjunto de nomes adversariais na suite | Senior Developer |
 | Manutencao de codigo shell extenso (RSK-14) | Medio | Alta sem modularizacao | RNF-13, RNF-14 e RNF-16 como criterio de aceite arquitetural | Tech Lead |
+| ✅ Skip do `upload` decidido so pelo cache (RSK-37) *(v1.5)* | Alto | Encerrado pela fase 3 | `RF-60`: dispensa so com hash remoto igual; evidencia do QA em `TC-SKP` | Tech Lead |
+| Hash local obsoleto reaproveitado (RSK-42) *(v1.5)* | Alto | Baixa | Identidade forte de `RF-61(b)` a (d) no `upload` e de `RF-38(e)` no `sync` | Senior Developer |
+| Precisao de `stat` no coreutils minimo (RSK-43) *(v1.5)* | Medio | Media | Teste no ambiente minimo; recuo textual; sem precisao, nao grava cache | Senior Developer |
+| `upload` tocando a memoria do `sync` (RSK-45) *(v1.5)* | Alto | Baixa | Namespace `upload-*`; teste de que o `upload` nao cria `memoria-*` | Senior Developer, QA |
 
 ---
 
@@ -558,6 +1132,77 @@ flowchart TD
 > **(4)** A seta de `lib/http` para `lib/errors` carrega **codigo HTTP e resumo de erro ja extraido em texto**, nunca o corpo JSON bruto. E o que preserva `lib/errors` como dominio puro e o que a inversao implementada garante *(v0.4, DIV-A.1)*.
 > **(5)** 🔴 **`lib/stream` esta desenhado desde a v0.3 e NAO FOI CRIADO** *(v1.2, `DIV-20`)*. A aresta ate ele aparece **cortada** para registrar o fato em vez de apaga-lo: `RF-31` foi implementado dentro de **`lib/transfer`** (laco de sessao, buffer de um bloco, area temporaria por `mktemp -d`) e de **`lib/hash`** (API incremental de resumo). `RF-32` — recebimento para a saida padrao — **nao foi implementado**, e onde ele vai morar continua em aberto. **O no e mantido no diagrama, e nao removido**, porque um componente planejado que nao se materializou e informacao; apaga-lo faria a proxima leitura concluir que ele nunca foi previsto.
 
+### Estado local: componentes (v1.5)
+
+```mermaid
+flowchart LR
+  subgraph CMDS[Casos de uso]
+    UP[commands/upload<br/>arquivo]
+    UPD[commands/upload<br/>diretorio]
+    SY[commands/sync]
+    UN[commands/unlink]
+  end
+
+  subgraph ST[lib/state - cache unico de content_hash]
+    NSY[namespace memoria-*<br/>por conta + raiz local canonica + raiz remota<br/>so entradas visitadas]
+    NUP[namespace upload-*<br/>por origem canonica, sem conta<br/>identidade forte, poda 10 mil / 90 dias]
+  end
+
+  DIR[(XDG_STATE_HOME/dbx<br/>diretorio 0700, arquivos 0600)]
+  LEG[(dbx.db, -wal, -shm<br/>legado inerte)]
+  DB[lib/db<br/>REMOVIDO v1.5]
+  HTTP[lib/http]
+  EXT[(Dropbox API v2)]
+
+  UP -->|hash local, so com remoto existente| NUP
+  UP -->|get_metadata: content_hash remoto decide| HTTP
+  UPD -->|delega| SY
+  SY -->|sem conta: nao le nem grava| NSY
+  SY -->|get_current_account| HTTP
+  HTTP --> EXT
+  NSY --> DIR
+  NUP --> DIR
+  UN -->|remove o diretorio inteiro| DIR
+  LEG -.fica no diretorio e nada o le nem escreve.-> DIR
+  UP -.-x DB
+  SY -.-x DB
+
+  style DB stroke-dasharray: 5 5
+  style LEG stroke-dasharray: 5 5
+```
+
+> **Leitura do diagrama.** O `upload` de arquivo e o `sync` escrevem em namespaces separados do mesmo componente; o `upload` nunca toca `memoria-*`, que e de onde `RF-48` deriva "par visto". O `upload` de diretorio delega ao `sync`. O `lib/db` aparece cortado para registrar a remocao, e o `dbx.db*` como legado inerte que so o `unlink` remove.
+
+### Ciclo de leitura e escrita do cache (v1.5, do parecer do DBA)
+
+```mermaid
+flowchart TD
+  subgraph Upload["upload de arquivo (RF-60, RF-61)"]
+    U0{"--forcar, origem '-', nao regular ou vazia?"} -->|sim| UE[envia sem cache e sem comparar]
+    U0 -->|nao| U1[get_metadata remoto]
+    U1 -->|not_found ou falha da consulta| UE2[envia sem precisar do hash local]
+    U1 -->|pasta| UC[comportamento atual de colisao]
+    U1 -->|arquivo| U2[stat antes e carga do upload-resumo da origem canonica]
+    U2 -->|identidade casa| U3[hash do cache]
+    U2 -->|nao casa, corrompido ou ausente| U4[calcula hash e stat depois]
+    U3 --> U5{hash local = hash remoto?}
+    U4 --> U5
+    U5 -->|sim| U6[dispensa o envio]
+    U5 -->|nao| U7[envia conforme o modo]
+    U4 -->|stat estavel e mtime a mais de 2 s| U8[grava upload-* atomico por mktemp + mv<br/>poda se houver mais de 10 mil]
+  end
+  subgraph Sync["sync (RF-38, RF-52)"]
+    S0{conta identificada?} -->|nao| SN[segue sem memoria]
+    S0 -->|sim| S1[carrega memoria-resumo da tripla e descarta se invalida]
+    S1 --> S2[travessia: consulta o mapa em memoria]
+    S2 -->|casa| S3[reaproveita hash]
+    S2 -->|nao casa| S4[calcula e registra no mapa]
+    S3 --> S5[decide comparando origem e destino]
+    S4 --> S5
+    S5 --> S6[grava uma vez no fim: so entradas visitadas se a travessia foi completa]
+  end
+```
+
 ### Selecao da apresentacao de saida
 
 ```mermaid
@@ -624,7 +1269,7 @@ flowchart TD
     C -->|Sim| E[upload_session/start]
     E --> F[append_v2 por parte<br/>multiplo de 4 MB]
     F --> G{Parte falhou?}
-    G -->|Sim, transitoria| H[Recuo e reenvio da parte<br/>ate 3 tentativas]
+    G -->|Sim, transitoria| H[Recuo e reenvio da parte<br/>ate 5 tentativas, base 1 s, teto 60 s;<br/>Retry-After prevalece, ate 300 s]
     H --> F
     G -->|Nao| I{Ultima parte?}
     I -->|Nao| F
@@ -644,28 +1289,76 @@ flowchart LR
   UX[UX Expert] -.nao aplicavel<br/>sem interface grafica.-> DS[Design System]
   DS -.-> SD
   UXC[UX Expert - recomendado] -->|padrao de experiencia de CLI| SD
-  DBA[DBA] -.nao aplicavel<br/>sem banco de dados.-> SD
+  DBA[DBA] -->|plano do estado local<br/>handoff v1.5, regra 26| SD
   SD --> QA[Validacao QA<br/>desvio de Cypress justificado]
   QA --> TL[Aceite do Tech Lead]
   SOL[Solicitante] -->|decisoes pendentes P0| SD
   SOL -->|aprovacao dos testes| TL
 
   style DS stroke-dasharray: 5 5
-  style DBA stroke-dasharray: 5 5
 ```
 
 ---
+
+## Desempenho: paralelismo, lote e bancada (fase 9, v1.25)
+
+Visao apenas; o detalhe tecnico e do Senior Developer. Requisitos: secao 5.18 do escopo (`RF-133` a `RF-139`, `RNF-21` emendado, `RNF-38`).
+
+```mermaid
+flowchart TD
+  L[Listagem sequencial RES-11] --> P[Plano do sync]
+  P --> G[Guardas: origem vazia, reconhecimento, confirmar]
+  G --> T[Transferencias com --paralelo N, max 8]
+  G --> E[Exclusao em lote: delete_batch + check]
+  G --> U[Envio em lote: upload_session + finish_batch_v2]
+  T --> R[Processo principal serializa cache, trava e resumo]
+  E --> R
+  U --> R
+  R --> S[Saida item a item]
+  B[Bancada: pasta dedicada, ok do solicitante] -. mede .-> T
+```
+
+**Desenho implementado.** O diagrama acima mostra a intencao; a implementacao difere em `reter` e no componente de lote:
+
+- **Componente novo `lib/lote.sh`** (camada de adaptadores; depende de `lib/auth`, `lib/http`, `lib/json`). Expoe `dbx_lote_excluir` (`delete_batch` + `delete_batch/check`) e `dbx_lote_concluir_envio` (`finish_batch_v2`). Nao guarda estado entre execucoes (`DIV-263`, `RNF-38(c)`). A guarda destrutiva nao mora nele: quem chama entrega uma lista que ja passou por todas as guardas, identificada por caminho canonico e `rev`.
+- **Processo principal e auxiliares.** Com `--paralelo N` (1 a 8), as transferencias rodam em ate N processos auxiliares; N=1 nao cria auxiliar. O auxiliar devolve o resultado do item e nunca escreve estado; so o principal grava cache, trava, memoria e resumo, e descarrega a saida na ordem do plano (`DIV-257`). A listagem continua sequencial (`RNF-21`).
+- **Exclusao em lote, so no `sync --espelhar`.** Depois das guardas (origem vazia, reconhecimento, `--confirmar`, protegido), a lista segue em fatias de 250 (`DIV-259`). Cada fatia faz `delete_batch` e depois `check` com recuo de 1 s dobrando ate 10 s e teto de 120 s por fatia (`DIV-262`). Em `complete`, a conferencia e por posicao: so a entrada confirmada conta; entrada com erro, ausente ou de tag desconhecida e falha do item. Estouro do teto ou falha de chamada derruba a fatia inteira, sem repetir a exclusao (`DIV-273`).
+- **`reter` item a item.** Continua com `delete_v2` por item e `RF-97` intacto (`DIV-269`, decisao do solicitante); nao usa `lib/lote.sh`.
+- **Envio em lote de pequenos, no `sync --enviar`.** Pequeno e ate 1 MiB e o lote so ocorre com 2 ou mais (`DIV-256`, `DIV-272`); o skip por `content_hash` vem antes. Os `upload_session/start` rodam nos auxiliares (com `content_hash` local, `DIV-278`); o `finish_batch_v2` roda so no principal, em serie, em grupos de 250 (`DIV-264`, `DIV-270`), apos todos os `start` (`DIV-277`). Cada entrada devolvida tem o `content_hash` conferido com o local: divergente falha so o item com a classe `integridade`. Falha por entrada nao derruba as demais.
+- **Bancada (`scripts/bancada.sh`).** Script POSIX fora da suite, que gera o volume de semente fixa, mede `sync` e `reter` e imprime `chave=valor`. Opera so numa pasta remota dedicada, criada com marcador e recusada se ja existir sem ele; `trap` em `EXIT`, `INT` e `TERM` faz a limpeza; exige `--confirmo-conta-real` a cada execucao (`DIV-265`); os logs passam por mascara de segredo.
+
+```mermaid
+sequenceDiagram
+  participant P as Processo principal
+  participant A as Auxiliares (ate N)
+  participant D as Dropbox API
+  P->>P: plano, guardas, skip por content_hash
+  P->>A: pequenos (>= 2, ate 1 MiB)
+  par ate N em paralelo
+    A->>D: upload_session/start (bytes, content_hash local)
+    D-->>A: session_id
+  end
+  A-->>P: resultado por item (sem escrever estado)
+  loop grupos de 250
+    P->>D: upload_session/finish_batch_v2 (close=true)
+    D-->>P: um resultado por entrada
+    P->>P: confere content_hash; divergente = falha integridade
+  end
+  P->>P: grava cache so das entradas confirmadas, saida na ordem do plano
+```
+
+Componentes: `commands/sync` monta as listas ja guardadas; `lib/transfer` executa as transferencias e fixa o limiar de pequeno; `lib/lote` executa a exclusao e o fechamento do envio em lote; `lib/http` mantem retentativa e `Retry-After`; `lib/state` so e escrito pelo processo principal; a bancada e um script separado da suite (`DIV-265`). Metadados em lote ficam fora (`F-46`) e a conferencia de `content_hash` no `files/upload` unitario vai ao backlog (`F-47`, `DIV-280`). Interrupcao durante o `check` pode deixar a fatia apagada no servidor sem contagem; sai `14` e os itens vao para a lixeira (`DIV-275`).
 
 ## Proximos passos
 
 1. ⚠️ **Fechar `DP-20` — titular do copyright.** O `LICENSE` ja foi publicado com o titular em espaco reservado, e o placeholder esta no historico publico. E a **unica pendencia do projeto com custo crescente**: formalizar encarece a cada commit e a cada contribuidor.
 2. **Executar a Etapa 2**, agora quase integralmente destravada: `lib/output` (DIV-16b), `lib/json` (DP-08), `lib/preflight` (DP-07 e DP-11), `lib/config` (DP-11), alem de `lib/http`, `lib/auth` e `lib/tmp`. Sequencia completa em [decisoes-pendentes.md](../requisitos/decisoes-pendentes.md).
 3. ✅ **`RSK-24` encerrado.** A reavaliacao ocorreu **com `DP-07` ja resolvida**, e o solicitante reconfirmou o aceite com base apenas nos dois argumentos tecnicos validos. O argumento de portabilidade nao integra mais a fundamentacao.
-4. ✅ **`DP-05` resolvida.** Uma conta so, sem perfis. `lib/config` tem desenho fechado.
+4. ✅ **`DP-05` resolvida, e reaberta e resolvida de novo em 2026-10-21 (fase 8).** A decisao original (uma conta so) foi substituida por perfis nomeados; ver a secao "Perfis nomeados de credencial". `memoria-*` por `account_id` fica para `F-44`.
 5. **Ao implementar `lib/http`, tratar `RNF-23` como restricao de projeto**, e nao como detalhe do analisador: `limit`/`max_results` explicito em toda chamada de colecao, dimensionado ao teto de 256 KiB.
 5. Confirmar a pendencia residual de DIV-14 — escopo OAuth exigido por `files/search_v2`, `sharing/create_shared_link_with_settings`, `users/get_current_account` e `users/get_space_usage` — durante a implementacao. Baixo risco: ausencia produz `401` explicito.
 6. Substituir as premissas provisorias da secao de dimensionamento pelos valores reais de DP-12.
 7. Reabrir a secao de dimensionamento com os limites observados nos testes de exaustao do QA Expert.
 8. Acionar o UX Expert para o padrao de experiencia de linha de comando, incluindo a especificacao das duas apresentacoes exigidas por RF-28, e reabrir integralmente a secao de Design System caso DP-13 aprove o shell interativo.
-9. **Vigiar a invariante de ausencia de estado local durante a implementacao** (RSK-23). O DBA so e acionado se uma funcionalidade do backlog que exija persistencia for promovida.
+9. **Vigiar a invariante de ausencia de estado local durante a implementacao** (RSK-23). O DBA so e acionado se uma funcionalidade do backlog que exija persistencia for promovida. *(v1.5)* O invariante vigente e "nenhum artefato persistente decide" (`RNF-26`); `DIV-26` a `DIV-29` resolvidas pelo Tech Lead em 2026-10-18.
 10. Atualizar este documento a cada mudanca de arquitetura, implantacao, capacidade ou integracao.

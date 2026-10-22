@@ -40,9 +40,9 @@
 # Nao ha nenhum cano em todo o caminho de calculo, portanto nao existe status de
 # pipeline a mascarar erro. Custo: uma escrita e uma leitura adicionais por
 # bloco, absorvidas pelo cache de paginas e despreziveis diante da transferencia
-# de rede que este resumo acompanha. O buffer fica em area criada por `mktemp`,
-# com permissao restrita e removida por `trap`, inclusive em interrupcao
-# (RNF-05). Quando lib/tmp existir, esta area deve migrar para la.
+# de rede que este resumo acompanha. O buffer fica em area de `lib/tmp`
+# (`dbx-hash.*`, 0700), removida em todo termino, inclusive em interrupcao
+# (RNF-05, RNF-35).
 #
 # Contrato de status de saida — alinhado a taxonomia de RF-29, para que um
 # status propagado ao orquestrador nunca signifique duas coisas diferentes:
@@ -66,6 +66,8 @@ _dbx_hash_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_hash_diretorio=$(cd -P -- "$_dbx_hash_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_hash_diretorio/errors.sh"
+# shellcheck source=lib/tmp.sh
+. "$_dbx_hash_diretorio/tmp.sh"
 unset _dbx_hash_diretorio
 
 readonly DBX_HASH_TAMANHO_BLOCO=4194304
@@ -94,6 +96,10 @@ DBX_HASH_RESULTADO=''
 # shellcheck disable=SC2034
 # Justificativa: total de bytes acumulados, exigido por RF-31 e lido por lib/transfer.
 DBX_HASH_BYTES=0
+# shellcheck disable=SC2034
+# Justificativa: SHA-256 do ultimo bloco acumulado (fase 7a), o da parte em voo
+# no registro de retomada (RF-103(a)), sem reler o bloco; lido por lib/transfer.
+DBX_HASH_ULTIMO_BLOCO=''
 
 # ---------------------------------------------------------------------------
 # Utilitario de resumo
@@ -220,6 +226,8 @@ dbx_hash_acumular_bloco() {
 
   hex=$(_dbx_hash_sha256_hex <"$caminho") || return "$DBX_HASH_ERRO_RESUMO"
   _dbx_hash_anexar_escapes "$hex"
+  # shellcheck disable=SC2034  # canal publico, lido por lib/transfer (fase 7a)
+  DBX_HASH_ULTIMO_BLOCO=$hex
   DBX_HASH_BYTES=$((DBX_HASH_BYTES + tamanho))
   return "$DBX_HASH_OK"
 }
@@ -255,26 +263,20 @@ dbx_hash_acumular_encerrar() {
 }
 
 # _dbx_hash_calcular — le a entrada padrao e imprime "<content_hash> <bytes>".
-# Deve ser invocada em subshell (o que a substituicao de comando ja garante),
-# para que o `trap` de limpeza tenha escopo proprio e nao substitua o do chamador.
+# Deve ser invocada em subshell (o que a substituicao de comando ja garante):
+# o `umask` dela nao vaza, e a area que ela registra em `lib/tmp` e do subshell
+# e sai com ele, sem tocar no registro de quem chamou.
 _dbx_hash_calcular() {
   local buffer tamanho
 
   dbx_hash_verificar_dependencias || return "$DBX_HASH_ERRO_DEPENDENCIA"
 
   umask 077
-  # DELIBERADAMENTE global, e nao `local`: a acao do `trap` e avaliada quando o
-  # subshell encerra, momento em que o escopo da funcao ja nao existe. Com uma
-  # variavel local, `$area` expandiria para vazio e a limpeza nao removeria
-  # nada, deixando residuo a cada calculo — defeito que o caso
-  # `nao_deixa_residuo_temporario` capturou.
   # Area temporaria indisponivel e problema do HOST, nao recurso remoto ausente.
   # Classificar como `nao_encontrado` mandava investigar a Dropbox por falha de
   # disco local.
-  DBX_HASH_AREA_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/dbx-hash.XXXXXXXX") ||
-    return "$DBX_HASH_ERRO_DEPENDENCIA"
-  trap 'rm -rf "$DBX_HASH_AREA_TEMP"' EXIT INT TERM HUP
-  buffer="$DBX_HASH_AREA_TEMP/bloco"
+  dbx_tmp_area hash || return "$DBX_HASH_ERRO_DEPENDENCIA"
+  buffer="$DBX_TMP_CAMINHO/bloco"
 
   dbx_hash_acumular_iniciar || return $?
   while :; do
@@ -339,10 +341,66 @@ dbx_hash_conteudo_arquivo() {
   dbx_hash_conteudo_fluxo <"$1"
 }
 
+# dbx_hash_publicar_arquivo <caminho> — content_hash de um arquivo local,
+# publicado em DBX_HASH_RESULTADO em vez de impresso.
+#
+# Para quem nao pode capturar a saida de `dbx_hash_conteudo_arquivo`: a captura
+# por substituicao de comando e reprovada pela auditoria de RNF-24 fora do
+# alfabeto fechado. A unica captura aqui e a do calculo, que devolve so hex e
+# digitos, e roda em subshell para o `trap` e o `umask` dele nao vazarem.
+dbx_hash_publicar_arquivo() {
+  local saida
+  DBX_HASH_RESULTADO=''
+  _dbx_hash_validar_origem "$@" || return $?
+  saida=$(_dbx_hash_calcular <"$1") || return $?
+  DBX_HASH_RESULTADO=${saida%% *}
+  return "$DBX_HASH_OK"
+}
+
 # dbx_hash_conteudo_arquivo_com_tamanho <caminho>
 dbx_hash_conteudo_arquivo_com_tamanho() {
   _dbx_hash_validar_origem "$@" || return $?
   dbx_hash_conteudo_fluxo_com_tamanho <"$1"
+}
+
+# IDENTIDADE FORTE DO ARQUIVO (RF-38(e), RF-61(b); fase 3)
+#
+#   `mtime` em segundos, `mtime` e `ctime` com nanossegundos, dispositivo, inode
+#   e tamanho, separados por `|`. E o que decide se um `content_hash` ja
+#   calculado pode ser REAPROVEITADO sem reler o arquivo — a memoria do `sync` e
+#   o cache do `upload` comparam esta cadeia. `mtime` em segundos nao distingue
+#   reescrita no mesmo segundo com o mesmo tamanho, e o `mtime` pode ser
+#   restaurado por `touch -d`; o `ctime` nao.
+#
+#   O texto de `%y`/`%z`, e nao `%.9Y`, porque e exato nos dois coreutils:
+#   medido no uutils 0.8.0, `%.9Y` arredonda os nanossegundos por ponto
+#   flutuante (`.123456789` vira `.123456700`). O primeiro campo, em segundos,
+#   e o que a regra anti-corrida de `lib/state` compara com o relogio.
+#
+#   DEFINICAO UNICA, no dominio do resumo: a travessia (`lib/walk`) a le na
+#   mesma leitura de `stat` que ja fazia por arquivo, o `upload` e o `sync` a
+#   releem depois do calculo, e `lib/state` so compara cadeias. Morar aqui, e
+#   nao num dos consumidores, mantem as dependencias apontando para o dominio.
+readonly DBX_HASH_FORMATO_IDENTIDADE='%Y|%y|%z|%d|%i|%s'
+DBX_HASH_IDENTIDADE=''
+DBX_HASH_TAMANHO_ARQUIVO=''
+
+# dbx_hash_identidade <arquivo> — publica DBX_HASH_IDENTIDADE e
+# DBX_HASH_TAMANHO_ARQUIVO numa leitura so. Status diferente de zero, com os dois
+# canais vazios, quando o `stat` falha.
+dbx_hash_identidade() {
+  [[ $# -eq 1 ]] || return "$DBX_HASH_ERRO_USO"
+  local leitura
+  DBX_HASH_IDENTIDADE=''
+  DBX_HASH_TAMANHO_ARQUIVO=''
+  leitura=$(stat -c "%s"$'\t'"$DBX_HASH_FORMATO_IDENTIDADE" -- "$1" 2>/dev/null) ||
+    return "$DBX_HASH_ERRO_ORIGEM"
+  [[ $leitura == *$'\t'* ]] || return "$DBX_HASH_ERRO_ORIGEM"
+  # shellcheck disable=SC2034  # canais publicos, lidos por lib/walk e pelos comandos
+  DBX_HASH_TAMANHO_ARQUIVO=${leitura%%$'\t'*}
+  # shellcheck disable=SC2034
+  DBX_HASH_IDENTIDADE=${leitura#*$'\t'}
+  return "$DBX_HASH_OK"
 }
 
 # dbx_hash_formato_valido <valor> — 0 se for um content_hash bem formado.

@@ -6,15 +6,45 @@
 # aqui.
 set -u
 
+# RAIZ DO PROJETO ANTES DO DESPACHO, SO COM O SHELL (RF-66(e), RNF-02)
+#
+#   Nada aqui pode depender de utilitario externo: o `diagnostico` precisa
+#   rodar justamente quando falta um deles, e o preflight precisa chegar a
+#   nomear o que falta. O diretorio sai por expansao de parametro (`${x%/*}`,
+#   no lugar de `dirname`) e `cd -P`/`pwd -P`, que sao do shell.
+#
+#   LIMITE DECLARADO: o shell nao le o alvo de um vinculo simbolico. Quando o
+#   `dbx` e chamado pelo vinculo que o `install.sh` cria, o alvo e lido por
+#   `readlink` e, na falta dele, por `find -printf %l`; sem os dois, a recusa e
+#   explicita e nomeia o que instalar. Chamar `bin/dbx` pelo caminho real nao
+#   depende de nenhum dos dois.
 _dbx_fonte=${BASH_SOURCE[0]}
+_dbx_saltos=0
 while [[ -L $_dbx_fonte ]]; do
-  _dbx_dir=$(cd -P -- "$(dirname -- "$_dbx_fonte")" && pwd -P)
-  _dbx_fonte=$(readlink "$_dbx_fonte")
+  _dbx_saltos=$((_dbx_saltos + 1))
+  [[ $_dbx_saltos -le 40 ]] || {
+    printf 'dbx: vinculos simbolicos demais ate o ponto de entrada: %s\n' "${BASH_SOURCE[0]}" >&2
+    exit 3
+  }
+  _dbx_dir=${_dbx_fonte%/*}
+  [[ $_dbx_dir == "$_dbx_fonte" ]] && _dbx_dir=.
+  _dbx_dir=$(cd -P -- "${_dbx_dir:-/}" && pwd -P)
+  if command -v readlink >/dev/null 2>&1; then
+    _dbx_fonte=$(readlink -- "$_dbx_fonte")
+  elif command -v find >/dev/null 2>&1; then
+    _dbx_fonte=$(find "$_dbx_fonte" -maxdepth 0 -printf '%l')
+  else
+    printf 'dbx: o ponto de entrada e vinculo simbolico (%s) e nem readlink nem find estao disponiveis para resolve-lo; instale o utilitario readlink ou chame %s pelo caminho real\n' \
+      "${BASH_SOURCE[0]}" 'bin/dbx' >&2
+    exit 3
+  fi
   [[ $_dbx_fonte != /* ]] && _dbx_fonte="$_dbx_dir/$_dbx_fonte"
 done
-DBX_CLI_RAIZ=$(cd -P -- "$(dirname -- "$_dbx_fonte")/.." && pwd -P)
+_dbx_dir=${_dbx_fonte%/*}
+[[ $_dbx_dir == "$_dbx_fonte" ]] && _dbx_dir=.
+DBX_CLI_RAIZ=$(cd -P -- "${_dbx_dir:-/}/.." && pwd -P)
 export DBX_CLI_RAIZ
-unset _dbx_fonte _dbx_dir
+unset _dbx_fonte _dbx_dir _dbx_saltos
 
 # shellcheck source=lib/errors.sh
 . "$DBX_CLI_RAIZ/lib/errors.sh"
@@ -51,6 +81,11 @@ dbx_carregar_camada_de_credencial() {
   . "$DBX_CLI_RAIZ/lib/auth.sh"
   # shellcheck source=lib/cmd.sh
   . "$DBX_CLI_RAIZ/lib/cmd.sh"
+  # RNF-30(c), RNF-07(e): ajuste de rede invalido para a execucao ANTES de
+  # qualquer chamada, inclusive a renovacao do token, com a variavel e o valor
+  # no diagnostico. `lib/http` repete a guarda em cada requisicao; aqui ela so
+  # ganha a mensagem que o comando nao saberia dar.
+  dbx_http_validar_ambiente || _dbx_falhar uso_invalido "$DBX_HTTP_MOTIVO_AMBIENTE"
 }
 
 _dbx_falhar() {
@@ -61,6 +96,64 @@ _dbx_falhar() {
   dbx_output_diagnostico erro "$texto"
   dbx_output_render_diagnostico >&2
   exit "$(dbx_errors_codigo_saida "$classe")"
+}
+
+# Trechos de ajuda comuns a mais de um comando (RF-83): uma fonte so, para o
+# texto de `sync`, `verificar`, `download` e `upload` nao divergir.
+_dbx_ajuda_filtros() {
+  printf '%s\n' \
+    'Filtros de caminho (RF-79, RF-80; sintaxe do .gitignore, sem caixa):' \
+    '  O padrao e comparado com o caminho relativo a raiz, nos dois lados. Sem /, casa' \
+    '  o nome em qualquer nivel (*.log); / no inicio ou no meio ancora na raiz' \
+    '  (/build, doc/a.txt); / no fim casa so pasta e tudo abaixo dela (cache/).' \
+    '  * nao cruza /; ? e um caractere; [abc], [a-z], [!0-9]; ** no inicio (**/tmp),' \
+    '  no fim (build/**) ou no meio (a/**/b) cruza pastas; \ torna literal o seguinte.' \
+    '  --excluir e --incluir sao repetiveis e acumulam; a exclusao vence a inclusao;' \
+    '  com algum --incluir, so o que casa entra. Pasta excluida nao e percorrida.' \
+    '  Desvios do gitignore: sem ! (use --incluir), # e espaco final sao literais,' \
+    '  classe [[:alpha:]] e recusada; ate 64 padroes de ate 1024 bytes.' \
+    '  item filtrado nunca e apagado no espelhamento; remover um filtro devolve os itens ao escopo' \
+    '  (e eles voltam a seguir a regra normal, inclusive a exclusao do --espelhar).' \
+    '  A comparacao NAO normaliza Unicode: NFC e NFD sao grafias distintas (um e' \
+    '  acentuado composto nao casa o decomposto), e o item numa grafia que o padrao' \
+    '  nao casa fica no escopo, inclusive para a exclusao do --espelhar (RF-79(h)).' \
+    '  Exemplos: --excluir '"'"'*.tmp'"'"' --excluir cache/   |   --incluir '"'"'*.pdf'"'"''
+}
+
+_dbx_ajuda_data_tamanho() {
+  printf '%s\n' \
+    'Filtros de data e tamanho (RF-81; so arquivos da ORIGEM, pastas sempre percorridas):' \
+    '  Data AAAA-MM-DD ou AAAA-MM-DDTHH:MM:SSZ (UTC), limites inclusivos; o dia sozinho' \
+    '  vale 00:00:00 no --modificado-desde e 23:59:59 no --modificado-ate. Local: mtime;' \
+    '  remoto: server_modified (quando o Dropbox recebeu a versao). Tamanho em bytes ou' \
+    '  com K, M ou G (base 1024), limites inclusivos. Junto de --espelhar sao recusados' \
+    '  (codigo 2): avaliam so a origem e fariam o espelhamento apagar no destino.'
+}
+
+_dbx_ajuda_banda() {
+  printf '%s\n' \
+    'Limite de banda (RF-82):' \
+    '  --limite-banda TAXA (alias --bwlimit) em bytes/s (numero sem sufixo e bytes/s,' \
+    '  nao KiB/s como no rsync), com K, M ou G em base 1024. Piso: 2 x' \
+    '  DBX_HTTP_VELOCIDADE_MINIMA_BPS (2048 bytes/s no padrao). Sem a opcao, vale a' \
+    '  variavel DBX_LIMITE_BANDA; a opcao vence. Para desligar o padrao numa chamada:' \
+    '  env -u DBX_LIMITE_BANDA dbx ... O limite vale por transferencia (so conteudo);' \
+    '  duas execucoes simultaneas somam.'
+}
+
+# _dbx_ajuda_retomada — RF-108(c) (fase 7a, F-03), a mesma em upload e download.
+_dbx_ajuda_retomada() {
+  # shellcheck disable=SC2016  # o nome da variavel e texto literal da ajuda
+  printf '%s\n' \
+    'Retomada (F-03), para arquivo acima de 150 MiB (nao vale para pasta, entrada ou' \
+    'saida padrao, sync nem --dry-run):' \
+    '  - uma transferencia grande interrompida continua de onde parou na proxima execucao com os mesmos argumentos;' \
+    '  - o upload so continua se o arquivo local nao mudou; ao final, o content_hash e conferido;' \
+    '  - o destino so muda depois de conferido o content_hash (o parcial do download' \
+    '    fica junto do destino: .<nome>.dbx-part.XXXXXX, 0600);' \
+    '  - use --sem-retomada para comecar do zero.' \
+    '  O estado fica em $XDG_STATE_HOME/dbx (retomada-*, 0600, sem segredo); apaga-lo' \
+    '  a mao (e o parcial) so faz a proxima execucao recomecar do zero.'
 }
 
 dbx_cli_analisar "$@" || _dbx_falhar uso_invalido "$DBX_CLI_MOTIVO"
@@ -81,10 +174,12 @@ case $DBX_CLI_COMANDO in
     exit 0
     ;;
   help)
-    _dbx_subcomando=${DBX_CLI_ARGS[0]:-}
+    # O alias em ingles mostra a mesma ajuda do nome em portugues.
+    dbx_cli_canonico "${DBX_CLI_ARGS[0]:-}"
+    _dbx_subcomando=$DBX_CLI_CANONICO
     case $_dbx_subcomando in
       upload)
-        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--progresso] <origem> <destino>\n\n'
+        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--limite-banda | --bwlimit <taxa>] [--sem-retomada | --no-resume] [--progresso] <origem> <destino>\n\n'
         printf 'Envia arquivo local ou conteudo da entrada padrao (-) para o caminho remoto.\n\n'
         printf 'Argumentos:\n'
         printf '  origem   Caminho de arquivo local ou "-" para entrada padrao (stdin)\n'
@@ -92,8 +187,22 @@ case $DBX_CLI_COMANDO in
         printf 'Opcoes:\n'
         printf '  --modo, --mode <add|overwrite>  Modo de escrita (padrao: add)\n'
         printf '  --rev <rev>                     Revisao esperada para controle de conflito\n'
+        printf '  --forcar, --force               Pula as checagens previas: comparacao por\n'
+        printf '                                  content_hash e espaco livre da conta\n'
+        printf '  --limite-banda, --bwlimit <taxa>\n'
+        printf '                                  Limite de banda por transferencia, em bytes/s\n'
+        printf '  --sem-retomada, --no-resume     Comeca do zero: nao le, nao grava nem apaga o\n'
+        printf '                                  estado de retomada\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        _dbx_ajuda_banda
+        printf '\n'
+        _dbx_ajuda_retomada
+        printf '\n'
+        printf 'Espaco livre (RF-67):\n'
+        printf '  Antes de enviar, uma consulta ao espaco da conta; se o arquivo nao cabe, o\n'
+        printf '  envio e recusado com codigo 12, sem escrever nada. Com --dry-run, so avisa.\n'
+        printf '  A entrada padrao (-) nao e checada. Falha na consulta so avisa.\n\n'
         printf 'Recomendacao operacional (RSK-36):\n'
         printf '  Ao enviar pela entrada padrao via encadeamento (pipe):\n'
         printf '    tar czf - /dados | dbx upload - /destino.tgz\n'
@@ -102,39 +211,162 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       config)
-        printf 'Uso: dbx config [--substituir] [--raiz <caminho>] [--debug]\n\n'
+        printf 'Uso: dbx config [--perfil | --profile <nome>] [--substituir | --replace] [--raiz | --root <caminho>] [--debug]\n\n'
         printf 'Configura credencial e pareamento com a conta do Dropbox via fluxo OAuth2 offline.\n'
+        printf 'Sem --perfil grava o perfil padrao (credencial.json); com --perfil <nome> cria\n'
+        printf 'perfis/<nome>.json (veja dbx help perfis). O nome pode vir antes ou depois de config.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --perfil, --profile <nome>      Perfil da credencial (1 a 32 de a-z, 0-9, _ e -)\n'
+        printf '  --substituir, --replace         Troca a credencial existente (o token antigo NAO e revogado)\n'
+        printf '  --raiz, --root <caminho>        Raiz remota gravada na credencial (padrao: /)\n'
+        printf '  --debug                         Diagnostico do ambiente em stderr\n'
         exit 0
         ;;
       unlink)
-        printf 'Uso: dbx unlink [--confirmar] [--manter-aplicativo]\n\n'
+        printf 'Uso: dbx unlink [--perfil | --profile <nome>] [--confirmar | --yes] [--manter-aplicativo | --keep-app]\n\n'
         printf 'Revoga o vinculo com a conta remota e limpa a credencial local.\n'
+        printf 'Com sync ou verificar em curso neste host, recusa com codigo 7 sem apagar nada;\n'
+        printf 'trava orfa, ilegivel ou de outro host fica, com um aviso por trava.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --perfil, --profile <nome>      Desvincula so este perfil (o nome pode vir antes ou depois de unlink)\n'
+        printf '  --confirmar, --yes              Confirma o desvinculo sem terminal interativo\n'
+        printf '  --manter-aplicativo, --keep-app Preserva app key e app secret para religar\n'
         exit 0
         ;;
       sync)
-        printf 'Uso: dbx sync (--enviar | --receber) --origem <dir> --destino <dir> [--espelhar] [--reconhecer-primeira-execucao] [--progresso]\n\n'
+        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--esperar | --wait <s>] [--excluir <padrao>]... [--incluir <padrao>]... [--modificado-desde <data>] [--modificado-ate <data>] [--tamanho-min <tam>] [--tamanho-max <tam>] [--limite-banda <taxa>] [--paralelo <n>] [--sem-cursor | --no-cursor | --varredura-completa | --full-scan] [--progresso]\n\n'
         printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n\n'
-        printf 'Opcoes:\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues; podem ser misturados):\n'
+        printf '  --enviar, --push                Origem local, destino remoto\n'
+        printf '  --receber, --pull               Origem remota, destino local\n'
+        printf '  --origem, --source <dir>        Lado que manda (obrigatorio)\n'
+        printf '  --destino, --dest <dir>         Lado que recebe (obrigatorio)\n'
+        printf '  --espelhar, --mirror            Apaga no destino o que nao existe na origem\n'
+        printf '  --confirmar, --yes              Reconhece a primeira execucao com --espelhar\n'
+        printf '  --permitir-origem-vazia, --allow-empty-source\n'
+        printf '                                  Permite espelhar uma origem VAZIA (apaga o destino)\n'
+        printf '  --forcar, --force               So com --enviar: pula a checagem de espaco livre\n'
+        printf '  --esperar, --wait <s>           Espera ate <s> segundos (0 a 3600) pela trava do par\n'
+        printf '  --excluir, --exclude <padrao>   Tira do escopo o que casa (repetivel; veja Filtros)\n'
+        printf '  --incluir, --include <padrao>   So o que casa entra no escopo (repetivel)\n'
+        printf '  --modificado-desde, --modified-since <data>\n'
+        printf '                                  So arquivos da origem modificados desde a data\n'
+        printf '  --modificado-ate, --modified-until <data>\n'
+        printf '                                  So arquivos da origem modificados ate a data\n'
+        printf '  --tamanho-min, --min-size <tam> So arquivos da origem com ao menos <tam>\n'
+        printf '  --tamanho-max, --max-size <tam> So arquivos da origem com no maximo <tam>\n'
+        printf '  --limite-banda, --bwlimit <taxa>\n'
+        printf '                                  Limite de banda por transferencia, em bytes/s\n'
+        printf '  --paralelo, --parallel <n>      Transferencias simultaneas (1 a 8, padrao 1); veja Paralelismo\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
+        printf '  --sem-cursor, --no-cursor       So com --receber: nao usa o registro de listagem\n'
+        printf '  --varredura-completa, --full-scan\n'
+        printf '                                  So com --receber: refaz a varredura e o registro\n\n'
+        _dbx_ajuda_filtros
+        printf '  O plano traz filtros=sim, os padroes e filtrados_origem/filtrados_destino\n'
+        printf '  (pasta excluida conta 1); origem toda filtrada conta como vazia (RF-41).\n\n'
+        _dbx_ajuda_data_tamanho
+        printf '\n'
+        _dbx_ajuda_banda
+        printf '\n'
+        printf 'Paralelismo (F-09):\n'
+        printf '  --paralelo N (alias --parallel) ou DBX_PARALELO=N, de 1 a 8 (padrao 1; a opcao\n'
+        printf '  vence a variavel), roda ate N transferencias de arquivo ao mesmo tempo, no\n'
+        printf '  envio e no recebimento. A listagem e as exclusoes seguem em sequencia; o\n'
+        printf '  resultado, o cache, o resumo, a ordem das linhas e o codigo de saida sao os de\n'
+        printf '  N=1. --limite-banda e o teto TOTAL: cada transferencia leva a taxa dividida por\n'
+        printf '  N (nunca abaixo do piso). N maior pode provocar mais respostas 429: cada\n'
+        printf '  processo respeita o Retry-After, N nao diminui sozinho, e --debug informa\n'
+        printf '  quantas houve. --dry-run nunca usa paralelismo. Valor invalido sai com 2.\n\n'
+        printf 'Trava de concorrencia (RF-69):\n'
+        printf '  Um sync ou verificar por vez para o mesmo par (conta, raiz local, raiz remota,\n'
+        printf '  em qualquer sentido), inclusive com --dry-run. Ocupada, a execucao e recusada\n'
+        printf '  na hora com codigo 7, dizendo pid, host, inicio e comando de quem a tem; com\n'
+        printf '  --esperar N ela tenta a cada segundo por ate N segundos. Trava de processo\n'
+        printf '  morto neste host e retomada com aviso; de outro host ou ilegivel, nunca: o\n'
+        printf '  dbx diagnostico mostra o arquivo e como libera-lo.\n\n'
+        printf 'Cursor de listagem (--receber, F-14):\n'
+        printf '  O cursor so acelera a listagem remota; sem registro, com registro invalido\n'
+        printf '  ou vencido, a varredura completa roda sozinha. O registro guarda o cursor e\n'
+        printf '  um retrato da arvore remota no diretorio de estado (0600); a execucao seguinte\n'
+        printf '  pede ao servidor so o que mudou, e a arvore local e sempre percorrida inteira.\n'
+        printf '  Uma exclusao local so e feita depois de o servidor confirmar que o arquivo foi\n'
+        printf '  apagado. Use --varredura-completa para refazer o registro e --sem-cursor para\n'
+        printf '  nao usa-lo. A varredura completa e obrigatoria a cada 7 dias ou 100 execucoes.\n'
+        printf '  O plano traz varredura (incremental ou completa), cursor_motivo, cursor_mudancas\n'
+        printf '  e cursor_confirmadas; o cursor em si nunca aparece. O --enviar, o verificar e o\n'
+        printf '  download de pasta nao usam o registro. Juntas, ou fora do --receber, as duas\n'
+        printf '  opcoes saem com codigo 2.\n\n'
+        printf 'Repeticao: opcao com valor vale o ultimo valor dado; opcao sem valor e\n'
+        printf '  idempotente; um segundo sentido (--enviar/--push/--receber/--pull) e recusado.\n\n'
+        printf 'Origem vazia (RF-41):\n'
+        printf '  Com --espelhar, origem vazia (--enviar: raiz local sem nenhum arquivo;\n'
+        printf '  --receber: listagem remota vazia) e algo a apagar no destino e recusada\n'
+        printf '  inteira, antes de qualquer escrita, haja ou nao memoria do par: o plano sai\n'
+        printf '  com "recusada=origem vazia" e o codigo e 14. So --permitir-origem-vazia libera;\n'
+        printf '  --confirmar nao basta. Com --dry-run, o plano anuncia "recusaria", nao lista\n'
+        printf '  exclusoes e sai com 0. Sem --espelhar, origem vazia e operacao vazia.\n\n'
+        printf 'Localidade (RF-54):\n'
+        printf '  A comparacao sem caixa usa C.UTF-8 quando existe; sem ela, vale so no ASCII\n'
+        printf '  e o sync avisa uma vez em stderr, sem recusar.\n\n'
+        printf 'Espaco livre (RF-67):\n'
+        printf '  No --enviar, a soma dos arquivos a transferir e conferida com o espaco livre\n'
+        printf '  da conta numa unica consulta; se nao cabe, o plano sai e a execucao e recusada\n'
+        printf '  com codigo 12 antes de qualquer escrita. Com --dry-run, o plano so avisa.\n\n'
+        printf 'Aviso (RF-52):\n'
+        printf '  Se a identificacao da conta falhar, o sync segue sem memoria auxiliar: com\n'
+        printf '  --espelhar, as exclusoes ficam DESABILITADAS naquela execucao (envios e\n'
+        printf '  recebimentos seguem), o motivo sai no relatorio e o codigo de saida e diferente\n'
+        printf '  de 0. --confirmar NAO reabilita as exclusoes; sem ele, a primeira execucao com\n'
+        printf '  --espelhar continua pedindo reconhecimento.\n'
         exit 0
         ;;
       download)
-        printf 'Uso: dbx download [--progresso] <caminho_remoto> [destino_local]\n\n'
-        printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n\n'
+        printf 'Uso: dbx download [--excluir <padrao>]... [--incluir <padrao>]... [--limite-banda <taxa>] [--sem-retomada | --no-resume] [--progresso] <caminho_remoto> [destino_local]\n\n'
+        printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n'
+        printf 'Pasta remota e recebida recursivamente (o sync --receber interno).\n\n'
         printf 'Opcoes:\n'
+        printf '  --excluir, --exclude <padrao>   So pasta: tira do escopo o que casa (repetivel)\n'
+        printf '  --incluir, --include <padrao>   So pasta: so o que casa e recebido (repetivel)\n'
+        printf '  --modificado-desde, --modified-since <data>\n'
+        printf '                                  So pasta: arquivos modificados desde a data\n'
+        printf '  --modificado-ate, --modified-until <data>\n'
+        printf '                                  So pasta: arquivos modificados ate a data\n'
+        printf '  --tamanho-min, --min-size <tam> So pasta: arquivos com ao menos <tam>\n'
+        printf '  --tamanho-max, --max-size <tam> So pasta: arquivos com no maximo <tam>\n'
+        printf '  --limite-banda, --bwlimit <taxa>\n'
+        printf '                                  Limite de banda por transferencia, em bytes/s\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
+        printf '  --forcar, --force               Aceita e sem efeito, por paridade com o upload\n'
+        printf '  --sem-retomada, --no-resume     Comeca do zero: nao le, nao grava nem apaga o\n'
+        printf '                                  estado de retomada nem arquivo parcial\n\n'
+        _dbx_ajuda_retomada
+        printf '\n'
+        printf 'Os filtros valem so para pasta: com um arquivo remoto, a recusa e codigo 2,\n'
+        printf 'sem nenhuma escrita (o tipo e consultado antes, por get_metadata).\n\n'
+        _dbx_ajuda_filtros
+        printf '\n'
+        _dbx_ajuda_data_tamanho
+        printf '\n'
+        _dbx_ajuda_banda
         exit 0
         ;;
       list)
         printf 'Uso: dbx list [--limite <n>] [--recursivo] <caminho_remoto>\n\n'
-        printf 'Lista o conteudo de pasta remota com paginacao automatica.\n'
+        printf 'Lista o conteudo de pasta remota com paginacao automatica.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --limite, --limit <n>           Itens por pagina pedidos ao servico\n'
+        printf '  --recursivo, --recursive, -R    Inclui o conteudo das subpastas\n'
         exit 0
         ;;
       delete)
         printf 'Uso: dbx delete [--confirmar | --yes] [--rev <rev>] <caminho_remoto>\n\n'
-        printf 'Remove arquivo ou pasta no Dropbox.\n'
+        printf 'Remove arquivo ou pasta no Dropbox.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --confirmar, --yes, -y          Confirma a remocao sem terminal interativo\n'
+        printf '  --rev <rev>                     Revisao esperada para controle de conflito\n'
         exit 0
         ;;
       info)
@@ -144,23 +376,259 @@ case $DBX_CLI_COMANDO in
         ;;
       space)
         printf 'Uso: dbx space [--humano | -H]\n\n'
-        printf 'Exibe capacidade total e espaco utilizado na conta Dropbox.\n'
+        printf 'Exibe capacidade total e espaco utilizado na conta Dropbox.\n\n'
+        printf 'Opcoes:\n'
+        printf '  --humano, --human, -H           Acrescenta os valores em unidade legivel\n'
+        exit 0
+        ;;
+      verificar)
+        printf 'Uso: dbx verificar (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--esperar | --wait <s>] [--excluir <padrao>]... [--incluir <padrao>]... [--progresso]\n\n'
+        printf 'Compara a arvore local e a remota por content_hash, sem transferir nem gravar nada.\n'
+        printf 'Alias em ingles: verify.\n\n'
+        printf 'Opcoes (as mesmas do sync; o nome em ingles e alias do nome em portugues):\n'
+        printf '  --enviar, --push                Origem local, destino remoto\n'
+        printf '  --receber, --pull               Origem remota, destino local\n'
+        printf '  --origem, --source <dir>        Lado de referencia (obrigatorio)\n'
+        printf '  --destino, --dest <dir>         Lado comparado (obrigatorio)\n'
+        printf '  --esperar, --wait <s>           Espera ate <s> segundos (0 a 3600) pela trava do par\n'
+        printf '  --excluir, --exclude <padrao>   Nao compara o que casa (repetivel; veja Filtros)\n'
+        printf '  --incluir, --include <padrao>   So compara o que casa (repetivel)\n'
+        printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
+        printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
+        _dbx_ajuda_filtros
+        printf '  Filtrado nao e comparado e nunca conta como divergencia. Filtros de data e\n'
+        printf '  tamanho e --limite-banda sao recusados (codigo 2): o verificar so le.\n\n'
+        printf 'Cada arquivo sai uma vez como igual, diferente, so_origem ou so_destino, com as\n'
+        printf 'contagens ao fim. Codigo de saida: 0 tudo igual; 11 ha divergencia; 14 travessia\n'
+        printf 'parcial; erro de execucao (rede, autenticacao, ...) prevalece. As opcoes do sync que\n'
+        printf 'escrevem (--espelhar, --confirmar, --permitir-origem-vazia, --forcar) sao recusadas.\n'
+        printf 'Trava o par como o sync (codigo 7 se ocupada; veja dbx help sync); o arquivo de\n'
+        printf 'trava e a unica escrita e sai no fim.\n'
+        exit 0
+        ;;
+      revisoes)
+        printf 'Uso: dbx revisoes [--limite <n>] [--por-id] <arquivo_remoto>\n\n'
+        printf 'Lista as revisoes de um arquivo, da mais recente para a mais antiga, inclusive\n'
+        printf 'de arquivo apagado. Alias em ingles: revisions. So leitura.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --limite, --limit <n>           Revisoes pedidas, de 1 a 100 (padrao 10)\n'
+        printf '  --por-id, --by-id               Segue o arquivo atraves de movimentos (mode=id)\n\n'
+        printf 'Cada revisao traz os campos de dbx info; ao fim, apagado, apagado_em, mais e\n'
+        printf 'total. Com --por-id, revisao fora da raiz remota e omitida e contada.\n'
+        printf 'Pasta: codigo 2 (para pasta apagada use dbx restaurar <pasta>).\n\n'
+        printf 'Exemplo: dbx revisoes --limite 20 /docs/relatorio.txt\n'
+        exit 0
+        ;;
+      restaurar)
+        printf 'Uso: dbx restaurar [--rev <rev> | --antes-de <data>] <caminho_remoto>\n\n'
+        printf 'Restaura uma revisao de arquivo, inclusive de arquivo apagado, ou uma pasta\n'
+        printf 'apagada inteira, arquivo por arquivo. Alias em ingles: restore.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --rev <rev>                     Revisao do proprio arquivo (veja dbx revisoes)\n'
+        printf '  --antes-de, --before <data>     A revisao mais recente ate a data (UTC):\n'
+        printf '                                  AAAA-MM-DD (fim do dia) ou AAAA-MM-DDTHH:MM:SSZ\n\n'
+        printf 'Arquivo apagado sem --rev nem --antes-de volta na ultima revisao; arquivo vivo\n'
+        printf 'exige um dos dois. Restaurar sobre arquivo existente e direto: a versao atual\n'
+        printf 'vira revisao anterior, e a saida mostra rev_substituida e como desfazer:\n'
+        printf '  dbx restaurar <caminho> --rev <rev_substituida>\n'
+        printf 'Revisao igual a vigente: ja_atual, nada a fazer. --dry-run so le.\n\n'
+        printf 'Pasta apagada: tudo o que esta apagado sob ela volta na ultima revisao, um\n'
+        printf 'arquivo por vez, com resumo (restaurados, falhas, sem_revisao, total). Falha\n'
+        printf 'de item ou listagem parcial sai com 14 e diz o que faltou; rodar de novo\n'
+        printf 'restaura so o que falta. Pasta apagada vazia nao e recriada.\n\n'
+        printf 'Exemplos:\n'
+        printf '  dbx restaurar --antes-de 2026-10-01 /docs/relatorio.txt\n'
+        printf '  dbx --dry-run restaurar /docs/pasta-apagada\n'
+        exit 0
+        ;;
+      lixeira)
+        printf 'Uso: dbx lixeira [--recursivo] [--limite <n>] [pasta_remota]\n'
+        printf '     dbx lixeira --excluir <caminho_remoto> [--confirmar-caminho <caminho_remoto>]\n\n'
+        printf 'Lista os itens apagados da pasta (padrao: a raiz remota). Alias em ingles: trash.\n'
+        printf 'Cada item traz name, path_display e restauravel; a API nao informa tipo nem\n'
+        printf 'data de exclusao, e a saida nao os inventa.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --recursivo, --recursive, -R    Desce nas subpastas vivas, um nivel por vez\n'
+        printf '  --limite, --limit <n>           Itens por pagina pedidos ao servico (1 a 100)\n'
+        printf '  --excluir, --purge <caminho>    Exclusao PERMANENTE de um item ja apagado\n'
+        printf '  --confirmar-caminho <caminho>   Confirma o expurgo sem terminal (identico ao alvo)\n\n'
+        printf 'Aqui --excluir e o expurgo definitivo: nao e o filtro --excluir de sync,\n'
+        printf 'verificar e download (DIV-86), e a lixeira nao aceita filtros.\n\n'
+        printf 'Exclusao permanente:\n'
+        printf '  a exclusao permanente e irreversivel e so existe em Dropbox Business; exige o\n'
+        printf '  escopo files.permanent_delete. Habilite-o no App Console do aplicativo e\n'
+        printf '  reautorize com dbx unlink seguido de dbx config. So item ja apagado e aceito\n'
+        printf '  (apague antes com dbx delete); a raiz nunca e alvo. Com terminal, digite o\n'
+        printf '  caminho para confirmar; sem terminal, --confirmar-caminho repete o alvo. Nao\n'
+        printf '  ha --yes. Conta pessoal: codigo 6; escopo ausente: codigo 5.\n\n'
+        printf 'Exemplos:\n'
+        printf '  dbx lixeira -R /docs\n'
+        printf '  dbx lixeira --excluir /docs/velho.txt --confirmar-caminho /docs/velho.txt\n'
+        exit 0
+        ;;
+      link_temporario)
+        printf 'Uso: dbx link-temporario <arquivo_remoto>\n\n'
+        printf 'Gera a URL direta de download de um arquivo, valida por 4 horas\n'
+        printf '(files/get_temporary_link). Alias em ingles: temp-link.\n\n'
+        printf 'Opcoes:\n'
+        printf '  (nenhuma propria; valem as globais --json, --null, --dry-run, --debug)\n\n'
+        printf 'o link temporario vale 4 horas, nao pode ser revogado e da acesso a quem o tiver.\n'
+        printf 'So arquivo: pasta sai com codigo 2 (para pasta use dbx compartilhar). O link\n'
+        printf 'sai so no resultado (campo link), com validade_segundos e expira_em_estimado\n'
+        printf '(relogio local mais 4 horas, em UTC: o servico nao informa a hora exata).\n'
+        printf 'Com --dry-run o link NAO e gerado: so o tipo do arquivo e conferido.\n'
+        printf 'Usa o escopo files.content.read, ja exigido.\n\n'
+        printf 'Exemplo: dbx link-temporario /docs/relatorio.pdf\n'
+        exit 0
+        ;;
+      compartilhar)
+        printf 'Uso: dbx compartilhar (--publico | --equipe | --senha | --senha-stdin) [--expira <valor>] <caminho_remoto>\n'
+        printf '     dbx compartilhar --listar [pasta_remota]\n'
+        printf '     dbx compartilhar --revogar <url>\n\n'
+        printf 'Cria link compartilhado (ou devolve o existente), lista os links dentro da raiz\n'
+        printf 'remota ou revoga um link. Alias em ingles: share.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --publico, --public             Qualquer pessoa com o link acessa\n'
+        printf '  --equipe, --team                So membros da equipe acessam\n'
+        printf '  --senha, --password             Link com senha, digitada no terminal (sem eco, duas vezes)\n'
+        printf '  --senha-stdin, --password-stdin Link com senha, lida da primeira linha da entrada\n'
+        printf '  --expira, --expires <valor>     Expiracao do link (veja abaixo)\n'
+        printf '  --listar, --list                Lista os links dentro da pasta (padrao: a raiz remota)\n'
+        printf '  --revogar, --revoke <url>       Revoga o link (so de item dentro da raiz remota)\n\n'
+        printf 'nada e publicado por omissao: informe --publico, --equipe ou --senha (sem\n'
+        printf 'nenhuma delas, codigo 2). --publico com --senha vale --senha; --equipe com\n'
+        printf 'senha e recusada. A raiz da conta (/) nunca e alvo.\n\n'
+        printf 'Senha:\n'
+        printf '  a senha nunca e aceita na linha de comando nem em variavel de ambiente: use --senha (terminal, sem eco) ou --senha-stdin (uma linha da entrada).\n'
+        printf '  senha vazia e recusada, assim como caractere de controle (inclusive o fim\n'
+        printf '  de linha CRLF), mais de 1024 bytes ou texto que nao e UTF-8. No terminal, as\n'
+        printf '  duas digitacoes diferentes saem com 14 e nada e feito.\n\n'
+        printf 'Expiracao (--expira):\n'
+        printf '  AAAA-MM-DD (fim do dia UTC), AAAA-MM-DDTHH:MM:SSZ (UTC) ou duracao <N>h\n'
+        printf '  (1 a 8760) ou <N>d (1 a 3650), contada do relogio local. Precisa estar ao\n'
+        printf '  menos 60 s no futuro. Sem --expira, o link novo nao expira.\n\n'
+        printf 'Link existente: igual ao pedido, e devolvido sem escrita (existente); diferente,\n'
+        printf 'e modificado (modificado), com o antes e o depois. Com senha pedida, a senha\n'
+        printf 'e sempre redefinida. Exposicao ampliada gera aviso em stderr.\n\n'
+        printf 'Listar e revogar: so links de item dentro da raiz remota, conferidos pelo\n'
+        printf 'path_lower que o servico devolve; o resto e omitido (listar) ou recusado com\n'
+        printf 'codigo 13 (revogar), sem estado local. A comparacao dobra a caixa so no\n'
+        printf 'ASCII: com acento em outra caixa, falha fechada. Revogar nao pede\n'
+        printf 'confirmacao; link temporario nao e revogavel.\n\n'
+        printf 'senha, equipe e expiracao dependem do plano da conta: no plano Basic, so link\n'
+        printf 'publico, sem senha e sem expiracao (codigo 6). Escopos opcionais sharing.write\n'
+        printf 'e sharing.read: habilite no App Console e reautorize com dbx unlink e dbx config.\n\n'
+        printf 'Exemplos:\n'
+        printf '  dbx compartilhar --equipe --expira 7d /docs/relatorio.pdf\n'
+        printf '  pass show dbx/link | dbx compartilhar --senha-stdin /docs   (gerenciador de senhas)\n'
+        printf '  dbx compartilhar --revogar https://www.dropbox.com/scl/fi/...\n'
+        exit 0
+        ;;
+      reter)
+        printf 'Uso: dbx reter <pasta_remota> (--padrao | --pattern) <glob> ((--manter | --keep) <n> | (--dias | --days) <d>) [--confirmar | --yes | -y]\n\n'
+        printf 'Retencao e rotacao de backup: mantem os artefatos mais novos da pasta e manda\n'
+        printf 'o excedente para a lixeira. Alias em ingles: retain.\n\n'
+        printf 'Opcoes (o nome em ingles e alias do nome em portugues):\n'
+        printf '  --padrao, --pattern <glob>      Nome dos artefatos (obrigatorio, um so)\n'
+        printf '  --manter, --keep <n>            Mantem os n mais novos (1 a 999999)\n'
+        printf '  --dias, --days <d>              Mantem os de ate d dias (1 a 36500)\n'
+        printf '  --confirmar, --yes, -y          Aplica o plano (sem ela, nada e apagado)\n\n'
+        printf 'sem --confirmar nada e apagado: o comando so mostra o plano (fica/sai) e sai\n'
+        printf 'com 0; com --dry-run, idem, mesmo com --confirmar. Nenhuma pergunta e feita.\n'
+        printf 'sempre mantem pelo menos 1 artefato.\n'
+        printf 'so o nivel de cima da pasta e so arquivos; o padrao casa o nome, sem diferenciar maiusculas\n'
+        printf '(glob dos filtros: *, ?, [...], \; sem /). Pastas, subpastas e arquivos fora\n'
+        printf 'do padrao nunca sao apagados, so contados. --manter e --dias sao excludentes.\n'
+        printf 'o mais novo e o de data do servidor mais recente; em empate, o de maior nome\n'
+        printf '(server_modified; client_modified e tamanho nao contam). restaurar ou regravar um artefato antigo o torna o mais novo.\n'
+        printf 'os apagados vao para a lixeira e podem ser recuperados com dbx restaurar dentro do prazo do plano da conta\n'
+        printf '(veja dbx lixeira <pasta>). Cada exclusao leva o rev listado: um backup novo de\n'
+        printf 'mesmo nome que chegue no meio nao e apagado (conflito, codigo 14).\n'
+        printf -- '--dias compara a data do servidor com o relogio desta maquina; divergencia\n'
+        printf 'acima de 300 s do cabecalho Date da listagem sai com codigo 3, sem apagar nada.\n\n'
+        printf 'Codigos: 0 (inclusive plano e nada a apagar), 2, 3, 4 (pasta inexistente), 5,\n'
+        printf '8, 9, 10 (listagem ou resposta incoerente, nada apagado), 13, 14 (falha parcial,\n'
+        printf 'reset ou sinal). Sem trava e sem estado local.\n\n'
+        printf 'Exemplos:\n'
+        printf '  dbx reter /backups --padrao '"'"'db-*.tar.gz'"'"' --manter 7\n'
+        printf '  dbx upload ... && dbx reter /backups --padrao '"'"'db-*.tar.gz'"'"' --manter 7 --confirmar\n'
+        exit 0
+        ;;
+      perfis)
+        printf 'Uso: dbx perfis\n\n'
+        printf 'Lista os perfis de credencial (o padrao e perfis/<nome>.json) e se cada um esta\n'
+        printf 'completo, um registro por perfil e um total no fim: perfil, credencial (completa,\n'
+        printf 'incompleta, ilegivel, permissao ou ligacao_simbolica), ativo (sim ou nao) e arquivo.\n'
+        printf 'Alias em ingles: profiles.\n\n'
+        printf 'Nunca imprime segredo nem a identidade da credencial; so le, sem rede e sem criar nada.\n'
+        printf 'Codigo de saida: 0 (inclusive perfil quebrado e nenhum perfil); 2 uso invalido;\n'
+        printf '3 so sem diretorio de configuracao.\n\n'
+        printf 'Selecao do perfil (todos os comandos): --perfil <nome> (alias --profile) ANTES do\n'
+        printf 'comando, ou depois dele so em config e unlink; a variavel DBX_PERFIL carrega SO o\n'
+        printf 'nome (nunca segredo) e a opcao vence. Sem nenhuma das duas vale o perfil padrao.\n'
+        printf 'Perfil inexistente sai com codigo 3, sem rede e sem recuar para o padrao.\n'
+        printf 'O unlink de um perfil nao apaga o estado de outro; com a mesma credencial em dois\n'
+        printf 'perfis ele nao revoga o token. Dois sync --receber na mesma raiz local sao\n'
+        printf 'recusados (codigo 7), qualquer que seja o perfil.\n'
+        exit 0
+        ;;
+      diagnostico)
+        printf 'Uso: dbx diagnostico\n\n'
+        printf 'Checa dependencias, credencial, conectividade, escopos, espaco, localidade, o\n'
+        printf 'diretorio de estado e as travas de sync/verificar, uma linha por checagem (ok,\n'
+        printf 'aviso ou falha) com o remedio.\n'
+        printf 'Alias em ingles: doctor.\n\n'
+        printf 'Nao passa pela verificacao previa, nunca imprime segredo e nao altera nada.\n'
+        printf 'Codigo de saida: 0 sem falha (aviso nao reprova); 3 com ao menos uma falha.\n'
+        exit 0
+        ;;
+      completar)
+        printf 'Uso: dbx completar bash\n\n'
+        printf 'Imprime o script de autocompletar do bash (o mesmo de completions/dbx.bash).\n'
+        printf 'Alias em ingles: completion.\n\n'
+        printf 'Para ativar na sessao corrente:  source <(dbx completar bash)\n'
+        printf 'O install.sh ja o instala em ~/.local/share/bash-completion/completions/dbx.\n'
         exit 0
         ;;
       *)
         printf 'Uso: dbx [--json] [--null] [--dry-run] [--progresso] [--debug] <comando> [argumentos]\n\n'
         printf 'Comandos:\n'
-        printf '  config    Configura credenciais de acesso via OAuth2\n'
-        printf '  unlink    Revoga credencial e remove estado local\n'
-        printf '  sync      Sincroniza diretorio local e remoto (--enviar ou --receber)\n'
-        printf '  upload    Envia arquivo local ou entrada padrao (-) para o Dropbox\n'
-        printf '  download  Baixa arquivo remoto para caminho local ou stdout\n'
-        printf '  list      Lista conteudo de diretorio remoto\n'
-        printf '  delete    Remove arquivo ou diretorio remoto\n'
-        printf '  info      Exibe metadados de arquivo ou pasta remota\n'
-        printf '  space     Exibe capacidade e uso do espaco da conta\n\n'
-        printf 'Opcoes globais: --help --version --json --null --dry-run --progresso --sem-progresso --debug\n\n'
+        printf '  config       Configura credenciais de acesso via OAuth2\n'
+        printf '  unlink       Revoga credencial e remove estado local\n'
+        printf '  sync         Sincroniza diretorio local e remoto (--enviar ou --receber)\n'
+        printf '  upload       Envia arquivo local ou entrada padrao (-) para o Dropbox\n'
+        printf '  download     Baixa arquivo remoto para caminho local ou stdout\n'
+        printf '  list         Lista conteudo de diretorio remoto\n'
+        printf '  delete       Remove arquivo ou diretorio remoto\n'
+        printf '  info         Exibe metadados de arquivo ou pasta remota\n'
+        printf '  space        Exibe capacidade e uso do espaco da conta\n'
+        printf '  verificar    Compara local e remoto por content_hash, so leitura (alias: verify)\n'
+        printf '  diagnostico  Checa o ambiente e sugere o remedio (alias: doctor)\n'
+        printf '  completar    Imprime o autocompletar do bash (alias: completion)\n'
+        printf '  revisoes     Lista as revisoes de um arquivo (alias: revisions)\n'
+        printf '  restaurar    Restaura revisao de arquivo ou pasta apagada (alias: restore)\n'
+        printf '  lixeira      Lista apagados; --excluir expurga em definitivo (alias: trash)\n'
+        printf '  link-temporario  URL direta de download valida por 4 horas\n'
+        printf '  temp-link    Alias em ingles de link-temporario\n'
+        printf '  compartilhar Cria, lista ou revoga link compartilhado (alias: share)\n'
+        printf '  reter        Mantem os backups mais novos e apaga o resto (alias: retain)\n'
+        printf '  perfis       Lista os perfis de credencial e se estao completos (alias: profiles)\n\n'
+        printf 'Opcoes globais: --help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug --perfil --profile\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
+        printf 'Perfil de credencial (--perfil <nome>, alias --profile): vale para todos os comandos; a\n'
+        printf 'variavel DBX_PERFIL carrega so o nome (nunca segredo) e a opcao vence. Veja dbx help perfis.\n\n'
+        # RNF-07, RNF-30: os ajustes de rede sao documentados onde o operador os
+        # procura; valor invalido e recusado com codigo 2 antes da rede.
+        printf 'Variaveis de ambiente de rede (inteiro positivo; invalido sai com codigo 2):\n'
+        printf '  DBX_HTTP_CONNECT_TIMEOUT_S      tempo para conectar, em s (padrao 15)\n'
+        printf '  DBX_HTTP_VELOCIDADE_MINIMA_BPS  corte abaixo desta velocidade, em B/s (padrao 1024)\n'
+        printf '  DBX_HTTP_VELOCIDADE_JANELA_S    ...mantida por esta janela, em s (padrao 60)\n'
+        printf '  DBX_HTTP_TENTATIVAS_MAXIMAS     tentativas, contando a primeira (padrao 5)\n'
+        printf '  DBX_HTTP_ESPERA_BASE_MS         base do recuo exponencial, em ms (padrao 1000)\n'
+        printf '  DBX_HTTP_ESPERA_TETO_MS         teto de cada espera, em ms (padrao 60000)\n'
+        printf '  DBX_HTTP_RETRY_AFTER_TETO_S     teto do Retry-After do servidor, em s (padrao 300)\n\n'
+        printf 'Variavel de ambiente do perfil (so o NOME, nunca segredo; vazia vale como nao definida):\n'
+        printf '  DBX_PERFIL                      perfil de credencial; --perfil vence (padrao: perfil padrao)\n\n'
         printf 'Recomendacao para upload de fluxo (RSK-36):\n'
         printf '  Em "dbx upload - <destino>", ative "set -o pipefail" no shell do operador ao usar pipes.\n'
         exit 0
@@ -168,6 +636,16 @@ case $DBX_CLI_COMANDO in
     esac
     ;;
 esac
+
+# PERFIL (fase 8, RF-120, RF-121, RF-128): a selecao vale para todo comando que
+# resolve credencial; `help`, `version` e `completar` nunca leem `DBX_PERFIL`.
+# Nome invalido sai 2 ANTES de qualquer acesso a disco e de rede.
+if [[ $DBX_CLI_COMANDO != 'completar' ]]; then
+  dbx_cli_perfil_aplicar || _dbx_falhar uso_invalido "$DBX_CLI_MOTIVO"
+  if [[ ${DBX_CONFIG_PERFIL_ORIGEM:-} == 'ambiente' ]]; then
+    printf 'aviso: perfil ativo %s (DBX_PERFIL)\n' "$DBX_CONFIG_PERFIL" >&2
+  fi
+fi
 
 _dbx_arquivo=$(_dbx_cli_arquivo_do_comando "$DBX_CLI_COMANDO") ||
   _dbx_falhar uso_invalido "comando sem implementacao: $DBX_CLI_COMANDO"
@@ -191,7 +669,7 @@ case $_dbx_requisito in
     if [[ $_dbx_requisito == 'credencial' ]]; then
       dbx_carregar_camada_de_credencial
       dbx_config_carregar ||
-        _dbx_falhar configuracao "credencial indisponivel: $DBX_CONFIG_MOTIVO"
+        _dbx_falhar configuracao "$(dbx_config_mensagem_de_indisponibilidade)"
     fi
     ;;
   *) _dbx_falhar uso_invalido "requisito nao reconhecido: $_dbx_requisito" ;;

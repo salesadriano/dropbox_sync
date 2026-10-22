@@ -73,7 +73,7 @@ DBX_CLI_CARREGADO=1
 
 DBX_CLI_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 
-readonly DBX_CLI_VERSAO='1.2.0'
+readonly DBX_CLI_VERSAO='1.3.0'
 
 DBX_CLI_COMANDO=''
 DBX_CLI_ARGS=()
@@ -83,17 +83,56 @@ DBX_CLI_SIMULACAO='nao'
 DBX_CLI_PROGRESSO='auto'
 DBX_CLI_DEBUG='nao'
 DBX_CLI_MOTIVO=''
+# Perfil dado pela opcao `--perfil` (fase 8): `DBX_CLI_PERFIL_DADO` diz se a
+# opcao apareceu (repeti-la, mesmo igual, e uso invalido, DIV-241).
+DBX_CLI_PERFIL=''
+DBX_CLI_PERFIL_DADO='nao'
 
 # dbx_cli_comando_valido <nome> — tabela FECHADA de nomes literais.
 #
-# Conjunto FECHADO e agora COMPLETO: os nove comandos de `DP-06` e `DP-25`.
+# Conjunto FECHADO: os nove comandos de `DP-06` e `DP-25`, os tres da fase 1
+# do backlog (RF-65 a RF-68), os tres da fase 3 (RF-72 a RF-76) e os dois da
+# fase 5 (RF-84, RF-85) e o da fase 6 (RF-93), mais os aliases em ingles
+# destes ultimos.
+#
+# `link_temporario` e o nome do ARQUIVO do comando (DIV-117): entra na tabela
+# porque a auditoria de despacho exige que todo arquivo de `commands/` tenha
+# nome valido; o nome documentado e `link-temporario`.
 dbx_cli_comando_valido() {
   case ${1-} in
     upload | download | list | delete | info | space) return 0 ;;
     config | unlink | sync) return 0 ;;
+    verificar | diagnostico | completar) return 0 ;;
+    verify | doctor | completion) return 0 ;;
+    revisoes | restaurar | lixeira) return 0 ;;
+    revisions | restore | trash) return 0 ;;
+    link-temporario | link_temporario | compartilhar) return 0 ;;
+    temp-link | share) return 0 ;;
+    reter | retain) return 0 ;;
+    perfis | profiles) return 0 ;;
     help | version) return 0 ;;
   esac
   return 1
+}
+
+# dbx_cli_canonico <nome> — nome canonico em DBX_CLI_CANONICO: o alias em
+# ingles vira o nome em portugues, que e o do arquivo de comando e o das
+# funcoes `dbx_cmd_<nome>_*`. Os demais nomes passam como estao.
+DBX_CLI_CANONICO=''
+dbx_cli_canonico() {
+  case ${1-} in
+    verify) DBX_CLI_CANONICO='verificar' ;;
+    doctor) DBX_CLI_CANONICO='diagnostico' ;;
+    completion) DBX_CLI_CANONICO='completar' ;;
+    revisions) DBX_CLI_CANONICO='revisoes' ;;
+    restore) DBX_CLI_CANONICO='restaurar' ;;
+    trash) DBX_CLI_CANONICO='lixeira' ;;
+    link-temporario | temp-link) DBX_CLI_CANONICO='link_temporario' ;;
+    share) DBX_CLI_CANONICO='compartilhar' ;;
+    retain) DBX_CLI_CANONICO='reter' ;;
+    profiles) DBX_CLI_CANONICO='perfis' ;;
+    *) DBX_CLI_CANONICO=${1-} ;;
+  esac
 }
 
 # _dbx_cli_arquivo_do_comando <nome> — caminho LITERAL, nunca composto.
@@ -113,6 +152,16 @@ _dbx_cli_arquivo_do_comando() {
     config) printf '%s' "$raiz/commands/config.sh" ;;
     unlink) printf '%s' "$raiz/commands/unlink.sh" ;;
     sync) printf '%s' "$raiz/commands/sync.sh" ;;
+    verificar) printf '%s' "$raiz/commands/verificar.sh" ;;
+    diagnostico) printf '%s' "$raiz/commands/diagnostico.sh" ;;
+    completar) printf '%s' "$raiz/commands/completar.sh" ;;
+    revisoes) printf '%s' "$raiz/commands/revisoes.sh" ;;
+    restaurar) printf '%s' "$raiz/commands/restaurar.sh" ;;
+    lixeira) printf '%s' "$raiz/commands/lixeira.sh" ;;
+    link_temporario) printf '%s' "$raiz/commands/link_temporario.sh" ;;
+    compartilhar) printf '%s' "$raiz/commands/compartilhar.sh" ;;
+    reter) printf '%s' "$raiz/commands/reter.sh" ;;
+    perfis) printf '%s' "$raiz/commands/perfis.sh" ;;
     *) return 1 ;;
   esac
 }
@@ -125,9 +174,200 @@ dbx_cli_requisito_interno() {
   esac
 }
 
+# Teto de `--esperar` (RF-70(b)), em segundos.
+readonly DBX_CLI_ESPERA_MAXIMA=3600
+
+# dbx_cli_validar_espera <opcao> <valor> — RF-70(b): inteiro decimal de 0 a
+# 3600, so digitos. Qualquer outra coisa e uso invalido, com a opcao e o valor
+# na mensagem (o valor citado se tiver byte de controle); nunca ignorado.
+# Ponto unico para `sync` e `verificar`.
+dbx_cli_validar_espera() {
+  local opcao=$1 valor=${2-} exibido
+  DBX_CLI_MOTIVO=''
+  if [[ $valor =~ ^[0-9]{1,4}$ ]] && ((10#$valor <= DBX_CLI_ESPERA_MAXIMA)); then
+    return 0
+  fi
+  exibido=${valor:0:64}
+  [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+  DBX_CLI_MOTIVO="valor invalido para $opcao: [$exibido]; use um inteiro de 0 a $DBX_CLI_ESPERA_MAXIMA (segundos)"
+  return "$DBX_CLI_ERRO_USO"
+}
+
+# Teto de `--paralelo` / `DBX_PARALELO` (RF-133(b)), em transferencias simultaneas.
+readonly DBX_CLI_PARALELO_MAXIMO=8
+
+# dbx_cli_validar_paralelo <nome> <valor> [opcao|variavel] — RF-133(b).
+#
+# Um unico algarismo de 1 a 8: `0`, negativo, acima de 8, vazio, nao numerico,
+# com sinal, espaco ou zero a esquerda (`01`) e uso invalido. O inteiro vai a
+# DBX_CLI_PARALELO; o motivo nomeia a ORIGEM (opcao ou variavel), com o valor
+# citado se tiver byte de controle. Ponto unico para `sync`.
+DBX_CLI_PARALELO=''
+dbx_cli_validar_paralelo() {
+  local nome=$1 valor=${2-} origem=${3:-opcao} exibido
+  DBX_CLI_MOTIVO=''
+  DBX_CLI_PARALELO=''
+  if [[ $valor =~ ^[1-8]$ ]]; then
+    DBX_CLI_PARALELO=$valor
+    return 0
+  fi
+  exibido=${valor:0:64}
+  [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+  if [[ $origem == 'variavel' ]]; then
+    DBX_CLI_MOTIVO="variavel de ambiente $nome invalida: [$exibido]; use um inteiro de 1 a $DBX_CLI_PARALELO_MAXIMO, ou remova-a (unset $nome)"
+  else
+    DBX_CLI_MOTIVO="valor invalido para $nome: [$exibido]; use um inteiro de 1 a $DBX_CLI_PARALELO_MAXIMO (transferencias simultaneas)"
+  fi
+  return "$DBX_CLI_ERRO_USO"
+}
+
+# dbx_cli_validar_taxa <nome> <valor> <piso> [opcao|variavel] — RF-82(b)(c)(g).
+#
+# `[1-9][0-9]{0,8}` com sufixo opcional K, M ou G (base 1024, como o cURL), em
+# BYTES por segundo (DIV-87). O inteiro vai a DBX_CLI_TAXA; o texto do operador
+# nunca sai daqui. Abaixo do piso (2 x a velocidade minima efetiva, DIV-88) o
+# corte por velocidade de RNF-30 abortaria a transferencia: recusa nomeando a
+# variavel. `nome` e a opcao como digitada ou a variavel DBX_LIMITE_BANDA.
+DBX_CLI_TAXA=''
+dbx_cli_validar_taxa() {
+  local nome=$1 valor=${2-} piso=$3 origem=${4:-opcao} exibido fator=1
+  { local LC_ALL=C; } 2>/dev/null
+  DBX_CLI_MOTIVO=''
+  DBX_CLI_TAXA=''
+  exibido=${valor:0:64}
+  [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+  if [[ $valor =~ ^([1-9][0-9]{0,8})([KkMmGg]?)$ ]]; then
+    case ${BASH_REMATCH[2]} in
+      [Kk]) fator=1024 ;;
+      [Mm]) fator=1048576 ;;
+      [Gg]) fator=1073741824 ;;
+    esac
+    if ((BASH_REMATCH[1] * fator >= piso)); then
+      DBX_CLI_TAXA=$((BASH_REMATCH[1] * fator))
+      return 0
+    fi
+    DBX_CLI_MOTIVO="$nome [$exibido] abaixo do piso de $piso bytes/s (2 x DBX_HTTP_VELOCIDADE_MINIMA_BPS): abaixo disso o corte por velocidade minima abortaria a transferencia"
+  elif [[ $origem == 'variavel' ]]; then
+    DBX_CLI_MOTIVO="variavel de ambiente $nome invalida: [$exibido]; use inteiro positivo com sufixo opcional K, M ou G, ou remova-a (unset $nome)"
+  else
+    DBX_CLI_MOTIVO="valor invalido para $nome: [$exibido]; use inteiro positivo de bytes por segundo, com sufixo opcional K, M ou G (base 1024)"
+  fi
+  return "$DBX_CLI_ERRO_USO"
+}
+
+# dbx_cli_ler_oculto <pergunta> <nome_da_variavel> — PONTO UNICO da leitura de
+# segredo do terminal sem eco (DIV-117): `config` (app secret) e `compartilhar`
+# (senha do link) passam por aqui.
+#
+# A pergunta vai para stderr; o valor vai para a variavel NOMEADA do chamador,
+# por escopo dinamico do `read`, sem substituicao de comando (que rodaria em
+# subshell e cortaria a quebra final) e sem exportar nada (RNF-03, DIV-110).
+# Os locais tem prefixo proprio para nao sombrear o nome pedido.
+#
+# ECO DO TERMINAL: `read -s` desliga o eco so durante a leitura e o religa ao
+# terminar, inclusive quando INT, TERM ou HUP chegam durante a leitura e o
+# tratador de `lib/tmp` encerra o processo (o `read` e desfeito antes do
+# tratador rodar; medido, TC-SNH-13). Por isso nao ha `stty` aqui: ele nao esta
+# entre os utilitarios do preflight (RNF-02) e nao acrescentaria garantia.
+# Status: o do `read` (nao zero no fim da entrada); quem chama decide pelo valor.
+dbx_cli_ler_oculto() {
+  local _dbx_cli_pergunta=$1 _dbx_cli_destino=$2 _dbx_cli_estado
+  [[ $_dbx_cli_destino =~ ^[a-z_][a-z0-9_]*$ ]] || return "$DBX_CLI_ERRO_USO"
+  printf '%s' "$_dbx_cli_pergunta" >&2
+  # shellcheck disable=SC2229  # o nome e o mecanismo: o valor volta ao chamador
+  IFS= read -r -s "$_dbx_cli_destino"
+  _dbx_cli_estado=$?
+  # Sob `-s` o terminal nao mostra a quebra de linha digitada.
+  printf '\n' >&2
+  return "$_dbx_cli_estado"
+}
+
 _dbx_cli_recusar() {
   DBX_CLI_MOTIVO=$1
   return "$DBX_CLI_ERRO_USO"
+}
+
+# _dbx_cli_carregar_config — `lib/config` sob demanda: a validacao do nome do
+# perfil mora la (ponto unico, RNF-37) e `help`/`version`/`completar` nao
+# pagam o carregamento quando nao ha `--perfil`.
+_dbx_cli_carregar_config() {
+  declare -F dbx_config_perfil_validar >/dev/null && return 0
+  # bin/dbx ja segue json.sh e config.sh; segui-los de novo aqui explode a memoria do shellcheck.
+  # shellcheck source=/dev/null
+  . "$DBX_CLI_RAIZ/lib/json.sh"
+  # shellcheck source=/dev/null
+  . "$DBX_CLI_RAIZ/lib/config.sh"
+}
+
+# _dbx_cli_perfil_registrar <opcao> <valor|-ausente> — valida e guarda o nome.
+_dbx_cli_perfil_registrar() {
+  local opcao=$1
+  shift
+  if [[ $# -eq 0 ]]; then
+    _dbx_cli_recusar "$opcao exige um nome de perfil"
+    return $?
+  fi
+  if [[ $DBX_CLI_PERFIL_DADO == 'sim' ]]; then
+    _dbx_cli_recusar "$opcao repetida: informe o perfil uma unica vez"
+    return $?
+  fi
+  _dbx_cli_carregar_config
+  if ! dbx_config_perfil_validar "$1" opcao; then
+    DBX_CLI_MOTIVO=$DBX_CONFIG_DETALHE
+    return "$DBX_CLI_ERRO_USO"
+  fi
+  DBX_CLI_PERFIL=$1
+  DBX_CLI_PERFIL_DADO='sim'
+  return 0
+}
+
+# _dbx_cli_perfil_dado <--perfil|--profile> [valor...] — opcao global.
+_dbx_cli_perfil_dado() {
+  _dbx_cli_perfil_registrar "$@"
+}
+
+# _dbx_cli_perfil_depois <argumentos do comando...> — `config` e `unlink`
+# (DIV-241): espia `--perfil` depois do subcomando. `--help` vence (a ajuda
+# curto-circuita) e o valor de `--raiz` nao e opcao.
+_dbx_cli_perfil_depois() {
+  local arg
+  for arg in "$@"; do
+    [[ $arg == '--help' || $arg == '-h' ]] && return 0
+  done
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --raiz | --root)
+        shift
+        ;;
+      --perfil | --profile)
+        _dbx_cli_perfil_registrar "$@" || return $?
+        shift
+        ;;
+    esac
+    [[ $# -gt 0 ]] && shift
+  done
+  return 0
+}
+
+# dbx_cli_perfil_aplicar — passa a selecao a `lib/config` (opcao > variavel >
+# `padrao`, RF-120). A variavel so e lida aqui, e so validada quando usada.
+# Uso invalido: DBX_CLI_MOTIVO, sem ecoar o valor de `DBX_PERFIL`.
+dbx_cli_perfil_aplicar() {
+  DBX_CLI_MOTIVO=''
+  if [[ $DBX_CLI_PERFIL_DADO == 'sim' ]]; then
+    _dbx_cli_carregar_config
+    dbx_config_perfil_selecionar "$DBX_CLI_PERFIL" opcao || {
+      DBX_CLI_MOTIVO=$DBX_CONFIG_DETALHE
+      return "$DBX_CLI_ERRO_USO"
+    }
+  elif [[ -n ${DBX_PERFIL:-} ]]; then
+    _dbx_cli_carregar_config
+    dbx_config_perfil_do_ambiente || {
+      DBX_CLI_MOTIVO=$DBX_CONFIG_DETALHE
+      return "$DBX_CLI_ERRO_USO"
+    }
+  fi
+  return 0
 }
 
 # dbx_cli_analisar <argumentos...>
@@ -143,6 +383,8 @@ dbx_cli_analisar() {
   DBX_CLI_SIMULACAO='nao'
   DBX_CLI_PROGRESSO='auto'
   DBX_CLI_DEBUG='nao'
+  DBX_CLI_PERFIL=''
+  DBX_CLI_PERFIL_DADO='nao'
   [[ -n ${DBX_DEBUG:-} && ${DBX_DEBUG:-} != '0' && ${DBX_DEBUG:-} != 'nao' ]] && DBX_CLI_DEBUG='sim'
   DBX_CLI_MOTIVO=''
 
@@ -154,6 +396,10 @@ dbx_cli_analisar() {
       --progresso | --progress | -p) DBX_CLI_PROGRESSO='sim' ;;
       --sem-progresso | --no-progress) DBX_CLI_PROGRESSO='nao' ;;
       --debug) DBX_CLI_DEBUG='sim' ;;
+      --perfil | --profile)
+        _dbx_cli_perfil_dado "$@" || return $?
+        shift
+        ;;
       --help | -h)
         DBX_CLI_COMANDO='help'
         return 0
@@ -177,9 +423,15 @@ dbx_cli_analisar() {
           _dbx_cli_recusar "comando desconhecido: $1"
           return $?
         }
-        DBX_CLI_COMANDO=$1
+        dbx_cli_canonico "$1"
+        DBX_CLI_COMANDO=$DBX_CLI_CANONICO
         shift
         DBX_CLI_ARGS=("$@")
+        # `config` e `unlink` aceitam `--perfil` tambem depois do subcomando
+        # (DIV-241): a analise so ESPIA, os argumentos seguem com o comando.
+        if [[ $DBX_CLI_COMANDO == config || $DBX_CLI_COMANDO == unlink ]]; then
+          _dbx_cli_perfil_depois "$@" || return $?
+        fi
         return 0
         ;;
     esac

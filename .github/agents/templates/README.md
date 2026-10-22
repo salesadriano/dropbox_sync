@@ -16,5 +16,6 @@ Consultar apenas quando o fluxo correspondente for acionado. A obrigatoriedade d
 | `system-design-exemplo-preenchido.md` | Exemplo preenchido do System Design, como referencia pratica | Leitura apenas |
 | `revisao-consolidada-tech-lead-template.md` | Revisao consolidada por referencia aos artefatos dos agents: decisoes, divergencias tratadas, riscos residuais e impacto global | Tech Lead |
 | `aprovacao-final-tech-lead-template.md` | Aprovacao final: referencias ao System Design, validacao QA frontend, gates aplicados, riscos residuais e decisao de fechamento | Tech Lead |
+| `registro-de-entrega-curto-template.md` | Registro de entrega de porte P e M num unico arquivo, com os dois pareceres de gate e a validacao do QA como secoes (skill `../../skills/entrega-por-porte/`); em G continuam os arquivos proprios | Agent que produziu a alteracao (em P, o Tech Lead) |
 
 Regra de preenchimento comum a todos: secao ou tabela sem conteudo nao recebe placeholder; e omitida com a linha `Nao aplicavel: <motivo>` (regra 41). Fato ja registrado em outro artefato e referenciado por link, nunca copiado.

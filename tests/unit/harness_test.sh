@@ -331,4 +331,79 @@ teste_nenhum_arquivo_de_teste_redefine_uma_funcao_propria() {
     "funcao redefinida dentro do mesmo arquivo de teste; a segunda definicao vence em silencio:$achados"
 }
 
+# ---------------------------------------------------------------------------
+# RNF-32(a), F-30 — parada no primeiro erro (Regra 9 de `protocolo-tdd`).
+#
+# A suite e copiada para uma arvore propria com arquivos de teste fabricados:
+# exercitar o executor real sobre a suite real nao discrimina, porque ela esta
+# verde. Cada caso fabricado que NAO pode rodar deixa uma marca se rodar; a
+# ausencia da marca e a prova de que a execucao parou.
+# ---------------------------------------------------------------------------
+
+# _suite_fabricada — imprime a raiz de uma arvore com o executor e o arcabouco
+# reais e dois arquivos de teste: `a_test.sh` reprova no primeiro caso e
+# `b_test.sh` so marca que rodou.
+_suite_fabricada() {
+  local raiz
+  raiz=$(mktemp -d "$DBX_TESTES_TMP/suite.XXXXXX")
+  mkdir -p "$raiz/tests/unit" "$raiz/tests/support" "$raiz/tests/integracao"
+  cp "$DBX_HARNESS_RAIZ/tests/run.sh" "$raiz/tests/run.sh"
+  cp "$DBX_HARNESS_RAIZ/tests/support/harness.sh" "$raiz/tests/support/harness.sh"
+  cat >"$raiz/tests/unit/a_test.sh" <<'FIM'
+. "$(dirname -- "${BASH_SOURCE[0]}")/../support/harness.sh"
+teste_a_reprova() { _harness_falhar 'reprovacao fabricada'; }
+teste_b_nao_pode_rodar() { : >"$MARCA_DIR/caso_seguinte"; }
+harness_executar "$@"
+FIM
+  cat >"$raiz/tests/unit/b_test.sh" <<'FIM'
+. "$(dirname -- "${BASH_SOURCE[0]}")/../support/harness.sh"
+teste_c_nao_pode_rodar() { : >"$MARCA_DIR/arquivo_seguinte"; }
+harness_executar "$@"
+FIM
+  printf '%s' "$raiz"
+}
+
+# _rodar_suite_fabricada <raiz> [filtro] — executa o executor copiado com
+# ambiente proprio; publica DBX_ESTADO e DBX_LIDO (saida padrao e de erro).
+_rodar_suite_fabricada() {
+  local raiz=$1
+  shift
+  env -u DBX_TESTES_TMP -u DBX_HARNESS_RESUMO -u DBX_HARNESS_ARQUIVO \
+    -u DBX_HARNESS_ARQ_PULAR DBX_HARNESS_RAIZ="$raiz" \
+    DBX_HARNESS_DIARIO="$raiz/diario.log" MARCA_DIR="$raiz" TMPDIR="$raiz" \
+    bash "$raiz/tests/run.sh" "$@" >"$raiz/saida" 2>&1
+  DBX_ESTADO=$?
+  _ler "$raiz/saida"
+}
+
+teste_executor_para_no_primeiro_arquivo_com_reprovacao() {
+  local raiz
+  raiz=$(_suite_fabricada)
+  _rodar_suite_fabricada "$raiz"
+  assert_diferente 0 "$DBX_ESTADO" 'suite com caso reprovado nao pode sair com zero'
+  assert_arquivo_ausente "$raiz/arquivo_seguinte" \
+    'nenhum arquivo posterior ao primeiro erro pode ser executado (Regra 9)'
+  assert_contem 'a_test.sh' "$DBX_LIDO" 'o primeiro erro e reportado pelo nome do arquivo'
+  assert_contem 'REPROVADA' "$DBX_LIDO" 'o relatorio final continua presente'
+}
+
+teste_arcabouco_para_no_primeiro_caso_com_reprovacao() {
+  local raiz
+  raiz=$(_suite_fabricada)
+  _rodar_suite_fabricada "$raiz" a_test
+  assert_diferente 0 "$DBX_ESTADO" 'arquivo com caso reprovado nao pode sair com zero'
+  assert_arquivo_ausente "$raiz/caso_seguinte" \
+    'nenhum caso posterior ao primeiro erro pode ser executado (Regra 9)'
+  assert_contem 'not ok 1 - a_reprova' "$DBX_LIDO" 'o caso que reprovou e reportado'
+  assert_contem 'Bail out!' "$DBX_LIDO" 'a interrupcao e declarada no protocolo TAP'
+}
+
+teste_filtro_sem_correspondencia_continua_reprovando() {
+  local raiz
+  raiz=$(_suite_fabricada)
+  _rodar_suite_fabricada "$raiz" nao_casa_com_nada
+  assert_igual 1 "$DBX_ESTADO" 'filtro sem correspondencia reprova'
+  assert_contem 'nao corresponde a nenhum arquivo' "$DBX_LIDO" 'o motivo e dito'
+}
+
 harness_executar "$@"

@@ -87,13 +87,6 @@ verificar_prerequisitos() {
     erro "Utilitario de integridade sha256sum ou shasum nao encontrado."
   fi
 
-  # SQLite3 (recomendado para cache local de alto desempenho)
-  if command -v sqlite3 >/dev/null 2>&1; then
-    ok "sqlite3 detectado: cache de metadados e operacoes de alta performance ativo."
-  else
-    aviso "sqlite3 nao detectado. A ferramenta funciona normalmente, mas instalar sqlite3 acelerara analises locais repetidas."
-  fi
-
   ok "Pre-requisitos validados com sucesso."
 }
 
@@ -164,6 +157,13 @@ executar_desinstalacao() {
     removido='sim'
   fi
 
+  # RF-68(d): so o arquivo do dbx; o diretorio e de todos os programas.
+  if [[ -f "$DIR_COMPLETAR/dbx" ]]; then
+    rm -f -- "$DIR_COMPLETAR/dbx"
+    ok "Removido autocompletar do bash: $DIR_COMPLETAR/dbx"
+    removido='sim'
+  fi
+
   if [[ $removido == 'sim' ]]; then
     ok "dropbox_sync (dbx) foi desinstalado com sucesso."
     info "Nota: Suas credenciais e historico local em ~/.config/dropbox_sync/ foram preservados."
@@ -188,10 +188,20 @@ executar_instalacao() {
   }
 
   # Copiar arquivos de biblioteca, comandos e binario
-  mkdir -p -- "$DIR_SHARE/bin" "$DIR_SHARE/lib" "$DIR_SHARE/commands"
+  mkdir -p -- "$DIR_SHARE/bin" "$DIR_SHARE/lib" "$DIR_SHARE/commands" "$DIR_SHARE/completions"
   cp -p "$RAIZ_ORIGEM/bin/dbx" "$DIR_SHARE/bin/dbx"
   cp -p "$RAIZ_ORIGEM/lib/"*.sh "$DIR_SHARE/lib/"
   cp -p "$RAIZ_ORIGEM/commands/"*.sh "$DIR_SHARE/commands/"
+  # RF-68: `dbx completar bash` le a copia instalada.
+  cp -p "$RAIZ_ORIGEM/completions/dbx.bash" "$DIR_SHARE/completions/dbx.bash"
+  chmod 644 "$DIR_SHARE/completions/dbx.bash"
+
+  # RF-68(d): autocompletar onde o bash-completion procura, sem sudo no modo
+  # usuario e sem tocar em arquivo de inicializacao do shell. A copia
+  # sobrescreve no lugar: rodar duas vezes da o mesmo resultado.
+  mkdir -p -- "$DIR_COMPLETAR"
+  cp -- "$RAIZ_ORIGEM/completions/dbx.bash" "$DIR_COMPLETAR/dbx"
+  chmod 644 "$DIR_COMPLETAR/dbx"
 
   # Copiar documentacao e licenca se presentes
   [[ -f "$RAIZ_ORIGEM/README.md" ]] && cp -p "$RAIZ_ORIGEM/README.md" "$DIR_SHARE/"
@@ -291,6 +301,11 @@ else
   DIR_BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
   DIR_SHARE="${XDG_DATA_HOME:-$HOME/.local/share}/dropbox_sync"
 fi
+# Autocompletar (RF-68(d)): irmao de `dropbox_sync` sob o mesmo `share`, ou
+# seja ~/.local/share/bash-completion/completions no modo usuario,
+# <DIR>/share/bash-completion/completions com --prefix e
+# /usr/local/share/bash-completion/completions com --system.
+DIR_COMPLETAR="${DIR_SHARE%/dropbox_sync}/bash-completion/completions"
 
 if [[ $DESINSTALAR == "sim" ]]; then
   executar_desinstalacao

@@ -412,4 +412,194 @@ teste_resultado_e_limpo_quando_a_raiz_total_nao_e_autorizada() {
     'idem no espaco remoto'
 }
 
+# ---------------------------------------------------------------------------
+# RF-62 — chave canonica do cache: caminho fisico absoluto (fase 3)
+#
+# So define a CHAVE do cache (RF-62(d)): nenhuma decisao de transferir ou
+# apagar usa este caminho, e ele nao substitui o confinamento de RNF-20.
+# ---------------------------------------------------------------------------
+
+teste_relativo_absoluto_e_ligacao_simbolica_tem_a_mesma_chave_canonica() {
+  local area relativo absoluto ligacao
+  area=$(_area)
+  mkdir -p "$area/dados"
+  printf 'x' >"$area/dados/a.txt"
+  ln -s "$area/dados/a.txt" "$area/atalho.txt"
+  ln -s dados "$area/pasta"
+  absoluto=$(cd "$area" && dbx_path_local_canonico "$area/dados/a.txt" && printf '%s' "$DBX_PATH_RESULTADO")
+  relativo=$(cd "$area/dados" && dbx_path_local_canonico ./a.txt && printf '%s' "$DBX_PATH_RESULTADO")
+  ligacao=$(cd "$area" && dbx_path_local_canonico atalho.txt && printf '%s' "$DBX_PATH_RESULTADO")
+  assert_igual "$area/dados/a.txt" "$absoluto" 'absoluto fisico'
+  assert_igual "$absoluto" "$relativo" 'relativo cai na mesma chave'
+  assert_igual "$absoluto" "$ligacao" 'ligacao no ULTIMO componente e resolvida'
+  ligacao=$(cd "$area" && dbx_path_local_canonico pasta/../pasta/a.txt && printf '%s' "$DBX_PATH_RESULTADO")
+  assert_igual "$absoluto" "$ligacao" 'ligacao no meio e `..` depois dela, resolvidos fisicamente'
+}
+
+teste_chave_canonica_nao_imprime_e_recusa_vazio() {
+  local area saida
+  area=$(_area)
+  saida=$(cd "$area" && dbx_path_local_canonico x)
+  assert_igual '' "$saida" 'publica no canal, sem poluir a saida padrao'
+  assert_status "$DBX_PATH_USO_INVALIDO" dbx_path_local_canonico ''
+}
+
+teste_chave_canonica_nao_usa_substituicao_de_comando_com_readlink() {
+  # Auditoria RNF-24: o resolvedor existente le o alvo da ligacao por `read`,
+  # sem `$(readlink)`, que perderia quebra de linha final do alvo.
+  local achados
+  achados=$(grep -vE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ"/lib/*.sh | grep -nE '\$\([[:space:]]*readlink' || true)
+  assert_igual '' "$achados" "captura de readlink em lib/: $achados"
+}
+
+# ---------------------------------------------------------------------------
+# Argumento remoto de comando (F-36, F-37; RNF-20(b1..b6), RNF-10(b))
+# ---------------------------------------------------------------------------
+#
+# `dbx_path_remoto_argumento <raiz_da_credencial> <caminho>` e a politica de
+# argumento: o caminho e ABSOLUTO na conta e recusado fora da raiz; o resultado
+# sai na representacao da API (raiz da conta = cadeia vazia).
+
+teste_arg_raiz_da_conta_nao_muda_nada() {
+  # RNF-20(b6): raiz `/` (ou vazia, a forma gravada pelo `config`) sem recusa nova.
+  local raiz
+  for raiz in '' '/'; do
+    assert_igual '/qualquer/coisa' "$(dbx_path_remoto_argumento "$raiz" '/qualquer/coisa')" "raiz [$raiz]"
+    assert_igual '' "$(dbx_path_remoto_argumento "$raiz" '/')" "raiz [$raiz]: a raiz vira cadeia vazia"
+    assert_igual '/b' "$(dbx_path_remoto_argumento "$raiz" '/a/../b')" "raiz [$raiz]: .. normalizado"
+    assert_status "$DBX_PATH_RECUSADO" dbx_path_remoto_argumento "$raiz" '/../fora'
+    assert_status "$DBX_PATH_USO_INVALIDO" dbx_path_remoto_argumento "$raiz" 'relativo'
+    assert_status "$DBX_PATH_USO_INVALIDO" dbx_path_remoto_argumento "$raiz" ''
+  done
+}
+
+teste_arg_dentro_da_raiz_e_aceito_por_componente() {
+  assert_igual '/raiz' "$(dbx_path_remoto_argumento '/raiz' '/raiz')"
+  assert_igual '/raiz/a' "$(dbx_path_remoto_argumento '/raiz' '/raiz/a/')"
+  assert_igual '/raiz/a' "$(dbx_path_remoto_argumento '/raiz/' '/raiz//a')" 'raiz com barra final'
+}
+
+teste_arg_prefixo_semelhante_e_recusado() {
+  # RNF-20(b3): comparacao por componente, nao por prefixo textual.
+  local caminho
+  for caminho in '/raizX' '/raiz2/a' '/raiz.bak' '/rai' '/'; do
+    assert_status "$DBX_PATH_RECUSADO" dbx_path_remoto_argumento '/raiz' "$caminho"
+  done
+  dbx_path_remoto_argumento '/raiz' '/raizX' >/dev/null
+  assert_igual 'fora_da_raiz' "$DBX_PATH_MOTIVO" 'motivo publicado'
+  assert_igual '' "$DBX_PATH_RESULTADO" 'resultado limpo na recusa'
+}
+
+teste_arg_comparacao_ignora_caixa() {
+  # RNF-20(b4): o Dropbox nao diferencia caixa; a grafia do usuario e preservada.
+  assert_igual '/raiz/a' "$(dbx_path_remoto_argumento '/Raiz' '/raiz/a')"
+  assert_igual '/RAIZ/A' "$(dbx_path_remoto_argumento '/raiz' '/RAIZ/A')"
+  assert_status "$DBX_PATH_RECUSADO" dbx_path_remoto_argumento '/Raiz' '/RAIZX/a'
+}
+
+teste_arg_ponto_e_ponto_ponto_normalizados_antes_de_comparar() {
+  # RNF-20(b5).
+  assert_igual '/raiz/b' "$(dbx_path_remoto_argumento '/raiz' '/raiz/a/../b')"
+  assert_igual '/raiz/b' "$(dbx_path_remoto_argumento '/raiz' '/raiz/./b/.')"
+  assert_igual '/raiz/b' "$(dbx_path_remoto_argumento '/raiz' '/fora/../raiz/b')"
+  local caminho
+  for caminho in '/raiz/../fora' '/raiz/..' '/raiz/a/../../fora' '/raiz/../raizX'; do
+    assert_status "$DBX_PATH_RECUSADO" dbx_path_remoto_argumento '/raiz' "$caminho"
+  done
+  dbx_path_remoto_argumento '/raiz' '/../raiz' >/dev/null
+  assert_igual 'acima_da_raiz' "$DBX_PATH_MOTIVO" '.. acima da raiz da conta'
+}
+
+teste_arg_caminho_relativo_nao_e_ancorado_na_raiz() {
+  # Caminho absoluto na conta (RNF-20(b)): relativo continua recusado, como hoje.
+  local caminho
+  for caminho in 'raiz/a' './raiz' '../raiz'; do
+    assert_status "$DBX_PATH_USO_INVALIDO" dbx_path_remoto_argumento '/raiz' "$caminho"
+  done
+  dbx_path_remoto_argumento '/raiz' 'a' >/dev/null
+  assert_igual 'relativo' "$DBX_PATH_MOTIVO"
+}
+
+teste_arg_caractere_de_controle_e_recusado_com_qualquer_raiz() {
+  # F-37, RNF-10(b): 0x01..0x1F e 0x7F, dentro ou fora da raiz, com raiz da conta.
+  local raiz caminho
+  for raiz in '' '/raiz'; do
+    for caminho in $'/raiz/a\nb' $'/raiz/a\n' $'/raiz/a\rb' $'/raiz/a\tb' \
+      $'/raiz/a\001b' $'/raiz/a\037b' $'/raiz/a\177b' $'/raiz\n/../fora'; do
+      assert_status "$DBX_PATH_RECUSADO" dbx_path_remoto_argumento "$raiz" "$caminho"
+      dbx_path_remoto_argumento "$raiz" "$caminho" >/dev/null
+      assert_igual 'controle' "$DBX_PATH_MOTIVO" "raiz [$raiz]: motivo controle"
+      assert_igual '' "$DBX_PATH_RESULTADO" 'resultado limpo'
+    done
+  done
+  # Fronteira do conjunto: espaco, acento e caracteres de shell seguem validos.
+  assert_igual '/raiz/a b ç $x *' "$(dbx_path_remoto_argumento '/raiz' '/raiz/a b ç $x *')"
+}
+
+teste_arg_raiz_malformada_falha_fechado() {
+  local raiz
+  for raiz in 'raiz' '/..' '/raiz/../..' $'/raiz\n' $'/ra\001iz'; do
+    assert_status "$DBX_PATH_CONFIGURACAO" dbx_path_remoto_argumento "$raiz" '/raiz/a'
+    dbx_path_remoto_argumento "$raiz" '/raiz/a' >/dev/null
+    assert_igual 'raiz_invalida' "$DBX_PATH_MOTIVO" "raiz [$raiz]"
+    # A raiz e conferida antes do caminho: `list` sem argumento usa a propria
+    # raiz como caminho, e a falha tem de ser de configuracao, nao de uso.
+    assert_status "$DBX_PATH_CONFIGURACAO" dbx_path_remoto_argumento "$raiz" "$raiz"
+    assert_status "$DBX_PATH_CONFIGURACAO" dbx_path_remoto_argumento "$raiz" ''
+  done
+}
+
+# Localidades a exercitar: as pedidas que existem no host (a ausente e pulada
+# pelo proprio laco, nunca simulada).
+_localidades() {
+  local loc disponiveis
+  disponiveis=$(locale -a 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed 's/utf-8/utf8/')
+  for loc in C C.UTF-8 en_US.UTF-8 tr_TR.UTF-8; do
+    [[ $loc == C ]] && { printf '%s\n' "$loc"; continue; }
+    local chave=${loc,,}
+    chave=${chave/utf-8/utf8}
+    grep -qx -- "$chave" <<<"$disponiveis" && printf '%s\n' "$loc"
+  done
+  return 0
+}
+
+teste_arg_caixa_fora_do_ascii_nunca_escapa_em_nenhuma_localidade() {
+  # QA-B1B-01: a glibc dobra U+0130 (I com ponto) em `i` sob UTF-8; para a
+  # Dropbox ele e `i`+U+0307, outra pasta. A comparacao de CONFINAMENTO dobra
+  # so A-Z; fora do ASCII exige os mesmos bytes (falha fechada).
+  local loc obtido
+  while IFS= read -r loc; do
+    obtido=$(LC_ALL=$loc bash -c '. "$1/lib/errors.sh"; . "$1/lib/path.sh"
+      dbx_path_remoto_argumento /Raiz "$2" >/dev/null; printf "%s" "$?"' _ "$DBX_HARNESS_RAIZ" $'/RAİZ/fora')
+    assert_igual "$DBX_PATH_RECUSADO" "$obtido" "[$loc] /RA(U+0130)Z fora da raiz /Raiz"
+    obtido=$(LC_ALL=$loc bash -c '. "$1/lib/errors.sh"; . "$1/lib/path.sh"
+      dbx_path_remoto_argumento /Raiz "$2" >/dev/null; printf "%s" "$?"' _ "$DBX_HARNESS_RAIZ" $'/Raız/fora')
+    assert_igual "$DBX_PATH_RECUSADO" "$obtido" "[$loc] /Ra(U+0131)z fora da raiz /Raiz"
+    obtido=$(LC_ALL=$loc bash -c '. "$1/lib/errors.sh"; . "$1/lib/path.sh"
+      dbx_path_remoto_argumento "$2" "$3" >/dev/null; printf "%s" "$?"' _ "$DBX_HARNESS_RAIZ" $'/Raíz' $'/RAÍZ/x')
+    assert_igual "$DBX_PATH_RECUSADO" "$obtido" "[$loc] caixa nao ASCII diferente recusa (lado seguro)"
+    obtido=$(LC_ALL=$loc bash -c '. "$1/lib/errors.sh"; . "$1/lib/path.sh"
+      dbx_path_remoto_argumento "$2" "$3" >/dev/null; printf "%s" "$?"' _ "$DBX_HARNESS_RAIZ" $'/Raíz' $'/RAíZ/x')
+    assert_igual 0 "$obtido" "[$loc] so a caixa ASCII difere: aceito"
+    obtido=$(LC_ALL=$loc bash -c '. "$1/lib/errors.sh"; . "$1/lib/path.sh"
+      dbx_path_remoto_argumento /Raiz /RAIZ/a/../b >/dev/null; printf "%s|%s" "$?" "$DBX_PATH_RESULTADO"' _ "$DBX_HARNESS_RAIZ")
+    assert_igual '0|/RAIZ/b' "$obtido" "[$loc] ASCII sem caixa e .. normalizado"
+  done < <(_localidades)
+}
+
+teste_arg_raiz_com_controle_e_configuracao_mesmo_usada_como_caminho() {
+  # QA-B1B-02: a raiz e conferida antes do caminho, inclusive do controle.
+  local raiz
+  for raiz in $'/Raiz\n' $'/Ra\033iz'; do
+    assert_status "$DBX_PATH_CONFIGURACAO" dbx_path_remoto_argumento "$raiz" "$raiz"
+  done
+}
+
+teste_arg_publica_no_canal_sem_perder_resultado() {
+  dbx_path_remoto_argumento '/raiz' '/raiz/x' >/dev/null
+  assert_igual '/raiz/x' "$DBX_PATH_RESULTADO"
+  assert_igual '' "$DBX_PATH_MOTIVO" 'sucesso limpa o motivo'
+}
+
 harness_executar "$@"
+
