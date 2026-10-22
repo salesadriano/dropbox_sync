@@ -614,9 +614,12 @@ dbx_cmd_receber_arquivo() {
   }
   temporario=$DBX_TMP_CAMINHO
 
+  dbx_progress_arquivo_avancar 0
+  dbx_progress_arquivo_observar "$temporario"
   dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
     "$argumento" "$temporario"
   estado=$?
+  dbx_progress_arquivo_observar_parar "$temporario"
   if [[ $estado -ne 0 ]]; then
     dbx_tmp_remover "$temporario"
     return "$estado"
@@ -914,6 +917,8 @@ dbx_cmd_receber_retomavel() {
   argumento="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
   # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
   DBX_JSON_ESCAPADO=''
+  dbx_progress_arquivo_avancar "$inicio"
+  dbx_progress_arquivo_observar "$part"
   if [[ $inicio -gt 0 ]]; then
     dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
       "$argumento" "/dev/fd/$_DBX_CMD_PART_FD" "$inicio"
@@ -922,6 +927,7 @@ dbx_cmd_receber_retomavel() {
       "$argumento" "/dev/fd/$_DBX_CMD_PART_FD"
   fi
   estado=$?
+  dbx_progress_arquivo_observar_parar "$part"
   _dbx_cmd_part_fechar
   codigo=${DBX_HTTP_CODIGO:-0}
 

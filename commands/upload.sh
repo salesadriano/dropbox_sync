@@ -314,6 +314,11 @@ dbx_cmd_upload_executar() {
   fi
 
   dbx_progress_mensagem "[upload] iniciando envio: $origem -> $remoto"
+  local tamanho_progresso=''
+  if [[ $origem != '-' ]] && dbx_progress_ativo && dbx_transfer_tamanho_de_arquivo "$origem"; then
+    tamanho_progresso=$DBX_TRANSFER_TAMANHO
+  fi
+  dbx_progress_arquivo_iniciar 1 1 enviando "$origem" "$tamanho_progresso"
 
   local por_sessao='nao'
   if [[ $origem == '-' ]]; then
@@ -321,6 +326,7 @@ dbx_cmd_upload_executar() {
     # tomar — fluxo obriga sessao.
     por_sessao='sim'
     dbx_transfer_sessao "$DBX_TRANSFER_COMMIT" || {
+      dbx_progress_arquivo_falhar
       dbx_cmd_falhar "${DBX_TRANSFER_CLASSE:-nao_concluida}" \
         "envio em partes nao concluido: ${DBX_TRANSFER_MOTIVO:-sem detalhe}"
       return $?
@@ -330,6 +336,7 @@ dbx_cmd_upload_executar() {
     local estado_envio=$?
     por_sessao=$DBX_TRANSFER_POR_SESSAO
     [[ $estado_envio -eq 0 ]] || {
+      dbx_progress_arquivo_falhar
       if [[ $por_sessao == 'sim' ]]; then
         dbx_cmd_falhar "${DBX_TRANSFER_CLASSE:-nao_concluida}" \
           "envio em partes nao concluido: ${DBX_TRANSFER_MOTIVO:-sem detalhe}"
@@ -340,9 +347,7 @@ dbx_cmd_upload_executar() {
     }
   fi
 
-  local str_barra_fim=''
-  dbx_progress_barra_gerar 100 20 str_barra_fim
-  dbx_progress_mensagem "[upload] envio concluido com sucesso $str_barra_fim (100%)"
+  dbx_progress_arquivo_concluir
 
   _dbx_cmd_analisar_corpo || return $?
 

@@ -1280,7 +1280,7 @@ teste_upload_com_progresso_configura_progress_bar_no_cliente() {
   _rodar "$base" --progresso upload "$origem" /r/a.txt
   assert_igual 0 "$DBX_ESTADO" "upload com --progresso deve concluir; diagnostico: $DBX_ERRO"
   opcoes=$(cat "$base/opcoes" 2>/dev/null || true)
-  assert_contem 'progress-bar' "$opcoes" 'upload com progresso ativo deve configurar medidor no cliente'
+  assert_nao_contem 'progress-bar' "$opcoes" 'DIV-293: a barra do cURL nao e repassada; o progresso e o da linha do arquivo'
 }
 
 teste_upload_sem_progresso_mantem_cliente_silencioso() {
@@ -1301,7 +1301,7 @@ teste_download_com_progresso_configura_progress_bar_no_cliente() {
   _rodar "$base" --progresso download /r/a.txt "$base/baixado.txt"
   assert_igual 0 "$DBX_ESTADO" "download com --progresso deve concluir; diagnostico: $DBX_ERRO"
   opcoes=$(cat "$base/opcoes" 2>/dev/null || true)
-  assert_contem 'progress-bar' "$opcoes" 'download com progresso ativo deve configurar medidor no cliente'
+  assert_nao_contem 'progress-bar' "$opcoes" 'DIV-293: a barra do cURL nao e repassada; o progresso e o da linha do arquivo'
 }
 
 teste_download_sem_progresso_mantem_cliente_silencioso() {
@@ -1330,6 +1330,10 @@ teste_upload_com_progresso_exibe_barra_grafica_em_stderr() {
 teste_download_com_progresso_exibe_barra_grafica_em_stderr() {
   local base
   base=$(_ambiente '{"name":"a.txt","rev":"016"}')
+  # DIV-304: a linha do download so abre depois que o metadado confirma arquivo.
+  local h64
+  printf -v h64 'a%.0s' {1..64}
+  _metadado "$base" 200 "{\".tag\":\"file\",\"size\":28,\"rev\":\"0123456789a\",\"content_hash\":\"$h64\"}"
   _rodar "$base" --progresso download /r/a.txt "$base/baixado.txt"
   assert_igual 0 "$DBX_ESTADO" "download com --progresso deve concluir; diagnostico: $DBX_ERRO"
   assert_contem '[download]' "$DBX_ERRO" 'stderr deve conter rotulo de download'

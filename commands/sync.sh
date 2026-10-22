@@ -249,13 +249,30 @@ _dbx_cmd_sync_banda_por_transferencia() {
 # <resultado> quatro linhas: status (0 ou 1), classe da falha, resumo da falha
 # (so o texto curto saneado de RF-59(c)) e quantos `429` ele observou.
 _dbx_cmd_sync_aux_item() {
-  local resultado=$1 sentido=$2 caminho=$3 alvo=$4 rev=$5
+  local resultado=$1 sentido=$2 caminho=$3 alvo=$4 rev=$5 canal=${6-} posicao=${7-}
   local antes=${DBX_HTTP_REQUISICOES:-0} antes_429=${DBX_HTTP_LIMITES_429:-0}
-  local status=0
+  local status=0 tam_prg=''
+  # DIV-290: o avanco vai ao principal por arquivo de status; o auxiliar nao escreve em stderr.
+  if [[ -n $canal ]]; then
+    dbx_progress_canal_definir "$canal"
+    if [[ $sentido == 'enviar' ]]; then
+      _dbx_cmd_sync_prg_iniciar "$posicao" "$total_ops" enviando "$caminho" "$raiz_local/$caminho"
+    else
+      _dbx_cmd_sync_prg_iniciar "$posicao" "$total_ops" baixando "$caminho" '' "${mapa_tam_remoto[$caminho]:-}"
+    fi
+  fi
   if [[ $sentido == 'enviar' ]]; then
     _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev" || status=1
   else
     _dbx_cmd_sync_receber "$remoto/$caminho" "$raiz_local" "$alvo" || status=1
+  fi
+  if [[ -n $canal ]]; then
+    if [[ $status -ne 0 ]]; then
+      dbx_progress_arquivo_falhar
+    else
+      if [[ $sentido != 'enviar' && -f $raiz_local/$alvo ]]; then dbx_progress_tamanho_de "$raiz_local/$alvo" tam_prg || tam_prg=''; fi
+      dbx_progress_arquivo_concluir "$tam_prg"
+    fi
   fi
   DBX_CMD_SYNC_RESUMO_FALHA=''
   [[ $status -eq 0 ]] || _dbx_cmd_sync_resumo_da_falha "$antes"
@@ -297,9 +314,11 @@ _dbx_cmd_sync_transferir_paralelo() {
   local total=${#DBX_SYNC_TRANSFERIR[@]} lancados=0 descarregados=0 vivos indice pid
   local caminho alvo rev antes status classe resumo limites resultado acao_id=''
   local -a itens=("${DBX_SYNC_TRANSFERIR[@]}") pids=()
-  local pasta="$area/paralelo"
+  local pasta="$area/paralelo" base_op=$op_atual canal='' tam_blc=''
   # A pasta fica na area do ciclo (lib/tmp a remove em todo termino).
-  mkdir -p -- "$pasta" 2>/dev/null || :
+  mkdir -m 0700 -- "$pasta" 2>/dev/null || :
+  # RF-143: bloco de linhas, uma por arquivo ativo; so com progresso ativo.
+  dbx_progress_bloco_iniciar "$pasta"
   _DBX_CMD_SYNC_AUX_PIDS=()
   dbx_tmp_acao_registrar _dbx_cmd_sync_aux_encerrar
   acao_id=$DBX_TMP_ID
@@ -315,6 +334,18 @@ _dbx_cmd_sync_transferir_paralelo() {
     done
     while ((lancados < total && vivos < paralelo)); do
       caminho=${itens[lancados]}
+      if dbx_progress_bloco_ativo; then
+        tam_blc=''
+        if [[ $sentido == 'enviar' ]]; then
+          if [[ -f $raiz_local/$caminho ]]; then dbx_progress_tamanho_de "$raiz_local/$caminho" tam_blc || tam_blc=''; fi
+          dbx_progress_bloco_abrir "$lancados" "$((base_op + lancados + 1))" "$total_ops" enviando "$caminho" "$tam_blc"
+        else
+          dbx_progress_bloco_abrir "$lancados" "$((base_op + lancados + 1))" "$total_ops" baixando "$caminho" "${mapa_tam_remoto[$caminho]:-}"
+        fi
+        canal="$pasta/st.$lancados"
+      else
+        canal=''
+      fi
       # RF-137: pequeno ja resolvido pelo lote nao vai a auxiliar; o resultado
       # entra na fila de descarga na mesma forma e na mesma ordem.
       if [[ $sentido == 'enviar' ]] && _dbx_cmd_sync_lote_resolvido "$caminho"; then
@@ -330,7 +361,7 @@ _dbx_cmd_sync_transferir_paralelo() {
         rev=${mapa_revs[$alvo]:-}
       fi
       _dbx_cmd_sync_aux_item "$pasta/$lancados" "$sentido" "$caminho" "$alvo" "$rev" \
-        </dev/null >/dev/null 2>&1 &
+        "$canal" "$((base_op + lancados + 1))" </dev/null >/dev/null 2>&1 &
       pids[lancados]=$!
       _DBX_CMD_SYNC_AUX_PIDS[lancados]=$!
       lancados=$((lancados + 1))
@@ -361,7 +392,9 @@ _dbx_cmd_sync_transferir_paralelo() {
       DBX_CMD_SYNC_LIMITES_429=$((DBX_CMD_SYNC_LIMITES_429 + limites))
       caminho=${itens[descarregados]}
       op_atual=$((op_atual + 1))
-      if [[ $sentido == 'enviar' ]]; then
+      if dbx_progress_bloco_ativo; then
+        dbx_progress_bloco_fechar "$descarregados" "$status"
+      elif [[ $sentido == 'enviar' ]]; then
         dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
       else
         dbx_progress_etapa "$op_atual" "$total_ops" 'recebendo' "$caminho"
@@ -372,6 +405,7 @@ _dbx_cmd_sync_transferir_paralelo() {
         falhas=$((falhas + 1))
         DBX_CMD_SYNC_FALHA_CLASSE=${classe:-erro_remoto}
         DBX_CMD_SYNC_RESUMO_FALHA=${resumo:-falha local}
+        dbx_progress_bloco_pausar
         _dbx_cmd_sync_falha_emitir "$caminho"
         _dbx_cmd_sync_falha_do_plano_incremental
       fi
@@ -380,8 +414,14 @@ _dbx_cmd_sync_transferir_paralelo() {
       descarregados=$((descarregados + 1))
     done
     ((descarregados < total)) || break
-    wait -n 2>/dev/null || :
+    if dbx_progress_bloco_ativo; then
+      dbx_progress_bloco_tick
+      sleep 0.2
+    else
+      wait -n 2>/dev/null || :
+    fi
   done
+  dbx_progress_bloco_encerrar
   wait 2>/dev/null || :
   set +m
   _DBX_CMD_SYNC_AUX_PIDS=()
@@ -941,7 +981,9 @@ dbx_cmd_sync_executar() {
         ordem_local+=("${caminhos_locais[$indice]}")
         # shellcheck disable=SC2034  # lido por referencia de nome em lib/sync
         mapa_local["${caminhos_locais[$indice]}"]=$DBX_CMD_SYNC_RESUMO
-        dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-ok}"
+        local nome_seguro=''
+        dbx_progress_neutralizar "${caminhos_locais[$indice]}" nome_seguro
+        dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): $nome_seguro -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-ok}"
       else
         # Arquivo ilegivel e travessia parcial: some da origem sem ter sido
         # apagado, e com espelhamento isso viraria exclusao do par no destino.
@@ -951,7 +993,9 @@ dbx_cmd_sync_executar() {
         # derrubaria o registro do plano inteiro, e justamente na execucao em que
         # ele mais importa.
         motivo_parcial="${motivo_parcial}${motivo_parcial:+; }nao foi possivel calcular o resumo de: ${caminhos_locais[$indice]}"
-        dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): ${caminhos_locais[$indice]} -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-falha na leitura}"
+        local nome_seguro=''
+        dbx_progress_neutralizar "${caminhos_locais[$indice]}" nome_seguro
+        dbx_progress_mensagem "[sync] analisando local ($((indice + 1))/$total_locais): $nome_seguro -> ${DBX_CMD_SYNC_ORIGEM_RESUMO:-falha na leitura}"
       fi
     done
     dbx_progress_mensagem "[sync] arquivos locais analisados: ${#ordem_local[@]} arquivo(s)"
@@ -977,7 +1021,7 @@ dbx_cmd_sync_executar() {
   local -a ordem_remota=()
   # shellcheck disable=SC2034  # preenchido e lido por referencia de nome nas
   # funcoes de lib/sync; a analise estatica nao segue nameref entre arquivos.
-  local -A mapa_remoto=() mapa_revs=()
+  local -A mapa_remoto=() mapa_revs=() mapa_tam_remoto=()
   for rodada in 1 2; do
     [[ $rodada -eq 1 ]] || dbx_progress_mensagem '[sync] consultando arquivos remotos de novo (varredura completa)'
     dbx_sync_filtrados_zerar
@@ -994,6 +1038,10 @@ dbx_cmd_sync_executar() {
     filtrados_remoto=$DBX_SYNC_FILTRADOS
     dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
     dbx_sync_ler_revs "$revs_remotos" mapa_revs
+    # DIV-297: o total do recebimento vem do `size` da listagem, sem chamada nova.
+    if [[ $sentido == 'receber' ]] && dbx_progress_ativo; then
+      _dbx_cmd_sync_ler_tamanhos "$registros_remotos" mapa_tam_remoto
+    fi
     dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
 
     if [[ $sentido == 'enviar' ]]; then
@@ -1082,7 +1130,9 @@ dbx_cmd_sync_executar() {
 
     for caminho in ${DBX_SYNC_IDENTICOS[@]+"${DBX_SYNC_IDENTICOS[@]}"}; do
       idx_analise=$((idx_analise + 1))
-      dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> identico (dispensado)"
+      local nome_seguro=''
+      dbx_progress_neutralizar "$caminho" nome_seguro
+      dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $nome_seguro -> identico (dispensado)"
     done
 
     for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
@@ -1093,15 +1143,21 @@ dbx_cmd_sync_executar() {
       elif [[ $sentido == 'receber' && -n ${mapa_local[$par]+definido} ]]; then
         tipo_item='modificado'
       fi
-      dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> $tipo_item ($acao_transferir)"
+      local nome_seguro=''
+      dbx_progress_neutralizar "$caminho" nome_seguro
+      dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $nome_seguro -> $tipo_item ($acao_transferir)"
     done
 
     for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
       idx_analise=$((idx_analise + 1))
       if [[ $espelhar == 'sim' ]]; then
-        dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> ausente na origem (a apagar)"
+        local nome_seguro=''
+        dbx_progress_neutralizar "$caminho" nome_seguro
+        dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $nome_seguro -> ausente na origem (a apagar)"
       else
-        dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $caminho -> apenas no destino (mantido)"
+        local nome_seguro=''
+        dbx_progress_neutralizar "$caminho" nome_seguro
+        dbx_progress_mensagem "[sync] analise [$idx_analise/$total_analisados]: $nome_seguro -> apenas no destino (mantido)"
       fi
     done
     dbx_progress_mensagem "[sync] resultado da analise: ${#DBX_SYNC_TRANSFERIR[@]} a transferir, ${#DBX_SYNC_APAGAR[@]} a apagar, ${#DBX_SYNC_IDENTICOS[@]} inalterado(s)"
@@ -1265,10 +1321,12 @@ dbx_cmd_sync_executar() {
   for caminho in ${transferir_aqui[@]+"${transferir_aqui[@]}"}; do
     op_atual=$((op_atual + 1))
     if [[ $sentido == 'enviar' ]] && _dbx_cmd_sync_lote_resolvido "$caminho"; then
-      dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
+      _dbx_cmd_sync_prg_iniciar "$op_atual" "$total_ops" enviando "$caminho" "$raiz_local/$caminho"
       if [[ $_DBX_CMD_SYNC_LOTE_ITEM_STATUS == 0 ]]; then
+        dbx_progress_arquivo_concluir
         enviados=$((enviados + 1))
       else
+        dbx_progress_arquivo_falhar
         falhas=$((falhas + 1))
         _dbx_cmd_sync_falha_emitir "$caminho"
       fi
@@ -1278,20 +1336,26 @@ dbx_cmd_sync_executar() {
     alvo=${DBX_SYNC_ALVO[$caminho]:-$caminho}
     antes=${DBX_HTTP_REQUISICOES:-0}
     if [[ $sentido == 'enviar' ]]; then
-      dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
+      _dbx_cmd_sync_prg_iniciar "$op_atual" "$total_ops" enviando "$caminho" "$raiz_local/$caminho"
       rev=''
       [[ -n ${mapa_remoto[$alvo]+definido} ]] && rev=${mapa_revs[$alvo]:-}
       if _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev"; then
+        dbx_progress_arquivo_concluir
         enviados=$((enviados + 1))
       else
+        dbx_progress_arquivo_falhar
         falhas=$((falhas + 1))
         _dbx_cmd_sync_falhou "$caminho" "$antes"
       fi
     else
-      dbx_progress_etapa "$op_atual" "$total_ops" 'recebendo' "$caminho"
+      _dbx_cmd_sync_prg_iniciar "$op_atual" "$total_ops" baixando "$caminho" '' "${mapa_tam_remoto[$caminho]:-}"
       if _dbx_cmd_sync_receber "$remoto/$caminho" "$raiz_local" "$alvo"; then
+        local tam_prg=''
+        if dbx_progress_ativo && [[ -f $raiz_local/$alvo ]]; then dbx_progress_tamanho_de "$raiz_local/$alvo" tam_prg || tam_prg=''; fi
+        dbx_progress_arquivo_concluir "$tam_prg"
         recebidos=$((recebidos + 1))
       else
+        dbx_progress_arquivo_falhar
         falhas=$((falhas + 1))
         _dbx_cmd_sync_falhou "$caminho" "$antes"
         _dbx_cmd_sync_falha_do_plano_incremental
@@ -1432,6 +1496,33 @@ _dbx_cmd_sync_sem_protegidos() {
   DBX_SYNC_APAGAR=(${manter[@]+"${manter[@]}"})
 }
 
+# _dbx_cmd_sync_ler_tamanhos <arquivo> <nome_do_mapa> — `size` por caminho remoto,
+# lido da tabela `resumo<TAB>tamanho<TAB>caminho\0` ja montada pela listagem.
+_dbx_cmd_sync_ler_tamanhos() {
+  local arquivo=$1 reg tam
+  local -n _tams=$2
+  _tams=()
+  [[ -r $arquivo ]] || return 0
+  while IFS= read -r -d '' reg; do
+    tam=${reg#*$'\t'}
+    tam=${tam%%$'\t'*}
+    [[ $tam =~ ^[0-9]+$ ]] || continue
+    reg=${reg#*$'\t'}
+    _tams["${reg#*$'\t'}"]=$tam
+  done <"$arquivo"
+  return 0
+}
+
+# _dbx_cmd_sync_prg_iniciar <i> <n> <acao> <item> <arquivo_local|''> — abre a
+# linha do arquivo (RF-140); o tamanho so e lido com o progresso ativo (RF-145(c)).
+_dbx_cmd_sync_prg_iniciar() {
+  local total=${6-}
+  if [[ -z $total && -n $5 ]] && dbx_progress_ativo && dbx_transfer_tamanho_de_arquivo "$5"; then
+    total=$DBX_TRANSFER_TAMANHO
+  fi
+  dbx_progress_arquivo_iniciar "$1" "$2" "$3" "$4" "$total"
+}
+
 # _dbx_cmd_sync_enviar <arquivo_local> <caminho_remoto> <rev>
 #
 # Mesmo caminho do `upload` (RF-57): objeto de publicacao e roteamento por
@@ -1446,7 +1537,12 @@ _dbx_cmd_sync_enviar() {
   local origem=$1 destino=$2 rev=$3
   DBX_CMD_SYNC_FALHA_CLASSE=''
   dbx_transfer_objeto_de_publicacao "$destino" add "$rev" "$origem" true
-  dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" sync >/dev/null 2>&1 && return 0
+  # RF-144(e): com progresso ativo o stderr da transferencia deixa de ser descartado.
+  if dbx_progress_ativo; then
+    dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" sync >/dev/null && return 0
+  else
+    dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" sync >/dev/null 2>&1 && return 0
+  fi
   DBX_CMD_SYNC_FALHA_CLASSE=${DBX_TRANSFER_CLASSE:-erro_remoto}
   return 1
 }
@@ -1462,7 +1558,11 @@ _dbx_cmd_sync_receber() {
   DBX_CMD_SYNC_FALHA_CLASSE='configuracao'
   [[ $pasta == "$relativo" ]] || mkdir -p -- "$raiz/$pasta" 2>/dev/null || return 1
   DBX_CMD_SYNC_FALHA_CLASSE=''
-  dbx_cmd_receber_arquivo "$remoto" "$raiz/$relativo" >/dev/null 2>&1 && return 0
+  if dbx_progress_ativo; then
+    dbx_cmd_receber_arquivo "$remoto" "$raiz/$relativo" >/dev/null && return 0
+  else
+    dbx_cmd_receber_arquivo "$remoto" "$raiz/$relativo" >/dev/null 2>&1 && return 0
+  fi
   DBX_CMD_SYNC_FALHA_CLASSE=${DBX_CMD_FALHA_CLASSE:-${DBX_HTTP_CLASSE:-erro_remoto}}
   return 1
 }

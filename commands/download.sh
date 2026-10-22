@@ -56,24 +56,33 @@ _dbx_cmd_download_pasta() {
 DBX_CMD_DOWNLOAD_REV=''
 DBX_CMD_DOWNLOAD_TAMANHO=''
 DBX_CMD_DOWNLOAD_HASH=''
+DBX_CMD_DOWNLOAD_TAMANHO_META=''
+DBX_CMD_DOWNLOAD_EH_ARQUIVO=''
 _dbx_cmd_download_retomavel() {
-  local remoto=$1 alvo=$2
-  DBX_CMD_DOWNLOAD_REV='' DBX_CMD_DOWNLOAD_TAMANHO='' DBX_CMD_DOWNLOAD_HASH=''
+  local remoto=$1 alvo=$2 so_meta=${3-}
+  DBX_CMD_DOWNLOAD_REV='' DBX_CMD_DOWNLOAD_TAMANHO='' DBX_CMD_DOWNLOAD_HASH='' DBX_CMD_DOWNLOAD_TAMANHO_META='' DBX_CMD_DOWNLOAD_EH_ARQUIVO=''
   [[ -e $alvo && ! -f $alvo ]] && return 1
   # shellcheck source=lib/transfer.sh
   . "${BASH_SOURCE[0]%/*}/../lib/transfer.sh"
   dbx_json_escapar_cadeia "$remoto"
   if ! dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/get_metadata' \
     "{\"path\":\"$DBX_JSON_ESCAPADO\"}" sim >/dev/null 2>&1; then
-    if [[ ${DBX_HTTP_CLASSE:-} == 'nao_encontrado' ]] && dbx_path_local_canonico "$alvo"; then
+    if [[ ${DBX_HTTP_CLASSE:-} == 'nao_encontrado' && $so_meta != 'so_meta' ]] && dbx_path_local_canonico "$alvo"; then
       dbx_cmd_retomada_limpar download "$DBX_PATH_RESULTADO" "$remoto"
     fi
     return 1
   fi
   dbx_cmd_ler_corpo_silencioso .tag size rev content_hash || return 1
+  # DIV-306: `.tag=file` basta para a linha de progresso abrir; o tamanho e opcional.
+  if [[ ${DBX_CMD_CAMPOS[0]} == 'file' ]]; then
+    DBX_CMD_DOWNLOAD_EH_ARQUIVO='sim'
+    if [[ ${DBX_CMD_CAMPOS[1]} =~ ^[0-9]{1,18}$ ]]; then DBX_CMD_DOWNLOAD_TAMANHO_META=$((10#${DBX_CMD_CAMPOS[1]})); fi
+  fi
   [[ ${DBX_CMD_CAMPOS[0]} == 'file' && ${DBX_CMD_CAMPOS[1]} =~ ^[0-9]{1,18}$ &&
     ${DBX_CMD_CAMPOS[2]} =~ ^[0-9a-f]{9,64}$ ]] || return 1
   dbx_hash_formato_valido "${DBX_CMD_CAMPOS[3]}" || return 1
+  # DIV-295: o total da linha de progresso vem deste `get_metadata`, sem chamada nova.
+  DBX_CMD_DOWNLOAD_TAMANHO_META=$((10#${DBX_CMD_CAMPOS[1]}))
   dbx_transfer_precisa_de_sessao "${DBX_CMD_CAMPOS[1]}" || return 1
   DBX_CMD_DOWNLOAD_REV=${DBX_CMD_CAMPOS[2]}
   DBX_CMD_DOWNLOAD_TAMANHO=$((10#${DBX_CMD_CAMPOS[1]}))
@@ -281,11 +290,22 @@ dbx_cmd_download_executar() {
     return $?
   fi
 
-  local str_barra_inicio=''
-  dbx_progress_barra_gerar 0 20 str_barra_inicio
-  dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo $str_barra_inicio (0%)"
+  local estado_recebimento=0 retomavel='nao' retomavel_ok='nao'
+  if [[ $alvo != '/dev/stdout' && $alvo != '-' ]]; then
+    dbx_progress_mensagem "[download] iniciando recebimento: $remoto -> $alvo"
+    if [[ $sem_retomada != 'sim' ]]; then
+      if _dbx_cmd_download_retomavel "$remoto" "$alvo"; then retomavel_ok='sim'; fi
+    elif dbx_progress_ativo; then
+      # DIV-304: so o metadado, para saber se o remoto e arquivo; o registro de
+      # retomada nao e tocado.
+      _dbx_cmd_download_retomavel "$remoto" "$alvo" so_meta || :
+    fi
+    # DIV-304: a linha so abre depois que o metadado confirmou `.tag=file`.
+    if [[ ${DBX_CMD_DOWNLOAD_EH_ARQUIVO:-} == 'sim' ]]; then
+      dbx_progress_arquivo_iniciar 1 1 baixando "$remoto" "${DBX_CMD_DOWNLOAD_TAMANHO_META:-}" 0 adiar
+    fi
+  fi
 
-  local estado_recebimento=0 retomavel='nao'
   if [[ $alvo == '/dev/stdout' || $alvo == '-' ]]; then
     # O cliente reabre a saida padrao do inicio (limite declarado em lib/http):
     # sobre arquivo que ja tem conteudo — o `>>` — isso o apagaria. Recusa
@@ -298,7 +318,7 @@ dbx_cmd_download_executar() {
     dbx_auth_conteudo_receber GET \
       'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo"
     estado_recebimento=$?
-  elif [[ $sem_retomada != 'sim' ]] && _dbx_cmd_download_retomavel "$remoto" "$alvo"; then
+  elif [[ $retomavel_ok == 'sim' ]]; then
     # Fase 7a (RF-104): arquivo acima de 150 MiB, pela revisao fixa.
     retomavel='sim'
     dbx_cmd_receber_retomavel "$remoto" "$alvo" "$DBX_CMD_DOWNLOAD_REV" "$DBX_CMD_DOWNLOAD_TAMANHO" \
@@ -309,6 +329,12 @@ dbx_cmd_download_executar() {
     estado_recebimento=$?
   fi
   if [[ $estado_recebimento -ne 0 ]]; then
+    # O remoto que e pasta nao e falha de arquivo: a linha sai sem ` falhou`.
+    if [[ ${DBX_HTTP_RESUMO_DE_ERRO:-} == *not_file* ]]; then
+      dbx_progress_arquivo_descartar
+    else
+      dbx_progress_arquivo_falhar
+    fi
     if [[ -n ${DBX_CMD_FALHA_CLASSE:-} && $alvo != '/dev/stdout' && $alvo != '-' ]]; then
       dbx_cmd_falhar "$DBX_CMD_FALHA_CLASSE" "$DBX_CMD_FALHA_MOTIVO"
       return $?
@@ -344,23 +370,11 @@ dbx_cmd_download_executar() {
     return $?
   fi
 
-  local str_barra_fim='' str_tam_baixado=''
-  dbx_progress_barra_gerar 100 20 str_barra_fim
-  # So destino em arquivo: medir `/dev/stdout` dentro da substituicao abaixo
-  # leria o proprio cano da captura e nunca terminaria.
-  if [[ $alvo != '/dev/stdout' && $alvo != '-' && -f $alvo ]]; then
-    local bytes_baixados
-    bytes_baixados=$(wc -c <"$alvo" 2>/dev/null)
-    bytes_baixados=${bytes_baixados//[^0-9]/}
-    if [[ -n $bytes_baixados ]]; then
-      dbx_progress_formatar_bytes "$bytes_baixados" str_tam_baixado
-    fi
+  local tamanho_final=''
+  if dbx_progress_ativo && [[ $alvo != '/dev/stdout' && $alvo != '-' && -f $alvo ]]; then
+    dbx_progress_tamanho_de "$alvo" tamanho_final || tamanho_final=''
   fi
-  if [[ -n $str_tam_baixado ]]; then
-    dbx_progress_mensagem "[download] recebimento concluido: $alvo ($str_tam_baixado) $str_barra_fim (100%)"
-  else
-    dbx_progress_mensagem "[download] recebimento concluido: $alvo $str_barra_fim (100%)"
-  fi
+  dbx_progress_arquivo_concluir "$tamanho_final"
 
   # Em arquivo, a conferencia ja ocorreu antes da substituicao (RF-55). Em
   # fluxo os bytes ja passaram e nao ha o que comparar: o comando nao afirma
