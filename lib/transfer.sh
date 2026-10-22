@@ -666,6 +666,8 @@ _dbx_transfer_percurso() {
   # shellcheck disable=SC2034  # canal publico, esvaziado: o `session_id` nao fica
   DBX_TRANSFER_LIDO=''
 
+  # DIV-294: a retomada comeca no confirmado, nunca em 0%.
+  dbx_progress_arquivo_avancar "$deslocamento"
   while :; do
     # Sem cano: o status abaixo e o do proprio leitor. Falha de leitura aborta a
     # sessao ANTES de qualquer `finish`, e portanto nada e publicado.
@@ -740,14 +742,9 @@ _dbx_transfer_percurso() {
       maior_confirmado=$deslocamento
       retomadas=0
     fi
-    dbx_progress_transferencia 'upload' "$deslocamento" "${DBX_TRANSFER_TAMANHO:-0}" "parte $parte enviada"
+    dbx_progress_arquivo_avancar "$deslocamento"
     parte=$((parte + 1))
   done
-
-  local str_total_sessao='' str_barra_concluida=''
-  dbx_progress_formatar_bytes "$((deslocamento + tamanho))" str_total_sessao
-  dbx_progress_barra_gerar 100 20 str_barra_concluida
-  dbx_progress_mensagem "[upload] concluindo sessao em partes ($str_total_sessao)... $str_barra_concluida (100%)"
 
   # RF-103(d): mudou de tamanho durante o envio, o registro tambem sai.
   _dbx_transfer_conferir_tamanho "$((deslocamento + tamanho))" || {
@@ -1165,7 +1162,7 @@ dbx_transfer_objeto_de_publicacao() {
 # Falha publica DBX_TRANSFER_CLASSE e DBX_TRANSFER_MOTIVO nos dois caminhos; o
 # corpo da resposta de sucesso fica em DBX_HTTP_CORPO para quem o le.
 dbx_transfer_enviar_arquivo() {
-  local origem=${1-} commit=${2-} rotulo=${3:-envio} str_tam='' str_barra=''
+  local origem=${1-} commit=${2-} rotulo=${3:-envio}
   DBX_TRANSFER_POR_SESSAO='nao'
   # shellcheck disable=SC2034  # canais publicos, lidos pelos comandos
   DBX_TRANSFER_CLASSE=''
@@ -1195,9 +1192,6 @@ dbx_transfer_enviar_arquivo() {
     return $?
   fi
 
-  dbx_progress_barra_gerar 0 20 str_barra
-  dbx_progress_formatar_bytes "$DBX_TRANSFER_TAMANHO" str_tam
-  dbx_progress_mensagem "[$rotulo] enviando arquivo ($str_tam) via requisicao unica... $str_barra (0%)"
   dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
     "$commit" "$origem" nao && return 0
   _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
