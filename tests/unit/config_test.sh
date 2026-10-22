@@ -69,12 +69,95 @@ teste_nenhuma_variavel_de_ambiente_sobrescreve_a_credencial() {
 # Invariante de DP-05: nenhuma funcao recebe identificador de conta ou perfil
 # ---------------------------------------------------------------------------
 
+# REESCRITA NA FASE 8 (RF-130(c), RSK-90, DIV-249), SEM ENFRAQUECER. A DP-05 foi
+# reaberta: perfil existe, mas SO em `lib/config`, e so numa LISTA FECHADA de
+# funcoes. O que a auditoria garante agora:
+#   (a) nenhuma funcao de `lib/config` fora da lista fechada menciona perfil
+#       (uma funcao nova que receba perfil ou conta reprova);
+#   (b) nao ha `conta`/`account` no componente (como antes);
+#   (c) so `dbx_config_caminho_de_perfil` compoe caminho com nome, e valida ANTES
+#       (caminho composto com nome nao validado reprova, RNF-37);
+#   (d) nada de `eval` sobre o nome.
+# O par de auditoria para as demais camadas esta em `auth_test`.
+readonly _LISTA_FECHADA_DE_PERFIL='dbx_config_perfil_validar dbx_config_perfil_selecionar dbx_config_perfil_do_ambiente dbx_config_perfil_nomeado dbx_config_caminho_de_perfil dbx_config_caminho dbx_config_verificar_destino dbx_config_identidade_de_perfil dbx_config_perfis_listar dbx_config_mensagem_de_indisponibilidade dbx_config_carregar dbx_config_gravar dbx_config_remover _dbx_config_verificar_cadeia _dbx_config_verificar_cadeia_sem_arquivo _dbx_config_varrer_perfis _dbx_config_diretorio_base'
+
+# _auditar_perfil_em_config <arquivo> — achados, um por linha (vazio = limpo).
+_auditar_perfil_em_config() {
+  local arquivo=$1
+  awk -v lista=" $_LISTA_FECHADA_DE_PERFIL " '
+    /^[[:space:]]*#/ { next }
+    /^[a-zA-Z_][a-zA-Z0-9_]*\(\) \{/ { funcao = $1; sub(/\(\).*/, "", funcao); next_dentro = 1 }
+    /^}/ { funcao = "" }
+    {
+      linha = tolower($0)
+      if (linha ~ /(perfil|profile)/) {
+        if (funcao == "") {
+          if ($0 !~ /^(readonly )?DBX_CONFIG_(PERFIL|PERFIS|DIRETORIO_PERFIS)[A-Z_]*=/) print "fora de funcao: " $0
+        } else if (index(lista, " " funcao " ") == 0) {
+          print "funcao " funcao " fora da lista fechada: " $0
+        }
+      }
+      if (linha ~ /(conta|account)/) print "conta/account: " $0
+      if ($0 ~ /(^|[^a-z_])ev[a]l([^a-z_]|$)/) print "eval: " $0
+      if ($0 ~ /perfis\/|DIRETORIO_PERFIS\}?\// && funcao != "dbx_config_caminho_de_perfil" &&
+          funcao != "dbx_config_perfis_listar" && funcao != "dbx_config_mensagem_de_indisponibilidade" &&
+          $0 !~ /^(readonly )?DBX_CONFIG_DIRETORIO_PERFIS=/ && $0 !~ /_dbx_config_varrer_perfis|ligacao_simbolica/) {
+        print "composicao de caminho fora do ponto unico (" funcao "): " $0
+      }
+      if (funcao == "dbx_config_caminho_de_perfil") {
+        if ($0 ~ /dbx_config_perfil_validar/) validou = 1
+        if ($0 ~ /DIRETORIO_PERFIS\/\$nome/ && !validou) print "caminho composto antes da validacao: " $0
+      }
+    }
+  ' "$arquivo"
+}
+
+# _sonda_nome_cru <lib_config> — 0 quando a lib recusa `../x` ao compor caminho.
+_sonda_nome_cru() {
+  # Processo novo: a lib real ja esta carregada neste e a guarda de carga unica
+  # faria a mutante ser ignorada.
+  env -i PATH="$PATH" XDG_CONFIG_HOME=/tmp/dbx-sonda-inexistente bash -c '
+    . "$1/lib/errors.sh"
+    . "$1/lib/json.sh"
+    . "$2"
+    dbx_config_caminho_de_perfil "../x" >/dev/null 2>&1 && exit 1
+    [[ -z $DBX_CONFIG_RESULTADO ]] && exit 0
+    exit 1
+  ' _ "$DBX_HARNESS_RAIZ" "$1"
+}
+
 teste_nenhuma_funcao_recebe_identificador_de_perfil() {
   local achados
-  achados=$(grep -vE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ/lib/config.sh" |
-    grep -nEi '(perfil|profile|conta|account)' || true)
+  achados=$(_auditar_perfil_em_config "$DBX_HARNESS_RAIZ/lib/config.sh")
   assert_igual '' "$achados" \
-    "DP-05 fixou uma conta so; nocao de perfil nao pode existir no componente: $achados"
+    "perfil so existe na lista fechada de lib/config, com caminho composto uma vez e validado: $achados"
+  _sonda_nome_cru "$DBX_HARNESS_RAIZ/lib/config.sh" ||
+    _harness_falhar 'a lib compoe caminho com nome invalido'
+}
+
+teste_auditoria_de_perfil_em_config_reprova_as_mutacoes() {
+  local mutante achados
+  mutante=$(mktemp "$DBX_TESTES_TMP/mutante-config.XXXXXX")
+  # M1: funcao nova, fora da lista, que recebe perfil.
+  { cat "$DBX_HARNESS_RAIZ/lib/config.sh"; printf 'usar_perfil_novo() {\n  local perfil=$1\n}\n'; } >"$mutante"
+  achados=$(_auditar_perfil_em_config "$mutante")
+  assert_contem 'fora da lista fechada' "$achados" 'funcao nova com perfil nao reprovou'
+  # M2: segunda composicao de caminho com o nome cru, em outra funcao.
+  { cat "$DBX_HARNESS_RAIZ/lib/config.sh"; printf 'compor_de_novo() {\n  DBX_CONFIG_RESULTADO="$base/perfis/$1.json"\n}\n'; } >"$mutante"
+  achados=$(_auditar_perfil_em_config "$mutante")
+  assert_contem 'composicao de caminho fora do ponto unico' "$achados" 'composicao fora do ponto unico nao reprovou'
+  # M3: a validacao some do ponto unico: a auditoria e a sonda reprovam.
+  sed '/^dbx_config_caminho_de_perfil() {/,/^}/ s/^  dbx_config_perfil_validar "\$nome" || return \$?$/  :/' \
+    "$DBX_HARNESS_RAIZ/lib/config.sh" >"$mutante"
+  assert_diferente "$(cat "$DBX_HARNESS_RAIZ/lib/config.sh")" "$(cat "$mutante")" 'a mutacao M3 nao mudou o arquivo'
+  achados=$(_auditar_perfil_em_config "$mutante")
+  assert_contem 'antes da validacao' "$achados" 'compor sem validar nao reprovou na auditoria'
+  _sonda_nome_cru "$mutante" && _harness_falhar 'a sonda nao detectou o nome cru virando caminho'
+  # M4: eval sobre o nome.
+  { cat "$DBX_HARNESS_RAIZ/lib/config.sh"; printf 'x() {\n  eval "$1"\n}\n'; } >"$mutante"
+  achados=$(_auditar_perfil_em_config "$mutante")
+  assert_contem 'eval' "$achados" 'eval nao reprovou'
+  return 0
 }
 
 # ---------------------------------------------------------------------------

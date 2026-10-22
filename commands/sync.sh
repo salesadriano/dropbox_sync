@@ -365,6 +365,14 @@ dbx_cmd_sync_executar() {
     }
   fi
 
+  # RF-132 (fase 8): o `--receber` (e o `download` de pasta, que o executa)
+  # trava tambem a raiz local pela identidade fisica, depois da trava do par e
+  # antes de qualquer escrita DENTRO dela. A raiz so tem identidade depois de
+  # existir; a criacao do diretorio vazio acima e o unico passo anterior (DIV-252).
+  if [[ $sentido == 'receber' ]]; then
+    dbx_cmd_ciclo_trava_raiz "$raiz_local" || return $?
+  fi
+
   # RF-62(c): a raiz local entra na identidade da memoria ja canonizada, para
   # `./x` e `/abs/x` designarem a mesma memoria e o mesmo "par visto" (RF-48).
   # So a CHAVE muda: a travessia, o plano e a saida usam as raizes como dadas.

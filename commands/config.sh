@@ -82,6 +82,9 @@ _dbx_cmd_config_diagnosticar() {
     "$$" "${EUID:-?}" "${UID:-?}" "${USER:-desconhecido}" >&2
   printf '[debug] Variaveis: HOME=%s XDG_CONFIG_HOME=%s\n' \
     "${HOME:-<vazio>}" "${XDG_CONFIG_HOME:-<nao definido>}" >&2
+  if [[ -n ${DBX_CONFIG_PERFIL_ORIGEM:-} ]]; then
+    printf '[debug] Perfil: %s (origem: %s)\n' "$DBX_CONFIG_PERFIL" "$DBX_CONFIG_PERFIL_ORIGEM" >&2
+  fi
   printf '[debug] Alvo da credencial: %s\n' "$arq" >&2
   printf '[debug] Diretorio base: %s\n' "$dir" >&2
 
@@ -153,6 +156,9 @@ dbx_cmd_config_executar() {
       '') ;;
       --substituir | --replace) substituir='sim' ;;
       --debug) debug='sim' ;;
+      # A selecao do perfil ja foi feita por `lib/cli` (ponto unico); aqui so
+      # se consome o par, para a opcao nao ser tratada como desconhecida.
+      --perfil | --profile) shift ;;
       --raiz | --root)
         shift
         raiz=${1-}
@@ -187,6 +193,15 @@ dbx_cmd_config_executar() {
     _dbx_cmd_config_diagnosticar "$diretorio" "$arquivo"
   fi
 
+  # Perfil nomeado: destino inseguro recusa ANTES da primeira pergunta, porque o
+  # codigo de autorizacao vale minutos (RF-123(b), DIV-244).
+  dbx_config_verificar_destino || {
+    local dir_inseguro=${DBX_CONFIG_DETALHE:-${arquivo%/*}}
+    dbx_cmd_falhar configuracao \
+      "destino do perfil $DBX_CONFIG_PERFIL inseguro ($DBX_CONFIG_MOTIVO): $dir_inseguro; corrija com chmod 700 $dir_inseguro ou remova a ligacao simbolica; nada foi alterado"
+    return $?
+  }
+
   # SUBSTITUIR CREDENCIAL EXISTENTE EXIGE SINALIZADOR, por seguranca e nao por
   # conveniencia: gravar por cima descarta o refresh token anterior DA NOSSA
   # VISTA sem revoga-lo. Nada neste caminho emite revogacao, entao do nosso lado
@@ -203,6 +218,11 @@ dbx_cmd_config_executar() {
   #
   # A unica forma que CONTROLAMOS de encerra-lo e `unlink`, e o diagnostico diz
   # isso em vez de so recusar.
+  if [[ -e $arquivo && $substituir == 'nao' ]] && dbx_config_perfil_nomeado; then
+    dbx_cmd_falhar configuracao \
+      "ja existe o perfil $DBX_CONFIG_PERFIL em $arquivo; gravar por cima NAO revoga o token anterior, que segue valido na Dropbox — use 'dbx unlink --perfil $DBX_CONFIG_PERFIL' para revoga-lo antes, ou 'dbx config --perfil $DBX_CONFIG_PERFIL --substituir' para trocar assumindo esse risco"
+    return $?
+  fi
   if [[ -e $arquivo && $substituir == 'nao' ]]; then
     dbx_cmd_falhar configuracao \
       "ja existe credencial em $arquivo; gravar por cima NAO revoga o token anterior, que segue valido na Dropbox — use 'dbx unlink' para revoga-lo antes, ou 'dbx config --substituir' (ou --replace) para trocar assumindo esse risco"
@@ -212,6 +232,7 @@ dbx_cmd_config_executar() {
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
     dbx_cmd_iniciar_saida
     dbx_output_campo operacao config
+    [[ -n $DBX_CONFIG_PERFIL_ORIGEM ]] && dbx_output_campo perfil "$DBX_CONFIG_PERFIL"
     dbx_output_campo credencial "$arquivo"
     dbx_output_campo raiz_remota "$remoto"
     dbx_output_campo simulado sim
@@ -290,11 +311,17 @@ dbx_cmd_config_executar() {
 
   # A advertencia so aparece quando houve troca de verdade: dita antes, seria
   # aviso sobre algo que talvez nao acontecesse.
-  [[ $substituir == 'sim' ]] &&
-    printf 'aviso: a credencial anterior foi substituida; o refresh token antigo NAO foi revogado e segue valido na Dropbox\n' >&2
+  if [[ $substituir == 'sim' ]]; then
+    if dbx_config_perfil_nomeado; then
+      printf 'aviso: a credencial do perfil %s foi substituida; o refresh token antigo NAO foi revogado e segue valido na Dropbox\n' "$DBX_CONFIG_PERFIL" >&2
+    else
+      printf 'aviso: a credencial anterior foi substituida; o refresh token antigo NAO foi revogado e segue valido na Dropbox\n' >&2
+    fi
+  fi
 
   dbx_cmd_iniciar_saida
   dbx_output_campo operacao config
+  [[ -n $DBX_CONFIG_PERFIL_ORIGEM ]] && dbx_output_campo perfil "$DBX_CONFIG_PERFIL"
   dbx_output_campo credencial "$arquivo"
   dbx_output_campo raiz_remota "$remoto"
   [[ -n ${DBX_AUTH_CONTA:-} ]] && dbx_output_campo conta "$DBX_AUTH_CONTA"

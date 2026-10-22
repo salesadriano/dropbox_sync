@@ -642,6 +642,10 @@ _dbx_state_trava_criados=()
 # processo pode deter uma de cada; so a de par e unica por processo.
 _dbx_state_trava_modo='par'
 DBX_STATE_TRAVA_REGISTRO=''
+# Textos da recusa: o par (padrao) ou a raiz local (fase 8, RF-132).
+_dbx_state_t_deste='deste par'
+_dbx_state_t_neste='neste par'
+_dbx_state_t_este='este par'
 _dbx_state_trava_registro_inicio=''
 _dbx_state_trava_registro_acao=''
 
@@ -811,13 +815,13 @@ _dbx_state_trava_publicar() {
 _dbx_state_trava_ocupada() {
   local arquivo=$1
   if [[ $2 -ne 0 ]]; then
-    DBX_STATE_MOTIVO="trava ilegivel: $arquivo nunca e retomada nem apagada automaticamente; confirme que nenhum sync ou verificar deste par esta em curso e remova-a com: rm $arquivo"
+    DBX_STATE_MOTIVO="trava ilegivel: $arquivo nunca e retomada nem apagada automaticamente; confirme que nenhum sync ou verificar $_dbx_state_t_deste esta em curso e remova-a com: rm $arquivo"
   elif [[ $DBX_STATE_TRAVA_ESTADO == 'outro-host' ]]; then
     _dbx_state_trava_quem
-    DBX_STATE_MOTIVO="trava de outro host: $DBX_STATE_RESULTADO, detem este par e nunca e retomada automaticamente; confirme que essa execucao terminou e remova a trava com: rm $arquivo"
+    DBX_STATE_MOTIVO="trava de outro host: $DBX_STATE_RESULTADO, detem $_dbx_state_t_este e nunca e retomada automaticamente; confirme que essa execucao terminou e remova a trava com: rm $arquivo"
   else
     _dbx_state_trava_quem
-    DBX_STATE_MOTIVO="trava ocupada: $DBX_STATE_RESULTADO, esta trabalhando neste par; rode de novo depois ou use --esperar N (--wait N) para aguardar ate N segundos"
+    DBX_STATE_MOTIVO="trava ocupada: $DBX_STATE_RESULTADO, esta trabalhando $_dbx_state_t_neste; rode de novo depois ou use --esperar N (--wait N) para aguardar ate N segundos"
   fi
   DBX_STATE_RESULTADO=''
   return "$DBX_STATE_ERRO_CONFLITO"
@@ -883,6 +887,13 @@ _dbx_state_trava_sem_escrita() {
 # _dbx_state_trava_detida <arquivo> — a trava e deste processo: a liberacao
 # entra no registro de `lib/tmp` (RNF-35(h)).
 _dbx_state_trava_detida() {
+  if [[ $_dbx_state_trava_modo == 'raiz' ]]; then
+    DBX_STATE_TRAVA_RAIZ=$1
+    _dbx_state_trava_raiz_inicio=$_dbx_state_trava_inicio
+    dbx_tmp_acao_registrar _dbx_state_trava_raiz_soltar "$1"
+    _dbx_state_trava_raiz_acao=$DBX_TMP_ID
+    return 0
+  fi
   if [[ $_dbx_state_trava_modo == 'registro' ]]; then
     DBX_STATE_TRAVA_REGISTRO=$1
     _dbx_state_trava_registro_inicio=$_dbx_state_trava_inicio
@@ -1074,6 +1085,159 @@ dbx_state_trava_liberar() {
   _dbx_state_trava_soltar "$DBX_STATE_TRAVA"
 }
 
+# ---------------------------------------------------------------------------
+# Trava por raiz local canonica (fase 8, RF-132, DIV-250; risco R1 do DBA)
+# ---------------------------------------------------------------------------
+#
+# A trava do par inclui a identidade da credencial; duas credenciais diferentes
+# tem travas do par diferentes, e dois `sync --receber` rodariam juntos sobre a
+# MESMA arvore local. Esta trava e chaveada pela identidade FISICA da raiz
+# (`dev:inode`, nunca pela grafia: `..`, ligacao simbolica, barra final e ponto
+# de montagem alternativo resolvem a mesma), sem credencial, conta nem perfil na
+# chave nem no conteudo. Mesmo registro, mesma aquisicao atomica, mesma orfa,
+# mesmos sinais; o nome comeca por `trava-` para `unlink` e `diagnostico` a
+# tratarem como as demais (nenhum formato novo, C9 do DBA).
+
+DBX_STATE_TRAVA_RAIZ=''
+_dbx_state_trava_raiz_inicio=''
+_dbx_state_trava_raiz_acao=''
+_dbx_state_trava_raiz_criados=()
+
+# dbx_state_trava_raiz_caminho <raiz_local_canonica> — arquivo da trava em
+# DBX_STATE_RESULTADO. Falha (1) quando a raiz nao existe ou nao e identificavel.
+dbx_state_trava_raiz_caminho() {
+  [[ $# -eq 1 ]] || return "$DBX_STATE_ERRO_USO"
+  local base devino resumo
+  _dbx_state_base || return $?
+  base=$DBX_STATE_RESULTADO
+  DBX_STATE_RESULTADO=''
+  devino=$(stat -L -c '%d:%i' -- "$1" 2>/dev/null) || return 1
+  [[ $devino =~ ^[0-9]+:[0-9]+$ ]] || return 1
+  resumo=$(printf 'trava-raiz\n%s' "$devino" | dbx_hash_conteudo_fluxo) || return $?
+  DBX_STATE_RESULTADO="$base/trava-${resumo:0:32}"
+  return 0
+}
+
+# _dbx_state_trava_raiz_garantir_diretorio <diretorio> — cria o que faltar do
+# diretorio de estado (0700), anota o criado em `_criados` e confere o dono.
+_dbx_state_trava_raiz_garantir_diretorio() {
+  local diretorio=$1 acima
+  local -a faltam=()
+  acima=$diretorio
+  while [[ -n $acima && ! -e $acima && ! -L $acima ]]; do
+    faltam=("$acima" ${faltam[@]+"${faltam[@]}"})
+    acima=${acima%/*}
+  done
+  if [[ ${#faltam[@]} -gt 0 ]]; then
+    # shellcheck disable=SC2174  # deliberado: cada componente criado aqui nasce 0700
+    mkdir -p -m 700 -- "$diretorio" 2>/dev/null || {
+      DBX_STATE_MOTIVO="diretorio de estado sem escrita: $diretorio"
+      return "$DBX_STATE_ERRO_PERMISSAO"
+    }
+    _dbx_state_trava_raiz_criados+=("${faltam[@]}")
+  fi
+  if ! _dbx_state_diretorio_confiavel "$diretorio"; then
+    DBX_STATE_MOTIVO='diretorio de estado pertence a outro usuario'
+    _dbx_state_trava_raiz_desfazer_diretorio
+    return "$DBX_STATE_ERRO_PERMISSAO"
+  fi
+  return 0
+}
+
+# dbx_state_trava_raiz_adquirir <raiz_local_canonica> <espera_s>
+#
+# Mesmos codigos de `dbx_state_trava_adquirir`: 0 adquirida (DBX_STATE_AVISO se
+# retomou orfa), conflito (ocupada, de outro host, ilegivel; a mensagem nomeia a
+# raiz e o detentor, nunca perfil nem identidade), permissao (diretorio de
+# estado alheio ou sem escrita), outro codigo para falha local. Independe da
+# trava do par: pode ser detida junto com ela.
+dbx_state_trava_raiz_adquirir() {
+  [[ $# -eq 2 && $2 =~ ^[0-9]{1,4}$ ]] || return "$DBX_STATE_ERRO_USO"
+  [[ -z $DBX_STATE_TRAVA_RAIZ ]] || return "$DBX_STATE_ERRO_USO"
+  local raiz=$1 espera=$((10#$2)) arquivo diretorio estado sondagens=0 repeticoes=0 exibida
+  DBX_STATE_MOTIVO=''
+  # shellcheck disable=SC2034  # canal publico, lido por lib/cmd
+  DBX_STATE_AVISO=''
+  dbx_state_trava_raiz_caminho "$raiz" || {
+    DBX_STATE_MOTIVO='nao foi possivel identificar a raiz local para a trava'
+    return 1
+  }
+  arquivo=$DBX_STATE_RESULTADO
+  DBX_STATE_RESULTADO=''
+  diretorio=${arquivo%/*}
+  _dbx_state_trava_raiz_criados=()
+  _dbx_state_trava_raiz_garantir_diretorio "$diretorio" || return $?
+  dbx_state_host_id
+  [[ -n $_dbx_state_trava_inicio ]] || printf -v _dbx_state_trava_inicio '%(%s)T' -1
+  _dbx_state_trava_modo='raiz'
+  _dbx_state_t_deste='desta raiz local' _dbx_state_t_neste='nesta raiz local' _dbx_state_t_este='esta raiz local'
+
+  while :; do
+    _dbx_state_trava_tentar "$arquivo" sync
+    estado=$?
+    [[ $estado -eq 0 ]] && break
+    if [[ $estado -eq 3 ]]; then
+      repeticoes=$((repeticoes + 1))
+      [[ $repeticoes -lt 50 ]] && continue
+      DBX_STATE_MOTIVO='trava instavel: o nome mudou a cada tentativa de obte-la; rode de novo depois ou use --esperar N (--wait N)'
+      estado=$DBX_STATE_ERRO_CONFLITO
+    fi
+    if [[ $estado -ne $DBX_STATE_ERRO_CONFLITO || $sondagens -ge $espera ]]; then
+      if [[ $estado -eq $DBX_STATE_ERRO_CONFLITO ]]; then
+        exibida=$raiz
+        [[ $exibida == *[$'\001'-$'\037\177']* ]] && printf -v exibida '%q' "$exibida"
+        [[ $espera -gt 0 ]] && DBX_STATE_MOTIVO="esperou $espera s; $DBX_STATE_MOTIVO"
+        DBX_STATE_MOTIVO="raiz local $exibida em uso por outra execucao: $DBX_STATE_MOTIVO"
+      fi
+      _dbx_state_trava_raiz_desfazer_diretorio
+      break
+    fi
+    sleep 1
+    sondagens=$((sondagens + 1))
+    repeticoes=0
+    # O detentor, ao soltar, remove o diretorio que ele proprio criou: quem
+    # espera tem de recria-lo antes de cada nova sondagem, ou a trava liberada
+    # viraria "sem escrita" (permissao) em vez de adquirida.
+    _dbx_state_trava_raiz_garantir_diretorio "$diretorio" || {
+      estado=$?
+      _dbx_state_trava_raiz_desfazer_diretorio
+      break
+    }
+  done
+  _dbx_state_trava_modo='par'
+  _dbx_state_t_deste='deste par' _dbx_state_t_neste='neste par' _dbx_state_t_este='este par'
+  return "$estado"
+}
+
+_dbx_state_trava_raiz_desfazer_diretorio() {
+  local indice
+  for ((indice = ${#_dbx_state_trava_raiz_criados[@]} - 1; indice >= 0; indice--)); do
+    rmdir -- "${_dbx_state_trava_raiz_criados[indice]}" 2>/dev/null || break
+  done
+  _dbx_state_trava_raiz_criados=()
+}
+
+# _dbx_state_trava_raiz_soltar <arquivo> — apaga SO a propria (pid, host,
+# inicio desta aquisicao) e desfaz o diretorio que a aquisicao criou, se vazio.
+_dbx_state_trava_raiz_soltar() {
+  local arquivo=$1
+  if _dbx_state_trava_ler "$arquivo" && [[ $DBX_STATE_TRAVA_PID == "$$" &&
+    $DBX_STATE_TRAVA_HOST == "$DBX_STATE_HOST_ID" && $DBX_STATE_TRAVA_INICIO == "$_dbx_state_trava_raiz_inicio" ]]; then
+    rm -f -- "$arquivo"
+  fi
+  [[ $DBX_STATE_TRAVA_RAIZ == "$arquivo" ]] && DBX_STATE_TRAVA_RAIZ=''
+  _dbx_state_trava_raiz_desfazer_diretorio
+  return 0
+}
+
+# dbx_state_trava_raiz_liberar — libera agora a trava de raiz (idempotente).
+dbx_state_trava_raiz_liberar() {
+  [[ -n $DBX_STATE_TRAVA_RAIZ ]] || return 0
+  dbx_tmp_acao_cancelar "$_dbx_state_trava_raiz_acao"
+  _dbx_state_trava_raiz_acao=''
+  _dbx_state_trava_raiz_soltar "$DBX_STATE_TRAVA_RAIZ"
+}
+
 # dbx_state_trava_descrever <indice> — "o <comando> pid <pid> no host <nome>,
 # iniciado em <ISO UTC>" da entrada da listagem, em DBX_STATE_RESULTADO; vazio
 # para a ilegivel. So campos validados.
@@ -1194,6 +1358,10 @@ DBX_STATE_RETOMADAS_BYTES=()
 DBX_STATE_RETOMADAS_IDADE=()
 DBX_STATE_RETOMADAS_PART=()
 DBX_STATE_RETOMADAS_DEVINO=()
+# Identidade `cred-` do cabecalho (fase 8, RF-125(b)): lida so do cabecalho, vazia
+# para registro ilegivel. Sai so para o `unlink` atribuir o registro a uma
+# credencial; nunca em saida ao operador.
+DBX_STATE_RETOMADAS_CRED=()
 
 # Diretorio ja preparado e podado nesta execucao (DIV-191: uma poda por
 # execucao, na primeira gravacao, e nao a cada parte de 4 MiB).
@@ -1612,6 +1780,7 @@ dbx_state_retomada_listar() {
   DBX_STATE_RETOMADAS_ARQUIVO=() DBX_STATE_RETOMADAS_ESTADO=() DBX_STATE_RETOMADAS_SENTIDO=()
   DBX_STATE_RETOMADAS_LOCAL=() DBX_STATE_RETOMADAS_REMOTO=() DBX_STATE_RETOMADAS_BYTES=()
   DBX_STATE_RETOMADAS_IDADE=() DBX_STATE_RETOMADAS_PART=() DBX_STATE_RETOMADAS_DEVINO=()
+  DBX_STATE_RETOMADAS_CRED=()
   _dbx_state_base || return 0
   diretorio=$DBX_STATE_RESULTADO
   DBX_STATE_RESULTADO=''
@@ -1655,6 +1824,7 @@ dbx_state_retomada_listar() {
       DBX_STATE_RETOMADAS_BYTES+=("$bytes")
       DBX_STATE_RETOMADAS_PART+=("$part")
       DBX_STATE_RETOMADAS_DEVINO+=("$devino")
+      DBX_STATE_RETOMADAS_CRED+=("${c[3]}")
     else
       DBX_STATE_RETOMADAS_ESTADO+=(ilegivel)
       DBX_STATE_RETOMADAS_SENTIDO+=('')
@@ -1663,6 +1833,7 @@ dbx_state_retomada_listar() {
       DBX_STATE_RETOMADAS_BYTES+=(0)
       DBX_STATE_RETOMADAS_PART+=('')
       DBX_STATE_RETOMADAS_DEVINO+=('')
+      DBX_STATE_RETOMADAS_CRED+=('')
     fi
   done
   DBX_STATE_MOTIVO=''
@@ -1746,6 +1917,8 @@ DBX_STATE_CURSORES_REMOTO=()
 DBX_STATE_CURSORES_LOCAL=()
 DBX_STATE_CURSORES_ENTRADAS=()
 DBX_STATE_CURSORES_IDADE=()
+# Identidade `cred-` do cabecalho (fase 8, RF-125(b)); vazia se ilegivel.
+DBX_STATE_CURSORES_CRED=()
 
 _DBX_STATE_CURSOR_REG=()
 _DBX_STATE_CURSOR_LIDO=''
@@ -2133,6 +2306,7 @@ dbx_state_cursor_listar() {
   local -a arquivos=() cab=()
   DBX_STATE_CURSORES_ARQUIVO=() DBX_STATE_CURSORES_ESTADO=() DBX_STATE_CURSORES_REMOTO=()
   DBX_STATE_CURSORES_LOCAL=() DBX_STATE_CURSORES_ENTRADAS=() DBX_STATE_CURSORES_IDADE=()
+  DBX_STATE_CURSORES_CRED=()
   _dbx_state_base || return 0
   diretorio=$DBX_STATE_RESULTADO
   DBX_STATE_RESULTADO=''
@@ -2167,9 +2341,11 @@ dbx_state_cursor_listar() {
       DBX_STATE_CURSORES_LOCAL+=("${cab[6]}")
       DBX_STATE_CURSORES_ENTRADAS+=("$((10#${cab[11]}))")
       DBX_STATE_CURSORES_IDADE+=("$(((agora - 10#${cab[8]}) / 86400))")
+      DBX_STATE_CURSORES_CRED+=("${cab[2]}")
     else
       DBX_STATE_CURSORES_REMOTO+=('') DBX_STATE_CURSORES_LOCAL+=('')
       DBX_STATE_CURSORES_ENTRADAS+=(0) DBX_STATE_CURSORES_IDADE+=(0)
+      DBX_STATE_CURSORES_CRED+=('')
     fi
   done
   cab=()

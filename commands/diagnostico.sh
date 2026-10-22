@@ -208,17 +208,26 @@ dbx_cmd_diagnostico_executar() {
   [[ -n $remedio_dependencias ]] || remedio_dependencias='atualize o bash para 4.4 ou superior'
 
   # 2. credencial — por nome de campo, nunca por valor.
-  local credencial_ok='nao' remedio_credencial='dbx config' arquivo=''
+  # Fase 8 (RF-127): com selecao explicita, a linha `perfil`; com perfil nomeado,
+  # os remedios dizem `--perfil <nome>`. Sem selecao, a saida e a de hoje.
+  local credencial_ok='nao' remedio_credencial='dbx config' remedio_config_inicial='dbx config' remedio_substituir='dbx config --substituir' arquivo=''
+  if dbx_config_perfil_nomeado; then
+    remedio_credencial="dbx config --perfil $DBX_CONFIG_PERFIL"; remedio_config_inicial=$remedio_credencial
+    remedio_substituir="dbx config --perfil $DBX_CONFIG_PERFIL --substituir"
+  fi
   dbx_config_caminho && arquivo=$DBX_CONFIG_RESULTADO
+  if [[ -n $DBX_CONFIG_PERFIL_ORIGEM ]]; then
+    _dbx_cmd_diag perfil ok "$DBX_CONFIG_PERFIL (origem: $DBX_CONFIG_PERFIL_ORIGEM): $arquivo"
+  fi
   # O-4, RF-66(e): sem `stat` nenhum utilitario e chamado; o shell confere
   # existencia e dono (`-O`), e o modo, que so o `stat` le, fica como aviso.
   if ! _dbx_cmd_diag_tem stat; then
     remedio_credencial='instale o utilitario stat'
     if [[ -z $arquivo || ! -e $arquivo ]]; then
-      remedio_credencial='dbx config'
+      remedio_credencial="${remedio_config_inicial}"
       _dbx_cmd_diag credencial falha "credencial ausente: $arquivo" "$remedio_credencial"
     elif [[ ! -O $arquivo ]]; then
-      remedio_credencial='dbx config --substituir'
+      remedio_credencial=$remedio_substituir
       _dbx_cmd_diag credencial falha "a credencial pertence a outro usuario: $arquivo" "$remedio_credencial"
     else
       _dbx_cmd_diag credencial aviso "permissao nao conferida (utilitario ausente: stat): $arquivo" \
@@ -230,7 +239,7 @@ dbx_cmd_diagnostico_executar() {
     [[ -n $DBX_CONFIG_APP_SECRET ]] || faltam+="${faltam:+, }app secret"
     [[ -n $DBX_CONFIG_REFRESH_TOKEN ]] || faltam+="${faltam:+, }refresh token"
     if [[ -n $faltam ]]; then
-      remedio_credencial='dbx config --substituir'
+      remedio_credencial=$remedio_substituir
       _dbx_cmd_diag credencial falha "campo obrigatorio ausente ou vazio: $faltam" "$remedio_credencial"
     else
       credencial_ok='sim'
@@ -246,11 +255,16 @@ dbx_cmd_diagnostico_executar() {
         _dbx_cmd_diag credencial falha "a credencial tem permissao para grupo ou outros: $arquivo" "$remedio_credencial"
         ;;
       permissao_diretorio)
-        remedio_credencial="chmod 700 ${arquivo%/*}"
-        _dbx_cmd_diag credencial falha "o diretorio de configuracao tem permissao para grupo ou outros: ${arquivo%/*}" "$remedio_credencial"
+        local dir_inseguro=${DBX_CONFIG_DETALHE:-${arquivo%/*}}
+        remedio_credencial="chmod 700 $dir_inseguro"
+        _dbx_cmd_diag credencial falha "o diretorio de configuracao tem permissao para grupo ou outros: $dir_inseguro" "$remedio_credencial"
+        ;;
+      ligacao_simbolica)
+        remedio_credencial="remova a ligacao simbolica e rode $remedio_config_inicial"
+        _dbx_cmd_diag credencial falha "o perfil, perfis ou dbx e ligacao simbolica (recusada, nunca seguida): $arquivo" "$remedio_credencial"
         ;;
       *)
-        remedio_credencial='dbx config --substituir'
+        remedio_credencial=$remedio_substituir
         _dbx_cmd_diag credencial falha "credencial inutilizavel (${DBX_CONFIG_MOTIVO:-ilegivel}): $arquivo" "$remedio_credencial"
         ;;
     esac

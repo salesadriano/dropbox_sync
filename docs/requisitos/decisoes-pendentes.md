@@ -5,7 +5,7 @@
 | Projeto | `dropbox_api` |
 | Responsavel | Business Analyst |
 | Data | 2026-10-18 |
-| Versao | **v1.6** — `DP-09` reaberta para a fase 7b (`F-14`, cursor de listagem; 2026-10-21, memoria `2026-10-21-0713-cursor`): `cursor-*` (cursor mais retrato remoto) entra no estado autorizado (`RNF-26`, item 3); parecer do DBA com condicoes `C1` a `C11`; `DIV-204` a `DIV-220` decididas pelo Tech Lead em 2026-10-21 (`DIV-205`: so `sync --receber`, download de pasta fora). *Registro anterior:* **v1.5** — `DP-09` reaberta para a fase 7a (`F-03`, retomada entre execucoes; 2026-10-20, memoria `2026-10-20-2315-retomada`): o estado de retomada (`retomada-*`) entra no estado autorizado e o DBA da parecer sobre formato, localizacao, versionamento, concorrencia e limpeza; `DP-12` anotada (o limiar e o custo da retomada, `DIV-179`, seguem sem medicao de volume). *Registro anterior:* **v1.4** — `DP-18` (compartilhamento) resolvida (fase 5, 2026-10-20, `DIV-116`). *Registro anterior:* **v1.3** — `DP-37` registrada e resolvida (fase 3: revisoes, restauracao e lixeira). *Registro anterior:* **v1.2** — `DP-36` registrada e resolvida (fase 2: trava de concorrencia e `lib/tmp`). *Registro anterior:* **v1.1** — `DP-35` registrada e resolvida (fase 4: aliases em ingles, `O-1`, `F-32`, `P5.1`). *Registro anterior:* **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
+| Versao | **v1.7** — `DP-05` **reaberta e resolvida de novo** para a fase 8 (`F-18`, perfis nomeados; 2026-10-21, memoria `2026-10-21-1735-perfis`): `--perfil`/`--profile` e `DBX_PERFIL`, `credencial.json` vira o perfil `padrao`, `perfis/<nome>.json`, `dbx perfis`, `unlink --perfil`, `config --perfil`, nome `[a-z0-9_-]` de 1 a 32; escopo v1.24, secao 5.17; texto antigo mantido como historico; `DIV-236` a `DIV-251` resolvidas em 2026-10-21 (parecer do DBA aceito; `RF-132` novo). *Anterior:* **v1.6** — `DP-09` reaberta para a fase 7b (`F-14`, cursor de listagem; 2026-10-21, memoria `2026-10-21-0713-cursor`): `cursor-*` (cursor mais retrato remoto) entra no estado autorizado (`RNF-26`, item 3); parecer do DBA com condicoes `C1` a `C11`; `DIV-204` a `DIV-220` decididas pelo Tech Lead em 2026-10-21 (`DIV-205`: so `sync --receber`, download de pasta fora). *Registro anterior:* **v1.5** — `DP-09` reaberta para a fase 7a (`F-03`, retomada entre execucoes; 2026-10-20, memoria `2026-10-20-2315-retomada`): o estado de retomada (`retomada-*`) entra no estado autorizado e o DBA da parecer sobre formato, localizacao, versionamento, concorrencia e limpeza; `DP-12` anotada (o limiar e o custo da retomada, `DIV-179`, seguem sem medicao de volume). *Registro anterior:* **v1.4** — `DP-18` (compartilhamento) resolvida (fase 5, 2026-10-20, `DIV-116`). *Registro anterior:* **v1.3** — `DP-37` registrada e resolvida (fase 3: revisoes, restauracao e lixeira). *Registro anterior:* **v1.2** — `DP-36` registrada e resolvida (fase 2: trava de concorrencia e `lib/tmp`). *Registro anterior:* **v1.1** — `DP-35` registrada e resolvida (fase 4: aliases em ingles, `O-1`, `F-32`, `P5.1`). *Registro anterior:* **v1.0** — `DP-34` registrada e resolvida (fase 3: cache unico, skip do upload, chave canonica, segredo obrigatorio). *Registro anterior:* **v0.9** |
 | Status | 🔴 **Duas decisoes novas, devolvidas pela implementacao de `RF-31`/`RF-08`: `DP-29` e `DP-30`.** Nenhuma delas bloqueia a validacao da entrega atual; ambas bloqueiam declarar o requisito correspondente **integralmente** atendido. 🟢 **Nenhuma decisao bloqueante pendente para o `sync`.** `DP-27` o tornou direcional — `DP-21` e `DP-22` ficaram sem objeto — e `DP-28` fixou o sentido por sinalizador obrigatorio, o que **eliminou a inferencia de tipo** e, com ela, a classe inteira de erro em que o `sync` apagaria a arvore oposta a pretendida. `DP-09` continua reaberta por escolha de `DP-27b`, e nao por necessidade de correcao |
 
 > ### ⚠️ Correcao de registro — DP-07 e DP-08 ja estavam decididas
@@ -40,7 +40,7 @@
 | DP-02 | Quais funcionalidades novas justificam o projeto | ✅ **Resolvida** | — |
 | DP-03 | Modo de uso predominante | ✅ **Resolvida** | — |
 | DP-04 | Tipo de conta e escopo de acesso | ✅ **Resolvida** | — |
-| DP-05 | Multiplas contas ou perfis | ✅ **Resolvida** | — |
+| DP-05 | Multiplas contas ou perfis | ✅ **Resolvida** *(reaberta e resolvida de novo em 2026-10-21, fase 8: perfis nomeados; ver `DP-05`)* | — |
 | DP-06 | Conjunto de comandos do MVP | ✅ **Resolvida — reabre estado local** | — |
 | DP-07 | Plataformas e shells suportados | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
 | DP-08 | Dependencias e interpretacao de JSON | ✅ **Resolvida** *(registro corrigido na v0.5)* | — |
@@ -274,7 +274,29 @@ Com DP-01 resolvida como reimplementacao independente, o projeto tem liberdade d
 
 **Bloqueia:** RNF-17, preenchimento do `LICENSE`, cabecalhos de copyright nos arquivos de codigo.
 
-### DP-05 — Multiplas contas ou perfis ✅
+### DP-05 — Multiplas contas ou perfis ✅ *(reaberta e resolvida de novo em 2026-10-21, fase 8, `F-18`)*
+
+#### Resolucao vigente (2026-10-21, fase 8): perfis nomeados de credencial
+
+**Contexto da reabertura.** Na abertura da fase 8 do backlog (memoria `2026-10-21-1735-perfis`; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md`; porte G), o solicitante reabriu esta decisao e a resolveu, na opcao recomendada em todos os pontos (`AskUserQuestion`):
+
+1. **Selecao.** `--perfil NOME` (alias `--profile`) em todos os comandos e `DBX_PERFIL` no ambiente; **a opcao vence a variavel**. A variavel carrega **so o nome**, nunca segredo, e a `DP-11` continua valendo.
+2. **Compatibilidade.** O `credencial.json` atual **continua sendo o perfil `padrao`**, sem mudanca para quem nao usa perfil. Os demais ficam em `perfis/<nome>.json`, `0600`, sob o mesmo diretorio de configuracao.
+3. **Gestao.** `dbx perfis` lista os nomes e diz se a credencial esta completa, sem mostrar segredo; `unlink --perfil NOME` remove o perfil; `config --perfil NOME` o cria.
+4. **Nomes.** `[a-z0-9_-]`, de 1 a 32 caracteres, comecando por letra ou digito; qualquer outro nome sai com `2`; a validacao e estrutural e nunca depende de grafia.
+
+**Principios do Tech Lead para a fase:** o estado continua separado pela identidade da credencial (`cred-`); perfil inexistente nunca recua para o `padrao` (erro de configuracao, sem rede); o nome do perfil e dado de caminho e e validado antes de qualquer acesso a disco; o QA roda tambem `bash tests/run.sh json` e `bash tests/run.sh harness`.
+
+**Consequencias:**
+
+1. **`RF-05` volta ao escopo**, formalizado em `RF-120` a `RF-132` (secao 5.17 do documento de requisitos, v1.24) e `RNF-37`; `F-18` passa a "em andamento, fase 8".
+2. **O desenho "um arquivo, um caminho, sem multiplexacao" de `lib/config` deixa de valer.** Permanece: `0600` sob `0700` sob `$XDG_CONFIG_HOME` com recuo para `~/.config`; **sem** sobrescrita da credencial por ambiente (`DP-11`); so o **nome** do perfil vem do ambiente. A simplificacao verificavel antiga ("nenhum caminho de codigo em `lib/config` recebe seletor de perfil") e **substituida** por: nenhuma outra camada recebe perfil ou conta, e em `lib/config` so uma lista fechada de funcoes o recebe, sempre ja validado (`RF-130(c)`, `RNF-37`). As duas auditorias estaticas que reprovavam a nocao de perfil sao **reescritas, nao removidas**.
+3. **Mudanca aditiva, como previsto em 2026-10-17:** o contrato de saida congelado (`RF-35`) nao se quebra; campos novos so aparecem com selecao explicita ou no comando novo `perfis`; sem perfil, nada muda (`RF-130`).
+4. **Decisoes de desenho resolvidas pelo Tech Lead em 2026-10-21** (`DIV-236` a `DIV-251`, parecer do DBA com `C1` a `C10` aceito): estado selecionado por identidade no `unlink` (a `memoria-*` e chaveada pelo `account_id`, nao por `cred-`; mantida); identidade compartilhada **nao revoga** nem remove estado (substitui a `C7` do DBA); remocao total do estado so quando nao restar nenhuma credencial, igual para o `padrao` e `--perfil X` (`C5`); nome `padrao` reservado; `DBX_PERFIL` vazio = nao definida; opcao depois do subcomando so em `config` e `unlink`; campos de `perfis`; entradas anomalas; `config` recusa `perfis/` inseguro antes de perguntar; `diagnostico` mostra o perfil so com selecao; autocompletar de nomes; recusa global por trava viva; aviso do ambiente.
+5. **Trava por raiz local canonica no `sync --receber`** (`DIV-250`, `RF-132`): decidida a inclusao, independente de perfil.
+6. **Fora da fase:** `memoria-*` por `account_id` colide entre apps de tipo diferente na mesma conta (`DIV-251`, `F-44`, `RSK-91`); tetos globais de poda aceitos (`RSK-92`).
+
+#### Texto original (2026-10-17, mantido como historico; **superado pela resolucao acima**)
 
 **Decisao do solicitante: uma conta so.** Um unico arquivo de credencial, **sem nocao de perfil**. Nao havera opcao `--profile`, nem arquivo por perfil, nem selecao por variavel de ambiente.
 
@@ -866,5 +888,5 @@ DP-13 shell interativo · DP-14 empacotamento · DP-15 idioma · DP-16 monitoram
 | DP-11 | Arquivo `0600` sob XDG (`$XDG_CONFIG_HOME`, recuo `~/.config`); sem sobrescrita por ambiente | Destrava `lib/config`; acrescenta verificacao de permissao ao preflight |
 | DIV-16b | Linha por padrao; `--null` com terminador `\0` | Destrava `lib/output`; `RNF-22` vale nos dois modos |
 | DP-19 | Repositorio publicado; Gitflow com `develop` e `feature/*` | Encerrada. Desvios consumados registrados |
-| **DP-05** | **Uma conta so, sem nocao de perfil** | Fecha o desenho de `lib/config`: um arquivo, um caminho, sem multiplexacao. `RF-05` e `F-18` saem para o backlog como incremento **aditivo**, que nao quebra o contrato de `RF-35` |
+| **DP-05** | **Uma conta so, sem nocao de perfil** *(reaberta e superada em 2026-10-21: perfis nomeados, fase 8; ver `DP-05`)* | Fecha o desenho de `lib/config`: um arquivo, um caminho, sem multiplexacao. `RF-05` e `F-18` saem para o backlog como incremento **aditivo**, que nao quebra o contrato de `RF-35` |
 | **RSK-24** | **Aceite do TOCTOU reconfirmado**, com `DP-07` ja resolvida | Reabertura encerrada. A fundamentacao passa a repousar **apenas** nos dois argumentos tecnicos verificados, sem o argumento de portabilidade que havia caido |

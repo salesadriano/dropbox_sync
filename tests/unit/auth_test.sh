@@ -115,11 +115,54 @@ _recon_multiplexacao() {
     grep -vE '^[0-9]*:[[:space:]]*#' || true
 }
 
+# REESCRITA NA FASE 8 (RF-130(c), RSK-90, DIV-249), SEM ENFRAQUECER. A DP-05 foi
+# reaberta e perfil existe so em `lib/config`. Esta auditoria cobre o resto:
+# `lib/auth`, `lib/http`, `lib/state`, `lib/sync`, `lib/transfer` e os comandos
+# de rede NAO recebem identificador de perfil, e `lib/auth`, `lib/http`,
+# `lib/sync` e `lib/transfer` tambem nao recebem identificador de conta
+# (`lib/state` guarda o `account_id` da memoria, RF-52, e nao e auditado por
+# conta). Antes so `lib/auth` era auditado: a cobertura aumentou.
+readonly _CAMADAS_SEM_PERFIL='lib/auth.sh lib/http.sh lib/state.sh lib/sync.sh lib/transfer.sh commands/upload.sh commands/download.sh commands/list.sh commands/delete.sh commands/info.sh commands/space.sh commands/sync.sh commands/verificar.sh commands/revisoes.sh commands/restaurar.sh commands/lixeira.sh commands/link_temporario.sh commands/compartilhar.sh commands/reter.sh'
+readonly _CAMADAS_SEM_CONTA='lib/auth.sh lib/http.sh lib/sync.sh lib/transfer.sh'
+
+# _auditar_selecao_fora_de_config <arquivo> <com_conta|so_perfil> — achados.
+_auditar_selecao_fora_de_config() {
+  local arquivo=$1 escopo=$2 achados
+  achados=$(grep -vE '^[[:space:]]*#' "$arquivo" | grep -nEi '(perfil|profile)' || true)
+  if [[ $escopo == 'com_conta' ]]; then
+    achados+=$(_recon_multiplexacao <"$arquivo")
+  fi
+  printf '%s' "$achados"
+}
+
 teste_nao_recebe_identificador_de_conta_ou_perfil() {
-  assert_arquivo_existe "$DBX_HARNESS_RAIZ/lib/auth.sh" 'sem o arquivo a auditoria seria vacua'
-  local achados
-  achados=$(_recon_multiplexacao <"$DBX_HARNESS_RAIZ/lib/auth.sh")
-  [[ -n $achados ]] && _harness_falhar "nocao de perfil ou selecao de conta em lib/auth: $achados"
+  local arquivo escopo achados falhas=''
+  for arquivo in $_CAMADAS_SEM_PERFIL; do
+    assert_arquivo_existe "$DBX_HARNESS_RAIZ/$arquivo" 'sem o arquivo a auditoria seria vacua'
+    escopo=so_perfil
+    [[ " $_CAMADAS_SEM_CONTA " == *" $arquivo "* ]] && escopo=com_conta
+    achados=$(_auditar_selecao_fora_de_config "$DBX_HARNESS_RAIZ/$arquivo" "$escopo")
+    [[ -n $achados ]] && falhas+=" $arquivo: $achados;"
+  done
+  [[ -n $falhas ]] && _harness_falhar "nocao de perfil ou selecao de conta fora de lib/config:$falhas"
+  return 0
+}
+
+teste_auditoria_fora_de_config_reprova_seletor_em_cada_camada() {
+  # Mutacao: cada camada auditada, com um seletor de perfil acrescentado, tem de
+  # ser reprovada; e a de conta, com `local conta=$1`, tambem (so onde vale).
+  local arquivo mutante achados
+  mutante=$(mktemp "$DBX_TESTES_TMP/mutante-camada.XXXXXX")
+  for arquivo in $_CAMADAS_SEM_PERFIL; do
+    { cat "$DBX_HARNESS_RAIZ/$arquivo"; printf 'usar_selecao() {\n  local perfil=$1\n}\n'; } >"$mutante"
+    achados=$(_auditar_selecao_fora_de_config "$mutante" so_perfil)
+    [[ -n $achados ]] || _harness_falhar "a auditoria nao pegou seletor de perfil em $arquivo"
+  done
+  for arquivo in $_CAMADAS_SEM_CONTA; do
+    { cat "$DBX_HARNESS_RAIZ/$arquivo"; printf 'usar_selecao() {\n  local conta=$1\n}\n'; } >"$mutante"
+    achados=$(_auditar_selecao_fora_de_config "$mutante" com_conta)
+    [[ -n $achados ]] || _harness_falhar "a auditoria nao pegou seletor de conta em $arquivo"
+  done
   return 0
 }
 

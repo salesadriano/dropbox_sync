@@ -29,8 +29,14 @@
 # para impedir. O nome e literal, portanto passa pela auditoria de procedencia
 # de RNF-24.
 #
-# DP-05 fixou UMA CONTA SO: nao ha nocao de perfil, e nenhuma funcao deste
-# componente recebe identificador de conta. Ha auditoria estatica na suite.
+# PERFIS NOMEADOS (fase 8, F-18; DP-05 reaberta pelo solicitante em 2026-10-21):
+# `credencial.json` e o perfil `padrao`; os demais ficam em `perfis/<nome>.json`.
+# O nome do perfil e DADO DE CAMINHO (RNF-37): uma funcao o valida
+# (`dbx_config_perfil_validar`) e uma o compoe em caminho
+# (`dbx_config_caminho_de_perfil`, que valida antes). So uma lista fechada de
+# funcoes deste componente lida com nome de perfil, e NENHUMA outra camada
+# recebe perfil ou conta; ha auditoria estatica com mutacao na suite (RSK-90).
+# Perfil inexistente NUNCA recua para o `padrao`.
 #
 # DP-11 proibe sobrescrita da credencial por variavel de ambiente, para remover
 # o vetor de leitura do ambiente do processo. `XDG_CONFIG_HOME` continua valendo
@@ -139,8 +145,75 @@ _dbx_config_falhar() {
   return "$DBX_CONFIG_ERRO_CONFIGURACAO"
 }
 
-# dbx_config_caminho — caminho do arquivo, em DBX_CONFIG_RESULTADO.
-dbx_config_caminho() {
+# ---------------------------------------------------------------------------
+# Perfis nomeados (fase 8). Lista fechada das funcoes que lidam com nome:
+#   dbx_config_perfil_validar, dbx_config_perfil_selecionar,
+#   dbx_config_perfil_do_ambiente, dbx_config_perfil_nomeado,
+#   dbx_config_caminho_de_perfil, dbx_config_verificar_destino,
+#   dbx_config_identidade_de_perfil, dbx_config_perfis_listar
+# (mais os auxiliares `_dbx_config_verificar_cadeia` e o `dbx_config_caminho`,
+# que apenas repassa a selecao).
+# ---------------------------------------------------------------------------
+
+readonly DBX_CONFIG_PERFIL_PADRAO='padrao'
+readonly DBX_CONFIG_DIRETORIO_PERFIS='perfis'
+# Alfabeto por caracteres EXPLICITOS (nada de intervalo dependente de
+# localidade): 1 a 32 caracteres, o primeiro letra minuscula ou digito.
+readonly DBX_CONFIG_PERFIL_RE='^[abcdefghijklmnopqrstuvwxyz0123456789][abcdefghijklmnopqrstuvwxyz0123456789_-]{0,31}$'
+
+# Selecao corrente. Vazia: nenhuma selecao (o `padrao` implicito).
+DBX_CONFIG_PERFIL=''
+# `opcao` ou `ambiente` quando houve selecao explicita; vazia sem selecao.
+DBX_CONFIG_PERFIL_ORIGEM=''
+DBX_CONFIG_PERFIS_NOME=()
+DBX_CONFIG_PERFIS_CREDENCIAL=()
+DBX_CONFIG_PERFIS_ARQUIVO=()
+DBX_CONFIG_PERFIS_IGNORADAS=()
+
+# dbx_config_perfil_validar <nome> [opcao|ambiente] — PONTO UNICO da validacao
+# (RF-121, RNF-37): comprimento e alfabeto, sem lista de nomes proibidos e sem
+# tocar disco. 0 valido; senao `uso_invalido` (2) com a mensagem em
+# DBX_CONFIG_DETALHE. O valor vindo do ambiente NUNCA e ecoado (RF-121(e)).
+dbx_config_perfil_validar() {
+  local nome=${1-} origem=${2:-opcao} exibido LC_ALL=C
+  DBX_CONFIG_MOTIVO=''
+  DBX_CONFIG_DETALHE=''
+  [[ $nome =~ $DBX_CONFIG_PERFIL_RE ]] && return 0
+  DBX_CONFIG_MOTIVO='perfil_invalido'
+  if [[ $origem == 'ambiente' ]]; then
+    DBX_CONFIG_DETALHE='variavel de ambiente DBX_PERFIL invalida; use 1 a 32 caracteres de a-z, 0-9, _ e -, comecando por letra ou digito, ou remova-a (unset DBX_PERFIL)'
+  else
+    exibido=${nome:0:64}
+    [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+    DBX_CONFIG_DETALHE="nome de perfil invalido: [$exibido]; use 1 a 32 caracteres de a-z, 0-9, _ e -, comecando por letra ou digito"
+  fi
+  return "$DBX_CONFIG_ERRO_USO"
+}
+
+# dbx_config_perfil_selecionar <nome> <opcao|ambiente> — valida e fixa a
+# selecao. Nome invalido nao fica selecionado.
+dbx_config_perfil_selecionar() {
+  dbx_config_perfil_validar "${1-}" "${2:-opcao}" || return $?
+  DBX_CONFIG_PERFIL=$1
+  DBX_CONFIG_PERFIL_ORIGEM=${2:-opcao}
+  return 0
+}
+
+# dbx_config_perfil_do_ambiente — `DBX_PERFIL` (so o NOME; DP-11): vazia vale
+# como nao definida, a opcao ja selecionada vence, e o valor so e validado
+# quando usado (RF-120(c)(d), DIV-240).
+dbx_config_perfil_do_ambiente() {
+  [[ -z $DBX_CONFIG_PERFIL_ORIGEM && -n ${DBX_PERFIL:-} ]] || return 0
+  dbx_config_perfil_selecionar "$DBX_PERFIL" ambiente
+}
+
+# dbx_config_perfil_nomeado — 0 quando o perfil selecionado NAO e o `padrao`.
+dbx_config_perfil_nomeado() {
+  [[ -n $DBX_CONFIG_PERFIL && $DBX_CONFIG_PERFIL != "$DBX_CONFIG_PERFIL_PADRAO" ]]
+}
+
+# _dbx_config_diretorio_base — `<base>/dbx` em DBX_CONFIG_RESULTADO.
+_dbx_config_diretorio_base() {
   local base=${XDG_CONFIG_HOME:-}
   DBX_CONFIG_RESULTADO=''
   if [[ -z $base ]]; then
@@ -149,7 +222,181 @@ dbx_config_caminho() {
     base="$HOME/.config"
   fi
   [[ $base == /* ]] || { _dbx_config_falhar ambiente; return $?; }
-  DBX_CONFIG_RESULTADO="$base/dbx/$DBX_CONFIG_ARQUIVO"
+  DBX_CONFIG_RESULTADO="$base/dbx"
+}
+
+# dbx_config_caminho_de_perfil <nome> — PONTO UNICO de composicao de caminho a
+# partir de nome (RNF-37). Valida ANTES; o `padrao` e o `credencial.json` de
+# sempre, e `perfis/padrao.json` e reservado (nunca composto).
+dbx_config_caminho_de_perfil() {
+  local nome=${1-}
+  DBX_CONFIG_RESULTADO=''
+  dbx_config_perfil_validar "$nome" || return $?
+  _dbx_config_diretorio_base || return $?
+  if [[ $nome == "$DBX_CONFIG_PERFIL_PADRAO" ]]; then
+    DBX_CONFIG_RESULTADO="$DBX_CONFIG_RESULTADO/$DBX_CONFIG_ARQUIVO"
+  else
+    DBX_CONFIG_RESULTADO="$DBX_CONFIG_RESULTADO/$DBX_CONFIG_DIRETORIO_PERFIS/$nome.json"
+  fi
+}
+
+# dbx_config_mensagem_de_indisponibilidade — texto de "credencial indisponivel"
+# para o ponto de entrada, a partir de DBX_CONFIG_MOTIVO. Sem perfil nomeado, o
+# texto de sempre; com ele, nomeia o perfil e o remedio (RF-122(b)). Nunca traz
+# conteudo do arquivo.
+dbx_config_mensagem_de_indisponibilidade() {
+  local texto="credencial indisponivel: $DBX_CONFIG_MOTIVO"
+  if dbx_config_perfil_nomeado; then
+    texto="perfil $DBX_CONFIG_PERFIL: $texto"
+    [[ -n $DBX_CONFIG_DETALHE ]] && texto+=" ($DBX_CONFIG_DETALHE)"
+    [[ $DBX_CONFIG_MOTIVO == 'ausente' ]] && texto+="; crie-o com: dbx config --perfil $DBX_CONFIG_PERFIL"
+  fi
+  printf '%s' "$texto"
+}
+
+# dbx_config_caminho — caminho do arquivo do perfil selecionado (o `padrao`
+# sem selecao), em DBX_CONFIG_RESULTADO.
+dbx_config_caminho() {
+  dbx_config_caminho_de_perfil "${DBX_CONFIG_PERFIL:-$DBX_CONFIG_PERFIL_PADRAO}"
+}
+
+_dbx_config_dono_e_modo_do_diretorio_ok() {
+  local diretorio=$1 modo dono
+  modo=$(stat -c '%a' -- "$diretorio" 2>/dev/null || stat -f '%Lp' "$diretorio" 2>/dev/null) || return 1
+  dono=$(stat -c '%u' -- "$diretorio" 2>/dev/null || stat -f '%u' "$diretorio" 2>/dev/null) || return 1
+  [[ $modo =~ ^[0-7]00$ && $dono == "$EUID" ]]
+}
+
+# _dbx_config_verificar_cadeia <arquivo> <simbolicos|completo> — verificacoes
+# de PERFIL nomeado (RF-122(c), C2 do DBA): `dbx/`, `perfis/` e o arquivo nao
+# sao ligacao simbolica (inclusive pendente) e, em `completo`, os dois
+# diretorios tem modo sem bits para grupo e outros e dono do usuario.
+_dbx_config_verificar_cadeia() {
+  local arquivo=$1 nivel=$2 perfis base dir
+  perfis=${arquivo%/*}
+  base=${perfis%/*}
+  if [[ -L $base || -L $perfis || -L $arquivo ]]; then
+    _dbx_config_falhar ligacao_simbolica
+    return $?
+  fi
+  [[ $nivel == 'completo' ]] || return 0
+  for dir in "$base" "$perfis"; do
+    [[ -e $dir ]] || continue
+    _dbx_config_dono_e_modo_do_diretorio_ok "$dir" ||
+      { _dbx_config_falhar permissao_diretorio "$dir"; return $?; }
+  done
+  return 0
+}
+
+# _dbx_config_verificar_cadeia_sem_arquivo <arquivo> — so `dbx/` e `perfis/`
+# simbolicos: a remocao do proprio arquivo simbolico e segura (`rm` o remove sem
+# segui-lo), mas nunca atraves de diretorio simbolico.
+_dbx_config_verificar_cadeia_sem_arquivo() {
+  local perfis=${1%/*}
+  if [[ -L $perfis || -L ${perfis%/*} ]]; then
+    _dbx_config_falhar ligacao_simbolica
+    return $?
+  fi
+  return 0
+}
+
+# _dbx_config_varrer_perfis <diretorio> — varredura de orfaos em `perfis/`, so
+# quando e diretorio de verdade (nunca atraves de ligacao simbolica).
+_dbx_config_varrer_perfis() {
+  [[ -d $1 && ! -L $1 ]] || return 0
+  _dbx_config_varrer_orfaos "$1"
+}
+
+# dbx_config_verificar_destino — recusa ANTES de perguntar (RF-123(b), DIV-244)
+# quando o destino do perfil selecionado e inseguro. No `padrao`, nada novo.
+dbx_config_verificar_destino() {
+  DBX_CONFIG_MOTIVO=''
+  dbx_config_perfil_nomeado || return 0
+  dbx_config_caminho || return $?
+  _dbx_config_verificar_cadeia "$DBX_CONFIG_RESULTADO" completo
+}
+
+# dbx_config_identidade_de_perfil <nome> — identidade `cred-` de OUTRO perfil,
+# em DBX_CONFIG_IDENTIDADE, sem deixar segredo nos canais (RF-122(f)). Perfil
+# nao comparavel (ilegivel, inseguro, incompleto): status de configuracao e
+# identidade vazia.
+dbx_config_identidade_de_perfil() {
+  local estado
+  DBX_CONFIG_IDENTIDADE=''
+  dbx_config_caminho_de_perfil "${1-}" || return $?
+  dbx_config_carregar "$DBX_CONFIG_RESULTADO" "$1"
+  estado=$?
+  if [[ $estado -eq 0 ]]; then
+    dbx_config_identidade
+    [[ -n $DBX_CONFIG_IDENTIDADE ]] || estado=$DBX_CONFIG_ERRO_CONFIGURACAO
+  fi
+  _dbx_config_limpar_credencial
+  return "$estado"
+}
+
+# dbx_config_perfis_listar — `padrao` (so se `credencial.json` existir) e cada
+# `perfis/<nome>.json` de nome valido, nesta ordem e depois em ordem de bytes,
+# com o veredito da credencial, sem segredo (RF-126, DIV-242, DIV-243). Nao
+# cria nada. Entradas anomalas vao para DBX_CONFIG_PERFIS_IGNORADAS; ocultas
+# (inclusive `.credencial.*`) sao ignoradas em silencio.
+dbx_config_perfis_listar() {
+  local LC_ALL=C diretorio base entrada nome arquivo veredito estado i j tmp
+  local -a nomes=() validos=()
+  DBX_CONFIG_PERFIS_NOME=() DBX_CONFIG_PERFIS_CREDENCIAL=() DBX_CONFIG_PERFIS_ARQUIVO=()
+  DBX_CONFIG_PERFIS_IGNORADAS=()
+  _dbx_config_diretorio_base || return $?
+  base=$DBX_CONFIG_RESULTADO
+  diretorio="$base/$DBX_CONFIG_DIRETORIO_PERFIS"
+
+  [[ -e $base/$DBX_CONFIG_ARQUIVO ]] && nomes+=("$DBX_CONFIG_PERFIL_PADRAO")
+  if [[ -L $diretorio ]]; then
+    DBX_CONFIG_PERFIS_IGNORADAS+=("$DBX_CONFIG_DIRETORIO_PERFIS (ligacao simbolica)")
+  elif [[ -d $diretorio ]]; then
+    for entrada in "$diretorio"/*; do
+      [[ -e $entrada || -L $entrada ]] || continue
+      nome=${entrada##*/}
+      if [[ $nome == *.json && ${nome%.json} != "$DBX_CONFIG_PERFIL_PADRAO" &&
+        ${nome%.json} =~ $DBX_CONFIG_PERFIL_RE && (-L $entrada || -f $entrada) ]]; then
+        validos+=("${nome%.json}")
+      else
+        DBX_CONFIG_PERFIS_IGNORADAS+=("$nome")
+      fi
+    done
+    # Ordem de bytes sob LC_ALL=C, por insercao (sem utilitario externo).
+    for ((i = 1; i < ${#validos[@]}; i++)); do
+      tmp=${validos[i]}
+      for ((j = i - 1; j >= 0; j--)); do
+        [[ ${validos[j]} > $tmp ]] || break
+        validos[j + 1]=${validos[j]}
+      done
+      validos[j + 1]=$tmp
+    done
+    nomes+=(${validos[@]+"${validos[@]}"})
+  fi
+
+  for nome in ${nomes[@]+"${nomes[@]}"}; do
+    dbx_config_caminho_de_perfil "$nome" || continue
+    arquivo=$DBX_CONFIG_RESULTADO
+    dbx_config_carregar "$arquivo" "$nome"
+    estado=$?
+    veredito=completa
+    if [[ $estado -ne 0 ]]; then
+      case $DBX_CONFIG_MOTIVO in
+        incompleto) veredito=incompleta ;;
+        permissao | permissao_diretorio | dono) veredito=permissao ;;
+        ligacao_simbolica) veredito=ligacao_simbolica ;;
+        *) veredito=ilegivel ;;
+      esac
+    elif [[ -z $DBX_CONFIG_APP_SECRET ]]; then
+      veredito=incompleta
+    fi
+    _dbx_config_limpar_credencial
+    DBX_CONFIG_MOTIVO=''
+    DBX_CONFIG_PERFIS_NOME+=("$nome")
+    DBX_CONFIG_PERFIS_CREDENCIAL+=("$veredito")
+    DBX_CONFIG_PERFIS_ARQUIVO+=("$arquivo")
+  done
+  return 0
 }
 
 # dbx_config_caminho_de_estado — diretorio do estado, em DBX_CONFIG_RESULTADO.
@@ -216,6 +463,10 @@ dbx_config_gravar() {
   # quebra de linha final do caminho, que e a mesma classe de C2-01 — la a raiz
   # `algo\n` passou a designar o diretorio irmao `algo`.
   diretorio=${DBX_CONFIG_RESULTADO%/*}
+  # Perfil nomeado: destino inseguro recusa ANTES de qualquer escrita (RF-123(b)).
+  dbx_config_verificar_destino || return $?
+  local base_nova='nao'
+  [[ -d ${diretorio%/*} ]] || base_nova='sim'
 
   # `umask` restritivo cobre a janela entre criar e ajustar a permissao.
   local mascara_anterior
@@ -232,6 +483,10 @@ dbx_config_gravar() {
       return $?
     }
     chmod 700 "$diretorio" 2>/dev/null
+    # `dbx/` criado por este mkdir -p so existe se NOS o criamos.
+    if dbx_config_perfil_nomeado && [[ $base_nova == 'sim' ]]; then
+      chmod 700 "${diretorio%/*}" 2>/dev/null
+    fi
   fi
 
   corpo='{'
@@ -319,14 +574,31 @@ _dbx_config_encerrar_analise() {
 
 # dbx_config_carregar — le e valida a credencial.
 dbx_config_carregar() {
-  local arquivo modo dono conteudo campo
+  local arquivo nome modo dono conteudo campo
 
   # shellcheck disable=SC2034  # canal publico, ver nota no topo
   DBX_CONFIG_MOTIVO=''
   _dbx_config_limpar_credencial
-
-  dbx_config_caminho || return $?
-  arquivo=$DBX_CONFIG_RESULTADO
+  # Sem argumento, o perfil selecionado. Com `<arquivo> <nome>`, OUTRO perfil
+  # (so `perfis` e `unlink`, um por vez; a lista fechada de RNF-37): as mesmas
+  # verificacoes, nomeado: recusa ligacao simbolica e confere `dbx/` e `perfis/`.
+  if [[ $# -eq 2 ]]; then
+    arquivo=$1
+    nome=$2
+    # O nome e dado de caminho: validado antes de qualquer acesso a disco.
+    dbx_config_perfil_validar "$nome" || return $?
+  else
+    dbx_config_caminho || return $?
+    arquivo=$DBX_CONFIG_RESULTADO
+    nome=${DBX_CONFIG_PERFIL:-$DBX_CONFIG_PERFIL_PADRAO}
+  fi
+  # A cadeia a conferir decorre do CAMINHO real (arquivo em `perfis/`), nunca do
+  # rotulo: um rotulo `padrao` sobre arquivo de perfil nao desliga a conferencia.
+  local nomeado=nao
+  [[ ${arquivo%/*} == */perfis || ${arquivo%/*} == perfis ]] && nomeado=sim
+  if [[ $nomeado == 'sim' || $nome != "$DBX_CONFIG_PERFIL_PADRAO" ]]; then
+    _dbx_config_verificar_cadeia "$arquivo" simbolicos || return $?
+  fi
 
   [[ -f $arquivo ]] || { _dbx_config_falhar ausente; return $?; }
 
@@ -345,10 +617,14 @@ dbx_config_carregar() {
   # substituir o arquivo por outro, e nenhum dos dois caminhos olhava para ele
   # (P3-04).
   local modo_diretorio
-  modo_diretorio=$(stat -c '%a' -- "${arquivo%/*}" 2>/dev/null || stat -f '%Lp' "${arquivo%/*}" 2>/dev/null) ||
-    { _dbx_config_falhar inspecao; return $?; }
-  [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
-    { _dbx_config_falhar permissao_diretorio; return $?; }
+  if [[ $nomeado == 'sim' || $nome != "$DBX_CONFIG_PERFIL_PADRAO" ]]; then
+    _dbx_config_verificar_cadeia "$arquivo" completo || return $?
+  else
+    modo_diretorio=$(stat -c '%a' -- "${arquivo%/*}" 2>/dev/null || stat -f '%Lp' "${arquivo%/*}" 2>/dev/null) ||
+      { _dbx_config_falhar inspecao; return $?; }
+    [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
+      { _dbx_config_falhar permissao_diretorio; return $?; }
+  fi
   dono=$(stat -c '%u' -- "$arquivo" 2>/dev/null || stat -f '%u' "$arquivo" 2>/dev/null)
   [[ $dono == "$EUID" ]] || { _dbx_config_falhar dono; return $?; }
 
@@ -436,11 +712,20 @@ dbx_config_remover() {
       # A varredura de orfaos entra aqui tambem: um temporario abandonado
       # CONTEM O SEGREDO, e remover so o arquivo final deixaria em disco
       # justamente o que o desvinculo existe para eliminar.
+      # Perfil nomeado: nunca remove atraves de `dbx/` ou `perfis/` simbolicos.
+      if dbx_config_perfil_nomeado; then
+        _dbx_config_verificar_cadeia_sem_arquivo "$arquivo" || return $?
+      fi
       _dbx_config_varrer_orfaos "${arquivo%/*}"
-      if [[ -e $arquivo ]] && ! rm -f -- "$arquivo" 2>/dev/null; then
+      # Orfaos de `perfis/` tambem saem no `unlink` do `padrao` (RF-122(e)).
+      dbx_config_perfil_nomeado ||
+        _dbx_config_varrer_perfis "${arquivo%/*}/$DBX_CONFIG_DIRETORIO_PERFIS"
+      if { [[ -e $arquivo ]] || { dbx_config_perfil_nomeado && [[ -L $arquivo ]]; }; } && ! rm -f -- "$arquivo" 2>/dev/null; then
         _dbx_config_falhar remocao
         return $?
       fi
+      # `perfis/` vazio depois da remocao do ultimo perfil sai (RF-124(i)).
+      dbx_config_perfil_nomeado && rmdir -- "${arquivo%/*}" 2>/dev/null
       _dbx_config_limpar_credencial
       return 0
       ;;

@@ -114,7 +114,9 @@ dbx_preflight_diretorio_de_configuracao() {
 # `ambiente` e o defeito descrito no topo.
 dbx_preflight_credencial() {
   local diretorio=$1 arquivo modo dono modo_diretorio
-  arquivo="$diretorio/credencial.json"
+  # Perfil nomeado (fase 8, RF-122(d)): o segundo argumento e o arquivo do
+  # PERFIL selecionado, e `diretorio` e o diretorio dele (`perfis/`).
+  arquivo=${2:-$diretorio/credencial.json}
 
   # Credencial ausente e o estado normal antes da configuracao inicial.
   [[ -e $arquivo ]] || return 0
@@ -185,7 +187,14 @@ dbx_preflight_verificar() {
   diretorio=$DBX_PREFLIGHT_DETALHE
 
   if [[ $nivel == 'credencial' ]]; then
-    dbx_preflight_credencial "$diretorio" || return $?
+    # Com perfil nomeado selecionado (lib/config carregada pelo ponto de entrada),
+    # inspeciona o arquivo do PERFIL, nunca o `padrao` (achado A2).
+    if declare -F dbx_config_perfil_nomeado >/dev/null && dbx_config_perfil_nomeado &&
+      dbx_config_caminho; then
+      dbx_preflight_credencial "${DBX_CONFIG_RESULTADO%/*}" "$DBX_CONFIG_RESULTADO" || return $?
+    else
+      dbx_preflight_credencial "$diretorio" || return $?
+    fi
   fi
 
   DBX_PREFLIGHT_DETALHE=''
