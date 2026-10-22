@@ -49,7 +49,7 @@ Toda solicitacao entra pelo **Tech Lead** (regra 44): a sessao principal assume 
 | Conferir suite registrada para o push | `sh scripts/suite-completa.sh --conferir` |
 | Teste unitario isolado | `bash tests/run.sh tests/unit/<arquivo>_test.sh` |
 | Teste de integracao isolado | `bash tests/run.sh tests/integracao/<arquivo>_test.sh` |
-| Linter estatico | `shellcheck lib/*.sh commands/*.sh bin/* scripts/*.sh` |
+| Linter estatico | `sh scripts/lint.sh` (um `shellcheck` por arquivo, teto de 12 GB; nunca `shellcheck` sobre todos os arquivos num processo so) |
 | Guarda de remocao de testes | `bash scripts/verificar-remocao-de-casos.sh` |
 | Validacao de memoria | `sh scripts/memoria-index.sh --check` |
 | Geracao do indice de memoria | `sh scripts/memoria-index.sh --write` |
