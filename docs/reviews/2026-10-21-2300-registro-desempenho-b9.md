@@ -132,7 +132,7 @@ Contagens literais do log e do relatório do QA (aprovados/reprovados/pulados qu
 | Bats da bancada | 11/11 | Prompt 4 (Tech Lead) |
 | `bash scripts/verificar-remocao-de-casos.sh` | 2155 -> 2157 casos; nenhuma redução não declarada | QA |
 | `sh scripts/lint.sh` | exit 0 nos 3 arquivos do QA; "lint limpo" após a máscara da bancada | QA e Prompt 4 |
-| **Suíte completa local (`sh scripts/suite-completa.sh`)** | **(a medir)** | pendente |
+| **Suíte completa local (`sh scripts/suite-completa.sh`)** | **Verde em `ad17cb0`:** 73 arquivos, 2205 aprovados, 0 reprovados, 3 pulados, 2342 s, pico de tmp 5052 MB. Refeita no HEAD final antes do push (o commit desta medição invalida o registro). | Tech Lead |
 
 O red do RF-137 foi registrado de forma literal pelo Senior Developer: lou01 "esperado 5, obtido 0". Sem o parecer de TDD, a prova de vermelho dos demais casos não está consolidada neste registro.
 
@@ -140,8 +140,8 @@ O red do RF-137 foi registrado de forma literal pelo Senior Developer: lou01 "es
 
 | Gate | Situação |
 |---|---|
-| `protocolo-tdd` | **Pendente.** Arquivo de parecer não encontrado em `docs/reviews/`; o registro aponta a lacuna e não a preenche. |
-| `protocolo-conformidade` | **Pendente.** Idem. |
+| `protocolo-tdd` | Aprovado com ressalvas. Os 2 achados maiores foram fechados com 5 mutações mortas: [parecer de TDD](2026-10-21-2300-parecer-tdd-desempenho-b9.md). |
+| `protocolo-conformidade` | Aprovado com ressalvas, 7 achados menores: [parecer de conformidade](2026-10-21-2300-parecer-conformidade-desempenho-b9.md). |
 
 ### 5.3 QA
 
@@ -159,11 +159,17 @@ Bancada: `bin/dbx`, semente 42, 1052 arquivos, 369 MB em disco, N=1 na base.
 
 | Etapa | Base `334394e` (N=1) | Final N=1 | Final N=4 |
 |---|---|---|---|
-| envio | 1996.418 s, 1056 chamadas, 0 `429`, status 0 | (a medir) | (a medir) |
-| reenvio sem mudanças | 24.838 s, 14 chamadas, 0 `429`, status 0 | (a medir) | (a medir) |
-| recebimento (diagnóstico) | 1327.982 s, 1052 arquivos, 0 falhas, status 0 | (a medir) | (a medir) |
+| envio | 1996.418 s, 1056 chamadas, 0 `429`, status 0 | 1520.657 s (−23,8%), 1061 chamadas, 0 `429`, status 0 | 484.525 s (−75,7%; 4,1×), 1061 chamadas, 0 `429`, status 0 |
+| reenvio sem mudanças | 24.838 s, 14 chamadas, 0 `429`, status 0 | 23.780 s (−4,3%), 14 chamadas, 0 `429`, status 0 | 25.743 s (+3,6%), 14 chamadas, 0 `429`, status 0 |
+| recebimento (diagnóstico) | 1327.982 s, 1052 arquivos, 0 falhas, status 0 | 1386.684 s (+4,4%), 1067 chamadas, 0 `429`, status 0 | 367.081 s (−72,4%; 3,6×), 1067 chamadas, 0 `429`, status 0 |
+| reter (etapa nova da bancada) | — | 49.913 s, 43 chamadas, 0 `429`, status 0 | 49.092 s, 43 chamadas, 0 `429`, status 0 |
+| **soma envio + reenvio + recebimento** | **3349.238 s** | **2931.121 s (−12,5%)** | **877.349 s (−73,8%; 3,8×)** |
 
-A base de recebimento adotada é a do diagnóstico (1327.982 s). A primeira execução saiu `14` com 1344.439 s e 1066 chamadas, sem causa conhecida (ver seção 6.1). Pendente: o limite de RNF-38(b) ("N=1 não pior que `334394e` além da variação medida") é fixado com estas medições.
+A base de recebimento adotada é a do diagnóstico (1327.982 s). A primeira execução saiu `14` com 1344.439 s e 1066 chamadas, sem causa conhecida (ver seção 6.1). Final medido em `ad17cb0` (2026-10-22), mesma semente e mesmo volume: impressão digital `f7a45337…71e4` conferida antes de cada execução, igual à da base. Pastas `/dbx-bancada-final-n1` e `/dbx-bancada-final-n4` removidas pela bancada e confirmadas ausentes (`path/not_found`). Cada execução teve o ok do solicitante.
+
+**Limite de RNF-38(b), fixado pelo Tech Lead com estas medições:** com N=1, cada etapa pode ficar até **5%** acima da base. A referência é a variação observada na conta real em caminho de código idêntico: o reenvio sem mudanças variou 8,3% entre as execuções finais (23.780 s e 25.743 s), e as duas execuções de recebimento da base variaram 1,2% (1327.982 s e 1344.439 s). O recebimento final com N=1 ficou 4,4% acima, dentro do limite. O caminho de download com N=1 não mudou na fase. A soma com N=1 caiu 12,5%, puxada pelo envio em lote de pequenos (−23,8%). **RNF-38(b) atendido.**
+
+**Leitura:** N=4 reduz o envio e o recebimento em cerca de 3,6 a 4,1 vezes, sem nenhum `429`. As chamadas são as mesmas para N=1 e N=4, porque o paralelismo não muda o plano. O reenvio sem mudanças fica igual, porque é dominado pela listagem, que continua sequencial (RNF-21). A etapa `reter` não tem base, porque foi acrescentada à bancada nesta fase, e com DIV-269 não houve mudança no reter.
 
 ## 6. Riscos, impacto e rollback
 
@@ -172,7 +178,7 @@ A base de recebimento adotada é a do diagnóstico (1327.982 s). A primeira exec
 - **Testes do F-09 escritos depois do código.** Desvio do red-green, declarado pelo Senior Developer no handback (Prompt 2). Os 14 casos de `paralelo_test` passam, mas não houve vermelho prévio.
 - **Guarda `_dbx_cmd_sync_protegido` sem teste de caixa-preta capaz de matar a mutação.** O plano já descarta o item protegido, então a mutação não é detectada; a guarda por item antes da fatia fica como defesa em profundidade (Prompt 2). A guarda destrutiva continua sendo a do plano.
 - **Falha transitória do primeiro recebimento da base.** Status `14` (`nao_concluida`) e saída apagada pelo `trap` da bancada; causa desconhecida. A repetição do recebimento deu status 0, 1052 arquivos, 0 falhas e árvore idêntica (`diff -rq`). A bancada passou a preservar a saída de cada etapa e a garantir a limpeza.
-- **Suíte inteira parou uma vez em `retomada_download` caso `rmo01`.** Não reproduziu isolado (27/27) e coincidiu com a bancada consumindo memória em paralelo; a suíte completa será refeita antes do push (pendente).
+- **Suíte inteira parou uma vez em `retomada_download` caso `rmo01`.** Causa encontrada: o tmpfs do `/tmp` (7,9 GB no WSL) encheu, porque o `qa_retomada_b7a` acumulava 3,2 GB de ambientes entre casos. O teste passou a limpar os ambientes do caso anterior, e o pico desse arquivo caiu para 645 MB (`ad17cb0`). Com isso a suíte completa ficou verde. A dependência de tmpfs ficou registrada como F-48.
 - **Lacunas declaradas pelo QA:** `Retry-After`/`429` sob paralelismo, sinais (INT/TERM) com N>1 e a ordem de saída com falhas sob N=8 não foram exercitados pela suíte do QA.
 - **DIV-275:** interrupção durante o `check` pode deixar a fatia (até 250 itens) apagada no servidor sem ser contada; sai `14`, itens na lixeira.
 - **DIV-267:** com `--limite-banda` e N grande, a soma pode exceder o teto total por causa do piso por transferência.
@@ -196,8 +202,8 @@ A base de recebimento adotada é a do diagnóstico (1327.982 s). A primeira exec
 
 ## 7. Próximos passos
 
-- Medição final N=1 e N=4 na conta real, com o ok do solicitante e a flag `--confirmo-conta-real` (seção 5.4); fixar o limite de RNF-38(b).
-- Pareceres de TDD e de conformidade, em arquivos próprios.
+- Suíte completa no HEAD final, push e PR para `develop`.
+- Após o merge: `sh scripts/limpar-worktrees.sh`.
 - Suíte completa local (`sh scripts/suite-completa.sh`), commit e PR para `develop`.
 - Backlog: F-46 (metadados em lote), F-47 (`content_hash` no `files/upload`), sobreposição de `start` e `finish_batch_v2` (DIV-277), decisão sobre reduzir N após `429` com base na bancada (DIV-258).
 
