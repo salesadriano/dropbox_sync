@@ -7,7 +7,7 @@
 - Projeto ou produto: `dropbox_api` — aplicacao de linha de comando em shell script para integracao com a Dropbox API v2
 - Responsavel Business Analyst: Business Analyst (pacote de agents)
 - Responsavel tecnico principal: a definir pelo Tech Lead
-- Data da versao: 2026-10-22 (**v1.18**)
+- Data da versao: 2026-10-22 (**v1.20**)
 - Status: 🔴 **`lib/stream` era componente planejado e NAO se materializou** (`DIV-20`); `RF-31` roda em `lib/transfer` + `lib/hash`. **Tamanho de parte FIXO em 4.194.304 bytes** (`DIV-19`, `DP-30`). **Limite de plataforma registrado em `RSK-36` / `DIV-18`.** **Todas as decisoes do `sync` fechadas.** Quinze comandos na fase 3 (`DIV-68`: o "nove" era anterior as fases 1 e 3), dezessete na fase 5 (`link-temporario` e `compartilhar`, em andamento), dezoito na fase 6 (`reter`, em andamento); `RSK-24` com mitigacao estrutural em vez de aceite. Nenhuma decisao do solicitante em aberto para o `sync`
 
 Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md) · [Decisoes pendentes](../requisitos/decisoes-pendentes.md) · [Funcionalidades candidatas](../requisitos/funcionalidades-candidatas.md) · [Riscos e licenciamento](../requisitos/riscos-restricoes-e-licenciamento.md)
@@ -17,6 +17,7 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 | Versao | Mudanca |
 |---|---|
 | v0.1 | Proposta arquitetural inicial |
+| **v1.20** | **Fase 10 (2026-10-22; memoria `2026-10-22-1600-progresso-por-arquivo`; log `docs/prompts/2026-10-22_1600_progresso-por-arquivo.md`; porte G): progresso por arquivo (`F-49`; escopo v1.27, secao 5.19; `RF-140` a `RF-147`, `TC-PRG-01` a `TC-PRG-36`; `DIV-282` a `DIV-306`).** Nova secao "Progresso por arquivo (fase 10, v1.20)" com o desenho implementado: linha por arquivo no processo principal; avanco por parte no upload em sessao; observador do `.part` no download; canal de status do auxiliar (um arquivo por item, escrita atomica por escritor) lido pelo principal, que redesenha o bloco com N>1; sem terminal, linha nova por atualizacao. Diagrama Mermaid de fluxo. Sem endpoint, codigo de saida ou estado persistente novos. |
 | **v1.18** | **Fase 9 (2026-10-22; memoria `2026-10-21-2300-desempenho`; porte G): desempenho (`F-09`, `F-08`, `F-34`; escopo v1.25, secao 5.18).** Secao "Desempenho: paralelismo, lote e bancada" reescrita com o desenho implementado: componente novo `lib/lote.sh`; processo principal unico gravador de estado e auxiliares nas transferencias (`--paralelo`, 1 a 8); exclusao em lote so no `sync --espelhar` (fatias de 250, `check` com recuo); `reter` item a item (`DIV-269`); envio em lote com `start` nos auxiliares, `finish_batch_v2` no principal em grupos de 250 e conferencia de `content_hash` (`DIV-278`); bancada com marcador e limpeza. Diagrama de sequencia do envio em lote. Sem codigo de saida novo e sem estado persistente novo. |
 | **v1.17** | **Fase 8 (2026-10-21; memoria `2026-10-21-1735-perfis`; porte G): perfis nomeados de credencial (`F-18`; escopo v1.24, secao 5.17).** `DP-05` **reaberta e resolvida de novo**: o desenho da v0.6 ("um arquivo, um caminho, sem seletor") e substituido por `credencial.json` como perfil `padrao` mais `perfis/<nome>.json`, selecao por `--perfil`/`--profile` e `DBX_PERFIL`, nome validado antes de qualquer acesso (`RNF-37`), perfil inexistente sem recuo para o `padrao`. Nova secao de componentes "Perfis nomeados de credencial" com a tabela de atribuicao do estado por identidade (a `memoria-*` e chaveada pelo `account_id`, nao por `cred-`), o `unlink` seletivo (`DIV-237`, `DIV-238`, `C8` do DBA) e dois diagramas Mermaid (selecao e `unlink`). **Trava por raiz local canonica** no `sync --receber` (`RF-132`, `DIV-250`). `lib/preflight` passa a inspecionar o caminho resolvido. `DIV-236` a `DIV-251` resolvidas; parecer do DBA aceito (`C1` a `C10`); `F-44` e `RSK-91` a `RSK-93`. Nenhum codigo de saida nem formato de estado novo. |
 | **v1.16** | **Cursor de listagem entre execucoes (fase 7b, 2026-10-21; `F-14`; `RF-110` a `RF-119`; porte G; em andamento).** Secao "Cursor de listagem entre execucoes", com o fluxo em Mermaid. **Estado persistente novo** sob `lib/state`: namespace `cursor-<resumo32>` (formato NUL v1 com magia `dbx-cursor`, cursor mais **retrato remoto sem filtro** e rodape SHA-256 num arquivo so; leitor em fluxo limitado a campo de 8 KiB, 1.000.000 de entradas e 512 MiB). `lib/sync` passa a montar a **tabela remota inteira e filtrar depois** (`DIV-g`), aplica o delta do `list_folder/continue` pela receita do servico e confirma no servidor toda candidata a exclusao do modo incremental. `RNF-26` ganha o item (8) (`DIV-e`); linha de `lib/state` atualizada (o cursor existe; `DIV-a` da 7a fechada); chaves por `cred-` e `account_id` no cabecalho (`DIV-i`). `F-40` corrigida so no caminho do `sync` (`DIV-214` B). Contratos conferidos no Context7 (`DIV-219`). Nenhum codigo de saida novo; nenhuma escrita remota nova. Divergencias de implementacao a partir de `DIV-221`. |
@@ -1348,6 +1349,48 @@ sequenceDiagram
 ```
 
 Componentes: `commands/sync` monta as listas ja guardadas; `lib/transfer` executa as transferencias e fixa o limiar de pequeno; `lib/lote` executa a exclusao e o fechamento do envio em lote; `lib/http` mantem retentativa e `Retry-After`; `lib/state` so e escrito pelo processo principal; a bancada e um script separado da suite (`DIV-265`). Metadados em lote ficam fora (`F-46`) e a conferencia de `content_hash` no `files/upload` unitario vai ao backlog (`F-47`, `DIV-280`). Interrupcao durante o `check` pode deixar a fatia apagada no servidor sem contagem; sai `14` e os itens vao para a lixeira (`DIV-275`).
+
+## Progresso por arquivo (fase 10, v1.20)
+
+Visao apenas; o detalhe tecnico e do Senior Developer. Requisitos: secao 5.19 do escopo (`RF-140` a `RF-147`, `TC-PRG-01` a `TC-PRG-36`, `F-49`). Divergencias de especificacao e de implementacao: `DIV-282` a `DIV-306`. Registro de entrega: [registro](../reviews/2026-10-22-1600-registro-progresso-por-arquivo.md).
+
+**Desenho implementado.** A barra e o percentual no fim da linha passam a medir o arquivo em curso, nao o plano inteiro:
+
+- **Linha por arquivo no processo principal.** A linha abre antes da primeira requisicao de conteudo (`TC-PRG-05`), com o `[i/N]` do item, barra de 10 celulas e percentual do arquivo. Sem `--progresso` e sem terminal, nenhum observador, canal ou `stat` extra e criado (`RF-145(c)`).
+- **Upload em sessao.** Cada `append_v2` confirmado avanca a linha pela fracao confirmada. Com terminal, a linha e redesenhada no lugar; sem terminal, cada parte vira linha nova (`TC-PRG-13`). Erro na parte N mantem o maximo da parte N-1 (`RF-141(b)`).
+- **Download.** A transferencia nao devolve progresso. Um observador (processo filho) le o tamanho do `.part` em disco a cada 0,25 s com terminal, ou a cada 10 pontos percentuais sem terminal (`DIV-282`). O `100%` so aparece depois da conferencia de `content_hash` (`TC-PRG-10`). A retomada comeca no percentual real do `.part`, nao em 0% (`DIV-294`).
+- **Falha.** A linha fica no ultimo percentual atingido, recebe o sufixo ` falhou` e termina com quebra de linha; a mensagem de erro vai em linha propria. Nunca se forja `100%` (`RF-146`).
+- **Paralelo (`--paralelo N`, N > 1).** Os auxiliares nao escrevem em stderr. Cada auxiliar grava o avanco do seu item em arquivo de status proprio, num diretorio temporario `0700`, com nome unico por escritor e `mv` (`DIV-290`). O processo principal le esses arquivos (aceita so inteiro e estado `concluido` ou `falhou`), redesenha o bloco de ate N linhas e fixa como linha comum o item que concluiu. Sem terminal, cada atualizacao vira linha nova com o `[i/N]` do arquivo (`DIV-289`).
+- **Saida em terminal.** Sequencias limitadas a retorno de carro, subida de N linhas e limpeza de linha. Caractere de controle no nome de arquivo sai como `?` (`RF-144`, `TC-PRG-29`). O stdout nao muda (`RF-145(a)`).
+
+**Componentes tocados.** `lib/progress.sh` (linha, observador, canal e bloco N>1); `lib/transfer.sh` (avanco por parte no upload em sessao); `lib/cmd.sh` (observador do `.part` e retomada do download); `lib/http.sh` (barra do cURL retirada da saida, `DIV-293`); `commands/sync.sh` (canal de status e bloco no paralelo); `commands/upload.sh` e `commands/download.sh` (linha por arquivo e falha). A API publica do canal e `dbx_progress_canal_definir`; nenhum comando escreve variavel privada de `lib/progress.sh`.
+
+**Contrato externo.** Nenhum endpoint novo, nenhum codigo de saida novo e nenhum estado persistente novo. `help` e README descrevem o formato com e sem terminal (`TC-PRG-36`).
+
+```mermaid
+flowchart TD
+  S["Arquivo inicia: linha [i/N] em 0% (processo principal)"] --> M{"N = 1 ou sem paralelo?"}
+  M -- "sim" --> T{"upload em sessao?"}
+  T -- "sim" --> PA["append_v2 confirmado: avanco por parte (principal)"]
+  T -- "nao" --> DL["download: observador do .part (processo filho, 0,25 s ou 10 pontos)"]
+  DL --> HC["content_hash conferido"]
+  HC --> CEM["100% e ultima atualizacao"]
+  PA --> LIN{"terminal?"}
+  CEM --> LIN
+  LIN -- "sim" --> RW["linha redesenhada no lugar"]
+  LIN -- "nao" --> NL["linha nova por atualizacao, sem sequencia de controle"]
+  M -- "nao, N > 1" --> AX["auxiliar do item grava status proprio (0700, nome unico, mv)"]
+  AX --> CH["canal de status: um arquivo por item"]
+  CH --> RD["principal le: inteiro, concluido ou falhou"]
+  RD --> BL{"terminal?"}
+  BL -- "sim" --> BR["redesenha bloco de ate N linhas; item concluido vira linha fixa"]
+  BL -- "nao" --> BN["linha nova com o [i/N] do arquivo"]
+  AX --> FL["falha: ultimo percentual com sufixo falhou, erro em linha propria"]
+```
+
+**Limites conhecidos.** Espera de amostragem com progresso ativo e N>1 trocou `wait -n` por ciclos de 0,2 s, com sinal podendo esperar ate 0,2 s (`DIV-301`, aceito e documentado). Sem progresso, nada muda.
+
+---
 
 ## Proximos passos
 

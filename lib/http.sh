@@ -350,11 +350,8 @@ _dbx_http_interpretar_erro() {
 # janela de credencial em disco que nenhuma permissao elimina — melhor nao
 # existir a superficie do que protege-la.
 _dbx_http_opcoes() {
-  if [[ $_DBX_HTTP_MODO == 'conteudo' ]] && dbx_progress_ativo; then
-    printf 'progress-bar\n'
-  else
-    printf 'silent\n'
-  fi
+  # DIV-293: a barra propria do cURL nunca e repassada; o progresso e o da linha do arquivo.
+  printf 'silent\n'
   printf 'show-error\n'
   # RNF-30: sem estes tres, um servidor que aceita a conexao e nao responde
   # prende o processo para sempre. O corte por velocidade cobre tambem a

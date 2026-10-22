@@ -77,6 +77,8 @@ teste_etapa_formata_e_emite_em_stderr() {
 
   assert_igual '' "$saida_out" 'stdout vazio'
   assert_contem '[3/10] enviando: documentos/relatorio.pdf' "$saida_err" 'formato de etapa em stderr'
+  assert_contem '[3/10] enviando: documentos/relatorio.pdf [' "$saida_err" 'RF-147(b): [i/N] acao: item e a barra'
+  assert_nao_contem '%' "$saida_err" 'RF-147(b): o percentual global saiu da linha'
 }
 
 teste_transferencia_formata_com_percentual_em_stderr() {
@@ -167,7 +169,7 @@ teste_etapa_inclui_barra_grafica_em_stderr() {
 
   assert_igual '' "$saida_out" 'stdout deve permanecer vazio'
   assert_contem '[4/10] recebendo: arquivo.zip' "$saida_err" 'etapa base preservada'
-  assert_contem '(40%)' "$saida_err" 'percentual da etapa calculado'
+  assert_nao_contem '(40%)' "$saida_err" 'RF-147(b): percentual global saiu da linha'
 }
 
 teste_etapa_com_progresso_fracionario_exibe_decimais() {
@@ -183,19 +185,19 @@ teste_etapa_com_progresso_fracionario_exibe_decimais() {
 
   assert_igual '' "$saida_out" 'stdout deve permanecer vazio'
   assert_contem '[47/228418] recebendo: arquivo.xml' "$saida_err" 'etapa identificada'
-  assert_contem '(0.02%)' "$saida_err" 'percentual fracionario calculado com 2 casas'
+  assert_nao_contem '(0.02%)' "$saida_err" 'RF-147(b): percentual global saiu da linha'
 
   # 1 de 1000000 = <0.01%
   dbx_progress_etapa 1 1000000 'recebendo' 'arquivo.xml' >"$arq_out" 2>"$arq_err"
   saida_err=$(cat "$arq_err")
   rm -f "$arq_out" "$arq_err"
-  assert_contem '(<0.01%)' "$saida_err" 'percentual menor que 0.01% exibe menor que'
+  assert_nao_contem '(<0.01%)' "$saida_err" 'RF-147(b): percentual global saiu da linha'
 
   # 0 de 228418 = 0%
   dbx_progress_etapa 0 228418 'recebendo' 'arquivo.xml' >"$arq_out" 2>"$arq_err"
   saida_err=$(cat "$arq_err")
   rm -f "$arq_out" "$arq_err"
-  assert_contem '(0%)' "$saida_err" 'zero itens preserva 0%'
+  assert_nao_contem '(0%)' "$saida_err" 'RF-147(b): percentual global saiu da linha'
 }
 
 teste_transferencia_e_barra_com_progresso_fracionario() {
@@ -232,7 +234,7 @@ teste_etapa_barra_exibe_progresso_do_arquivo_atual_e_percentual_global() {
   rm -f "$arq_out" "$arq_err"
 
   assert_contem "$barra_100" "$saida_err" 'barra deve exibir progresso do arquivo atual (100% por padrao)'
-  assert_contem '(40%)' "$saida_err" 'percentual entre parenteses deve refletir o processo global'
+  assert_nao_contem '(40%)' "$saida_err" 'RF-147(b): percentual global saiu da linha'
 
   # Repasse explicito de percentual do arquivo atual (ex.: 50%)
   dbx_progress_etapa 4 10 'recebendo' 'arquivo.zip' 50 >"$arq_out" 2>"$arq_err"
@@ -240,7 +242,7 @@ teste_etapa_barra_exibe_progresso_do_arquivo_atual_e_percentual_global() {
   rm -f "$arq_out" "$arq_err"
 
   assert_contem "$barra_50" "$saida_err" 'barra deve exibir 50% do arquivo atual'
-  assert_contem '(40%)' "$saida_err" 'percentual global continua 40%'
+  assert_nao_contem '(40%)' "$saida_err" 'RF-147(b): percentual global saiu da linha'
 
   # Repasse explicito de inicio do arquivo atual (0%)
   dbx_progress_etapa 4 10 'recebendo' 'arquivo.zip' 0 >"$arq_out" 2>"$arq_err"
@@ -248,7 +250,7 @@ teste_etapa_barra_exibe_progresso_do_arquivo_atual_e_percentual_global() {
   rm -f "$arq_out" "$arq_err"
 
   assert_contem "$barra_0" "$saida_err" 'barra deve exibir 0% do arquivo atual'
-  assert_contem '(40%)' "$saida_err" 'percentual global continua 40%'
+  assert_nao_contem '(40%)' "$saida_err" 'RF-147(b): percentual global saiu da linha'
 
   # Caso real da captura (17526 de 228418 = 7% global com arquivo atual 100%)
   dbx_progress_etapa 17526 228418 'recebendo' 'arquivo.xml' >"$arq_out" 2>"$arq_err"
@@ -256,7 +258,7 @@ teste_etapa_barra_exibe_progresso_do_arquivo_atual_e_percentual_global() {
   rm -f "$arq_out" "$arq_err"
 
   assert_contem "$barra_100" "$saida_err" 'barra deve exibir 100% do arquivo atual'
-  assert_contem '(7%)' "$saida_err" 'percentual global continua 7%'
+  assert_nao_contem '(7%)' "$saida_err" 'RF-147(b): percentual global saiu da linha'
 }
 
 harness_executar "$@"
