@@ -56,6 +56,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **0**.
 - Ciclo 2 (Prompt 2, a pedido do solicitante): os dois pontos que o QA tinha deixado abertos foram corrigidos pelo Tech Lead.
   - Regra 1: o QA apontou os testes `perfis_*` e `state_trava_raiz` como leitores de `lib/*.sh`. A conferencia mostrou outra coisa: eles carregam libs especificas. O `grep -l 'lib/\*'` da propria frase acha dez testes, e a tabela tinha cinco. `auth`, `hash`, `path`, `trava_test` e `qa_docs_aliases` entraram na tabela e na selecao de todo diff em `lib/*.sh`, com as linhas de cada auditoria.
   - As fases 8 e 9 ficaram em secoes proprias, na ordem decrescente das demais (antes da 7a).
+- Ciclo 3 (Prompts 3 e 4): conflito com a `develop` resolvido nas tabelas de versao (as duas linhas ficam); `F-49` concluida; o mapa ganhou a secao da fase 10 e o `qa_progresso_arquivo_b10` na Regra 2, conferidos pelo Tech Lead com `grep` e `ls`.
 - Veredito do QA: Aprovado, 2026-10-22.
 
 ## 7. Riscos e rollback

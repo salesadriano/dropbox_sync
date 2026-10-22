@@ -1,6 +1,6 @@
 # Mapa de modulos de teste
 
-Mantido pelo QA Expert (Regra 8 de `protocolo-tdd`; detalhamento em `.github/skills/protocolo-tdd/references/execucao-por-modulo.md`). Levantado em 2026-10-18 (fase P2, achado QA-05 da P1); atualizado em 2026-10-22 com as fases 6 a 9 do backlog a partir do codigo, sem interpretacao.
+Mantido pelo QA Expert (Regra 8 de `protocolo-tdd`; detalhamento em `.github/skills/protocolo-tdd/references/execucao-por-modulo.md`). Levantado em 2026-10-18 (fase P2, achado QA-05 da P1); atualizado em 2026-10-22 com as fases 6 a 10 do backlog a partir do codigo, sem interpretacao.
 
 ## Origem das linhas
 
@@ -30,7 +30,7 @@ Conferido em 2026-10-22 por `grep -l 'lib/\*' tests/unit/*.sh tests/integracao/*
 
 ## Regra 2: testes `qa_*`
 
-Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os dezoito de uma vez (contagem conferida com `ls tests/unit/qa_* tests/integracao/qa_* | wc -l` na fase 9; eram treze na fase 5); para um so, use o filtro proprio da tabela. O filtro `state` casa tambem `qa_state_p3` (substring), o que e desejado: diff em `lib/state.sh` seleciona os dois.
+Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os dezenove de uma vez (contagem conferida com `ls tests/unit/qa_* tests/integracao/qa_* | wc -l` na fase 10; eram dezoito na fase 9 e treze na fase 5); para um so, use o filtro proprio da tabela. O filtro `state` casa tambem `qa_state_p3` (substring), o que e desejado: diff em `lib/state.sh` seleciona os dois.
 
 | Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
 |---|---|---|---|
@@ -52,6 +52,7 @@ Teste `qa_*` novo entra no mapa na criacao. O filtro `qa_` seleciona os dezoito 
 | `tests/integracao/qa_cursor_b7b_test.sh` (fase 7b) | `qa_cursor` (o filtro `cursor` tambem o casa, por substring) | `bin/dbx` (sync com cursor); carrega `lib/errors.sh`, `lib/hash.sh` | `bin/dbx`, `commands/sync.sh`, `lib/state.sh`, `lib/sync.sh`, `lib/hash.sh`, `lib/errors.sh` |
 | `tests/integracao/qa_perfis_b8_test.sh` (fase 8) | `qa_perfis` (o filtro `perfis` tambem o casa) | `bin/dbx` (perfis, config, unlink, sync com perfil); carrega `lib/errors.sh`, `lib/tmp.sh`, `lib/hash.sh`, `lib/json.sh`, `lib/config.sh`, `lib/state.sh` | `bin/dbx`, `commands/perfis.sh`, `commands/config.sh`, `commands/unlink.sh`, `commands/diagnostico.sh`, `commands/sync.sh`, `lib/config.sh`, `lib/state.sh`, `lib/preflight.sh`, `lib/cli.sh`, `lib/json.sh`, `lib/errors.sh` |
 | `tests/integracao/qa_desempenho_b9_test.sh` (fase 9) | `qa_desempenho` | `bin/dbx` (sync em paralelo e em lote, reter); carrega `lib/errors.sh`, `lib/hash.sh`, `tests/support/lote_duplo.sh` | `bin/dbx`, `commands/sync.sh`, `commands/reter.sh`, `lib/lote.sh`, `lib/transfer.sh`, `lib/http.sh`, `lib/cmd.sh`, `lib/sync.sh`, `lib/hash.sh`, `lib/errors.sh`, `tests/support/lote_duplo.sh` |
+| `tests/integracao/qa_progresso_arquivo_b10_test.sh` (fase 10) | `qa_progresso` (os filtros `progresso_arquivo` e `progress` tambem o casam, por substring) | `bin/dbx` (upload de fluxo, download, sync nos dois sentidos com N=1 e N=3); carrega `lib/errors.sh` e `tests/support/lote_duplo.sh` | `bin/dbx`, `commands/sync.sh`, `commands/upload.sh`, `commands/download.sh`, `lib/progress.sh`, `lib/transfer.sh`, `lib/cmd.sh`, `lib/state.sh`, `tests/support/lote_duplo.sh` |
 
 ## Regra 3: `scripts/tests/*.bats`
 
@@ -84,7 +85,7 @@ Pares sem referencia textual ao script no corpo do `.bats` foram ligados pelo no
 | `lib/json.sh` | errors | config, http | `json`, `config`, `http`, `auth`, `cabecalho`, `transfer`, `state`, `cmd` | `comandos` |
 | `lib/path.sh` | errors | output; **chamado por** commands/upload e commands/sync (`dbx_path_local_canonico`); lib/cmd (`dbx_path_remoto_argumento`, fase 1b) | `path`, `output`, `cli`, `cabecalho`, `cmd` | `comandos`, `sync`, `confinamento_remoto` |
 | `lib/output.sh` | errors, path; **le canais de** auth e config por nome (`DBX_AUTH_TOKEN`, `DBX_AUTH_REFRESH_TOKEN`, `DBX_CONFIG_REFRESH_TOKEN`, `DBX_CONFIG_APP_SECRET`) | bin/dbx; **chamado por** commands/sync (`dbx_output_mascarar_segredos`) | `output`, `cli`, `composicao`, `cmd` | `comandos`, `sync`, `qa_robustez` (fase P2: todo diagnostico passa pela mascaracao por valor) |
-| `lib/progress.sh` | | http, sync, transfer, bin/dbx | `progress`, `transfer`, `http`, `cmd` | `comandos`, `sync`, `qa_` |
+| `lib/progress.sh` | nenhum `source`; **chama** tmp (`dbx_tmp_acao_registrar`, `dbx_tmp_acao_cancelar`: fecha a linha e para o observador do `.part` na saida, fase 10) | http (`source`), cmd, transfer, sync (lib), commands/sync, commands/upload, commands/download, commands/verificar, bin/dbx | `progress`, `progresso_linha`, `transfer`, `http`, `cmd` | `comandos`, `sync`, `progresso_arquivo`, `qa_progresso_arquivo`, `qa_` |
 | `lib/cli.sh` | | bin/dbx (tabela de comandos e aliases `verify`, `doctor`, `completion`, fase 1 do backlog; `link-temporario`, `temp-link`, `compartilhar`, `share`, fase 5; `reter`, `retain`, fase 6); commands/sync e commands/verificar (`dbx_cli_validar_espera`, fase 2); **chamado por** cmd (`dbx_cli_validar_taxa`, limite de banda, fase 4), commands/config e commands/compartilhar (`dbx_cli_ler_oculto`, leitura sem eco, fase 5) | `cli`, `banda`, `compartilhamento_test` | `comandos`, `verificar`, `diagnostico`, `completar`, `trava` (TC-ESR-01) |
 | `lib/config.sh` | errors, json, tmp, hash | bin/dbx; **chamado por** state (`dbx_config_caminho_de_estado`) e cmd (`dbx_config_identidade`, chave da trava, fase 2) | `config`, `state`, `cmd` | `comandos`, `confinamento_remoto` (`raiz_remota` lida por lib/cmd, fase 1b), `trava` |
 | `lib/http.sh` | errors, json, progress, tmp | bin/dbx; **chamado (sem `source`) por** cmd e transfer (`dbx_http_limite_banda`, `limit-rate` so no modo `conteudo`, fase 4); canais lidos por commands/sync | `http`, `auth`, `cabecalho`, `transfer`, `qa_rede`, `cmd`, `banda` (fase 4: `limit-rate` por chamada), `retencao_test` (fase 6: canal `DBX_HTTP_DATA`, cabecalho `Date`, DIV-134) | `comandos`, `sync`, `qa_` |
@@ -133,6 +134,17 @@ Nenhum comando tem teste unitario: todos sao exercitados por `bin/dbx` em testes
 | `commands/reter.sh` (fase 6, RF-93 a RF-99; alias `retain`) | retencao; **chama** cmd (`_dbx_cmd_caminho_remoto`, `_dbx_cmd_escrita_remota` silencioso e idempotente, `dbx_cmd_caminho_exibivel`), auth (`dbx_auth_colecao`, `dbx_auth_requisitar`, `dbx_auth_preparar`), tmp (`dbx_tmp_acao_registrar`, resumo no sinal); **le canais de** http (`DBX_HTTP_DATA`, DIV-134) | `reter_test` (TC-RTA, TC-RTS, TC-RTP, TC-RTC, TC-RTG, TC-RTX, TC-RTO; mutantes em copia do produto; `script(1)` em TC-RTC-05, pula sem ele) | `completar` (TC-CPL-11 em `reter_test`) |
 | `commands/compartilhar.sh` (fase 5, RF-85 a RF-90; alias `share`) | compartilhamento; **chama** cli (`dbx_cli_ler_oculto`), tmp (`dbx_tmp_armar`), cmd (`_dbx_cmd_caminho_remoto`, `_dbx_cmd_escrita_remota` silencioso e idempotente) e auth | `compartilhar_test` (TC-CMP, TC-SNH com `script(1)` e pula sem ele, TC-LEX, TC-LST, TC-RVG, TC-SHE) | `completar` |
 | `commands/perfis.sh` (fase 8, RF-126, F-18; alias `profiles`) | nenhum `source`; **chama** config (`dbx_config_perfis_listar`, `DBX_CONFIG_PERFIS_*`), cmd (`dbx_cmd_falhar`, `dbx_cmd_iniciar_saida`, `dbx_cmd_campo_caminho`), output (`dbx_output_campo`, `dbx_output_render`) e `dbx_carregar_camada_de_credencial` (bin/dbx); so le, requisito `ambiente` | `perfis_test` (ponta a ponta), `perfis_cli_test` (tabela de comandos e alias, `lib/cli`) | `perfis_unlink`, `perfis_trava_raiz`, `qa_perfis`, `completar` |
+
+## Testes da fase 10 do backlog (progresso por arquivo, F-49)
+
+Conferido em 2026-10-22 por `grep -o 'lib/...'` em cada arquivo. Cuidado com substring: `progress` casa os quatro arquivos de progresso (`progress_test`, `progresso_linha`, `progresso_arquivo`, `qa_progresso_arquivo_b10`), e `progresso_arquivo` casa tambem o do QA.
+
+| Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
+|---|---|---|---|
+| `tests/unit/progresso_linha_test.sh` (fase 10, RF-140 a RF-142, RF-146) | `progresso_linha` | carrega `lib/errors`, `progress`; linha por arquivo, terminal e sem terminal (semente `DBX_PROGRESS_TERMINAL`), observador do `.part`, canal de status com escrita concorrente | `lib/progress.sh`, `lib/tmp.sh`, `lib/errors.sh` |
+| `tests/integracao/progresso_arquivo_test.sh` (fase 10, TC-PRG-02 a 36) | `progresso_arquivo_test` (`progresso_arquivo` casa tambem o do QA) | `bin/dbx` (upload simples, em sessao e de pasta; download de arquivo, de pasta e para stdout; sync nos dois sentidos com N=1 e N=3; help); carrega `lib/errors.sh` e `tests/support/lote_duplo.sh`; o TC-PRG-35 compara o stderr com `git archive a39a89e` e e pulado sem esse commit | `bin/dbx`, `commands/sync.sh`, `commands/upload.sh`, `commands/download.sh`, `lib/progress.sh`, `lib/transfer.sh`, `lib/cmd.sh`, `lib/http.sh`, `lib/lote.sh`, `README.md`, `tests/support/lote_duplo.sh` |
+
+O caso de download retomado da fase 10 (`prg_download_retomado_comeca_no_percentual_do_part`, DIV-294) fica em `tests/integracao/retomada_download_test.sh` (filtro `retomada_download`). Diff em `lib/progress.sh` aplica tambem a Regra 1 e seleciona `progress`, que roda os quatro arquivos acima de uma vez.
 
 ## Testes da fase 9 do backlog (desempenho, F-08, F-09, F-34)
 

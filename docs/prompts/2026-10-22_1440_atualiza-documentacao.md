@@ -42,3 +42,11 @@ registro_de_entrega: "docs/reviews/2026-10-22-1440-registro-atualiza-documentaca
 **Intencao:** resolver o conflito da PR #54 com a `develop`, que recebeu a fase 10 (PR #55).
 
 **Resolucao do Tech Lead:** `git merge origin/develop` na branch. Os conflitos foram so nas tabelas de versao, e as duas linhas ficaram, com a mais nova em cima: System Design v1.20 sobre v1.19, com a data da versao em v1.20; escopo v1.27 sobre v1.26, com a linha de versao do topo em v1.27. Como a fase 10 tambem ja esta mesclada, `F-49` passa a "concluida" nas candidatas, na secao 5.19 do escopo e no cabecalho da secao do System Design, como as fases 1 a 9 neste PR. A suite completa roda de novo no commit do merge antes do push.
+
+## Prompt 4 — 2026-10-22 (depois da resolucao do conflito, antes do push)
+
+> sim, inclua os testes da fase 10 no mapa
+
+**Intencao:** o mapa de modulos de teste passa a cobrir a fase 10 (progresso por arquivo, PR #55).
+
+**Feito pelo Tech Lead:** secao "Testes da fase 10" com `progresso_linha_test` e `progresso_arquivo_test`; `qa_progresso_arquivo_b10` na tabela da Regra 2 (o filtro `qa_` passa a selecionar dezenove, conferido por `ls`); linha de `lib/progress.sh` com a chamada a `lib/tmp` e os dependentes reais (conferidos por `grep -l dbx_progress_`). A coluna "Carrega" saiu do `grep -o 'lib/...'` de cada teste. A suite completa que rodava no commit do merge foi interrompida, porque este commit a invalidaria; ela roda de novo no HEAD final.
