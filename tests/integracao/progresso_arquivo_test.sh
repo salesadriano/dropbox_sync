@@ -279,7 +279,7 @@ teste_upload_simples_tem_so_zero_e_cem() {
   assert_contem "[1/1] enviando: $base/local/a.txt [" "$DBX_ERRO" 'TC-PRG-21: linha do upload'
   assert_contem '0% 0 B / 15 B' "$DBX_ERRO" 'TC-PRG-08: 0%'
   assert_contem '100% 15 B / 15 B' "$DBX_ERRO" 'TC-PRG-08: 100%'
-  assert_igual 2 "$(grep -c 'enviando:' "$base/err")" 'TC-PRG-08: sem valor intermediario'
+  assert_igual 2 "$(_harness_contar 'enviando:' "$base/err")" 'TC-PRG-08: sem valor intermediario'
 }
 
 teste_upload_com_falha_termina_a_linha_com_falhou() {
@@ -302,7 +302,7 @@ teste_upload_em_sessao_avanca_por_parte_sem_linha_de_parte() {
   assert_nao_contem 'enviada' "$DBX_ERRO" 'TC-PRG-34: sem linha de parte'
   assert_contem '0% 0 B / 151 MiB' "$DBX_ERRO" 'TC-PRG-06: inicia em 0%'
   assert_contem '100% 151 MiB / 151 MiB' "$DBX_ERRO" 'TC-PRG-06: termina em 100%'
-  [[ $(grep -c 'enviando:' "$base/err") -ge 4 ]] || assert_igual 'varias linhas' 'poucas' 'TC-PRG-13: uma linha por parte'
+  [[ $(_harness_contar 'enviando:' "$base/err") -ge 4 ]] || assert_igual 'varias linhas' 'poucas' 'TC-PRG-13: uma linha por parte'
   local linha pct_ant=-1
   while IFS= read -r linha; do
     [[ $linha =~ \ ([0-9]+)%\  ]] || continue
@@ -679,7 +679,7 @@ teste_com_paralelo_so_o_processo_principal_escreve_em_stderr() {
   : >"$base/audita_fd2"
   _rodar_t "$base" nao --progresso sync --receber --origem /r --destino "$base/local" --paralelo 3
   assert_igual 0 "$DBX_ESTADO" "recebimento deve concluir; diagnostico: $DBX_ERRO"
-  assert_igual 3 "$(grep -c . "$base/fd2")" 'TC-PRG-18: tres downloads auditados'
+  assert_igual 3 "$(_harness_contar . "$base/fd2")" 'TC-PRG-18: tres downloads auditados'
   assert_igual '' "$(grep -vx '/dev/null' "$base/fd2")" 'TC-PRG-18/RF-135(a): o fd 2 dos auxiliares nao e o stderr do principal'
 }
 
