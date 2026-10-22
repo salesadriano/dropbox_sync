@@ -561,7 +561,7 @@ O projeto conta com uma suíte abrangente de testes automatizados com saída **T
 bash tests/run.sh < /dev/null
 
 # Executar análise estática (linter)
-shellcheck lib/*.sh commands/*.sh bin/* scripts/*.sh
+sh scripts/lint.sh   # um shellcheck por arquivo, com teto de memoria (ver o cabecalho do script)
 
 # Executar bateria bats dos utilitários
 npx --yes bats@1.13.0 scripts/tests/
