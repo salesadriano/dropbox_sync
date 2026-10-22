@@ -193,6 +193,34 @@ dbx_cli_validar_espera() {
   return "$DBX_CLI_ERRO_USO"
 }
 
+# Teto de `--paralelo` / `DBX_PARALELO` (RF-133(b)), em transferencias simultaneas.
+readonly DBX_CLI_PARALELO_MAXIMO=8
+
+# dbx_cli_validar_paralelo <nome> <valor> [opcao|variavel] — RF-133(b).
+#
+# Um unico algarismo de 1 a 8: `0`, negativo, acima de 8, vazio, nao numerico,
+# com sinal, espaco ou zero a esquerda (`01`) e uso invalido. O inteiro vai a
+# DBX_CLI_PARALELO; o motivo nomeia a ORIGEM (opcao ou variavel), com o valor
+# citado se tiver byte de controle. Ponto unico para `sync`.
+DBX_CLI_PARALELO=''
+dbx_cli_validar_paralelo() {
+  local nome=$1 valor=${2-} origem=${3:-opcao} exibido
+  DBX_CLI_MOTIVO=''
+  DBX_CLI_PARALELO=''
+  if [[ $valor =~ ^[1-8]$ ]]; then
+    DBX_CLI_PARALELO=$valor
+    return 0
+  fi
+  exibido=${valor:0:64}
+  [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+  if [[ $origem == 'variavel' ]]; then
+    DBX_CLI_MOTIVO="variavel de ambiente $nome invalida: [$exibido]; use um inteiro de 1 a $DBX_CLI_PARALELO_MAXIMO, ou remova-a (unset $nome)"
+  else
+    DBX_CLI_MOTIVO="valor invalido para $nome: [$exibido]; use um inteiro de 1 a $DBX_CLI_PARALELO_MAXIMO (transferencias simultaneas)"
+  fi
+  return "$DBX_CLI_ERRO_USO"
+}
+
 # dbx_cli_validar_taxa <nome> <valor> <piso> [opcao|variavel] — RF-82(b)(c)(g).
 #
 # `[1-9][0-9]{0,8}` com sufixo opcional K, M ou G (base 1024, como o cURL), em

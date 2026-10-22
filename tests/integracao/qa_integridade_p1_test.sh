@@ -43,11 +43,12 @@ _qa_cenario() {
   {
     printf '#!/usr/bin/env bash\n'
     printf 'base=%s\n' "$base"
+    printf 'DBX_HARNESS_RAIZ=%q\n' "$DBX_HARNESS_RAIZ"
     printf 'conf=$(cat 2>/dev/null)\n'
     printf 'printf "%%s\\n" "$conf" >>"$base/opcoes"\n'
-    printf 'saida=""; escrever=""; anterior=""; url=""; cabecalhos=""; fail=nao\n'
+    printf 'saida=""; escrever=""; anterior=""; url=""; cabecalhos=""; fail=nao; corpo_arquivo=""\n'
     printf 'for arg in "$@"; do\n'
-    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; esac\n'
+    printf '  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabecalhos=$arg ;; --data-binary) corpo_arquivo=${arg#@} ;; esac\n'
     printf '  case $arg in http*) url=$arg ;; --fail) fail=sim ;; esac\n'
     printf '  anterior=$arg\n'
     printf 'done\n'
@@ -62,6 +63,12 @@ _qa_cenario() {
     printf '  *upload_session/append_v2*) corpo=%s ;;\n' "'{}'"
     printf '  *) corpo=%s ;;\n' "'{\"name\":\"x\",\"rev\":\"1\"}'"
     printf 'esac\n'
+    # RF-136: rotas de lote delegadas ao duplo compartilhado; o eco de `delete_v2`
+    # por item confirmado mantem a contagem de exclusoes.
+    printf 'LOTE_ECOA_V2=sim\n'
+    printf '. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"\n'
+    printf 'codigo_anterior=$codigo corpo_anterior=$corpo\n'
+    printf 'lote_responder "$url" "$corpo_arquivo" || { codigo=$codigo_anterior; corpo=$corpo_anterior; }\n'
     printf 'if [[ $url == *files/download* && -f "$base/download_409" ]]; then\n'
     printf '  codigo=409; corpo=$(cat "$base/download_409")\n'
     printf 'fi\n'
@@ -134,7 +141,17 @@ _qa_resumo() { # <arquivo>
 }
 
 _qa_args_de_envio() { # <base> <trecho_do_caminho> — Dropbox-API-Arg do envio
-  grep 'Dropbox-API-Arg' "$1/opcoes" | grep -F -- "$2" || :
+  local achado
+  achado=$(grep 'Dropbox-API-Arg' "$1/opcoes" | grep -F -- "$2" || :)
+  # Fase 9 (RF-137): 2 ou mais pequenos vao por `start` + `finish_batch_v2`; o
+  # objeto de publicacao (`commit`) de cada arquivo vai no corpo do finish. O
+  # corpo do lote nao tem o escape do cabecalho: reaplica-se o `\"` para as
+  # mesmas asserções valerem nos dois transportes.
+  if [[ -z $achado && -r $1/lote/chamadas ]]; then
+    achado=$(grep -F -- 'finish_batch' "$1/lote/chamadas" | grep -F -- "$2" || :)
+    achado=${achado//\"/\\\"}
+  fi
+  printf '%s' "$achado"
 }
 
 # ---------------------------------------------------------------------------
@@ -548,6 +565,8 @@ teste_qa_client_modified_sai_em_utc_em_fuso_com_horario_de_verao() {
     touch -d '2021-01-15 23:30:05 UTC' "$base/local/inverno.txt"
     QA_TZ=$fuso _qa_rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
     assert_igual 0 "$DBX_ESTADO" "sync deve concluir (${fuso:-host}); diagnostico: $DBX_ERRO"
+    assert_igual 0 "$(_harness_contar 'files/upload$' "$base/chamadas")" "os dois pequenos vao pelo lote ($fuso)"
+    assert_igual 1 "$(_harness_contar 'finish_batch_v2' "$base/chamadas")" "uma chamada finish_batch_v2 ($fuso)"
     args=$(_qa_args_de_envio "$base" '/r/verao.txt')
     assert_contem 'client_modified\":\"2021-07-04T12:00:00Z\"' "$args" "carimbo UTC no horario de verao ($fuso)"
     args=$(_qa_args_de_envio "$base" '/r/inverno.txt')

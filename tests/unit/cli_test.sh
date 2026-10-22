@@ -226,4 +226,21 @@ teste_nome_sem_arquivo_nao_resolve_para_caminho() {
   return 0
 }
 
+teste_validar_paralelo_aceita_so_um_algarismo_de_1_a_8() {
+  local valor
+  for valor in 1 2 3 4 5 6 7 8; do
+    dbx_cli_validar_paralelo --paralelo "$valor" opcao
+    assert_igual 0 "$?" "aceita [$valor]"
+    assert_igual "$valor" "$DBX_CLI_PARALELO" "publica [$valor]"
+  done
+  for valor in 0 9 10 -1 +1 01 '' ' 1' '1 ' a 1.5 $'1\n'; do
+    dbx_cli_validar_paralelo --paralelo "$valor" opcao
+    assert_igual "$DBX_CLI_ERRO_USO" "$?" "recusa [$valor]"
+    assert_igual '' "$DBX_CLI_PARALELO" "nada publicado para [$valor]"
+    assert_contem '--paralelo' "$DBX_CLI_MOTIVO" 'nomeia a opcao'
+  done
+  dbx_cli_validar_paralelo DBX_PARALELO 99 variavel
+  assert_contem 'variavel de ambiente DBX_PARALELO' "$DBX_CLI_MOTIVO" 'nomeia a variavel'
+}
+
 harness_executar "$@"

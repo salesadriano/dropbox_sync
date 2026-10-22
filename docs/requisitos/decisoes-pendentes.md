@@ -635,6 +635,8 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 4. Ha janela de tempo maxima para conclusao de uma rotina?
 5. Banda disponivel e espaco livre na area temporaria dos hosts?
 
+**Fase 9 (2026-10-21):** a bancada de medicao (`RF-138`, `F-34`) fornece os numeros reais (volume misto padrao: 1000 pequenos, 50 medios, 2 grandes, ~500 MB) sobre `334394e` e ao fim da fase; **a calibragem da `DP-12` (e dos valores `DIV-256`, `DIV-258`, `DIV-259`) sai dessas medicoes, nao de estimativa**. Ate haver medicao, a `DP-12` segue parcialmente calibrada.
+
 **Bloqueia:** secao de dimensionamento do System Design, tamanho padrao de parte, politica de retentativa.
 **Nao bloqueia o inicio da implementacao:** valores padrao conservadores permitem comecar. A resposta serve para calibrar, e tambem para reavaliar a promocao de F-03 do backlog caso surjam arquivos de varios gigabytes ou rede instavel.
 
@@ -732,6 +734,8 @@ Os argumentos tecnicos do aceite **continuam corretos** — `readlink` compara t
 **Pontos propostos pelo Business Analyst e decididos depois pelo Tech Lead (memoria `2026-10-18-2045-detalhes-tecnicos-rede-p2`)** (listados no registro de entrega): leitura de "5 tentativas" como total com a primeira inclusa; cada retomada consumir uma tentativa; tratamento de `Retry-After` em formato de data HTTP (hoje tratado como invalido, caindo no recuo); recusa de arquivo cujo tamanho mudou durante o envio.
 
 ### DP-34 — Cache unico, skip do upload, chave canonica e segredo (fase 3) ✅ **RESOLVIDA (em implementacao em `feature/cache-unico-p3`)**
+
+> **Fase 9 (2026-10-21):** o adiamento do paralelismo e das APIs em lote e encerrado com a condicao cumprida: a medicao previa (`RF-138`) vem **antes** do codigo. Entram `F-09` (`--paralelo`), `F-08` (exclusao e envio em lote) e `F-34`; metadados em lote ficam fora (`F-46`). Ver secao 5.18 do escopo e `DIV-256` a `DIV-265`.
 
 > Escrita **na mesma rodada** em que as decisoes foram recebidas (`RSK-26`). Memorias: `2026-10-18-2243-cache-unico-e-segredo`, `2026-10-18-2243-cache-do-upload`, `2026-10-18-1745-skip-upload-condicionado`. Handoff do DBA: [parecer](../reviews/2026-10-18-2243-parecer-dba-cache-unico.md).
 

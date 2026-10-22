@@ -28,12 +28,12 @@ _cenario() {
   printf '%s' '{".tag":"file","name":"a.txt","path_display":"/r/a.txt","size":15}' >"$base/metadado"
   printf '%s' 'conteudo remoto' >"$base/conteudo"
   {
-    printf '#!%s\nbase=%q\n' "$BASH" "$base"
+    printf '#!%s\nbase=%q\nDBX_HARNESS_RAIZ=%q\n' "$BASH" "$base" "$DBX_HARNESS_RAIZ"
     cat <<'FIM'
 conf=$(cat 2>/dev/null)
-saida='' escrever='' anterior='' url=''
+saida='' escrever='' anterior='' url='' corpo_arquivo=''
 for arg in "$@"; do
-  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac
+  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; --data-binary) corpo_arquivo=${arg#@} ;; esac
   case $arg in http*) url=$arg ;; esac
   anterior=$arg
 done
@@ -53,6 +53,9 @@ case $url in
   *upload_session/append_v2*) corpo='{}' ;;
   *) corpo='{"name":"a.txt","path_display":"/r/a.txt","rev":"1","size":1}' ;;
 esac
+LOTE_ECOA_V2=sim
+. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+lote_responder "$url" "$corpo_arquivo" || :
 if [[ $url == *upload_session/append_v2 && -f $base/falhar_parte ]]; then
   rm -f "$base/falhar_parte"
   codigo=500
@@ -172,14 +175,14 @@ teste_bnd05_so_requisicoes_de_conteudo_levam_o_limite() {
   _rodar "$base" download --limite-banda 4K /r/a.txt "$base/recebido.txt"
   assert_igual 0 "$DBX_ESTADO" "download; $DBX_ERRO"
   assert_igual 'limit-rate = 4096' "$(_limite_de "$base" /files/download)" 'download'
-  # sync: list_folder e delete_v2 sem; files/upload com.
+  # sync: list_folder e a exclusao em lote (RF-136) sem; files/upload com.
   _zerar "$base"
   printf '%s' '{"entries":[{".tag":"file","name":"z","path_display":"/r/z","content_hash":"00","size":1}],"has_more":false}' \
     >"$base/listagem"
   _rodar "$base" sync --enviar --espelhar --confirmar --origem "$base/local" --destino /r --limite-banda 4K
   assert_igual 0 "$DBX_ESTADO" "sync; $DBX_ERRO"
   assert_igual - "$(_limite_de "$base" /files/list_folder)" 'list_folder'
-  assert_igual - "$(_limite_de "$base" /files/delete_v2)" 'delete_v2'
+  assert_igual - "$(_limite_de "$base" /files/delete_batch)" 'delete_batch (a exclusao do sync)'
   assert_igual 'limit-rate = 4096' "$(_limite_de "$base" /files/upload)" 'envio do sync'
 }
 

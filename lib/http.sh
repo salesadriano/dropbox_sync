@@ -159,6 +159,12 @@ DBX_HTTP_RESUMO_DO_SERVICO=''
 DBX_HTTP_REQUISICOES=0
 
 # shellcheck disable=SC2034
+# Quantas respostas `429` este processo observou (RF-135(d)). O `sync` com
+# `--paralelo` soma as dos auxiliares ao resumo de `--debug`; nao ha estado
+# entre execucoes.
+DBX_HTTP_LIMITES_429=0
+
+# shellcheck disable=SC2034
 # Corpo do cabecalho `Dropbox-API-Result`, que o modo de conteudo usa para
 # devolver metadado quando o corpo da resposta e o proprio arquivo.
 DBX_HTTP_RESULTADO_CABECALHO=''
@@ -680,6 +686,7 @@ _dbx_http_conduzir() {
       esac
     fi
     [[ $codigo =~ ^[0-9]+$ ]] || codigo=0
+    [[ $codigo == 429 ]] && DBX_HTTP_LIMITES_429=$((DBX_HTTP_LIMITES_429 + 1))
 
     DBX_HTTP_DIAGNOSTICO=''
     if [[ -s $area/erro_cliente ]]; then

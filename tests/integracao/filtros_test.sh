@@ -44,7 +44,7 @@ _cenario() {
   printf '%s' '{"entries":[],"has_more":false}' >"$base/listagem"
   printf '%s' '{".tag":"folder","name":"r","path_display":"/r"}' >"$base/metadado"
   {
-    printf '#!%s\nbase=%q\ndormir=%q\n' "$BASH" "$base" "$DORMIR"
+    printf '#!%s\nbase=%q\ndormir=%q\nDBX_HARNESS_RAIZ=%q\n' "$BASH" "$base" "$DORMIR" "$DBX_HARNESS_RAIZ"
     cat <<'FIM'
 conf=$(cat 2>/dev/null)
 saida='' escrever='' anterior='' url='' corpo_req=''
@@ -73,6 +73,9 @@ case $url in
   *get_space_usage*) corpo='{"used":0,"allocation":{".tag":"individual","allocated":1000000000}}' ;;
   *) corpo='{"name":"x","rev":"1"}' ;;
 esac
+LOTE_ECOA_V2=sim
+. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+lote_responder "$url" "${corpo_req#@}" || :
 if [[ $url == *files/download* && -f $base/pasta ]]; then
   codigo=409
   corpo='{"error_summary":"path/not_file/.."}'
@@ -398,7 +401,15 @@ teste_div95_chamada_json_depois_de_um_envio_leva_o_proprio_corpo() {
   _listar "$base" "$(_arq z.txt)"
   _rodar "$base" sync --enviar --espelhar --confirmar --origem "$base/local" --destino /r
   assert_igual 0 "$DBX_ESTADO" "conclui; $DBX_ERRO"
-  assert_igual '{"path":"/r/z.txt"}' "$(_deletes "$base")" 'o corpo do delete_v2 e o JSON dele'
+  # RF-136: a exclusao vai por `delete_batch`; o corpo e o JSON proprio dele, nunca o
+  # arquivo enviado (o que prova o reforco de DIV-95 no transporte novo).
+  local linha corpo_lote=''
+  while IFS= read -r linha; do
+    [[ $linha == *files/delete_batch ]] || [[ $linha == *files/delete_batch$'\t'* ]] || continue
+    [[ $linha == *delete_batch/check* ]] && continue
+    corpo_lote+="${linha#*$'\t'}"
+  done < <(_chamadas "$base")
+  assert_igual '{"entries":[{"path":"/r/z.txt","parent_rev":"1"}]}' "$corpo_lote" 'o corpo do delete_batch e o JSON dele'
 }
 
 teste_div103_receber_espelhar_incluir_impreciso_nao_apaga_nome_nao_utf8() {

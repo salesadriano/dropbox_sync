@@ -60,6 +60,13 @@ _dbx_cmd_sync_exibir() {
 _dbx_cmd_sync_resumo_da_falha() {
   local antes=$1 marca
   DBX_CMD_SYNC_RESUMO_FALHA='falha local'
+  # DIV-278: falha de integridade traz o motivo da conferencia, o mesmo que o
+  # envio em lote usa para o mesmo item.
+  if [[ ${DBX_CMD_SYNC_FALHA_CLASSE:-} == 'integridade' && -n ${DBX_TRANSFER_MOTIVO:-} ]]; then
+    dbx_errors_redigir "$DBX_TRANSFER_MOTIVO" >/dev/null
+    DBX_CMD_SYNC_RESUMO_FALHA=${DBX_ERRORS_REDIGIDO:0:120}
+    return 0
+  fi
   [[ ${DBX_HTTP_REQUISICOES:-0} -gt $antes ]] || return 0
   if [[ ${DBX_HTTP_CODIGO:-0} == 0 ]]; then
     DBX_CMD_SYNC_RESUMO_FALHA='sem resposta do servico'
@@ -89,10 +96,19 @@ _dbx_cmd_sync_resumo_da_falha() {
 # das operacoes continua descartada: ela e o que poderia trazer corpo bruto, e a
 # linha montada aqui so tem o que foi saneado.
 _dbx_cmd_sync_falhou() {
-  local caminho=$1 antes=$2 classe=${DBX_CMD_SYNC_FALHA_CLASSE:-erro_remoto}
+  local caminho=$1 antes=$2
+  _dbx_cmd_sync_resumo_da_falha "$antes"
+  _dbx_cmd_sync_falha_emitir "$caminho"
+}
+
+# _dbx_cmd_sync_falha_emitir <caminho> — registra a falha do item com a classe em
+# DBX_CMD_SYNC_FALHA_CLASSE e o resumo em DBX_CMD_SYNC_RESUMO_FALHA, e emite a
+# linha. Ponto unico: o caminho sequencial e o descarregamento ordenado do
+# paralelo (DIV-257) produzem a MESMA linha.
+_dbx_cmd_sync_falha_emitir() {
+  local caminho=$1 classe=${DBX_CMD_SYNC_FALHA_CLASSE:-erro_remoto}
   DBX_CMD_SYNC_FALHAS_CAMINHOS+=("$caminho")
   DBX_CMD_SYNC_FALHAS_CLASSES+=("$classe")
-  _dbx_cmd_sync_resumo_da_falha "$antes"
   _dbx_cmd_sync_exibir "$caminho"
   # QA-P2-02 (b): defesa em profundidade, a mesma do diagnostico — todo segredo
   # em memoria e mascarado pelo valor na linha inteira, antes de sair.
@@ -111,6 +127,8 @@ _dbx_cmd_sync_carregar_dependencias() {
   . "$DBX_CLI_RAIZ/lib/sync.sh"
   # shellcheck source=lib/transfer.sh
   . "$DBX_CLI_RAIZ/lib/transfer.sh"
+  # shellcheck source=lib/lote.sh
+  . "$DBX_CLI_RAIZ/lib/lote.sh"
 }
 
 # _dbx_cmd_sync_conta — identificador da conta corrente, para RF-52.
@@ -160,12 +178,438 @@ _dbx_cmd_sync_resumo_local() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# Paralelismo controlado das transferencias (fase 9, F-09; RF-133 a RF-135)
+# ---------------------------------------------------------------------------
+#
+# SO AS TRANSFERENCIAS DE ARQUIVO DO PLANO (envio e recebimento) rodam em
+# processos auxiliares. A listagem (`list_folder`, `continue`) e a confirmacao
+# de exclusao acontecem ANTES do plano, no processo principal, e nunca
+# concorrem com transferencia (RES-11, RNF-21). Exclusoes, memoria, cursor,
+# trava, saida e resumo ficam no principal (RF-135(a)).
+#
+# CONTRATO DO AUXILIAR: executa UM item (`_dbx_cmd_sync_enviar` ou
+# `_dbx_cmd_sync_receber`) e devolve o resultado num arquivo da area do ciclo,
+# escrito por inteiro e renomeado (a existencia do arquivo e o "terminei"). Ele
+# NAO chama nada de `lib/state`, nao imprime e nao toca em trava, cursor,
+# memoria nem registro de retomada (o `sync` nunca liga a retomada, RF-102);
+# a auditoria estatica de `tests/integracao/paralelo_test.sh` confere isso.
+#
+# SAIDA EM ORDEM DO PLANO (DIV-257): o principal descarrega o resultado de
+# cada item na ORDEM DO PLANO, so quando o item e todos os anteriores
+# terminaram; as linhas de falha e o progresso saem do principal, iguais as de
+# N=1. `429` nao reduz N (DIV-258): cada auxiliar respeita `Retry-After` pela
+# retentativa de `lib/http`, e a contagem entra no resumo de `--debug`.
+
+DBX_CMD_SYNC_PARALELO=1
+DBX_CMD_SYNC_PARALELO_ORIGEM='padrao'
+DBX_CMD_SYNC_LIMITES_429=0
+# Pids dos auxiliares ainda nao descarregados (um por indice do plano).
+_DBX_CMD_SYNC_AUX_PIDS=()
+
+# _dbx_cmd_sync_paralelo_resolver <tem_opcao> <opcao_como_digitada> <valor>
+#
+# RF-133(b)(c): a opcao vence, e presente a variavel NAO e lida; sem opcao, a
+# variavel presente e invalida (inclusive vazia) e uso invalido nomeando-a.
+# Quando outro comando chama o `sync` (CHAMADOR), vale 1 e a variavel e
+# ignorada. Resultado em DBX_CMD_SYNC_PARALELO e DBX_CMD_SYNC_PARALELO_ORIGEM;
+# o motivo da recusa, em DBX_CLI_MOTIVO.
+_dbx_cmd_sync_paralelo_resolver() {
+  local tem_opcao=$1 nome_opcao=$2 valor=${3-}
+  DBX_CMD_SYNC_PARALELO=1
+  DBX_CMD_SYNC_PARALELO_ORIGEM='padrao'
+  if [[ $tem_opcao == 'sim' ]]; then
+    dbx_cli_validar_paralelo "$nome_opcao" "$valor" opcao || return $?
+    DBX_CMD_SYNC_PARALELO=$DBX_CLI_PARALELO
+    DBX_CMD_SYNC_PARALELO_ORIGEM='opcao'
+  elif [[ -z ${DBX_CMD_SYNC_CHAMADOR:-} && -n ${DBX_PARALELO+definida} ]]; then
+    dbx_cli_validar_paralelo DBX_PARALELO "$DBX_PARALELO" variavel || return $?
+    DBX_CMD_SYNC_PARALELO=$DBX_CLI_PARALELO
+    # shellcheck disable=SC2034  # canal publico, lido pelos testes e pelo debug
+    DBX_CMD_SYNC_PARALELO_ORIGEM='ambiente'
+  fi
+  return 0
+}
+
+# _dbx_cmd_sync_banda_por_transferencia <taxa_total> <n> — DIV-261: a taxa
+# dada e o teto TOTAL, dividido por N, e cada transferencia leva a sua parte.
+# A parte nunca fica abaixo do piso de `dbx_cmd_limite_banda` (2 x a velocidade
+# minima efetiva): abaixo dele o corte de RNF-30 abortaria a transferencia.
+_dbx_cmd_sync_banda_por_transferencia() {
+  local total=$1 n=$2 parte piso
+  piso=$((2 * ${DBX_HTTP_EFETIVO[DBX_HTTP_VELOCIDADE_MINIMA_BPS]:-1024}))
+  parte=$((total / n))
+  ((parte < piso)) && parte=$piso
+  dbx_http_limite_banda "$parte"
+}
+
+# _dbx_cmd_sync_aux_item <resultado> <sentido> <caminho> <alvo> <rev>
+#
+# Corpo do processo auxiliar (roda em subshell, em segundo plano). Devolve em
+# <resultado> quatro linhas: status (0 ou 1), classe da falha, resumo da falha
+# (so o texto curto saneado de RF-59(c)) e quantos `429` ele observou.
+_dbx_cmd_sync_aux_item() {
+  local resultado=$1 sentido=$2 caminho=$3 alvo=$4 rev=$5
+  local antes=${DBX_HTTP_REQUISICOES:-0} antes_429=${DBX_HTTP_LIMITES_429:-0}
+  local status=0
+  if [[ $sentido == 'enviar' ]]; then
+    _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev" || status=1
+  else
+    _dbx_cmd_sync_receber "$remoto/$caminho" "$raiz_local" "$alvo" || status=1
+  fi
+  DBX_CMD_SYNC_RESUMO_FALHA=''
+  [[ $status -eq 0 ]] || _dbx_cmd_sync_resumo_da_falha "$antes"
+  printf '%s\n%s\n%s\n%s\n' "$status" "${DBX_CMD_SYNC_FALHA_CLASSE:-}" \
+    "$DBX_CMD_SYNC_RESUMO_FALHA" "$((${DBX_HTTP_LIMITES_429:-0} - antes_429))" >"$resultado.parte" &&
+    mv -f -- "$resultado.parte" "$resultado"
+}
+
+# _dbx_cmd_sync_aux_encerrar — acao de `lib/tmp`, em todo termino do principal,
+# inclusive por sinal (RF-134(c)): derruba o grupo de cada auxiliar vivo e espera
+# que cada um limpe o que e seu (o `.part` do recebimento esta no registro de
+# `lib/tmp` dele). O que resistir 5 s leva SIGKILL.
+_dbx_cmd_sync_aux_encerrar() {
+  local pid indice vivo
+  for pid in ${_DBX_CMD_SYNC_AUX_PIDS[@]+"${_DBX_CMD_SYNC_AUX_PIDS[@]}"}; do
+    [[ -n $pid ]] || continue
+    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM -- "$pid" 2>/dev/null || :
+  done
+  for ((indice = 0; indice < 50; indice++)); do
+    vivo='nao'
+    for pid in ${_DBX_CMD_SYNC_AUX_PIDS[@]+"${_DBX_CMD_SYNC_AUX_PIDS[@]}"}; do
+      [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null && vivo='sim'
+    done
+    [[ $vivo == 'sim' ]] || break
+    sleep 0.1
+  done
+  for pid in ${_DBX_CMD_SYNC_AUX_PIDS[@]+"${_DBX_CMD_SYNC_AUX_PIDS[@]}"}; do
+    [[ -n $pid ]] || continue
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL -- "$pid" 2>/dev/null || :
+  done
+  _DBX_CMD_SYNC_AUX_PIDS=()
+}
+
+# _dbx_cmd_sync_transferir_paralelo — executa DBX_SYNC_TRANSFERIR com ate
+# `paralelo` auxiliares. Variaveis do executor lidas e atualizadas por escopo
+# dinamico: area, paralelo, sentido, raiz_local, remoto, mapa_remoto, mapa_revs,
+# total_ops, op_atual, enviados, recebidos, falhas.
+_dbx_cmd_sync_transferir_paralelo() {
+  local total=${#DBX_SYNC_TRANSFERIR[@]} lancados=0 descarregados=0 vivos indice pid
+  local caminho alvo rev antes status classe resumo limites resultado acao_id=''
+  local -a itens=("${DBX_SYNC_TRANSFERIR[@]}") pids=()
+  local pasta="$area/paralelo"
+  # A pasta fica na area do ciclo (lib/tmp a remove em todo termino).
+  mkdir -p -- "$pasta" 2>/dev/null || :
+  _DBX_CMD_SYNC_AUX_PIDS=()
+  dbx_tmp_acao_registrar _dbx_cmd_sync_aux_encerrar
+  acao_id=$DBX_TMP_ID
+  # Controle de tarefas so enquanto lanca: cada auxiliar nasce em grupo proprio,
+  # o que permite derruba-lo inteiro (subshell, curl) e o isola do SIGINT do
+  # terminal, que o principal trata e propaga (RF-134(c)).
+  set -m
+  while ((descarregados < total)); do
+    # Lanca ate encher as vagas, na ordem do plano.
+    vivos=0
+    for pid in ${pids[@]+"${pids[@]}"}; do
+      [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null && vivos=$((vivos + 1))
+    done
+    while ((lancados < total && vivos < paralelo)); do
+      caminho=${itens[lancados]}
+      # RF-137: pequeno ja resolvido pelo lote nao vai a auxiliar; o resultado
+      # entra na fila de descarga na mesma forma e na mesma ordem.
+      if [[ $sentido == 'enviar' ]] && _dbx_cmd_sync_lote_resolvido "$caminho"; then
+        printf '%s\n%s\n%s\n0\n' "$_DBX_CMD_SYNC_LOTE_ITEM_STATUS" "$DBX_CMD_SYNC_FALHA_CLASSE" \
+          "$DBX_CMD_SYNC_RESUMO_FALHA" >"$pasta/$lancados"
+        pids[lancados]=''
+        lancados=$((lancados + 1))
+        continue
+      fi
+      alvo=${DBX_SYNC_ALVO[$caminho]:-$caminho}
+      rev=''
+      if [[ $sentido == 'enviar' && -n ${mapa_remoto[$alvo]+definido} ]]; then
+        rev=${mapa_revs[$alvo]:-}
+      fi
+      _dbx_cmd_sync_aux_item "$pasta/$lancados" "$sentido" "$caminho" "$alvo" "$rev" \
+        </dev/null >/dev/null 2>&1 &
+      pids[lancados]=$!
+      _DBX_CMD_SYNC_AUX_PIDS[lancados]=$!
+      lancados=$((lancados + 1))
+      vivos=$((vivos + 1))
+    done
+    # Descarrega, em ordem, o que ja terminou.
+    while ((descarregados < total)); do
+      resultado="$pasta/$descarregados"
+      if [[ ! -e $resultado ]]; then
+        # Sem resultado: o auxiliar ainda corre, ou morreu sem entrega (por
+        # exemplo SIGKILL externo), caso em que o item e falha local.
+        pid=${pids[descarregados]-}
+        if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
+          break
+        fi
+        [[ -n $pid ]] || break
+        sleep 0.05
+        [[ -e $resultado ]] || printf '1\nnao_concluida\nfalha local\n0\n' >"$resultado"
+      fi
+      status=1 classe='' resumo='' limites=0
+      {
+        IFS= read -r status
+        IFS= read -r classe
+        IFS= read -r resumo
+        IFS= read -r limites
+      } <"$resultado"
+      [[ $limites =~ ^[0-9]{1,9}$ ]] || limites=0
+      DBX_CMD_SYNC_LIMITES_429=$((DBX_CMD_SYNC_LIMITES_429 + limites))
+      caminho=${itens[descarregados]}
+      op_atual=$((op_atual + 1))
+      if [[ $sentido == 'enviar' ]]; then
+        dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
+      else
+        dbx_progress_etapa "$op_atual" "$total_ops" 'recebendo' "$caminho"
+      fi
+      if [[ $status == '0' ]]; then
+        if [[ $sentido == 'enviar' ]]; then enviados=$((enviados + 1)); else recebidos=$((recebidos + 1)); fi
+      else
+        falhas=$((falhas + 1))
+        DBX_CMD_SYNC_FALHA_CLASSE=${classe:-erro_remoto}
+        DBX_CMD_SYNC_RESUMO_FALHA=${resumo:-falha local}
+        _dbx_cmd_sync_falha_emitir "$caminho"
+        _dbx_cmd_sync_falha_do_plano_incremental
+      fi
+      _DBX_CMD_SYNC_AUX_PIDS[descarregados]=''
+      rm -f -- "$resultado"
+      descarregados=$((descarregados + 1))
+    done
+    ((descarregados < total)) || break
+    wait -n 2>/dev/null || :
+  done
+  wait 2>/dev/null || :
+  set +m
+  _DBX_CMD_SYNC_AUX_PIDS=()
+  dbx_tmp_acao_cancelar "$acao_id"
+}
+
+# ---------------------------------------------------------------------------
+# Envio em lote de arquivos pequenos (fase 9, F-08; RF-137)
+# ---------------------------------------------------------------------------
+#
+# No `--enviar`, os arquivos do plano ate o limiar (`DBX_TRANSFER_LIMIAR_LOTE`,
+# DIV-256) que forem 2 ou mais (DIV-272) saem em tres etapas, ANTES do laco do
+# plano: (1) `upload_session/start` com os bytes e `close=true`, um por arquivo,
+# nos auxiliares do F-09 quando ha `--paralelo` (DIV-264); (2) `finish_batch_v2`
+# no processo principal, em serie, em grupos de ate 250 (DIV-270); (3) o laco do
+# plano consome o resultado de cada pequeno NA ORDEM DO PLANO (DIV-257,
+# DIV-274), com o mesmo progresso, contagem e linha de falha do envio unitario.
+# Arquivo ja igual nunca esta no plano (RF-137(e)). O cache e o resumo local,
+# gravado no planejamento (DIV-271); nenhum estado de lote entre execucoes
+# (DIV-263): interrompido antes do `finish`, as sessoes abandonadas nao tem
+# efeito e o proximo `sync` reenvia. Os arquivos de resultado dos auxiliares
+# ficam na area do ciclo, que `lib/tmp` remove em todo termino.
+declare -gA _DBX_CMD_SYNC_LOTE_POS=()
+declare -ga _DBX_CMD_SYNC_LOTE_ITENS=() _DBX_CMD_SYNC_LOTE_STATUS=() \
+  _DBX_CMD_SYNC_LOTE_CLASSE=() _DBX_CMD_SYNC_LOTE_RESUMO=() \
+  _DBX_CMD_SYNC_LOTE_SESSAO=() _DBX_CMD_SYNC_LOTE_DESLOC=()
+_DBX_CMD_SYNC_LOTE_ITEM_STATUS=0
+
+# _dbx_cmd_sync_aux_iniciar <resultado> <caminho> — `start` de UM pequeno; roda
+# no principal (N=1) ou em auxiliar. Devolve em <resultado> seis linhas: status,
+# classe, resumo, `429` observados, sessao e deslocamento. Como o auxiliar do
+# envio unitario, nao toca em `lib/state`, trava, cursor nem saida.
+_dbx_cmd_sync_aux_iniciar() {
+  local resultado=$1 caminho=$2
+  local antes=${DBX_HTTP_REQUISICOES:-0} antes_429=${DBX_HTTP_LIMITES_429:-0}
+  local status=0 classe=''
+  dbx_transfer_iniciar_pequeno "$raiz_local/$caminho" "${mapa_local[$caminho]:-}" >/dev/null 2>&1 || {
+    status=1
+    classe=${DBX_TRANSFER_CLASSE:-erro_remoto}
+  }
+  DBX_CMD_SYNC_RESUMO_FALHA=''
+  [[ $status -eq 0 ]] || _dbx_cmd_sync_resumo_da_falha "$antes"
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$status" "$classe" "$DBX_CMD_SYNC_RESUMO_FALHA" \
+    "$((${DBX_HTTP_LIMITES_429:-0} - antes_429))" "${DBX_TRANSFER_SESSAO:-}" \
+    "${DBX_TRANSFER_DESLOCAMENTO:-0}" >"$resultado.parte" &&
+    mv -f -- "$resultado.parte" "$resultado"
+}
+
+# _dbx_cmd_sync_lote_iniciar — etapa (1): `start` de cada pequeno, com ate
+# `paralelo` simultaneos, e leitura dos resultados na ordem. Variaveis do
+# executor (escopo dinamico): area, paralelo, raiz_local.
+_dbx_cmd_sync_lote_iniciar() {
+  local total=${#_DBX_CMD_SYNC_LOTE_ITENS[@]} k lancados=0 vivos pid
+  local pasta="$area/lote" acao_id='' status classe resumo limites sessao desloc
+  local -a pids=()
+  mkdir -p -- "$pasta" 2>/dev/null || :
+  if ((paralelo > 1)); then
+    _DBX_CMD_SYNC_AUX_PIDS=()
+    dbx_tmp_acao_registrar _dbx_cmd_sync_aux_encerrar
+    acao_id=$DBX_TMP_ID
+    set -m
+    while :; do
+      vivos=0
+      for pid in ${pids[@]+"${pids[@]}"}; do
+        kill -0 "$pid" 2>/dev/null && vivos=$((vivos + 1))
+      done
+      while ((lancados < total && vivos < paralelo)); do
+        _dbx_cmd_sync_aux_iniciar "$pasta/$lancados" "${_DBX_CMD_SYNC_LOTE_ITENS[lancados]}" \
+          </dev/null >/dev/null 2>&1 &
+        pids+=("$!")
+        _DBX_CMD_SYNC_AUX_PIDS[lancados]=$!
+        lancados=$((lancados + 1))
+        vivos=$((vivos + 1))
+      done
+      ((vivos > 0)) || break
+      wait -n 2>/dev/null || :
+    done
+    wait 2>/dev/null || :
+    set +m
+    _DBX_CMD_SYNC_AUX_PIDS=()
+    dbx_tmp_acao_cancelar "$acao_id"
+  else
+    for ((k = 0; k < total; k++)); do
+      _dbx_cmd_sync_aux_iniciar "$pasta/$k" "${_DBX_CMD_SYNC_LOTE_ITENS[k]}" </dev/null
+    done
+  fi
+  for ((k = 0; k < total; k++)); do
+    status=1 classe='nao_concluida' resumo='falha local' limites=0 sessao='' desloc=0
+    if [[ -e $pasta/$k ]]; then
+      {
+        IFS= read -r status
+        IFS= read -r classe
+        IFS= read -r resumo
+        IFS= read -r limites
+        IFS= read -r sessao
+        IFS= read -r desloc
+      } <"$pasta/$k"
+    fi
+    [[ $limites =~ ^[0-9]{1,9}$ ]] || limites=0
+    [[ $desloc =~ ^[0-9]{1,18}$ ]] || desloc=0
+    DBX_CMD_SYNC_LIMITES_429=$((DBX_CMD_SYNC_LIMITES_429 + limites))
+    if [[ $status == '0' && -n $sessao ]]; then
+      _DBX_CMD_SYNC_LOTE_STATUS[k]=0
+    else
+      _DBX_CMD_SYNC_LOTE_STATUS[k]=1
+      _DBX_CMD_SYNC_LOTE_CLASSE[k]=${classe:-erro_remoto}
+      _DBX_CMD_SYNC_LOTE_RESUMO[k]=${resumo:-falha local}
+    fi
+    _DBX_CMD_SYNC_LOTE_SESSAO[k]=$sessao
+    _DBX_CMD_SYNC_LOTE_DESLOC[k]=$desloc
+  done
+}
+
+# _dbx_cmd_sync_lote_concluir — etapa (2): `finish_batch_v2` das sessoes abertas,
+# no principal e em serie, em grupos de DBX_LOTE_ENVIO_MAXIMO. Falha de uma
+# entrada e falha so daquele item (RF-137(c)). Variaveis do executor: remoto,
+# raiz_local, mapa_remoto, mapa_revs.
+_dbx_cmd_sync_lote_concluir() {
+  local k j n=0 ini fim caminho alvo rev
+  local -a mapa_j=()
+  DBX_LOTE_SESSOES=() DBX_LOTE_DESLOCAMENTOS=() DBX_LOTE_COMMITS=()
+  DBX_LOTE_ENVIO_RESULTADO=() DBX_LOTE_ENVIO_CLASSE=() DBX_LOTE_ENVIO_MOTIVO=()
+  DBX_LOTE_ENVIO_HASH=() DBX_LOTE_ENVIO_HASH_DEVOLVIDO=()
+  for k in "${!_DBX_CMD_SYNC_LOTE_ITENS[@]}"; do
+    [[ ${_DBX_CMD_SYNC_LOTE_STATUS[k]} == 0 ]] || continue
+    caminho=${_DBX_CMD_SYNC_LOTE_ITENS[k]}
+    alvo=${DBX_SYNC_ALVO[$caminho]:-$caminho}
+    rev=''
+    [[ -n ${mapa_remoto[$alvo]+definido} ]] && rev=${mapa_revs[$alvo]:-}
+    dbx_transfer_objeto_de_publicacao "$remoto/$alvo" add "$rev" "$raiz_local/$caminho" true
+    DBX_LOTE_SESSOES[n]=${_DBX_CMD_SYNC_LOTE_SESSAO[k]}
+    DBX_LOTE_DESLOCAMENTOS[n]=${_DBX_CMD_SYNC_LOTE_DESLOC[k]}
+    DBX_LOTE_COMMITS[n]=$DBX_TRANSFER_COMMIT
+    mapa_j[n]=$k
+    n=$((n + 1))
+  done
+  for ((ini = 0; ini < n; ini += DBX_LOTE_ENVIO_MAXIMO)); do
+    fim=$((ini + DBX_LOTE_ENVIO_MAXIMO))
+    ((fim > n)) && fim=$n
+    dbx_lote_concluir_envio "$ini" "$fim"
+  done
+  for ((j = 0; j < n; j++)); do
+    k=${mapa_j[j]}
+    if [[ ${DBX_LOTE_ENVIO_RESULTADO[j]:-} == 'ok' ]]; then
+      # DIV-278: a mesma conferencia do envio unitario, com o resumo local do
+      # planejamento. Divergente falha SO este item, com `integridade` (11).
+      caminho=${_DBX_CMD_SYNC_LOTE_ITENS[k]}
+      if [[ ${DBX_LOTE_ENVIO_HASH_DEVOLVIDO[j]:-nao} == 'sim' ]]; then
+        dbx_transfer_conferir_resumo "${mapa_local[$caminho]:-}" "${DBX_LOTE_ENVIO_HASH[j]:-}"
+      else
+        dbx_transfer_conferir_resumo "${mapa_local[$caminho]:-}"
+      fi || {
+        DBX_LOTE_ENVIO_RESULTADO[j]='falhou'
+        DBX_LOTE_ENVIO_CLASSE[j]=${DBX_TRANSFER_CLASSE:-integridade}
+        DBX_LOTE_ENVIO_MOTIVO[j]=$DBX_TRANSFER_MOTIVO
+      }
+    fi
+    if [[ ${DBX_LOTE_ENVIO_RESULTADO[j]:-} == 'ok' ]]; then
+      _DBX_CMD_SYNC_LOTE_STATUS[k]=0
+      continue
+    fi
+    _DBX_CMD_SYNC_LOTE_STATUS[k]=1
+    _DBX_CMD_SYNC_LOTE_CLASSE[k]=${DBX_LOTE_ENVIO_CLASSE[j]:-erro_remoto}
+    dbx_errors_redigir "${DBX_LOTE_ENVIO_MOTIVO[j]:-item nao confirmado pelo lote}" >/dev/null
+    _DBX_CMD_SYNC_LOTE_RESUMO[k]=${DBX_ERRORS_REDIGIDO:0:120}
+  done
+  DBX_LOTE_SESSOES=() DBX_LOTE_COMMITS=() DBX_LOTE_ENVIO_HASH=() DBX_LOTE_ENVIO_HASH_DEVOLVIDO=()
+}
+
+# _dbx_cmd_sync_lote_envio — etapas (1) e (2) para os pequenos do plano. So no
+# `--enviar` real e com 2 ou mais pequenos (DIV-272); do contrario nao faz nada e
+# o plano segue pelo caminho unitario. Variaveis do executor: sentido, raiz_local.
+_dbx_cmd_sync_lote_envio() {
+  local caminho k
+  _DBX_CMD_SYNC_LOTE_POS=()
+  _DBX_CMD_SYNC_LOTE_ITENS=() _DBX_CMD_SYNC_LOTE_STATUS=() _DBX_CMD_SYNC_LOTE_CLASSE=()
+  _DBX_CMD_SYNC_LOTE_RESUMO=() _DBX_CMD_SYNC_LOTE_SESSAO=() _DBX_CMD_SYNC_LOTE_DESLOC=()
+  [[ $sentido == 'enviar' && ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]] || return 0
+  for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
+    dbx_transfer_tamanho_de_arquivo "$raiz_local/$caminho" || continue
+    dbx_transfer_pequeno_para_lote "$DBX_TRANSFER_TAMANHO" && _DBX_CMD_SYNC_LOTE_ITENS+=("$caminho")
+  done
+  if ((${#_DBX_CMD_SYNC_LOTE_ITENS[@]} < 2)); then
+    _DBX_CMD_SYNC_LOTE_ITENS=()
+    return 0
+  fi
+  _dbx_cmd_sync_lote_iniciar
+  _dbx_cmd_sync_lote_concluir
+  for k in "${!_DBX_CMD_SYNC_LOTE_ITENS[@]}"; do
+    _DBX_CMD_SYNC_LOTE_POS[${_DBX_CMD_SYNC_LOTE_ITENS[k]}]=$k
+  done
+}
+
+# _dbx_cmd_sync_lote_resolvido <caminho> — 0 quando o item foi resolvido pelo
+# lote; publica o status (0 ou 1), a classe e o resumo da falha.
+_dbx_cmd_sync_lote_resolvido() {
+  local k=${_DBX_CMD_SYNC_LOTE_POS[$1]-}
+  [[ -n $k ]] || return 1
+  DBX_CMD_SYNC_FALHA_CLASSE=''
+  DBX_CMD_SYNC_RESUMO_FALHA=''
+  _DBX_CMD_SYNC_LOTE_ITEM_STATUS=${_DBX_CMD_SYNC_LOTE_STATUS[k]}
+  if [[ $_DBX_CMD_SYNC_LOTE_ITEM_STATUS != 0 ]]; then
+    DBX_CMD_SYNC_FALHA_CLASSE=${_DBX_CMD_SYNC_LOTE_CLASSE[k]:-erro_remoto}
+    DBX_CMD_SYNC_RESUMO_FALHA=${_DBX_CMD_SYNC_LOTE_RESUMO[k]:-falha local}
+  fi
+  return 0
+}
+
+# _dbx_cmd_sync_falha_do_plano_incremental — RF-111(g), C6: item do plano
+# incremental que o servidor nao tem (ou que conflita no caminho) e retrato com
+# entrada fantasma: o registro sai, e a execucao seguinte faz a varredura
+# completa. So o `--receber`; chamado depois de registrada a falha do item.
+_dbx_cmd_sync_falha_do_plano_incremental() {
+  [[ $sentido == 'receber' ]] || return 0
+  if [[ $DBX_CMD_SYNC_VARREDURA == 'incremental' &&
+    ($DBX_CMD_SYNC_FALHA_CLASSE == 'nao_encontrado' || $DBX_CMD_SYNC_FALHA_CLASSE == 'conflito') ]]; then
+    dbx_state_cursor_remover
+    DBX_CMD_SYNC_CURSOR_GRAVA='nao'
+  fi
+}
+
 dbx_cmd_sync_executar() {
   _dbx_cmd_sync_carregar_dependencias
 
   local origem='' destino='' sentido='' espelhar='nao' confirmado='nao' permitir_origem_vazia='nao'
   local tem_origem='nao' tem_destino='nao' forcar='nao' espera=0 opcao_espera='' valor_espera=''
   local tem_limite='nao' opcao_limite='' valor_limite='' opcao
+  local tem_paralelo='nao' opcao_paralelo='' valor_paralelo=''
   # RF-118 (fase 7b): cursor de listagem so no `--receber`.
   local sem_cursor='nao' varredura_forcada='nao'
   local -a filtros_caminho=() filtros_meta=()
@@ -196,6 +640,14 @@ dbx_cmd_sync_executar() {
         shift
         valor_limite=${1-}
         tem_limite='sim'
+        ;;
+      # RF-133: transferencias simultaneas; o ultimo valor vence, validado
+      # depois do laco, antes de qualquer rede ou estado.
+      --paralelo | --parallel)
+        opcao_paralelo=$1
+        shift
+        valor_paralelo=${1-}
+        tem_paralelo='sim'
         ;;
       # RF-64: o alias em ingles e a MESMA opcao, com o mesmo efeito, as mesmas
       # recusas e a mesma regra de repeticao (RF-64(e)).
@@ -310,6 +762,21 @@ dbx_cmd_sync_executar() {
     dbx_cmd_falhar uso_invalido "$DBX_CMD_LIMITE_MOTIVO"
     return $?
   }
+  # RF-133: antes de qualquer rede ou estado. `paralelo` e o N EFETIVO desta
+  # execucao: 1 em simulacao (RF-134(e)) e quando o `sync` e chamado por outro
+  # comando (`download` de pasta, `upload` de pasta: fora do escopo da fase 9).
+  local paralelo=1
+  _dbx_cmd_sync_paralelo_resolver "$tem_paralelo" "$opcao_paralelo" "$valor_paralelo" || {
+    dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+    return $?
+  }
+  paralelo=$DBX_CMD_SYNC_PARALELO
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && paralelo=1
+  # DIV-261: o limite de banda e o TETO TOTAL; cada transferencia leva a sua
+  # parte, nunca abaixo do piso que evita o corte por velocidade minima.
+  if [[ $paralelo -gt 1 && -n $DBX_CMD_LIMITE_BANDA ]]; then
+    _dbx_cmd_sync_banda_por_transferencia "$DBX_CMD_LIMITE_BANDA" "$paralelo"
+  fi
 
   # RF-54(f)(g): sem a localidade da comparacao, `É` e `é` viram caminhos
   # distintos. O operador e avisado uma vez, so no `sync` (o unico comando que
@@ -780,10 +1247,33 @@ dbx_cmd_sync_executar() {
     total_ops=$((total_ops + ${#DBX_SYNC_APAGAR[@]}))
   fi
 
-  local op_atual=0 alvo rev antes apagar raiz_do_destino
+  local op_atual=0 alvo rev antes
   local enviados=0 recebidos=0 apagados=0 falhas=0
-  for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
+  DBX_CMD_SYNC_LIMITES_429=0
+  local antes_429=${DBX_HTTP_LIMITES_429:-0}
+  # RF-133(d): com N=1 (ou um item so) e o laco de sempre, sem auxiliar. Com
+  # N>1 as transferencias do plano vao aos auxiliares e o laco abaixo fica sem
+  # itens; as exclusoes, depois, seguem no principal.
+  local -a transferir_aqui=(${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"})
+  # RF-137: pequenos do plano em lote (start, finish_batch_v2); o laco abaixo e o
+  # paralelo so consomem o resultado, na ordem do plano.
+  _dbx_cmd_sync_lote_envio
+  if [[ $paralelo -gt 1 && ${#DBX_SYNC_TRANSFERIR[@]} -gt 1 ]]; then
+    _dbx_cmd_sync_transferir_paralelo
+    transferir_aqui=()
+  fi
+  for caminho in ${transferir_aqui[@]+"${transferir_aqui[@]}"}; do
     op_atual=$((op_atual + 1))
+    if [[ $sentido == 'enviar' ]] && _dbx_cmd_sync_lote_resolvido "$caminho"; then
+      dbx_progress_etapa "$op_atual" "$total_ops" 'enviando' "$caminho"
+      if [[ $_DBX_CMD_SYNC_LOTE_ITEM_STATUS == 0 ]]; then
+        enviados=$((enviados + 1))
+      else
+        falhas=$((falhas + 1))
+        _dbx_cmd_sync_falha_emitir "$caminho"
+      fi
+      continue
+    fi
     # A escrita usa a grafia que o destino ja tem (RF-54(d)).
     alvo=${DBX_SYNC_ALVO[$caminho]:-$caminho}
     antes=${DBX_HTTP_REQUISICOES:-0}
@@ -804,32 +1294,24 @@ dbx_cmd_sync_executar() {
       else
         falhas=$((falhas + 1))
         _dbx_cmd_sync_falhou "$caminho" "$antes"
-        # RF-111(g), C6: item do plano incremental que o servidor nao tem (ou
-        # que conflita no caminho) e retrato com entrada fantasma: o registro
-        # sai, e a execucao seguinte faz a varredura completa.
-        if [[ $DBX_CMD_SYNC_VARREDURA == 'incremental' &&
-          ($DBX_CMD_SYNC_FALHA_CLASSE == 'nao_encontrado' || $DBX_CMD_SYNC_FALHA_CLASSE == 'conflito') ]]; then
-          dbx_state_cursor_remover
-          DBX_CMD_SYNC_CURSOR_GRAVA='nao'
-        fi
+        _dbx_cmd_sync_falha_do_plano_incremental
       fi
     fi
   done
 
-  if [[ $espelhar == 'sim' ]]; then
+  if [[ $espelhar == 'sim' && $sentido == 'enviar' ]]; then
+    # RF-136: exclusao remota em lote (delete_batch + check), nunca delete_v2 em
+    # laco. As guardas ja agiram; a lista abaixo so perde, outra vez, o que o
+    # escopo dos filtros protege (RF-80(d), sem estado).
+    _dbx_cmd_sync_apagar_remoto_em_lote "$remoto"
+  elif [[ $espelhar == 'sim' ]]; then
     for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
       # RF-80(d), no ponto da escrita: a mesma conta sem estado, de novo.
       _dbx_cmd_sync_protegido "$caminho" && continue
       op_atual=$((op_atual + 1))
       dbx_progress_etapa "$op_atual" "$total_ops" 'apagando' "$caminho"
       antes=${DBX_HTTP_REQUISICOES:-0}
-      apagar=_dbx_cmd_sync_apagar_local
-      raiz_do_destino=$raiz_local
-      if [[ $sentido == 'enviar' ]]; then
-        apagar=_dbx_cmd_sync_apagar_remoto
-        raiz_do_destino=$remoto
-      fi
-      if "$apagar" "$raiz_do_destino" "$caminho"; then
+      if _dbx_cmd_sync_apagar_local "$raiz_local" "$caminho"; then
         apagados=$((apagados + 1))
       else
         falhas=$((falhas + 1))
@@ -839,6 +1321,14 @@ dbx_cmd_sync_executar() {
   fi
 
   dbx_progress_mensagem "[sync] sincronizacao concluida: $enviados enviados, $recebidos recebidos, $apagados apagados, ${#DBX_SYNC_IDENTICOS[@]} omitidos"
+
+  # RF-135(d), DIV-258: com N>1 e --debug, o resumo diz o N e quantos `429`
+  # (principal e auxiliares) a execucao observou. Stderr; nada muda em stdout.
+  if [[ $paralelo -gt 1 && ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+    dbx_cmd_iniciar_saida
+    dbx_output_diagnostico paralelo "$paralelo transferencias simultaneas; respostas 429 observadas: $((DBX_CMD_SYNC_LIMITES_429 + ${DBX_HTTP_LIMITES_429:-0} - antes_429))"
+    dbx_output_render_diagnostico >&2
+  fi
 
   # A memoria e gravada mesmo com falha parcial de transferencia: os resumos
   # calculados continuam validos. Grava so as entradas visitadas (RF-38(b)).
@@ -977,14 +1467,54 @@ _dbx_cmd_sync_receber() {
   return 1
 }
 
-_dbx_cmd_sync_apagar_remoto() {
-  local remoto=$1 relativo=$2
-  DBX_CMD_SYNC_FALHA_CLASSE=''
-  dbx_json_escapar_cadeia "$remoto/$relativo"
-  dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/delete_v2' \
-    "{\"path\":\"$DBX_JSON_ESCAPADO\"}" nao >/dev/null 2>&1 && return 0
-  DBX_CMD_SYNC_FALHA_CLASSE=${DBX_HTTP_CLASSE:-erro_remoto}
-  return 1
+# _dbx_cmd_sync_aviso_exclusao_em_curso — DIV-275: mensagem de interrupcao do
+# `sync` com exclusao em lote em curso.
+_dbx_cmd_sync_aviso_exclusao_em_curso() {
+  printf '%s\n' 'sync interrompido durante a exclusao em lote: a exclusao em curso pode ter sido concluida no servidor (os itens vao para a lixeira); a proxima execucao os ve como ausentes' >&2
+}
+
+# _dbx_cmd_sync_apagar_remoto_em_lote <remoto> — RF-136: exclui no destino
+# remoto a lista DBX_SYNC_APAGAR (menos o protegido pelos filtros, RF-80(d)) por
+# `delete_batch`. Cada item e identificado pelo caminho canonico do destino e, se
+# a listagem desta execucao trouxe, pelo `rev` (`parent_rev`). Saida e relatorio
+# por item iguais aos do `delete_v2` de antes: so `success` confirmado conta; o
+# resto e falha do item, com a mesma linha `falha <caminho>: <classe> <resumo>`.
+# Variaveis do executor (escopo dinamico): op_atual, total_ops, apagados, falhas,
+# mapa_revs.
+_dbx_cmd_sync_apagar_remoto_em_lote() {
+  local raiz=$1 caminho i
+  local -a alvos=()
+  DBX_LOTE_CAMINHOS=() DBX_LOTE_REVS=()
+  for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+    _dbx_cmd_sync_protegido "$caminho" && continue
+    # shellcheck disable=SC2190  # falso positivo: alvos e indexado (local -a)
+    alvos+=("$caminho")
+    DBX_LOTE_CAMINHOS+=("$raiz/$caminho")
+    DBX_LOTE_REVS+=("${mapa_revs[$caminho]:-}")
+  done
+  [[ ${#alvos[@]} -gt 0 ]] || return 0
+  DBX_LOTE_GANCHO_FATIA=''
+  # DIV-275: interrompido com a exclusao em curso, a fatia pode ja ter sido
+  # concluida no servidor sem que este processo a conte. A acao roda so no
+  # termino por sinal (ou saida) DENTRO da janela; fora dela e cancelada.
+  dbx_tmp_acao_registrar _dbx_cmd_sync_aviso_exclusao_em_curso
+  local acao_exclusao=$DBX_TMP_ID
+  dbx_lote_excluir
+  dbx_tmp_acao_cancelar "$acao_exclusao"
+  for i in "${!alvos[@]}"; do
+    caminho=${alvos[i]}
+    op_atual=$((op_atual + 1))
+    dbx_progress_etapa "$op_atual" "$total_ops" 'apagando' "$caminho"
+    if [[ ${DBX_LOTE_RESULTADO[i]} == 'ok' ]]; then
+      apagados=$((apagados + 1))
+      continue
+    fi
+    falhas=$((falhas + 1))
+    DBX_CMD_SYNC_FALHA_CLASSE=${DBX_LOTE_CLASSE[i]:-nao_concluida}
+    dbx_errors_redigir "${DBX_LOTE_MOTIVO[i]:-item nao confirmado pelo lote}" >/dev/null
+    DBX_CMD_SYNC_RESUMO_FALHA=${DBX_ERRORS_REDIGIDO:0:120}
+    _dbx_cmd_sync_falha_emitir "$caminho"
+  done
 }
 
 # Sem permissao de escrita no diretorio e o caso comum de `rm` recusar aqui.

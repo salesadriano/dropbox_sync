@@ -30,12 +30,13 @@ _cenario() {
   cat >"$base/bin/curl" <<FIM
 #!/usr/bin/env bash
 base=$base
+DBX_HARNESS_RAIZ=$DBX_HARNESS_RAIZ
 FIM
   cat >>"$base/bin/curl" <<'FIM'
 cat >/dev/null 2>&1
-saida=""; escrever=""; anterior=""; url=""
+saida=""; escrever=""; anterior=""; url=""; corpo_arquivo=""
 for arg in "$@"; do
-  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac
+  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; --data-binary) corpo_arquivo=${arg#@} ;; esac
   case $arg in http*) url=$arg ;; esac
   anterior=$arg
 done
@@ -50,6 +51,9 @@ case $url in
   *upload_session/start*) corpo='{"session_id":"S-1"}' ;;
   *) corpo='{"name":"x","rev":"1","size":1}' ;;
 esac
+# RF-136/RF-137: rotas de lote (exclusao do --espelhar e envio de pequenos) pelo duplo compartilhado.
+. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+lote_responder "$url" "$corpo_arquivo" || :
 if [[ $url == *get_metadata* && -f $base/metadata ]]; then
   codigo=200; corpo=$(cat "$base/metadata")
 fi

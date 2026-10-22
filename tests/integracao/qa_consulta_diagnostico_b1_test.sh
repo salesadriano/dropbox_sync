@@ -532,15 +532,18 @@ teste_qa_esp_upload_cabe_exatamente_e_falta_um_byte() {
 
 teste_qa_esp_sync_cabe_exatamente_e_falta_um_byte_sem_memoria() {
   _qa_cenario
-  _qa_espaco 77 1077 # livre 1000
-  _qa_bytes "$BASE/local/a.bin" 400
-  _qa_bytes "$BASE/local/b.bin" 601
+  # Fase 9 (RF-137, DIV-256): +1 MiB por arquivo e +2 MiB de livre, para o caso seguir no envio
+  # unitario (`files/upload`) com a mesma conta: cabe exatamente e falta um byte.
+  local mib=1048576
+  _qa_espaco 77 $((1077 + 2 * mib)) # livre 1000 + 2 MiB
+  head -c $((mib + 400)) /dev/zero | tr '\0' q >"$BASE/local/a.bin"
+  head -c $((mib + 601)) /dev/zero | tr '\0' q >"$BASE/local/b.bin"
   _qa_rodar -- sync --enviar --origem "$BASE/local" --destino /r
   assert_igual "$QA_ESPACO" "$ESTADO" '1001 em 1000: 12'
   assert_igual 0 "$(_qa_escritas)" 'nenhuma escrita'
   assert_arquivo_ausente "$BASE/estado" 'nenhuma memoria gravada'
   _qa_tmp_vazio 'recusa: area do sync removida'
-  _qa_bytes "$BASE/local/b.bin" 600
+  head -c $((mib + 600)) /dev/zero | tr '\0' q >"$BASE/local/b.bin"
   _qa_rodar -- sync --enviar --origem "$BASE/local" --destino /r
   assert_igual 0 "$ESTADO" "1000 em 1000 cabe; erro: $ERRO"
   assert_igual 2 "$(_qa_contar 'files/upload')" 'os dois envios saem'
@@ -639,8 +642,11 @@ teste_qa_esp_consulta_que_falha_so_avisa_uma_vez() {
   local modo
   for modo in transporte 500 lixo sem_alocacao; do
     _qa_cenario
-    _qa_bytes "$BASE/local/a.bin" 10
-    _qa_bytes "$BASE/local/b.bin" 10
+    # Fase 9 (RF-137, DIV-256): acima de 1 MiB, para o caso seguir medindo o envio unitario
+    # (`files/upload`); 2 pequenos iriam pelo lote, que nao e o objeto deste caso.
+    # `_qa_bytes` monta o conteudo por substituicao no bash, lenta demais para 1 MiB.
+    head -c 1048577 /dev/zero | tr '\0' q >"$BASE/local/a.bin"
+    head -c 1048577 /dev/zero | tr '\0' q >"$BASE/local/b.bin"
     case $modo in
       transporte) printf '7' >"$BASE/x_espaco" ;;
       500) printf '500' >"$BASE/c_espaco" && printf '{"error_summary":"internal"}' >"$BASE/r_espaco" ;;

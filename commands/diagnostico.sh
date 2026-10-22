@@ -398,6 +398,17 @@ dbx_cmd_diagnostico_executar() {
   # removido ou retomado, e trava nunca leva a `falha`.
   _dbx_cmd_diag_travas "$estado"
 
+  # 8b. paralelo (fase 9, RF-133(e)) — com DBX_PARALELO definida, o valor efetivo e a origem (sem ela a
+  # saida e a de sempre, RF-139(a): ver DIV-SD-1). So le o ambiente; variavel invalida e aviso (o `sync` a recusaria com 2), nunca
+  # falha do diagnostico, e o valor citado e o que o operador digitou.
+  if [[ -n ${DBX_PARALELO+definida} ]]; then
+    if dbx_cli_validar_paralelo DBX_PARALELO "$DBX_PARALELO" variavel; then
+      _dbx_cmd_diag paralelo ok "$DBX_CLI_PARALELO (origem: ambiente, DBX_PARALELO); --paralelo vence a variavel"
+    else
+      _dbx_cmd_diag paralelo aviso "$DBX_CLI_MOTIVO; o sync sai com 2 enquanto ela estiver assim" 'unset DBX_PARALELO'
+    fi
+  fi
+
   # 9. retomada (fase 7a, RF-107(d)) — uma linha por `retomada-*`, so lendo.
   _dbx_cmd_diag_retomadas
 

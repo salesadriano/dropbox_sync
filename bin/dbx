@@ -234,7 +234,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       sync)
-        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--esperar | --wait <s>] [--excluir <padrao>]... [--incluir <padrao>]... [--modificado-desde <data>] [--modificado-ate <data>] [--tamanho-min <tam>] [--tamanho-max <tam>] [--limite-banda <taxa>] [--sem-cursor | --no-cursor | --varredura-completa | --full-scan] [--progresso]\n\n'
+        printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--esperar | --wait <s>] [--excluir <padrao>]... [--incluir <padrao>]... [--modificado-desde <data>] [--modificado-ate <data>] [--tamanho-min <tam>] [--tamanho-max <tam>] [--limite-banda <taxa>] [--paralelo <n>] [--sem-cursor | --no-cursor | --varredura-completa | --full-scan] [--progresso]\n\n'
         printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n\n'
         printf 'Opcoes (o nome em ingles e alias do nome em portugues; podem ser misturados):\n'
         printf '  --enviar, --push                Origem local, destino remoto\n'
@@ -257,6 +257,7 @@ case $DBX_CLI_COMANDO in
         printf '  --tamanho-max, --max-size <tam> So arquivos da origem com no maximo <tam>\n'
         printf '  --limite-banda, --bwlimit <taxa>\n'
         printf '                                  Limite de banda por transferencia, em bytes/s\n'
+        printf '  --paralelo, --parallel <n>      Transferencias simultaneas (1 a 8, padrao 1); veja Paralelismo\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
         printf '  --sem-cursor, --no-cursor       So com --receber: nao usa o registro de listagem\n'
@@ -269,6 +270,15 @@ case $DBX_CLI_COMANDO in
         printf '\n'
         _dbx_ajuda_banda
         printf '\n'
+        printf 'Paralelismo (F-09):\n'
+        printf '  --paralelo N (alias --parallel) ou DBX_PARALELO=N, de 1 a 8 (padrao 1; a opcao\n'
+        printf '  vence a variavel), roda ate N transferencias de arquivo ao mesmo tempo, no\n'
+        printf '  envio e no recebimento. A listagem e as exclusoes seguem em sequencia; o\n'
+        printf '  resultado, o cache, o resumo, a ordem das linhas e o codigo de saida sao os de\n'
+        printf '  N=1. --limite-banda e o teto TOTAL: cada transferencia leva a taxa dividida por\n'
+        printf '  N (nunca abaixo do piso). N maior pode provocar mais respostas 429: cada\n'
+        printf '  processo respeita o Retry-After, N nao diminui sozinho, e --debug informa\n'
+        printf '  quantas houve. --dry-run nunca usa paralelismo. Valor invalido sai com 2.\n\n'
         printf 'Trava de concorrencia (RF-69):\n'
         printf '  Um sync ou verificar por vez para o mesmo par (conta, raiz local, raiz remota,\n'
         printf '  em qualquer sentido), inclusive com --dry-run. Ocupada, a execucao e recusada\n'
