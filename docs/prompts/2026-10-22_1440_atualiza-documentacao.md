@@ -34,3 +34,11 @@ registro_de_entrega: "docs/reviews/2026-10-22-1440-registro-atualiza-documentaca
 **Achado do Tech Lead:** o diagnostico do QA para a Regra 1 nao conferia. Os testes `perfis_*` e `state_trava_raiz` carregam libs especificas. Faltavam na tabela `auth`, `hash`, `path`, `trava_test` e `qa_docs_aliases`, que varrem `lib/*.sh` atras de um padrao.
 
 **Efeito:** a suite completa que rodava no primeiro commit foi interrompida, porque o commit novo a invalidaria; ela roda de novo no HEAD final.
+
+## Prompt 3 — 2026-10-22 (depois do merge da PR #55)
+
+> fix conflit in #54
+
+**Intencao:** resolver o conflito da PR #54 com a `develop`, que recebeu a fase 10 (PR #55).
+
+**Resolucao do Tech Lead:** `git merge origin/develop` na branch. Os conflitos foram so nas tabelas de versao, e as duas linhas ficaram, com a mais nova em cima: System Design v1.20 sobre v1.19, com a data da versao em v1.20; escopo v1.27 sobre v1.26, com a linha de versao do topo em v1.27. Como a fase 10 tambem ja esta mesclada, `F-49` passa a "concluida" nas candidatas, na secao 5.19 do escopo e no cabecalho da secao do System Design, como as fases 1 a 9 neste PR. A suite completa roda de novo no commit do merge antes do push.

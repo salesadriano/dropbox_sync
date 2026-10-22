@@ -770,4 +770,22 @@ teste_c2_mutante_sem_a_conferencia_de_arquivo_regular_pendura() {
   assert_igual 124 "$?" 'sem a conferencia, o mutante pendura na FIFO'
 }
 
+
+teste_prg_download_retomado_comeca_no_percentual_do_part() {
+  local base primeira
+  base=$(_ambiente)
+  _interrompido "$base"
+  # O ambiente troca `sleep` por um no-op, o que faria o observador do .part
+  # amostrar antes de `avancar`; aqui o `sleep` e o real, para provar que a
+  # primeira linha vem do avanco ao inicio da retomada e nao de uma amostra.
+  mkdir -p "$base/realsleep"
+  printf '#!/bin/sh\nexec %s "$@"\n' "$(command -v sleep)" >"$base/realsleep/sleep"
+  chmod +x "$base/realsleep/sleep"
+  DBX_T_PATH="$base/realsleep" _rodar "$base" --progresso download /Grande.iso grande.iso
+  assert_igual 0 "$DBX_ESTADO" "retomado: $DBX_ERRO"
+  primeira=${DBX_ERRO#*baixando: }
+  primeira=${primeira%%$'\n'*}
+  assert_nao_contem ' 0% ' "$primeira" 'DIV-294: a primeira linha nao volta a 0%'
+  assert_contem ' 33% ' "$primeira" 'DIV-294: a primeira linha mostra o que o .part ja tem'
+}
 harness_executar "$@"

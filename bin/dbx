@@ -194,6 +194,7 @@ case $DBX_CLI_COMANDO in
         printf '  --sem-retomada, --no-resume     Comeca do zero: nao le, nao grava nem apaga o\n'
         printf '                                  estado de retomada\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
+        printf '                                  Por arquivo: [i/N] acao: item [barra] percentual feitos / total; no terminal a linha e reescrita no lugar, sem terminal cada atualizacao e uma linha nova\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n\n'
         _dbx_ajuda_banda
         printf '\n'
@@ -259,6 +260,7 @@ case $DBX_CLI_COMANDO in
         printf '                                  Limite de banda por transferencia, em bytes/s\n'
         printf '  --paralelo, --parallel <n>      Transferencias simultaneas (1 a 8, padrao 1); veja Paralelismo\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
+        printf '                                  Por arquivo: [i/N] acao: item [barra] percentual feitos / total; no terminal a linha e reescrita no lugar, sem terminal cada atualizacao e uma linha nova\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
         printf '  --sem-cursor, --no-cursor       So com --receber: nao usa o registro de listagem\n'
         printf '  --varredura-completa, --full-scan\n'
@@ -338,6 +340,7 @@ case $DBX_CLI_COMANDO in
         printf '  --limite-banda, --bwlimit <taxa>\n'
         printf '                                  Limite de banda por transferencia, em bytes/s\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
+        printf '                                  Por arquivo: [i/N] acao: item [barra] percentual feitos / total; no terminal a linha e reescrita no lugar, sem terminal cada atualizacao e uma linha nova\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'
         printf '  --forcar, --force               Aceita e sem efeito, por paridade com o upload\n'
         printf '  --sem-retomada, --no-resume     Comeca do zero: nao le, nao grava nem apaga o\n'
