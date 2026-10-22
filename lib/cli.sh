@@ -264,9 +264,10 @@ _dbx_cli_recusar() {
 # pagam o carregamento quando nao ha `--perfil`.
 _dbx_cli_carregar_config() {
   declare -F dbx_config_perfil_validar >/dev/null && return 0
-  # shellcheck source=lib/json.sh
+  # bin/dbx ja segue json.sh e config.sh; segui-los de novo aqui explode a memoria do shellcheck.
+  # shellcheck source=/dev/null
   . "$DBX_CLI_RAIZ/lib/json.sh"
-  # shellcheck source=lib/config.sh
+  # shellcheck source=/dev/null
   . "$DBX_CLI_RAIZ/lib/config.sh"
 }
 

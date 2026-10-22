@@ -8,6 +8,7 @@
 . "$DBX_HARNESS_RAIZ/lib/path.sh"
 . "$DBX_HARNESS_RAIZ/lib/output.sh"
 . "$DBX_HARNESS_RAIZ/lib/cli.sh"
+# shellcheck disable=SC2034 # lida por lib/cli.sh (carregada por source)
 DBX_CLI_RAIZ=$DBX_HARNESS_RAIZ
 
 teste_pfs05_perfil_e_profile_equivalem_antes_do_subcomando() {
@@ -99,6 +100,7 @@ teste_pfs_aplicar_opcao_vence_variavel_e_vazio_e_nao_definida() {
 teste_pfn09_variavel_invalida_so_e_validada_quando_usada() {
   . "$DBX_HARNESS_RAIZ/lib/json.sh"
   . "$DBX_HARNESS_RAIZ/lib/config.sh"
+  # shellcheck disable=SC2034 # lida por dbx_config_perfil_do_ambiente (source)
   DBX_PERFIL='SEGREDO'
   dbx_cli_analisar --perfil ok space
   dbx_cli_perfil_aplicar

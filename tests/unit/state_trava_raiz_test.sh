@@ -22,9 +22,9 @@ _area() {
 }
 
 _filho() {
-  local roteiro=$1
+  local roteiro=$1 xdg=$AREA/xdg tmp=$AREA/tmp
   shift
-  FILHO_SAIDA=$(XDG_STATE_HOME="$AREA/xdg" TMPDIR="$AREA/tmp" AREA="$AREA" ESTADO="$ESTADO" \
+  FILHO_SAIDA=$(XDG_STATE_HOME="$xdg" TMPDIR="$tmp" AREA="$AREA" ESTADO="$ESTADO" \
     RAIZ="$DBX_HARNESS_RAIZ" bash -c '
     . "$RAIZ/lib/errors.sh"; . "$RAIZ/lib/json.sh"; . "$RAIZ/lib/config.sh"; . "$RAIZ/lib/state.sh"
 '"$roteiro" _ "$@" </dev/null 2>&1)
@@ -33,7 +33,8 @@ _filho() {
 
 # _segurar <raiz> — processo que detem a trava de raiz ate existir "$AREA/solta".
 _segurar() {
-  XDG_STATE_HOME="$AREA/xdg" TMPDIR="$AREA/tmp" AREA="$AREA" RAIZ="$DBX_HARNESS_RAIZ" bash -c '
+  local xdg=$AREA/xdg tmp=$AREA/tmp
+  XDG_STATE_HOME="$xdg" TMPDIR="$tmp" AREA="$AREA" RAIZ="$DBX_HARNESS_RAIZ" bash -c '
     . "$RAIZ/lib/errors.sh"; . "$RAIZ/lib/json.sh"; . "$RAIZ/lib/config.sh"; . "$RAIZ/lib/state.sh"
     dbx_state_trava_raiz_adquirir "$1" 0 || exit 9
     : >"$AREA/segurando"

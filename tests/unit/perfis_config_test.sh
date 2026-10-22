@@ -109,6 +109,7 @@ teste_pfs_ambiente_seleciona_com_origem_ambiente() {
 }
 
 teste_pfs_opcao_vence_a_variavel() {
+  # shellcheck disable=SC2034 # lida por dbx_config_perfil_do_ambiente (source)
   DBX_PERFIL=a
   dbx_config_perfil_selecionar b opcao
   dbx_config_perfil_do_ambiente
@@ -475,6 +476,31 @@ teste_pfl_listar_nao_cria_diretorios() {
   dbx_config_perfis_listar
   [[ ! -e $area/config ]] || _harness_falhar 'listar criou diretorio'
   assert_igual 0 "${#DBX_CONFIG_PERFIS_NOME[@]}" 'nenhum'
+}
+
+teste_pfl_carregar_outro_perfil_revalida_o_nome_antes_do_disco() {
+  local area d
+  area=$(_area)
+  _xdg "$area"
+  d="$area/config/dbx/perfis"
+  _perfil_seguro "$area" ok AK rt
+  dbx_config_carregar "$d/ok.json" '../x'
+  assert_igual 2 $? 'nome hostil recusado como uso invalido'
+  assert_igual perfil_invalido "$DBX_CONFIG_MOTIVO" 'motivo'
+  assert_igual '' "$DBX_CONFIG_REFRESH_TOKEN" 'nada carregado'
+}
+
+teste_pfl_carregar_confere_a_cadeia_pelo_caminho_e_nao_pelo_rotulo() {
+  local area d
+  area=$(_area)
+  _xdg "$area"
+  d="$area/config/dbx/perfis"
+  _perfil_seguro "$area" ok AK rt
+  chmod 777 "$area/config/dbx"
+  dbx_config_carregar "$d/ok.json" padrao
+  assert_diferente 0 $? 'rotulo padrao nao desliga a conferencia de dbx/'
+  assert_igual permissao_diretorio "$DBX_CONFIG_MOTIVO" 'motivo'
+  assert_igual '' "$DBX_CONFIG_REFRESH_TOKEN" 'nada carregado'
 }
 
 harness_executar "$@"

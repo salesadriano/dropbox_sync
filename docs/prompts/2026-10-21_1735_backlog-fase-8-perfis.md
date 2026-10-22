@@ -39,3 +39,37 @@ registro_de_entrega: "docs/reviews/2026-10-21-1735-registro-perfis-b8.md"
 **Detector (regra 48):** `--detectar` no worktree e no checkout principal saiu sem divergências.
 
 **Decisão do Tech Lead, DIV-255 C:** o valor de `--perfil` não é completado no autocompletar. Só a opção é completada. Com isso o `TC-CPL-04` fica intacto: o script não lê arquivo do dbx nem caminho de configuração. A `DIV-246` fica parcialmente atendida, e a completação do valor vai para o backlog como `F-45`. A alternativa de chamar `dbx perfis` no autocompletar foi descartada, porque ela lê as credenciais a cada TAB.
+
+## Prompt 4 — 2026-10-21 (nova sessão, depois de duas quedas)
+
+> the last session was down twice
+
+**Intenção:** duas sessões caíram durante a fase 8. Na segunda, o Senior Developer parou no limite de 40 turnos sem handback. O trabalho estava intacto e sem commit no worktree: 18 arquivos alterados (+1329/−88) e 9 novos. As 241 casos dos testes da fase passaram.
+
+**Decisão do solicitante (AskUserQuestion):** "Checkpoint, then resume (Recommended)". Commit WIP local `915cb52` em `feature/perfis-b8`, sem push. A retomada segue em tarefas curtas, para que nenhum subagent chegue ao teto de turnos.
+
+**Porte:** G, mantido.
+
+## Prompt 5 — 2026-10-21 (nova sessão, depois da correção do lint)
+
+> retome a fase 8 dos perfis
+
+**Intenção:** retomar a fase 8 a partir do checkpoint `915cb52`. A causa das duas quedas foi o `shellcheck` em processo único (OOM de 18 GB, journal de 2026-10-21 16:34 e 17:05), corrigida na PR #50 (`scripts/lint.sh`, memória `2026-10-21-1845-lint-sequencial`). A `develop` (`ebb0d67`) entra na branch por merge para que os gates usem `sh scripts/lint.sh`.
+
+**Decisão do solicitante (AskUserQuestion):** "Sim, registre e siga (Recomendado)". O bloco Prompt 4 deste log e o parecer TDD parcial (`docs/reviews/2026-10-21-1735-parecer-tdd-perfis-b8.md`) foram deixados pelos agents da sessão que caiu e foram registrados com `--registrar`.
+
+**Porte:** G, mantido (`scripts/porte.sh` continua inexistente).
+
+**Lint da fase (Tech Lead):** `sh scripts/lint.sh` nos arquivos shell da fase, 208,94 s, exit 1: 10 achados (lib/cli.sh 3, testes 7). `bin/dbx` foi morto pelo teto de 12 GB.
+
+**Decisão do solicitante (AskUserQuestion):** "Subir o teto do bin/dbx". Medição com 14 GB: morto em duas rodadas seguidas. Uma passagem isolada em 26 s não se repetiu. Com o WSL em 16 GB, o caminho não cabe, e a pergunta voltou ao solicitante.
+
+**Decisão do solicitante (AskUserQuestion):** "Cortar o source dos comandos (Recomendado)", com medição antes de aplicar. Ao conferir, o carregamento de `commands/*.sh` no `bin/dbx` já tinha `source=/dev/null`. A opção recomendada não mudava nada, e o Tech Lead devia ter conferido antes de oferecê-la. A bisseção em cópia descartável apontou `lib/cli.sh`: o `_dbx_cli_carregar_config`, novo na fase, segue `json.sh` e `config.sh`, que o `bin/dbx` já segue. Com só essas duas diretivas trocadas por `source=/dev/null`, os resultados foram:
+- `bin/dbx`: 4747908 KB, 29,53 s, 0 achados;
+- `lib/cli.sh`: 31520 KB, 0,20 s, 0 achados. Os SC2178/SC2128 eram efeito da reanálise.
+
+É o mesmo propósito da opção escolhida, que é cortar source redundante medindo antes, aplicado ao arquivo certo. A correção foi delegada ao Senior Developer.
+
+## Prompt 6 — 2026-10-21 (aprovação da suíte do QA)
+
+**Decisão do solicitante (AskUserQuestion):** "Aprovo". A suíte do QA da fase 8 é `tests/integracao/qa_perfis_b8_test.sh`, com 34 casos e sha256 `9e6617c358b02608124dfd721e711226f5c5ca3e2b47b1da7ef44515b05932d7`, na versão do ciclo 2.

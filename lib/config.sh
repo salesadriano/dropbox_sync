@@ -585,12 +585,18 @@ dbx_config_carregar() {
   if [[ $# -eq 2 ]]; then
     arquivo=$1
     nome=$2
+    # O nome e dado de caminho: validado antes de qualquer acesso a disco.
+    dbx_config_perfil_validar "$nome" || return $?
   else
     dbx_config_caminho || return $?
     arquivo=$DBX_CONFIG_RESULTADO
     nome=${DBX_CONFIG_PERFIL:-$DBX_CONFIG_PERFIL_PADRAO}
   fi
-  if [[ $nome != "$DBX_CONFIG_PERFIL_PADRAO" ]]; then
+  # A cadeia a conferir decorre do CAMINHO real (arquivo em `perfis/`), nunca do
+  # rotulo: um rotulo `padrao` sobre arquivo de perfil nao desliga a conferencia.
+  local nomeado=nao
+  [[ ${arquivo%/*} == */perfis || ${arquivo%/*} == perfis ]] && nomeado=sim
+  if [[ $nomeado == 'sim' || $nome != "$DBX_CONFIG_PERFIL_PADRAO" ]]; then
     _dbx_config_verificar_cadeia "$arquivo" simbolicos || return $?
   fi
 
@@ -611,7 +617,7 @@ dbx_config_carregar() {
   # substituir o arquivo por outro, e nenhum dos dois caminhos olhava para ele
   # (P3-04).
   local modo_diretorio
-  if [[ $nome != "$DBX_CONFIG_PERFIL_PADRAO" ]]; then
+  if [[ $nomeado == 'sim' || $nome != "$DBX_CONFIG_PERFIL_PADRAO" ]]; then
     _dbx_config_verificar_cadeia "$arquivo" completo || return $?
   else
     modo_diretorio=$(stat -c '%a' -- "${arquivo%/*}" 2>/dev/null || stat -f '%Lp' "${arquivo%/*}" 2>/dev/null) ||

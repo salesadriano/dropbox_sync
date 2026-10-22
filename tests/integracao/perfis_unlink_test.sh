@@ -271,6 +271,17 @@ teste_pfu08_identidade_compartilhada_nao_revoga_e_mantem_o_estado() {
   assert_igual 0 "$DBX_ESTADO" "b segue valido: $DBX_ERRO"
 }
 
+teste_pfu08_aviso_de_credencial_compartilhada_sai_no_stderr_com_o_texto() {
+  local base
+  base=$(_amb)
+  _perfil "$base" a RT-IGUAL AK-igual
+  _perfil "$base" b RT-IGUAL AK-igual
+  _rodar "$base" unlink --perfil a --confirmar
+  assert_igual 0 "$DBX_ESTADO" "unlink: $DBX_ERRO"
+  assert_contem 'tem a MESMA credencial (app key e refresh token) de: b.' "$DBX_ERRO" 'aviso nomeia a origem'
+  assert_contem 'O refresh token NAO sera revogado' "$DBX_ERRO" 'aviso diz que nao revoga'
+}
+
 teste_pfu09_perfil_nao_comparavel_entra_no_aviso_com_a_contagem() {
   local base
   base=$(_amb)

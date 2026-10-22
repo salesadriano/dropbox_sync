@@ -74,12 +74,13 @@ _perfil() { # <base> <nome> [refresh] [app_key]
 
 # _rodar <base> <args...> — stdin de /dev/null, ou do arquivo em $DBX_STDIN.
 _rodar() {
-  local base=$1 entrada=${DBX_STDIN:-/dev/null}
+  local base=$1 entrada=${DBX_STDIN:-/dev/null} extra=()
   shift
+  read -ra extra <<<"${DBX_ENV_EXTRA:-}"
   DBX_SAIDA='' DBX_ERRO=''
   rm -f "$base/argv" "$base/opcoes"
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
-    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" ${DBX_ENV_EXTRA:-} \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" "${extra[@]}" \
     bash "$DBX_EXEC" "$@" <"$entrada" >"$base/out" 2>"$base/err"
   DBX_ESTADO=$?
   IFS= read -r -d '' DBX_SAIDA <"$base/out"
