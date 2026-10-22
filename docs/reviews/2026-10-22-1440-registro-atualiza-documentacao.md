@@ -23,7 +23,7 @@ O pedido e generico; o escopo saiu de um levantamento do repositorio. As fases 1
 | `docs/requisitos/funcionalidades-candidatas.md` | Alterado: v0.17; tabela de decisao com `F-03` e `F-07` a `F-22` concluidas; `F-08` e `F-09` com `RF-133` a `RF-139`; `F-31` e `F-34` concluidas |
 | `docs/arquitetura/system-design.md` | Alterado: v1.19; cabecalhos das secoes das fases 1 e 3 a 9 com "concluida", PR e data |
 | `README.md` | Alterado: secao "Perfis de credencial" (fase 8) e `--perfil` nas opcoes globais, a partir da ajuda do proprio `dbx` |
-| `docs/testes/mapa-modulos.md` | Alterado (QA Expert): `lib/lote.sh`, `commands/perfis.sh`, cinco `qa_*` das fases 6 a 9, secao dos testes das fases 8 e 9, `tests/support/lote_duplo.sh` |
+| `docs/testes/mapa-modulos.md` | Alterado (QA Expert, ciclo 1; Tech Lead, ciclo 2): `lib/lote.sh`, `commands/perfis.sh`, cinco `qa_*` das fases 6 a 9, secoes proprias das fases 8 e 9, `tests/support/lote_duplo.sh`; Regra 1 com os dez testes que varrem `lib/*.sh` |
 | `docs/prompts/2026-10-22_1440_atualiza-documentacao.md` | Novo |
 | `docs/reviews/2026-10-22-1440-registro-atualiza-documentacao.md` | Novo |
 
@@ -53,13 +53,15 @@ Total de linhas de codigo (producao e teste, sem documentacao): **0**.
 ## 6. QA
 
 - Porte P: QA por amostragem. O QA Expert atualizou o mapa de modulos de teste, que e artefato dele. O Tech Lead conferiu a coluna "Carrega" das linhas novas contra o `grep` de `lib/*.sh` de cada teste, e a contagem de doze usuarios de `lote_duplo.sh`; as duas conferem.
+- Ciclo 2 (Prompt 2, a pedido do solicitante): os dois pontos que o QA tinha deixado abertos foram corrigidos pelo Tech Lead.
+  - Regra 1: o QA apontou os testes `perfis_*` e `state_trava_raiz` como leitores de `lib/*.sh`. A conferencia mostrou outra coisa: eles carregam libs especificas. O `grep -l 'lib/\*'` da propria frase acha dez testes, e a tabela tinha cinco. `auth`, `hash`, `path`, `trava_test` e `qa_docs_aliases` entraram na tabela e na selecao de todo diff em `lib/*.sh`, com as linhas de cada auditoria.
+  - As fases 8 e 9 ficaram em secoes proprias, na ordem decrescente das demais (antes da 7a).
 - Veredito do QA: Aprovado, 2026-10-22.
 
 ## 7. Riscos e rollback
 
 - Riscos residuais:
   - O hook `detector-antes-do-commit` do plugin ai-team ignora o filtro `"if": "Bash(git commit *)"` e roda antes de todo comando Bash. Um arquivo novo nao registrado trava todos os comandos, inclusive o `--registrar`. O solicitante destravou com `! sh scripts/alteracoes-externas.sh --registrar ...`. Owner: mantenedor do plugin ai-team.
-  - Achados do QA nao corrigidos nesta entrega: a frase da Regra 1 do mapa (testes que leem `lib/*.sh`) esta desatualizada; o mapa agrupa as fases 8 e 9 numa secao so.
 - Impacto: Nenhum em contrato, codigo ou pipeline: so documentacao.
 - Rollback: `git revert <sha>` basta.
 

@@ -11,7 +11,7 @@ Mantido pelo QA Expert (Regra 8 de `protocolo-tdd`; detalhamento em `.github/ski
 
 ## Regra 1: auditorias de diretorio (todo diff em `lib/*.sh`)
 
-Estes testes varrem `lib/*.sh` inteiro e portanto cobrem arquivo novo sem alterar o mapa. **Todo diff em `lib/*.sh` seleciona `json`, `http`, `preflight`, `composicao` e `tmp_test`**, qualquer que seja a lib alterada:
+Estes testes varrem `lib/*.sh` inteiro e portanto cobrem arquivo novo sem alterar o mapa. **Todo diff em `lib/*.sh` seleciona `json`, `http`, `preflight`, `composicao`, `tmp_test`, `auth`, `hash`, `path`, `trava_test` e `qa_docs_aliases`**, qualquer que seja a lib alterada:
 
 | Teste | Auditoria (linhas) |
 |---|---|
@@ -20,8 +20,13 @@ Estes testes varrem `lib/*.sh` inteiro e portanto cobrem arquivo novo sem altera
 | `tests/unit/preflight_test.sh` | variaveis, vocabulario e comandos externos de `lib/*.sh` (347-354) |
 | `tests/integracao/composicao_test.sh` | `lib/*.sh` (549, 602); `commands/*.sh` e `lib/cmd.sh` (657); ponto unico do caminho remoto em `commands/*.sh` (fase 1b, `teste_todo_caminho_remoto_de_comando_passa_pelo_ponto_unico`) |
 | `tests/unit/tmp_test.sh` (fase 2 do backlog) | `lib/*.sh`, `commands/*.sh` e `bin/dbx`: nenhum `mktemp` nem `trap` fora de `lib/tmp.sh` (TC-TMP-01, com mutacao); `commands/sync.sh` e `commands/verificar.sh` sem area, remocao ou tratador proprio (TC-CNF-01) |
+| `tests/unit/auth_test.sh` | formularios de token sem segredo e ausencia de `code_verifier`/`code_challenge` em `lib/*.sh` (723, 732) |
+| `tests/unit/hash_test.sh` | nenhum `stat -c %Y` fora de `lib/hash.sh` (666) |
+| `tests/unit/path_test.sh` | nenhum `$(readlink` em `lib/*.sh` (451) |
+| `tests/integracao/trava_test.sh` | criacao de trava so em `lib/state`, em `lib/*.sh`, `commands/*.sh` e `bin/dbx` (695; TC-TRV-36) |
+| `tests/integracao/qa_docs_aliases_p4_test.sh` | texto de `README.md`, `lib/*.sh`, `commands/*.sh`, `bin/dbx` e `install.sh` (613) |
 
-Conferido por `grep -l 'lib/\*.sh' tests/unit/*.sh tests/integracao/*.sh`: esses quatro e, desde a fase 2 do backlog, `tmp_test` (filtro proprio `tmp_test`). `trava_test` tambem le `lib/*.sh` (TC-TRV-36: criacao de trava so em `lib/state`). Auditorias de `commands/*.sh`: `cli_test` (150, 166, 201), `composicao_test` (657 e o ponto unico do caminho remoto, fase 1b) e `tmp_test` (TC-TMP-01, TC-CNF-01). **Todo diff em `commands/*.sh` seleciona `cli`, `composicao` e `tmp_test`.**
+Conferido em 2026-10-22 por `grep -l 'lib/\*' tests/unit/*.sh tests/integracao/*.sh`: sao exatamente os dez da tabela. Os testes das fases 8 e 9 (`perfis_*`, `state_trava_raiz`, `lote_test`, `paralelo_test`) carregam libs especificas e nao varrem `lib/*.sh`; ficam nas tabelas das suas fases. O filtro `trava_test` leva o sufixo porque `trava` casa tambem `state_trava`, `perfis_trava_raiz` e `qa_trava_tmp`. Auditorias de `commands/*.sh`: `cli_test` (150, 166, 201), `composicao_test` (657 e o ponto unico do caminho remoto, fase 1b) e `tmp_test` (TC-TMP-01, TC-CNF-01). **Todo diff em `commands/*.sh` seleciona `cli`, `composicao` e `tmp_test`.**
 
 ## Regra 2: testes `qa_*`
 
@@ -129,6 +134,34 @@ Nenhum comando tem teste unitario: todos sao exercitados por `bin/dbx` em testes
 | `commands/compartilhar.sh` (fase 5, RF-85 a RF-90; alias `share`) | compartilhamento; **chama** cli (`dbx_cli_ler_oculto`), tmp (`dbx_tmp_armar`), cmd (`_dbx_cmd_caminho_remoto`, `_dbx_cmd_escrita_remota` silencioso e idempotente) e auth | `compartilhar_test` (TC-CMP, TC-SNH com `script(1)` e pula sem ele, TC-LEX, TC-LST, TC-RVG, TC-SHE) | `completar` |
 | `commands/perfis.sh` (fase 8, RF-126, F-18; alias `profiles`) | nenhum `source`; **chama** config (`dbx_config_perfis_listar`, `DBX_CONFIG_PERFIS_*`), cmd (`dbx_cmd_falhar`, `dbx_cmd_iniciar_saida`, `dbx_cmd_campo_caminho`), output (`dbx_output_campo`, `dbx_output_render`) e `dbx_carregar_camada_de_credencial` (bin/dbx); so le, requisito `ambiente` | `perfis_test` (ponta a ponta), `perfis_cli_test` (tabela de comandos e alias, `lib/cli`) | `perfis_unlink`, `perfis_trava_raiz`, `qa_perfis`, `completar` |
 
+## Testes da fase 9 do backlog (desempenho, F-08, F-09, F-34)
+
+Conferido por `ls tests/unit tests/integracao tests/support` e `grep -o 'lib/...'` em cada arquivo.
+
+| Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
+|---|---|---|---|
+| `tests/integracao/lote_test.sh` (fase 9, RF-136, RF-137) | `lote_test` (o filtro `lote` tambem o casa) | carrega `lib/errors`, `hash`, `progress`, `tmp`, `filtro`, `transfer`, `lote` e `tests/support/lote_duplo.sh`; `bin/dbx` (sync `--espelhar` e envio em lote); le `commands/sync.sh` e `commands/reter.sh` (reter nao usa lote) | `lib/lote.sh`, `lib/transfer.sh`, `commands/sync.sh`, `bin/dbx`, `tests/support/lote_duplo.sh` |
+| `tests/integracao/paralelo_test.sh` (fase 9, F-09, RF-133 a RF-135) | `paralelo` (o filtro `paralelo_test` tambem) | `bin/dbx sync` com N=1 e N>1, duplo de `curl` que mede o pico de transferencias simultaneas; audita o texto de `commands/sync.sh`; carrega `lib/errors.sh` | `bin/dbx`, `commands/sync.sh`, `lib/transfer.sh`, `lib/cmd.sh`, `lib/http.sh`, `lib/lote.sh`, `lib/cli.sh` |
+
+Suporte de teste: `tests/support/lote_duplo.sh` (duplo compartilhado dos endpoints de lote) e carregado por `lote_test`, `qa_desempenho_b9` e, conforme `grep -ln lote_duplo tests/*/*.sh`, por `banda`, `qa_cache_unico`, `espaco`, `qa_robustez`, `filtros`, `qa_integridade`, `comandos`, `qa_filtros_banda`, `qa_docs_aliases` e `sync`. **Diff nele seleciona esses doze** (alem de `harness` por `tests/support/*`).
+
+Diff em `lib/lote.sh` aplica tambem a Regra 1, que cobre a lib nova sem mudar as tabelas dela, e seleciona `lote`, `paralelo` e `qa_desempenho`.
+
+## Testes da fase 8 do backlog (perfis de credencial, F-18)
+
+Conferido por `ls tests/unit tests/integracao tests/support` e `grep -o 'lib/...'` em cada arquivo. Nenhum filtro existente casa `perfis_*` por substring, exceto onde indicado.
+
+| Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
+|---|---|---|---|
+| `tests/unit/perfis_config_test.sh` (fase 8) | `perfis_config` (o filtro `config` tambem o casa; `perfis` casa os seis) | carrega `lib/errors`, `json`, `config` | `lib/config.sh`, `lib/json.sh`, `lib/errors.sh` |
+| `tests/unit/perfis_cli_test.sh` (fase 8) | `perfis_cli` (o filtro `cli` tambem o casa) | carrega `lib/errors`, `json`, `path`, `output`, `config`, `cli` | `lib/cli.sh`, `lib/config.sh`, `lib/output.sh`, `lib/path.sh`, `lib/json.sh`, `lib/errors.sh` |
+| `tests/unit/state_trava_raiz_test.sh` (fase 8, RF-132) | `state_trava_raiz` (os filtros `state_trava`, `state` e `trava` tambem o casam) | processos proprios com `lib/errors`, `json`, `config`, `state`; disputantes reais da trava por raiz | `lib/state.sh`, `lib/config.sh`, `lib/json.sh`, `lib/errors.sh` |
+| `tests/integracao/perfis_test.sh` (fase 8) | `perfis_test` (o filtro `perfis` tambem o casa) | `bin/dbx` (perfis, profiles, config com perfil, help); carrega `lib/errors.sh` | `bin/dbx`, `commands/perfis.sh`, `commands/config.sh`, `lib/config.sh`, `lib/cli.sh`, `lib/preflight.sh`, `lib/output.sh` |
+| `tests/integracao/perfis_trava_raiz_test.sh` (fase 8) | `perfis_trava_raiz` (os filtros `trava` e `perfis` tambem o casam) | `bin/dbx sync --receber` com processo que detem a trava de raiz; carrega `lib/errors`, `json`, `config`, `state` | `bin/dbx`, `commands/sync.sh`, `lib/state.sh`, `lib/config.sh` |
+| `tests/integracao/perfis_unlink_test.sh` (fase 8) | `perfis_unlink` (o filtro `unlink` tambem o casa) | `bin/dbx unlink` com perfis; carrega `lib/errors`, `tmp`, `hash`, `json`, `config`, `state` | `bin/dbx`, `commands/unlink.sh`, `lib/state.sh`, `lib/config.sh`, `lib/tmp.sh` |
+
+Diff em `commands/perfis.sh` seleciona `cli`, `composicao` e `tmp_test` (auditorias de `commands/*.sh`) mais `perfis` e `completar`.
+
 ## Testes da fase 7a do backlog (retomada entre execucoes, F-03)
 
 | Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
@@ -184,25 +217,6 @@ Casos novos em arquivos existentes: `errors_test` (DIV-58), `diagnostico_test` (
 | `tests/unit/tmp_test.sh` | `tmp_test` | carrega `lib/errors.sh`; processos proprios com `lib/tmp.sh`; audita `lib/*.sh`, `commands/*.sh`, `bin/dbx` | todo `lib/*.sh` e todo `commands/*.sh` (Regra 1), `bin/dbx` |
 | `tests/unit/state_trava_test.sh` | `state_trava` (o filtro `state` tambem o casa) | processos proprios com `lib/errors`, `json`, `config`, `state` (e `hash`, `tmp` por eles); 20 disputantes reais | `lib/state.sh`, `lib/tmp.sh`, `lib/hash.sh`, `lib/config.sh`, `lib/json.sh`, `lib/errors.sh` |
 | `tests/integracao/trava_test.sh` | `trava_test` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help); carrega `lib/errors.sh` e, em processo isolado, `lib/errors`, `json`, `path`, `config`, `state`, `hash`; audita `lib/*.sh`, `commands/*.sh`, `bin/dbx` (TC-TRV-36); usa `python3` so para o socket de OBS-04 (pula sem ele) | `bin/dbx`, `commands/sync.sh`, `commands/verificar.sh`, `commands/unlink.sh`, `commands/diagnostico.sh`, `completions/dbx.bash`, `lib/state.sh`, `lib/tmp.sh`, `lib/cmd.sh`, `lib/cli.sh`, `lib/config.sh`, `lib/http.sh`, `lib/hash.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/path.sh`, `lib/preflight.sh`, `lib/output.sh`, `lib/errors.sh` |
-
-## Testes das fases 8 e 9 do backlog (perfis, desempenho)
-
-Conferido por `ls tests/unit tests/integracao tests/support` e `grep -o 'lib/...'` em cada arquivo. Nenhum filtro existente casa `perfis_*` por substring, exceto onde indicado. `lib/config.sh`, `lib/state.sh`, `lib/cli.sh` e `lib/json.sh` seguem nas linhas gerais acima.
-
-| Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
-|---|---|---|---|
-| `tests/unit/perfis_config_test.sh` (fase 8) | `perfis_config` (o filtro `config` tambem o casa; `perfis` casa os seis) | carrega `lib/errors`, `json`, `config` | `lib/config.sh`, `lib/json.sh`, `lib/errors.sh` |
-| `tests/unit/perfis_cli_test.sh` (fase 8) | `perfis_cli` (o filtro `cli` tambem o casa) | carrega `lib/errors`, `json`, `path`, `output`, `config`, `cli` | `lib/cli.sh`, `lib/config.sh`, `lib/output.sh`, `lib/path.sh`, `lib/json.sh`, `lib/errors.sh` |
-| `tests/unit/state_trava_raiz_test.sh` (fase 8, RF-132) | `state_trava_raiz` (os filtros `state_trava`, `state` e `trava` tambem o casam) | processos proprios com `lib/errors`, `json`, `config`, `state`; disputantes reais da trava por raiz | `lib/state.sh`, `lib/config.sh`, `lib/json.sh`, `lib/errors.sh` |
-| `tests/integracao/perfis_test.sh` (fase 8) | `perfis_test` (o filtro `perfis` tambem o casa) | `bin/dbx` (perfis, profiles, config com perfil, help); carrega `lib/errors.sh` | `bin/dbx`, `commands/perfis.sh`, `commands/config.sh`, `lib/config.sh`, `lib/cli.sh`, `lib/preflight.sh`, `lib/output.sh` |
-| `tests/integracao/perfis_trava_raiz_test.sh` (fase 8) | `perfis_trava_raiz` (os filtros `trava` e `perfis` tambem o casam) | `bin/dbx sync --receber` com processo que detem a trava de raiz; carrega `lib/errors`, `json`, `config`, `state` | `bin/dbx`, `commands/sync.sh`, `lib/state.sh`, `lib/config.sh` |
-| `tests/integracao/perfis_unlink_test.sh` (fase 8) | `perfis_unlink` (o filtro `unlink` tambem o casa) | `bin/dbx unlink` com perfis; carrega `lib/errors`, `tmp`, `hash`, `json`, `config`, `state` | `bin/dbx`, `commands/unlink.sh`, `lib/state.sh`, `lib/config.sh`, `lib/tmp.sh` |
-| `tests/integracao/lote_test.sh` (fase 9, RF-136, RF-137) | `lote_test` (o filtro `lote` tambem o casa) | carrega `lib/errors`, `hash`, `progress`, `tmp`, `filtro`, `transfer`, `lote` e `tests/support/lote_duplo.sh`; `bin/dbx` (sync `--espelhar` e envio em lote); le `commands/sync.sh` e `commands/reter.sh` (reter nao usa lote) | `lib/lote.sh`, `lib/transfer.sh`, `commands/sync.sh`, `bin/dbx`, `tests/support/lote_duplo.sh` |
-| `tests/integracao/paralelo_test.sh` (fase 9, F-09, RF-133 a RF-135) | `paralelo` (o filtro `paralelo_test` tambem) | `bin/dbx sync` com N=1 e N>1, duplo de `curl` que mede o pico de transferencias simultaneas; audita o texto de `commands/sync.sh`; carrega `lib/errors.sh` | `bin/dbx`, `commands/sync.sh`, `lib/transfer.sh`, `lib/cmd.sh`, `lib/http.sh`, `lib/lote.sh`, `lib/cli.sh` |
-
-Suporte de teste: `tests/support/lote_duplo.sh` (duplo compartilhado dos endpoints de lote) e carregado por `lote_test`, `qa_desempenho_b9` e, conforme `grep -ln lote_duplo tests/*/*.sh`, por `banda`, `qa_cache_unico`, `espaco`, `qa_robustez`, `filtros`, `qa_integridade`, `comandos`, `qa_filtros_banda`, `qa_docs_aliases` e `sync`. **Diff nele seleciona esses doze** (alem de `harness` por `tests/support/*`).
-
-Diff em `lib/*.sh` aplica tambem a Regra 1; `lib/lote.sh` entra pelas auditorias de diretorio sem mudar as tabelas dela. Diff em `commands/perfis.sh` seleciona `cli`, `composicao` e `tmp_test` (Regra 1) mais `perfis`, `completar`.
 
 ## Mapa por modulo: autocompletar e instalacao (fase 1 do backlog)
 
