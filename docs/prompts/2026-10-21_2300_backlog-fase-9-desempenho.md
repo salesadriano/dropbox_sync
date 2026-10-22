@@ -140,3 +140,11 @@ O recebimento saiu `14` (`nao_concluida`: ao menos um item falhou). A saída da 
 ## Prompt 9 — 2026-10-22
 
 > check tasks
+
+## Prompt 10 — 2026-10-22
+
+> continue
+
+**Estado:** commit `9d7dbc3` (40 arquivos) feito pelo commit-writer; suíte oficial sobre ele em execução, com monitor de `/tmp` e memória.
+
+**Suíte completa sobre `9d7dbc3` (2026-10-22), com monitor:** 2030 aprovados e 1 reprovado (`retomada_download` caso 25, código 11). O `/tmp` (tmpfs de 7,9 GB) chegou a 7451 MB durante a `retomada_download`; ao começar ela, já havia 4531 MB acumulados. Causa: `qa_retomada_b7a_test.sh` (QA da fase 7a) deixava 3260 MB de ambientes de ~150 MiB no `DBX_TESTES_TMP`, que o runner só limpa no fim da suíte. Os testes da fase 9 acumulam de 12 a 14 MB cada. Correção só de teste, sem mudar asserção: o arquivo apaga os ambientes do caso anterior quando outro caso cria o primeiro dele (casos com dois ambientes mantêm os dois). `qa_retomada_b7a` 41/0, pico de 645 MB.

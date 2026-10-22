@@ -155,8 +155,25 @@ _qa_fixture_up() {
   printf '%s' "$arquivo"
 }
 
+# Higiene do tmp da suite (fase 9, 2026-10-22): cada ambiente guarda copias de ~150 MiB e o
+# runner so limpa DBX_TESTES_TMP no fim da suite; sem isto este arquivo deixava ~3,2 GB no tmpfs
+# e a retomada de download seguinte o lotava. Os ambientes do caso ANTERIOR saem quando outro
+# caso cria o primeiro dele; um caso com dois ambientes mantem os dois. As fixtures ficam.
+_qa_limpar_ambientes_de_outro_caso() {
+  local caso='' f marca="$DBX_TESTES_TMP/qa7.caso" anterior=''
+  for f in "${FUNCNAME[@]}"; do
+    [[ $f == teste_* ]] && { caso=$f; break; }
+  done
+  [[ -n $caso ]] || return 0
+  [[ -r $marca ]] && IFS= read -r anterior <"$marca"
+  [[ $anterior == "$caso" ]] && return 0
+  rm -rf -- "$DBX_TESTES_TMP"/qa7u.* "$DBX_TESTES_TMP"/qa7d.*
+  printf '%s\n' "$caso" >"$marca"
+}
+
 _qa_up_ambiente() {
   local base
+  _qa_limpar_ambientes_de_outro_caso
   base=$(mktemp -d "$DBX_TESTES_TMP/qa7u.XXXXXX")
   mkdir -p "$base/bin" "$base/tmp" "$base/trabalho" "$base/sess"
   _qa_credencial "$base"
@@ -743,6 +760,7 @@ _qa_versao() { # <base> <1|2>
 
 _qa_down_ambiente() {
   local base
+  _qa_limpar_ambientes_de_outro_caso
   base=$(mktemp -d "$DBX_TESTES_TMP/qa7d.XXXXXX")
   mkdir -p "$base/bin" "$base/tmp" "$base/trabalho"
   _qa_credencial "$base"
