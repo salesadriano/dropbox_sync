@@ -37,3 +37,7 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 **Porte:** G. `scripts/porte.sh` nao existe no projeto. Altera regra de plataforma (decisao de arquitetura `DP-07`), toca credencial, estado e transferencias em todo o runtime.
 
 **Seguranca:** a colagem trazia o `client_id` do app e um codigo de autorizacao de uso unico; nenhum dos dois foi persistido.
+
+**Decisoes do solicitante sobre as DIV da secao 5.22 (AskUserQuestion, 2026-10-24):**
+- DIV-352 "Preflight recusa (Recomendado)"; DIV-353 "Degradar e documentar (Recomendado)"; DIV-354 "Aceitar sha256 e openssl (Recomendado)"; DIV-355 "Duble + voce no FreeBSD (Recomendado)"; DIV-357 "Mensagens neutras + pkg (Recomendado)".
+- DIV-356 "Liberar deteccao" (contra a recomendacao): o Tech Lead complementa com ponto unico de deteccao, `dbx_preflight_plataforma`.
