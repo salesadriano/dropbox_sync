@@ -146,3 +146,29 @@ Cobertura: `TC-DBG-08` (lote), `17`, `18`, `19` (`reconstruido`, `desligado`, `f
 Pendente: `cursor=usado` sem caso (o duplo devolve a mesma listagem no `list_folder/continue`); `upload -` (fluxo, `commands/upload.sh`) nao emite `resultado=`; no `--receber` com segunda rodada de varredura completa (contradicao na exclusao) o `filtrado` pode sair duas vezes para o mesmo item.
 
 Lint (`sh scripts/lint.sh`, um por vez, rc 0): `commands/sync.sh`, `lib/sync.sh`, `lib/transfer.sh`, `tests/integracao/debug_sync_test.sh`.
+
+## Tarefa 5: progresso, ativacao, ajuda e README (RF-165, RF-163, RF-159(d) no fluxo; TC-DBG-33 a 35)
+
+Implementacao e testes pelo Senior Developer (tarefa 5; arquivo proprio executado, 9/9); bateria, red e lint pelo Tech Lead.
+
+Arquivos:
+- `lib/progress.sh`: `_dbx_progress_terminal` confere `--debug` antes da semente `DBX_PROGRESS_TERMINAL` (`DIV-350`): a semente `sim` religava o retorno de carro e a linha `debug:` saia colada a linha de progresso.
+- `commands/upload.sh`: `upload -` (fluxo) emite `debug: upload resultado=ok|falha classe=` (`RF-159(d)`, lacuna da Tarefa 4).
+- `bin/dbx`: paragrafo de `--debug` em `help upload`, `help download`, `help sync` e na ajuda geral (prefixo `debug: <categoria>`, categorias, so stderr, `DBX_DEBUG=1`, o que nunca aparece).
+- `README.md`: sub-item de `--debug` com o mesmo conteudo. `completions/dbx.bash` ja completava `--debug` (conferido, sem mudanca).
+- `tests/integracao/debug_ajuda_progresso_test.sh` (novo, 9 casos).
+
+Red (base extraida da Tarefa 4, so com o teste novo): 2/1 (`tc_dbg_33_semente_de_terminal_nao_reabilita_o_retorno_de_carro`: na base, `... 0% 0 B / 10 KiB\e[Kdebug: upload modalidade=simples ...` na mesma linha fisica). Os dois casos de TC-DBG-33 sem semente ja passavam na base (`DIV-287` cobria a deteccao real).
+
+| Comando | Total | Aprovados | Falhos | Pulados |
+|---|---|---|---|---|
+| `bash tests/run.sh debug_ajuda_progresso_test` | 9 | 9 | 0 | 0 |
+| `bash tests/run.sh progress` (progress, progresso_linha, progresso_arquivo, qa_progresso_arquivo_b10 e o novo) | 87 | 87 | 0 | 0 |
+| `bash tests/run.sh comandos_test` | 119 | 119 | 0 | 0 |
+| `bash tests/run.sh composicao_test` | 28 | 28 | 0 | 0 |
+| `bash tests/run.sh json` | 62 | 62 | 0 | 0 |
+| `bash tests/run.sh harness` | 22 | 22 | 0 | 0 |
+
+Cobertura: `TC-DBG-33` (sem terminal, com terminal por pty e com a semente), `34`, `35`, `RF-159(d)` no fluxo.
+
+Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/progress.sh`, `commands/upload.sh`, `bin/dbx`, `tests/integracao/debug_ajuda_progresso_test.sh`.
