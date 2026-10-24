@@ -135,6 +135,21 @@ Nenhum comando tem teste unitario: todos sao exercitados por `bin/dbx` em testes
 | `commands/compartilhar.sh` (fase 5, RF-85 a RF-90; alias `share`) | compartilhamento; **chama** cli (`dbx_cli_ler_oculto`), tmp (`dbx_tmp_armar`), cmd (`_dbx_cmd_caminho_remoto`, `_dbx_cmd_escrita_remota` silencioso e idempotente) e auth | `compartilhar_test` (TC-CMP, TC-SNH com `script(1)` e pula sem ele, TC-LEX, TC-LST, TC-RVG, TC-SHE) | `completar` |
 | `commands/perfis.sh` (fase 8, RF-126, F-18; alias `profiles`) | nenhum `source`; **chama** config (`dbx_config_perfis_listar`, `DBX_CONFIG_PERFIS_*`), cmd (`dbx_cmd_falhar`, `dbx_cmd_iniciar_saida`, `dbx_cmd_campo_caminho`), output (`dbx_output_campo`, `dbx_output_render`) e `dbx_carregar_camada_de_credencial` (bin/dbx); so le, requisito `ambiente` | `perfis_test` (ponta a ponta), `perfis_cli_test` (tabela de comandos e alias, `lib/cli`) | `perfis_unlink`, `perfis_trava_raiz`, `qa_perfis`, `completar` |
 
+## Testes da depuracao das transferencias (`--debug`, F-51)
+
+Conferido em 2026-10-24 por `grep -o 'lib/...'` em cada arquivo. Cuidado com substring: `debug` casa os cinco arquivos `debug_*` e `qa_debug_transferencias_b12`; `debug_http` casa so o seu; `http` casa `http_test` e `debug_http_test`; `sync` casa `sync_test` e `debug_sync_test`; `progress` casa os cinco de progresso, inclusive `debug_ajuda_progresso_test`.
+
+| Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
+|---|---|---|---|
+| `tests/unit/debug_test.sh` (RF-156, RF-163(d), RF-164(b)) | `debug_test` | carrega `lib/debug`; formato, escape, controle -> `?` antes da redacao, silencio sem `--debug`, falha de escrita | `lib/debug.sh`, `lib/errors.sh` |
+| `tests/integracao/debug_http_test.sh` (RF-157, RF-162, RF-163, RF-164; TC-DBG-01..07, 22..32) | `debug_http` | `bin/dbx` com `tests/support/disponibilidade.sh`; linha por tentativa, retentativa, `Retry-After`, sentinelas, stdout e requisicoes iguais com e sem `--debug`, resumo em sucesso, falha, credencial ausente e sonda | `lib/http.sh`, `lib/debug.sh`, `lib/tmp.sh`, `bin/dbx`, `tests/support/disponibilidade.sh` |
+| `tests/integracao/debug_transferencia_test.sh` (RF-159, RF-160; TC-DBG-08, 09, 16, 24) | `debug_transferencia` | `bin/dbx upload`/`download` com o duplo; modalidade, blocos, download para stdout, id de sessao real ausente | `lib/transfer.sh`, `lib/cmd.sh`, `commands/upload.sh`, `commands/download.sh` |
+| `tests/integracao/debug_sync_test.sh` (RF-161, RF-158(b), RF-159(a)(d); TC-DBG-08, 17..20, 25) | `debug_sync` | `bin/dbx sync` com duplo proprio (listagem com cursor sentinela, lote); decisao por item, cursor sem o valor, ordem com `--paralelo 4`, lote e resultado | `commands/sync.sh`, `lib/sync.sh`, `lib/transfer.sh` |
+| `tests/integracao/debug_ajuda_progresso_test.sh` (RF-165, RF-159(d); TC-DBG-33..35) | `debug_ajuda` | `bin/dbx` com `_rodar_tty`; progresso e `debug:` sem mistura nem `\r` (inclusive com a semente de terminal), `DBX_DEBUG`, ajuda, README, completions, `upload -` | `lib/progress.sh`, `commands/upload.sh`, `bin/dbx`, `README.md` |
+| `tests/integracao/qa_debug_transferencias_b12_test.sh` (suite do QA, 28 casos; sha256 `ef18bce7...6386d`, aceite do solicitante em 2026-10-24) | `qa_debug` | `bin/dbx` nos tres comandos com o duplo de `disponibilidade.sh` e cenario de sync proprio | os mesmos de `debug_http`, `debug_transferencia` e `debug_sync` |
+
+Casos de `--debug` em arquivos existentes: `paralelo_test` (`par12`, `par13` com o resumo unico de `DIV-338`; `par15` a `par18`: linhas dos auxiliares, resumo em falha e sinal), `retomada_upload_test` (`tc_dbg_08_09_24`, `tc_dbg_10`, `11`, `12`), `retomada_download_test` (`tc_dbg_13`, `14`, `15`), `tmp_test` (gancho "antes" e armamento leve). Diff em `lib/tmp.sh` seleciona tambem `tmp_test` e `qa_trava_tmp_b2_test`.
+
 ## Testes da fase 11 (teste de disponibilidade, F-50)
 
 Conferido em 2026-10-23 por `grep -o 'lib/...'` em cada arquivo. Cuidado com substring: `disponibilidade` casa `disponibilidade_test`, `disponibilidade_automatica_test` e `qa_disponibilidade_b11_test`.

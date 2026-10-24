@@ -788,4 +788,49 @@ teste_prg_download_retomado_comeca_no_percentual_do_part() {
   assert_nao_contem ' 0% ' "$primeira" 'DIV-294: a primeira linha nao volta a 0%'
   assert_contem ' 33% ' "$primeira" 'DIV-294: a primeira linha mostra o que o .part ja tem'
 }
+# ---------------------------------------------------------------------------
+# --debug: etapas do download retomavel (RF-160; TC-DBG-13..15)
+# ---------------------------------------------------------------------------
+
+teste_tc_dbg_13_retomada_do_part_traz_a_faixa_e_part_bytes_no_plano_e_na_linha_http() {
+  local base
+  base=$(_ambiente)
+  _interrompido "$base"
+  _rodar "$base" --debug download /Grande.iso grande.iso
+  assert_igual 0 "$DBX_ESTADO" "retomado: $DBX_ERRO"
+  assert_contem "retomada=encontrada faixa=$((50 * 1048576 + 3))- part_bytes=$((50 * 1048576 + 3))" "$DBX_ERRO"
+  assert_contem "faixa=$((50 * 1048576 + 3))-" "$DBX_ERRO"
+  assert_contem 'debug: download hash=ok' "$DBX_ERRO"
+}
+
+teste_tc_dbg_14_servidor_que_ignora_a_faixa_reinicia_com_motivo() {
+  local base
+  base=$(_ambiente)
+  _interrompido "$base"
+  printf '200' >"$base/modo"
+  _rodar "$base" --debug download /Grande.iso grande.iso
+  rm -f "$base/modo"
+  assert_igual 0 "$DBX_ESTADO" "do zero: $DBX_ERRO"
+  assert_contem 'debug: download retomada=descartada motivo=servidor-ignorou-faixa' "$DBX_ERRO"
+}
+
+teste_tc_dbg_15_hash_divergente_aparece_antes_do_erro_11() {
+  local base
+  base=$(_ambiente)
+  printf 'errado_sempre' >"$base/modo"
+  _rodar "$base" --debug download /Grande.iso grande.iso
+  assert_igual 11 "$DBX_ESTADO" 'integridade'
+  assert_contem 'debug: download hash=divergente bytes=' "$DBX_ERRO"
+  assert_contem 'nao confere com o content_hash' "$DBX_ERRO"
+}
+
+teste_tc_dbg_13_rev_mudou_descarta_com_motivo_hash_remoto_mudou() {
+  local base
+  base=$(_ambiente)
+  _interrompido "$base"
+  _versao_remota "$base" 2
+  _rodar "$base" --debug download /Grande.iso grande.iso
+  assert_contem 'retomada=descartada motivo=hash-remoto-mudou' "$DBX_ERRO"
+}
+
 harness_executar "$@"

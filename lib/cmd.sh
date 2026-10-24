@@ -620,6 +620,7 @@ dbx_cmd_receber_arquivo() {
   }
   temporario=$DBX_TMP_CAMINHO
 
+  _dbx_cmd_debug_plano_download "$alvo" "${DBX_CMD_DOWNLOAD_TAMANHO_META:-}" '' 0
   dbx_progress_arquivo_avancar 0
   dbx_progress_arquivo_observar "$temporario"
   dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
@@ -638,11 +639,13 @@ dbx_cmd_receber_arquivo() {
     dbx_hash_publicar_arquivo "$temporario" 2>/dev/null && obtido=$DBX_HASH_RESULTADO
     # Resumo local ilegivel nunca e lido como conferido: sem prova, o alvo fica.
     if ! dbx_hash_iguais "$obtido" "$DBX_CMD_CONTENT_HASH"; then
+      _dbx_cmd_debug_hash divergente "$temporario"
       dbx_tmp_remover "$temporario"
       DBX_CMD_FALHA_CLASSE='integridade'
       DBX_CMD_FALHA_MOTIVO="o conteudo recebido nao confere com o resumo publicado pelo servico; o destino foi preservado: $alvo"
       return "$(dbx_errors_codigo_saida integridade)"
     fi
+    _dbx_cmd_debug_hash ok "$temporario"
     # shellcheck disable=SC2034  # canal publico, ver nota no topo
     DBX_CMD_INTEGRIDADE='conferida'
   fi
@@ -798,6 +801,41 @@ _dbx_cmd_resultado_campo() {
   return 0
 }
 
+# _dbx_cmd_debug_plano_download <alvo> <bytes|vazio> <motivo_descarte|vazio> <inicio>
+#
+# RF-160(a): a linha do plano, com --debug. A retomada vem de
+# DBX_CMD_RETOMADA (`sim` = encontrada, `recomecada` = descartada, com o motivo
+# do chamador) ou, no recebimento sem registro, de DBX_CMD_DEBUG_SEM_RETOMADA
+# (`--sem-retomada`). Vocabulario fechado (DIV-340). Sem --debug, nada.
+DBX_CMD_DEBUG_SEM_RETOMADA='nao'
+_dbx_cmd_debug_plano_download() {
+  [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] || return 0
+  local alvo=$1 bytes=${2:-} motivo=${3:-} inicio=${4:-0}
+  [[ $bytes =~ ^[0-9]+$ ]] || bytes='desconhecido'
+  if [[ $alvo == '/dev/stdout' || $alvo == '-' ]]; then
+    dbx_debug_linha download bytes="$bytes" retomada=nenhuma
+  elif [[ ${DBX_CMD_RETOMADA:-nao} == 'sim' ]]; then
+    dbx_debug_linha download destino="$alvo" bytes="$bytes" retomada=encontrada faixa="$inicio-" part_bytes="$inicio"
+  elif [[ ${DBX_CMD_RETOMADA:-nao} == 'recomecada' && -n $motivo ]]; then
+    dbx_debug_linha download destino="$alvo" bytes="$bytes" retomada=descartada motivo="$motivo"
+  elif [[ $DBX_CMD_DEBUG_SEM_RETOMADA == 'sim' ]]; then
+    dbx_debug_linha download destino="$alvo" bytes="$bytes" retomada=descartada motivo=sem-retomada
+  else
+    dbx_debug_linha download destino="$alvo" bytes="$bytes" retomada=nenhuma
+  fi
+  return 0
+}
+
+# _dbx_cmd_debug_hash <ok|divergente> <arquivo> — RF-160(c): `hash=` e os bytes
+# gravados; nunca o resumo. Sem --debug, nada.
+_dbx_cmd_debug_hash() {
+  [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] || return 0
+  local gravados
+  gravados=$(stat -c %s -- "$2" 2>/dev/null) || gravados=0
+  dbx_debug_linha download hash="$1" bytes="$gravados"
+  return 0
+}
+
 # dbx_cmd_receber_retomavel <remoto> <alvo> <rev> <tamanho> <content_hash>
 #
 # Recebimento atomico RETOMAVEL (RF-104), para arquivo remoto acima de 150 MiB
@@ -817,7 +855,7 @@ _dbx_cmd_resultado_campo() {
 dbx_cmd_receber_retomavel() {
   local remoto=$1 alvo=$2 rev=$3 tamanho=$4 esperado=$5
   local diretorio nome canonico='' ativa='nao' part='' devino='' inicio=0 estado argumento codigo
-  local rev_g tam_g hash_g nome_g devino_g criado obtido resultado modo coerente
+  local rev_g tam_g hash_g nome_g devino_g criado obtido resultado modo coerente dbg_motivo=''
   DBX_CMD_INTEGRIDADE='nao_aplicavel'
   DBX_CMD_CONTENT_HASH=''
   DBX_CMD_FALHA_CLASSE=''
@@ -862,6 +900,7 @@ dbx_cmd_receber_retomavel() {
         if [[ $rev_g != "$rev" || $tam_g != "$tamanho" || $hash_g != "$esperado" ]]; then
           # RF-104(b): o remoto mudou; o `.part` antigo sai so pela barreira.
           _dbx_cmd_avisar 'o arquivo remoto mudou desde a interrupcao; o recebimento recomeca do zero'
+          dbg_motivo='hash-remoto-mudou'
           dbx_state_retomada_part_apagar "$diretorio" "$nome_g" "$devino_g" || :
           dbx_state_retomada_remover
           DBX_CMD_RETOMADA='recomecada'
@@ -874,12 +913,14 @@ dbx_cmd_receber_retomavel() {
         else
           # RF-104(e): o arquivo no lugar nao passa a barreira e NAO e tocado.
           _dbx_cmd_avisar 'estado de retomada descartado: o arquivo parcial sumiu, foi trocado ou esta fora do padrao; o recebimento usa um novo'
+          dbg_motivo='estado-invalido'
           dbx_state_retomada_remover
           DBX_CMD_RETOMADA='recomecada'
         fi
         ;;
       2)
         _dbx_cmd_avisar "estado de retomada descartado: $DBX_STATE_MOTIVO"
+        dbg_motivo='estado-invalido'
         DBX_CMD_RETOMADA='recomecada'
         ;;
       3)
@@ -919,6 +960,7 @@ dbx_cmd_receber_retomavel() {
     fi
   fi
 
+  _dbx_cmd_debug_plano_download "$alvo" "$tamanho" "$dbg_motivo" "$inicio"
   dbx_json_escapar_cadeia "rev:$rev"
   argumento="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
   # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
@@ -954,6 +996,7 @@ dbx_cmd_receber_retomavel() {
     fi
     if [[ $coerente != 'sim' ]]; then
       _dbx_cmd_avisar "faixa ignorada: o servico respondeu $codigo sem a faixa pedida; o recebimento recomeca do zero"
+      dbx_debug_linha download retomada=descartada motivo=servidor-ignorou-faixa
       _dbx_cmd_retomavel_recomecar "$ativa" "$diretorio" "$part" "$devino" "$remoto" "$alvo" "$rev"
       return $?
     fi
@@ -961,6 +1004,7 @@ dbx_cmd_receber_retomavel() {
     # DIV-176: `200` (ou `206` de outro inicio) a um pedido de faixa nunca e
     # anexado: o cliente recusou antes de escrever.
     _dbx_cmd_avisar "faixa ignorada: o servico respondeu $codigo sem a faixa pedida; o recebimento recomeca do zero"
+    dbx_debug_linha download retomada=descartada motivo=servidor-ignorou-faixa
     _dbx_cmd_retomavel_recomecar "$ativa" "$diretorio" "$part" "$devino" "$remoto" "$alvo" "$rev"
     return $?
   else
@@ -983,10 +1027,12 @@ dbx_cmd_receber_retomavel() {
   dbx_cmd_content_hash_do_resultado
   resultado=$DBX_CMD_LIDO
   if ! dbx_hash_iguais "$obtido" "$esperado" || { [[ -n $resultado ]] && ! dbx_hash_iguais "$resultado" "$esperado"; }; then
+    _dbx_cmd_debug_hash divergente "$part"
     _dbx_cmd_avisar 'o conteudo recebido nao confere com o content_hash; o destino foi preservado e o recebimento recomeca do zero'
     _dbx_cmd_retomavel_recomecar "$ativa" "$diretorio" "$part" "$devino" "$remoto" "$alvo" "$rev"
     return $?
   fi
+  _dbx_cmd_debug_hash ok "$part"
   # shellcheck disable=SC2034  # canais publicos, ver nota no topo
   DBX_CMD_CONTENT_HASH=$esperado
 

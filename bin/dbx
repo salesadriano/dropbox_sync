@@ -204,6 +204,9 @@ case $DBX_CLI_COMANDO in
     case $_dbx_subcomando in
       upload)
         printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--limite-banda | --bwlimit <taxa>] [--sem-retomada | --no-resume] [--progresso] <origem> <destino>\n\n'
+        printf 'Com --debug (global, ou DBX_DEBUG=1): uma linha "debug: <categoria> chave=valor" por evento,\n'
+        printf 'so em stderr; categorias http, upload e resumo (no fim). Nunca mostra token, segredo, id de\n'
+        printf 'sessao, cursor, URL temporaria nem query. stdout, codigos de saida e requisicoes nao mudam.\n\n'
         printf 'Envia arquivo local ou conteudo da entrada padrao (-) para o caminho remoto.\n\n'
         printf 'Argumentos:\n'
         printf '  origem   Caminho de arquivo local ou "-" para entrada padrao (stdin)\n'
@@ -265,6 +268,10 @@ case $DBX_CLI_COMANDO in
         ;;
       sync)
         printf 'Uso: dbx sync (--enviar | --push | --receber | --pull) (--origem | --source) <dir> (--destino | --dest) <dir> [--espelhar | --mirror] [--confirmar | --yes] [--permitir-origem-vazia | --allow-empty-source] [--forcar | --force] [--esperar | --wait <s>] [--excluir <padrao>]... [--incluir <padrao>]... [--modificado-desde <data>] [--modificado-ate <data>] [--tamanho-min <tam>] [--tamanho-max <tam>] [--limite-banda <taxa>] [--paralelo <n>] [--sem-cursor | --no-cursor | --varredura-completa | --full-scan] [--progresso]\n\n'
+        printf 'Com --debug (global, ou DBX_DEBUG=1): uma linha "debug: <categoria> chave=valor" por evento,\n'
+        printf 'so em stderr; categorias http, sync, upload, download e resumo (no fim). Nunca mostra token,\n'
+        printf 'segredo, id de sessao, cursor, URL temporaria nem query. stdout, codigos de saida e\n'
+        printf 'requisicoes nao mudam.\n\n'
         printf 'Sincroniza diretorio local e remoto de forma direcional com a origem como autoridade.\n\n'
         printf 'Opcoes (o nome em ingles e alias do nome em portugues; podem ser misturados):\n'
         printf '  --enviar, --push                Origem local, destino remoto\n'
@@ -355,6 +362,9 @@ case $DBX_CLI_COMANDO in
         ;;
       download)
         printf 'Uso: dbx download [--excluir <padrao>]... [--incluir <padrao>]... [--limite-banda <taxa>] [--sem-retomada | --no-resume] [--progresso] <caminho_remoto> [destino_local]\n\n'
+        printf 'Com --debug (global, ou DBX_DEBUG=1): uma linha "debug: <categoria> chave=valor" por evento,\n'
+        printf 'so em stderr; categorias http, download e resumo (no fim). Nunca mostra token, segredo, id de\n'
+        printf 'sessao, cursor, URL temporaria nem query. stdout, codigos de saida e requisicoes nao mudam.\n\n'
         printf 'Baixa arquivo remoto para caminho local ou para a saida padrao (quando omitido ou "-").\n'
         printf 'Pasta remota e recebida recursivamente (o sync --receber interno).\n\n'
         printf 'Opcoes:\n'
@@ -667,6 +677,9 @@ case $DBX_CLI_COMANDO in
         printf '  perfis       Lista os perfis de credencial e se estao completos (alias: profiles)\n\n'
         printf 'Opcoes globais: --help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug --perfil --profile\n\n'
         printf 'Ajuda especifica por comando: dbx help <comando>\n\n'
+        printf 'Com --debug (ou DBX_DEBUG=1), upload, download e sync escrevem em stderr linhas "debug: <categoria>\n'
+        printf 'chave=valor" (categorias http, upload, download, sync e resumo), nunca com token, segredo,\n'
+        printf 'id de sessao, cursor, URL temporaria ou query.\n\n'
         printf 'Perfil de credencial (--perfil <nome>, alias --profile): vale para todos os comandos; a\n'
         printf 'variavel DBX_PERFIL carrega so o nome (nunca segredo) e a opcao vence. Veja dbx help perfis.\n\n'
         # RNF-07, RNF-30: os ajustes de rede sao documentados onde o operador os
@@ -710,6 +723,21 @@ _dbx_arquivo=$(_dbx_cli_arquivo_do_comando "$DBX_CLI_COMANDO") ||
 
 # shellcheck source=/dev/null
 . "$_dbx_arquivo"
+
+# RF-162(a)(e): o resumo e armado ANTES do requisito (preflight, disponibilidade,
+# credencial), para que a falha de configuracao tambem o emita.
+if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+  case $DBX_CLI_COMANDO in
+    download | upload | sync)
+      # shellcheck source=lib/tmp.sh
+      . "$DBX_CLI_RAIZ/lib/tmp.sh"
+      # shellcheck source=lib/debug.sh
+      . "$DBX_CLI_RAIZ/lib/debug.sh"
+      dbx_debug_canal_abrir
+      dbx_debug_resumo_armar "$DBX_CLI_COMANDO"
+      ;;
+  esac
+fi
 
 _dbx_requisito=$("dbx_cmd_${DBX_CLI_COMANDO}_requisitos")
 case $_dbx_requisito in

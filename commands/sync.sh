@@ -228,6 +228,8 @@ _dbx_cmd_sync_paralelo_resolver() {
     # shellcheck disable=SC2034  # canal publico, lido pelos testes e pelo debug
     DBX_CMD_SYNC_PARALELO_ORIGEM='ambiente'
   fi
+  # RF-162: campo extra do resumo de --debug (a lib nao conhece o comando).
+  ((DBX_CMD_SYNC_PARALELO > 1)) && dbx_debug_resumo_campo paralelo "$DBX_CMD_SYNC_PARALELO"
   return 0
 }
 
@@ -262,7 +264,7 @@ _dbx_cmd_sync_aux_item() {
     fi
   fi
   if [[ $sentido == 'enviar' ]]; then
-    _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev" || status=1
+    _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev" "$caminho" || status=1
   else
     _dbx_cmd_sync_receber "$remoto/$caminho" "$raiz_local" "$alvo" || status=1
   fi
@@ -360,7 +362,11 @@ _dbx_cmd_sync_transferir_paralelo() {
       if [[ $sentido == 'enviar' && -n ${mapa_remoto[$alvo]+definido} ]]; then
         rev=${mapa_revs[$alvo]:-}
       fi
-      _dbx_cmd_sync_aux_item "$pasta/$lancados" "$sentido" "$caminho" "$alvo" "$rev" \
+      # RF-158: com --debug o auxiliar grava as linhas `debug:` em arquivo do item
+      # (canal 0700); o principal as descarrega na ordem do plano.
+      local destino_dbg=''
+      [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] && destino_dbg="$pasta/dbg.$lancados"
+      DBX_DEBUG_DESTINO=$destino_dbg _dbx_cmd_sync_aux_item "$pasta/$lancados" "$sentido" "$caminho" "$alvo" "$rev" \
         "$canal" "$((base_op + lancados + 1))" </dev/null >/dev/null 2>&1 &
       pids[lancados]=$!
       _DBX_CMD_SYNC_AUX_PIDS[lancados]=$!
@@ -390,7 +396,12 @@ _dbx_cmd_sync_transferir_paralelo() {
       } <"$resultado"
       [[ $limites =~ ^[0-9]{1,9}$ ]] || limites=0
       DBX_CMD_SYNC_LIMITES_429=$((DBX_CMD_SYNC_LIMITES_429 + limites))
+      dbx_debug_somar_429 "$limites"
       caminho=${itens[descarregados]}
+      if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' && -s $pasta/dbg.$descarregados ]]; then
+        dbx_progress_bloco_pausar
+        dbx_debug_descarregar "$pasta/dbg.$descarregados"
+      fi
       op_atual=$((op_atual + 1))
       if dbx_progress_bloco_ativo; then
         dbx_progress_bloco_fechar "$descarregados" "$status"
@@ -490,7 +501,9 @@ _dbx_cmd_sync_lote_iniciar() {
         kill -0 "$pid" 2>/dev/null && vivos=$((vivos + 1))
       done
       while ((lancados < total && vivos < paralelo)); do
-        _dbx_cmd_sync_aux_iniciar "$pasta/$lancados" "${_DBX_CMD_SYNC_LOTE_ITENS[lancados]}" \
+        local destino_dbg=''
+        [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] && destino_dbg="$pasta/dbg.$lancados"
+        DBX_DEBUG_DESTINO=$destino_dbg _dbx_cmd_sync_aux_iniciar "$pasta/$lancados" "${_DBX_CMD_SYNC_LOTE_ITENS[lancados]}" \
           </dev/null >/dev/null 2>&1 &
         pids+=("$!")
         _DBX_CMD_SYNC_AUX_PIDS[lancados]=$!
@@ -505,6 +518,10 @@ _dbx_cmd_sync_lote_iniciar() {
     _DBX_CMD_SYNC_AUX_PIDS=()
     dbx_tmp_acao_cancelar "$acao_id"
     dbx_disp_emitir_aviso_pendente
+    # RF-158: linhas dos auxiliares do lote, na ordem do plano.
+    for ((k = 0; k < total; k++)); do
+      dbx_debug_descarregar "$pasta/dbg.$k"
+    done
   else
     for ((k = 0; k < total; k++)); do
       _dbx_cmd_sync_aux_iniciar "$pasta/$k" "${_DBX_CMD_SYNC_LOTE_ITENS[k]}" </dev/null
@@ -525,6 +542,7 @@ _dbx_cmd_sync_lote_iniciar() {
     [[ $limites =~ ^[0-9]{1,9}$ ]] || limites=0
     [[ $desloc =~ ^[0-9]{1,18}$ ]] || desloc=0
     DBX_CMD_SYNC_LIMITES_429=$((DBX_CMD_SYNC_LIMITES_429 + limites))
+    dbx_debug_somar_429 "$limites"
     if [[ $status == '0' && -n $sessao ]]; then
       _DBX_CMD_SYNC_LOTE_STATUS[k]=0
     else
@@ -610,10 +628,58 @@ _dbx_cmd_sync_lote_envio() {
     _DBX_CMD_SYNC_LOTE_ITENS=()
     return 0
   fi
+  # RF-159(a): a modalidade `lote` de cada pequeno, antes da primeira chamada de
+  # conteudo (a do `start`).
+  if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+    for caminho in "${_DBX_CMD_SYNC_LOTE_ITENS[@]}"; do
+      dbx_transfer_tamanho_de_arquivo "$raiz_local/$caminho" || :
+      dbx_debug_linha upload modalidade=lote arquivo="$caminho" bytes="$DBX_TRANSFER_TAMANHO"
+    done
+  fi
   _dbx_cmd_sync_lote_iniciar
   _dbx_cmd_sync_lote_concluir
   for k in "${!_DBX_CMD_SYNC_LOTE_ITENS[@]}"; do
     _DBX_CMD_SYNC_LOTE_POS[${_DBX_CMD_SYNC_LOTE_ITENS[k]}]=$k
+    # RF-159(d): resultado final de cada pequeno, na ordem do plano.
+    if [[ ${_DBX_CMD_SYNC_LOTE_STATUS[k]} == 0 ]]; then
+      dbx_debug_linha upload resultado=ok arquivo="${_DBX_CMD_SYNC_LOTE_ITENS[k]}"
+    else
+      dbx_debug_linha upload resultado=falha arquivo="${_DBX_CMD_SYNC_LOTE_ITENS[k]}" classe="${_DBX_CMD_SYNC_LOTE_CLASSE[k]:-erro_remoto}"
+    fi
+  done
+}
+
+# _dbx_cmd_sync_debug_decisoes — RF-161(a)(b)(c): uma linha `debug: sync
+# decisao=...` por item do plano, ANTES de qualquer transferencia (as linhas de
+# cada item, dos auxiliares inclusive, saem depois, RF-158(b)). So le o plano:
+# nao muda lista, cache nem ordem (RF-163(b)). Variaveis do executor: sentido,
+# espelhar, mapa_remoto, mapa_local. Itens filtrados saem em lib/sync
+# (`_dbx_sync_contar_filtrado`), no ponto em que o filtro os retira.
+_dbx_cmd_sync_debug_decisoes() {
+  [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] || return 0
+  local caminho alvo motivo
+  for caminho in ${DBX_SYNC_IDENTICOS[@]+"${DBX_SYNC_IDENTICOS[@]}"}; do
+    dbx_debug_linha sync decisao=pular motivo=content-hash-igual item="$caminho"
+  done
+  for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
+    alvo=${DBX_SYNC_ALVO[$caminho]:-$caminho}
+    motivo=ausente-no-destino
+    if [[ $sentido == 'enviar' && -n ${mapa_remoto[$alvo]+definido} ]]; then
+      motivo=content-hash-diferente
+    elif [[ $sentido == 'receber' && -n ${mapa_local[$alvo]+definido} ]]; then
+      motivo=content-hash-diferente
+    fi
+    dbx_debug_linha sync decisao="$sentido" motivo="$motivo" item="$caminho"
+  done
+  # RF-161(c): o que so existe no destino tambem tem linha (DIV-345).
+  for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+    if [[ $espelhar != 'sim' ]]; then
+      dbx_debug_linha sync decisao=pular motivo=so-no-destino item="$caminho"
+    elif _dbx_cmd_sync_protegido "$caminho"; then
+      dbx_debug_linha sync decisao=pular motivo=protegido item="$caminho"
+    else
+      dbx_debug_linha sync decisao=apagar motivo=espelho-apaga-orfao item="$caminho"
+    fi
   done
 }
 
@@ -654,6 +720,8 @@ dbx_cmd_sync_executar() {
   local tem_paralelo='nao' opcao_paralelo='' valor_paralelo=''
   # RF-118 (fase 7b): cursor de listagem so no `--receber`.
   local sem_cursor='nao' varredura_forcada='nao'
+  # RF-161: liga a linha de decisao dos itens filtrados em lib/sync.
+  DBX_SYNC_DEBUG_DECISAO='sim'
   local -a filtros_caminho=() filtros_meta=()
   while [[ $# -gt 0 ]]; do
     case ${1-} in
@@ -1082,6 +1150,17 @@ dbx_cmd_sync_executar() {
     esac
   done
 
+  # RF-161(d): a decisao do cursor desta execucao, com o motivo do vocabulario de
+  # DBX_CMD_SYNC_CURSOR_MOTIVO; nunca o valor do cursor. `usado` nao tem motivo.
+  if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' && $DBX_CMD_SYNC_CURSOR_CAMPOS == 'sim' ]]; then
+    case ${DBX_CMD_SYNC_CURSOR_MOTIVO:-} in
+      '') dbx_debug_linha sync cursor=usado ;;
+      desligado) dbx_debug_linha sync cursor=desligado motivo=desligado ;;
+      forcada) dbx_debug_linha sync cursor=forcado motivo=forcada ;;
+      *) dbx_debug_linha sync cursor=reconstruido motivo="$DBX_CMD_SYNC_CURSOR_MOTIVO" ;;
+    esac
+  fi
+
   # RF-41(b): origem vazia — no `--enviar`, raiz local sem arquivo; no
   # `--receber`, listagem remota sem arquivo. Uma raiz que ficou vazia por
   # engano (ponto de montagem que nao subiu) e indistinguivel de uma esvaziada
@@ -1292,6 +1371,9 @@ dbx_cmd_sync_executar() {
     return $?
   fi
 
+  # RF-161: as decisoes saem tambem na simulacao (o plano e o mesmo).
+  _dbx_cmd_sync_debug_decisoes
+
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
     dbx_cmd_iniciar_saida
     dbx_output_campo simulado sim
@@ -1308,7 +1390,6 @@ dbx_cmd_sync_executar() {
   local op_atual=0 alvo rev antes
   local enviados=0 recebidos=0 apagados=0 falhas=0
   DBX_CMD_SYNC_LIMITES_429=0
-  local antes_429=${DBX_HTTP_LIMITES_429:-0}
   # RF-133(d): com N=1 (ou um item so) e o laco de sempre, sem auxiliar. Com
   # N>1 as transferencias do plano vao aos auxiliares e o laco abaixo fica sem
   # itens; as exclusoes, depois, seguem no principal.
@@ -1345,7 +1426,7 @@ dbx_cmd_sync_executar() {
       _dbx_cmd_sync_prg_iniciar "$op_atual" "$total_ops" enviando "$caminho" "$raiz_local/$caminho"
       rev=''
       [[ -n ${mapa_remoto[$alvo]+definido} ]] && rev=${mapa_revs[$alvo]:-}
-      if _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev"; then
+      if _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev" "$caminho"; then
         dbx_progress_arquivo_concluir
         enviados=$((enviados + 1))
       else
@@ -1392,13 +1473,9 @@ dbx_cmd_sync_executar() {
 
   dbx_progress_mensagem "[sync] sincronizacao concluida: $enviados enviados, $recebidos recebidos, $apagados apagados, ${#DBX_SYNC_IDENTICOS[@]} omitidos"
 
-  # RF-135(d), DIV-258: com N>1 e --debug, o resumo diz o N e quantos `429`
-  # (principal e auxiliares) a execucao observou. Stderr; nada muda em stdout.
-  if [[ $paralelo -gt 1 && ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
-    dbx_cmd_iniciar_saida
-    dbx_output_diagnostico paralelo "$paralelo transferencias simultaneas; respostas 429 observadas: $((DBX_CMD_SYNC_LIMITES_429 + ${DBX_HTTP_LIMITES_429:-0} - antes_429))"
-    dbx_output_render_diagnostico >&2
-  fi
+  # RF-135(d), DIV-258, DIV-338 A: a linha `paralelo` deixou de existir; o N e os
+  # `429` (principal e auxiliares) vao na linha `debug: resumo` (RF-162), emitida
+  # no termino do processo por lib/debug (`dbx_debug_resumo_armar`).
 
   # A memoria e gravada mesmo com falha parcial de transferencia: os resumos
   # calculados continuam validos. Grava so as entradas visitadas (RF-38(b)).
@@ -1541,6 +1618,8 @@ _dbx_cmd_sync_prg_iniciar() {
 # DBX_CMD_SYNC_FALHA_CLASSE (RF-59); a saida delas continua descartada.
 _dbx_cmd_sync_enviar() {
   local origem=$1 destino=$2 rev=$3
+  # RF-164(b), DIV-332: no sync a depuracao nomeia o item relativo a raiz.
+  local DBX_TRANSFER_DEBUG_ITEM=${4:-}
   DBX_CMD_SYNC_FALHA_CLASSE=''
   dbx_transfer_objeto_de_publicacao "$destino" add "$rev" "$origem" true
   # RF-144(e): com progresso ativo o stderr da transferencia deixa de ser descartado.

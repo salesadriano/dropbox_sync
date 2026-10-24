@@ -180,6 +180,68 @@ teste_termino_normal_executa_as_acoes_em_ordem_inversa() {
   assert_igual $'a2:segundo\narea-viva\na1:primeiro' "$(cat "$BASE/ordem")" 'LIFO, acoes antes das areas'
 }
 
+# RF-162(c): o gancho "antes" (o resumo de --debug) roda antes de todas as acoes,
+# uma vez, e ve o codigo de saida; a ordem das acoes nao muda.
+_roteiro_com_gancho='
+  dbx_teste_gancho() { printf "gancho:%s\n" "$DBX_TMP_SAIDA_CODIGO" >>"$BASE/ordem"; }
+  dbx_tmp_gancho_antes dbx_teste_gancho || exit 1
+'
+
+teste_gancho_antes_roda_antes_das_acoes_no_termino_normal() {
+  _base
+  _rodar "$_roteiro_com_gancho$_roteiro_com_duas_acoes"'exit 3'
+  assert_igual 3 "$TMP_ESTADO" "$TMP_SAIDA"
+  assert_igual $'gancho:3\na2:segundo\narea-viva\na1:primeiro' "$(cat "$BASE/ordem")" \
+    'gancho primeiro, uma vez, com o codigo; acoes em ordem inversa'
+}
+
+teste_gancho_antes_roda_antes_das_acoes_no_sinal() {
+  local sinal
+  for sinal in INT TERM; do
+    _base
+    _rodar_e_sinalizar "$sinal" -- "$_roteiro_com_gancho$_roteiro_com_duas_acoes"'
+      : >"$BASE/pronto"
+      while :; do sleep 0.05; done'
+    assert_igual "$TMP_NAO_CONCLUIDA" "$TMP_ESTADO" "$sinal: nao concluida ($TMP_SAIDA)"
+    assert_igual "gancho:$TMP_NAO_CONCLUIDA"$'\na2:segundo\narea-viva\na1:primeiro' "$(cat "$BASE/ordem")" \
+      "$sinal: gancho antes das acoes, uma vez, com o codigo do sinal"
+  done
+}
+
+# RF-163(b): so o gancho (antes de qualquer area ou acao, como o resumo armado
+# antes do preflight e da oferta do config) nao troca o codigo do sinal por 14.
+teste_gancho_sozinho_mantem_o_codigo_do_proprio_sinal() {
+  local sinal codigo
+  for sinal in INT TERM; do
+    _base
+    _rodar_e_sinalizar "$sinal" -- "$_roteiro_com_gancho"'
+      : >"$BASE/pronto"
+      while :; do sleep 0.05; done'
+    codigo=130
+    [[ $sinal == TERM ]] && codigo=143
+    assert_igual "$codigo" "$TMP_ESTADO" "$sinal: o codigo do proprio sinal, como sem gancho ($TMP_SAIDA)"
+    assert_igual "gancho:$codigo" "$(cat "$BASE/ordem")" "$sinal: o gancho rodou uma vez e viu esse codigo"
+  done
+}
+
+teste_segundo_gancho_no_mesmo_processo_e_recusado() {
+  _base
+  _rodar "$_roteiro_com_gancho"'
+    outro() { :; }
+    dbx_tmp_gancho_antes dbx_teste_gancho
+    printf "%s" "$?"
+    exit 0'
+  [[ $TMP_SAIDA != 0 ]] || _harness_falhar 'o segundo registro deveria ser recusado'
+  assert_igual 'gancho:0' "$(cat "$BASE/ordem")" 'o primeiro gancho continua e roda uma vez'
+}
+
+teste_gancho_antes_recusa_texto_que_nao_e_funcao() {
+  _base
+  _rodar 'dbx_tmp_gancho_antes "touch $BASE/injetado"; printf "%s" "$?"'
+  assert_arquivo_ausente "$BASE/injetado" 'texto nunca vira gancho'
+  [[ $TMP_SAIDA != 0 ]] || _harness_falhar 'gancho invalido deveria ser recusado'
+}
+
 teste_acao_cancelada_nao_executa() {
   _base
   _rodar '
