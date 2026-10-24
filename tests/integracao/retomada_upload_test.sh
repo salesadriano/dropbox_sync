@@ -1003,4 +1003,55 @@ teste_rmo10_ajuda_e_autocompletar_trazem_a_opcao_e_as_frases() {
   assert_contem '.dbx-part.' "$(cat "$DBX_HARNESS_RAIZ/README.md")" 'o README explica o parcial junto do destino'
 }
 
+# ---------------------------------------------------------------------------
+# --debug: etapas do upload em sessao real (RF-159; TC-DBG-08..12, 24)
+# ---------------------------------------------------------------------------
+
+teste_tc_dbg_08_09_24_upload_em_sessao_real_tem_modalidade_blocos_e_nao_vaza_a_sessao() {
+  local base
+  base=$(_ambiente)
+  _rodar "$base" --debug upload grande.iso /Grande.iso
+  assert_igual 0 "$DBX_ESTADO" "erro: $DBX_ERRO"
+  assert_contem 'debug: upload modalidade=sessao arquivo=grande.iso bytes=157286403 bloco_tamanho=4194304' "$DBX_ERRO"
+  assert_contem 'debug: upload bloco=1 deslocamento=0 tamanho=4194304' "$DBX_ERRO"
+  assert_contem 'debug: upload bloco=1 confirmado=4194304' "$DBX_ERRO"
+  assert_contem 'debug: upload bloco=2 deslocamento=4194304 tamanho=4194304' "$DBX_ERRO"
+  assert_contem 'debug: upload bloco=2 confirmado=8388608' "$DBX_ERRO"
+  assert_nao_contem "$SENTINELA_SESSAO" "$DBX_SAIDA"
+  assert_nao_contem "$SENTINELA_SESSAO" "$DBX_ERRO"
+}
+
+teste_tc_dbg_10_retomada_encontrada_traz_o_deslocamento_e_nao_o_id_da_sessao() {
+  local base
+  base=$(_ambiente)
+  _interrompida_na_parte "$base" 4
+  _rodar "$base" --debug upload grande.iso /Grande.iso
+  assert_igual 0 "$DBX_ESTADO" "erro: $DBX_ERRO"
+  assert_contem 'debug: upload retomada=encontrada deslocamento=12582912' "$DBX_ERRO"
+  assert_nao_contem "$SENTINELA_SESSAO" "$DBX_SAIDA"
+  assert_nao_contem "$SENTINELA_SESSAO" "$DBX_ERRO"
+}
+
+teste_tc_dbg_11_sessao_recusada_descarta_a_retomada_com_motivo_do_vocabulario() {
+  local base
+  base=$(_ambiente)
+  _interrompida_na_parte "$base" 4
+  _roteiro "$base" files/upload_session/append_v2 5 NOT_FOUND
+  _rodar "$base" --debug upload grande.iso /Grande.iso
+  assert_contem 'debug: upload retomada=descartada motivo=sessao-expirada' "$DBX_ERRO"
+  base=$(_ambiente)
+  _interrompida_na_parte "$base" 4
+  _roteiro "$base" files/upload_session/append_v2 5 OFFSET:abc
+  _rodar "$base" --debug upload grande.iso /Grande.iso
+  assert_contem 'debug: upload retomada=descartada motivo=deslocamento-incorreto' "$DBX_ERRO"
+}
+
+teste_tc_dbg_12_sem_retomada_traz_o_motivo_sem_retomada() {
+  local base
+  base=$(_ambiente)
+  _rodar "$base" --debug upload --sem-retomada grande.iso /Grande.iso
+  assert_igual 0 "$DBX_ESTADO" "erro: $DBX_ERRO"
+  assert_contem 'debug: upload retomada=descartada motivo=sem-retomada' "$DBX_ERRO"
+}
+
 harness_executar "$@"

@@ -325,15 +325,21 @@ dbx_cmd_upload_executar() {
     # RF-31: o tamanho total e desconhecido no inicio, entao nao ha decisao a
     # tomar — fluxo obriga sessao.
     por_sessao='sim'
+    dbx_debug_linha upload modalidade=sessao arquivo=- bytes=desconhecido bloco_tamanho="$DBX_TRANSFER_TAMANHO_PARTE"
     dbx_transfer_sessao "$DBX_TRANSFER_COMMIT" || {
+      # RF-159(d): o envio por fluxo nao passa por dbx_transfer_enviar_arquivo.
+      dbx_debug_linha upload resultado=falha classe="${DBX_TRANSFER_CLASSE:-nao_concluida}"
       dbx_progress_arquivo_falhar
       dbx_cmd_falhar "${DBX_TRANSFER_CLASSE:-nao_concluida}" \
         "envio em partes nao concluido: ${DBX_TRANSFER_MOTIVO:-sem detalhe}"
       return $?
     }
+    dbx_debug_linha upload resultado=ok
   else
+    DBX_TRANSFER_DEBUG_SEM_RETOMADA=$sem_retomada
     dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" upload
     local estado_envio=$?
+    DBX_TRANSFER_DEBUG_SEM_RETOMADA='nao'
     por_sessao=$DBX_TRANSFER_POR_SESSAO
     [[ $estado_envio -eq 0 ]] || {
       dbx_progress_arquivo_falhar

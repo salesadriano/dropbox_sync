@@ -139,9 +139,11 @@ Com `sync` ou `verificar` em curso neste host, o `unlink` recusa com código `7`
 ### Opções Globais
 As opções globais podem ser informadas antes do comando (ou nos comandos operacionais específicos):
 ```bash
-dbx [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] [--debug] <comando> [argumentos]
+dbx [--perfil <nome>] [--json] [--null] [--dry-run] [--progresso] [--sem-progresso] [--debug] <comando> [argumentos]
 ```
+- `--perfil <nome>`, `--profile <nome>`: Escolhe o perfil de credencial (veja [Perfis de credencial](#perfis-de-credencial)); a variável `DBX_PERFIL` faz o mesmo e a opção vence.
 - `--debug`: Ativa o modo de depuração operacional com diagnóstico de ambiente e erro detalhado do sistema operacional em `stderr` (equivalente à variável `DBX_DEBUG=1`). Preserva integralmente a confidencialidade de tokens e credenciais.
+  - **`upload`, `download` e `sync`:** emitem em `stderr` uma linha `debug: <categoria> chave=valor` por evento (categorias `http`, `upload`, `download`, `sync` e `resumo`, esta última no fim). O `stdout`, os códigos de saída e o número de requisições não mudam. Nunca aparecem token, segredo, id de sessão, cursor, URL temporária nem query. Com `--progresso` nenhuma linha mistura progresso e `debug:`, e o retorno de carro não é usado.
 - `--progresso`, `--progress`, `-p`: Ativa explicitamente a exibição de progresso em tempo real em `stderr` (útil para scripts e visualização interativa). Nos comandos que transferem conteúdo (`upload`, `download`, `sync`) cada arquivo tem uma linha própria, `[i/N] ação: item [barra] pct% feitos / total`, em que `i/N` é a posição do arquivo no plano e a barra e o percentual medem só o arquivo em curso (`enviando` e `baixando`; 100% só ao concluir; `falhou` no fim da linha quando o arquivo falha). Com terminal a linha é reescrita no lugar; sem terminal (com `--progresso`) cada atualização é uma linha nova, sem sequência de controle; com `--dry-run` não há linha por arquivo; o download para a saída padrão não emite progresso. Durante a análise dos arquivos, lista cada arquivo e o resultado detalhado da análise (resumo reaproveitado do cache em memória (`lib/state`), hash calculado, idêntico/dispensado, modificado, novo ou ausente na origem).
 - `--sem-progresso`, `--no-progress`: Desativa explicitamente a exibição de progresso (modo silencioso forçado mesmo em terminais interativos).
 - `--json`: Formata a saída padrão em objetos JSON estruturados.
@@ -562,6 +564,50 @@ dbx sync --receber --origem /fotos --destino ./fotos --sem-cursor
 ```
 
 A tabela de códigos de saída não muda.
+
+---
+
+## Perfis de credencial
+
+**Mais de uma conta, ou mais de uma raiz remota, no mesmo host:** cada perfil é uma credencial própria (`F-18`, `RF-120` a `RF-132`).
+
+- **Onde fica:** sem perfil vale o perfil `padrao`, que é o `~/.config/dbx/credencial.json` de sempre. Um perfil nomeado fica em `~/.config/dbx/perfis/<nome>.json`, com as mesmas permissões (`0600` sob `0700`). O nome tem de 1 a 32 caracteres de `a-z`, `0-9`, `_` e `-`.
+- **Seleção, em todos os comandos:** `--perfil <nome>` (alias `--profile`) antes do comando, ou depois dele só em `config` e `unlink`. A variável `DBX_PERFIL` carrega **só o nome**, nunca segredo, e a opção vence. Sem nenhuma das duas vale o perfil padrão. Perfil inexistente sai com `3`, sem rede e sem recuar para o padrão.
+- **Criar:** `dbx config --perfil <nome>` faz o fluxo OAuth2 de sempre e grava o perfil.
+- **Listar:** `dbx perfis` (alias `profiles`) mostra um registro por perfil: `perfil`, `credencial` (`completa`, `incompleta`, `ilegivel`, `permissao` ou `ligacao_simbolica`), `ativo` e `arquivo`, com um total no fim. Só lê, sem rede, e nunca imprime segredo nem a identidade da credencial. Sai `0` mesmo com perfil quebrado ou sem nenhum perfil.
+- **Desvincular:** `dbx unlink --perfil <nome>` desvincula só esse perfil e não apaga o estado de outro. Com a mesma credencial em dois perfis, ele não revoga o token.
+- **Trava por raiz local:** dois `sync --receber` na mesma raiz local são recusados com `7`, qualquer que seja o perfil.
+
+```bash
+# Criar um perfil para a conta do trabalho
+dbx config --perfil trabalho
+
+# Usar o perfil num comando
+dbx --perfil trabalho sync --enviar --origem ./relatorios --destino /relatorios
+
+# Ou pela variável (só o nome)
+export DBX_PERFIL=trabalho
+dbx list /
+
+# Ver os perfis e se estão completos
+dbx perfis
+
+# Desvincular só esse perfil
+dbx unlink --perfil trabalho --confirmar
+```
+
+A tabela de códigos de saída não muda.
+
+---
+
+## Teste de disponibilidade
+
+`dbx testar` (alias `check`) checa, nesta ordem, `internet`, `servico` (e `servico_conteudo`) e `credencial`, uma linha por checagem (`ok`, `aviso` ou `falha`) com o remédio. Só lê: faz a sonda, uma requisição sem token a cada host do Dropbox e **uma** renovação de token. O código de saída é `0` sem falha, ou o da primeira falha (`9` sem internet ou Dropbox inacessível, `10` serviço indisponível, `8` limite de taxa, `3` credencial ausente ou incompleta, `5` recusada).
+
+- **Sonda de internet:** um `GET` sem token e sem corpo a `https://www.gstatic.com/generate_204`, **servidor de terceiro** (Google); qualquer resposta HTTP conta como "responde". `DBX_TESTE_INTERNET_URL` troca o endereço (só `https://`); definida e **vazia desliga a sonda**. Nada além da requisição vai ao servidor, e nenhum segredo.
+- **Nos demais comandos** a checagem é automática e não custa requisição no caminho feliz: só depois de uma falha na obtenção do token a sonda roda, uma vez, para dizer se faltou internet ou se o Dropbox está inacessível. O código de saída não muda.
+- **Com terminal**, credencial ausente ou inválida pergunta `Configurar agora? [s/N]`; aceito e `config` concluído, o comando continua com os mesmos argumentos. `DBX_TESTE_CONFIG=nao` desliga a pergunta.
+- **Sem terminal** (stdin ou stderr redirecionados, `TERM=dumb`, `--dry-run`, ou comando que lê a entrada padrão como `upload -`): não há pergunta, nenhum byte de stdin é lido, e mensagens e códigos (`3` ou `5`) são os de sempre.
 
 ---
 

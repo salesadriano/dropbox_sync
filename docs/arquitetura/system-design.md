@@ -18,6 +18,7 @@ Documentos relacionados: [Escopo e requisitos](../requisitos/escopo-requisitos-e
 |---|---|
 | v0.1 | Proposta arquitetural inicial |
 | **v1.20** | **Fase 10 (2026-10-22; memoria `2026-10-22-1600-progresso-por-arquivo`; log `docs/prompts/2026-10-22_1600_progresso-por-arquivo.md`; porte G): progresso por arquivo (`F-49`; escopo v1.27, secao 5.19; `RF-140` a `RF-147`, `TC-PRG-01` a `TC-PRG-36`; `DIV-282` a `DIV-306`).** Nova secao "Progresso por arquivo (fase 10, v1.20)" com o desenho implementado: linha por arquivo no processo principal; avanco por parte no upload em sessao; observador do `.part` no download; canal de status do auxiliar (um arquivo por item, escrita atomica por escritor) lido pelo principal, que redesenha o bloco com N>1; sem terminal, linha nova por atualizacao. Diagrama Mermaid de fluxo. Sem endpoint, codigo de saida ou estado persistente novos. |
+| **v1.19** | **Sincronizacao de status pos-merge (2026-10-22; log `docs/prompts/2026-10-22_1440_atualiza-documentacao.md`; porte P): as fases 1 a 9 do backlog, mescladas na `develop` pelas PRs #40 a #52 e levadas a `master` pela PR #53, passam de "em andamento" a "concluida", com a PR e a data do merge. O historico de versoes fica como esta.** |
 | **v1.18** | **Fase 9 (2026-10-22; memoria `2026-10-21-2300-desempenho`; porte G): desempenho (`F-09`, `F-08`, `F-34`; escopo v1.25, secao 5.18).** Secao "Desempenho: paralelismo, lote e bancada" reescrita com o desenho implementado: componente novo `lib/lote.sh`; processo principal unico gravador de estado e auxiliares nas transferencias (`--paralelo`, 1 a 8); exclusao em lote so no `sync --espelhar` (fatias de 250, `check` com recuo); `reter` item a item (`DIV-269`); envio em lote com `start` nos auxiliares, `finish_batch_v2` no principal em grupos de 250 e conferencia de `content_hash` (`DIV-278`); bancada com marcador e limpeza. Diagrama de sequencia do envio em lote. Sem codigo de saida novo e sem estado persistente novo. |
 | **v1.17** | **Fase 8 (2026-10-21; memoria `2026-10-21-1735-perfis`; porte G): perfis nomeados de credencial (`F-18`; escopo v1.24, secao 5.17).** `DP-05` **reaberta e resolvida de novo**: o desenho da v0.6 ("um arquivo, um caminho, sem seletor") e substituido por `credencial.json` como perfil `padrao` mais `perfis/<nome>.json`, selecao por `--perfil`/`--profile` e `DBX_PERFIL`, nome validado antes de qualquer acesso (`RNF-37`), perfil inexistente sem recuo para o `padrao`. Nova secao de componentes "Perfis nomeados de credencial" com a tabela de atribuicao do estado por identidade (a `memoria-*` e chaveada pelo `account_id`, nao por `cred-`), o `unlink` seletivo (`DIV-237`, `DIV-238`, `C8` do DBA) e dois diagramas Mermaid (selecao e `unlink`). **Trava por raiz local canonica** no `sync --receber` (`RF-132`, `DIV-250`). `lib/preflight` passa a inspecionar o caminho resolvido. `DIV-236` a `DIV-251` resolvidas; parecer do DBA aceito (`C1` a `C10`); `F-44` e `RSK-91` a `RSK-93`. Nenhum codigo de saida nem formato de estado novo. |
 | **v1.16** | **Cursor de listagem entre execucoes (fase 7b, 2026-10-21; `F-14`; `RF-110` a `RF-119`; porte G; em andamento).** Secao "Cursor de listagem entre execucoes", com o fluxo em Mermaid. **Estado persistente novo** sob `lib/state`: namespace `cursor-<resumo32>` (formato NUL v1 com magia `dbx-cursor`, cursor mais **retrato remoto sem filtro** e rodape SHA-256 num arquivo so; leitor em fluxo limitado a campo de 8 KiB, 1.000.000 de entradas e 512 MiB). `lib/sync` passa a montar a **tabela remota inteira e filtrar depois** (`DIV-g`), aplica o delta do `list_folder/continue` pela receita do servico e confirma no servidor toda candidata a exclusao do modo incremental. `RNF-26` ganha o item (8) (`DIV-e`); linha de `lib/state` atualizada (o cursor existe; `DIV-a` da 7a fechada); chaves por `cred-` e `account_id` no cabecalho (`DIV-i`). `F-40` corrigida so no caminho do `sync` (`DIV-214` B). Contratos conferidos no Context7 (`DIV-219`). Nenhum codigo de saida novo; nenhuma escrita remota nova. Divergencias de implementacao a partir de `DIV-221`. |
@@ -196,7 +197,7 @@ A dependencia e unidirecional, do topo para a base. Nenhuma funcao de `lib/` con
 | `commands/*` | Um caso de uso por comando (*v1.11: mais `revisoes`, `restaurar` e `lixeira`, secao "Revisoes, restauracao e lixeira"; a lista abaixo e a do desenho inicial e inclui comandos nunca criados, `DIV-68`; os existentes estao em `commands/`*) (*v1.7: mais `verificar`, `diagnostico` e `completar`; tabela na secao "Comandos de consulta, diagnostico e autocompletar"*): `config`, `upload`, `download`, `list`, `stat`, `mkdir`, `move`, `copy`, `delete`, `search`, `share`, `account`, `unlink` e condicionais `saveurl` e `monitor` | Invocacao normalizada | Resultado e codigo de saida | `lib/*` | Nao invocam `cURL` diretamente. Regra verificavel por analise estatica |
 | `tests/` | Suite automatizada executavel sem credencial real, com duplo de teste do servico HTTP | — | Relatorio de execucao | Arcabouco a definir pelo Senior Developer | Atende RNF-14 |
 
-### Comandos de consulta, diagnostico e autocompletar *(v1.7, fase 1, em andamento)*
+### Comandos de consulta, diagnostico e autocompletar *(v1.7, fase 1, concluida: PR #40, 2026-10-19)*
 
 Tabela de comandos acrescida (`RF-65` a `RF-68`; as fontes de cada decisao estao em [Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.9):
 
@@ -205,6 +206,7 @@ Tabela de comandos acrescida (`RF-65` a `RF-68`; as fontes de cada decisao estao
 | `verificar` | `verify` | `credencial` | Compara arvore local e remota por `content_hash`, com os argumentos e as guardas do `sync` (`RF-65`; `F-11`). Reusa `lib/sync` (chave sem caixa, planejamento) e `lib/walk` | **Nenhuma**, nem estado de `lib/state` (a memoria so e lida e nao decide) | `0` igual; `11` (`integridade`) diverge; `14` travessia parcial; demais, a classe do erro |
 | `diagnostico` | `doctor` | **`nenhum`** (ver nota abaixo) | Sete checagens com remedio: dependencias, credencial, conectividade (`check/user`), escopos, espaco, localidade, diretorio de estado (`RF-66`; `F-22`) | **Nenhuma** (nao cria nem corrige nada) | `0` sem falha; `3` (`configuracao`) com ao menos uma falha |
 | `completar` | `completion` | `nenhum` | `dbx completar bash` imprime `completions/dbx.bash` (`RF-68`; `F-19`) | **Nenhuma** | `0`; `2` sem argumento ou shell nao suportado |
+| `testar` *(fase 11)* | `check` | `nenhum` (como o `diagnostico`: roda sem credencial e reporta a falta; `RF-148(a)`) | Checa internet (sonda neutra sem token, `DBX_TESTE_INTERNET_URL`), servico Dropbox (`api` e `content`) e credencial (campos locais e uma renovacao); com terminal, oferece o `config` (`RF-148` a `RF-150`; `F-50`) | **Nenhuma**, salvo o `config` aceito pelo operador | `0` sem falha; senao o da primeira falha: `9` sem internet ou Dropbox inacessivel, `10` servico indisponivel, `8` limite de taxa, `3` credencial ausente ou incompleta, `5` recusada; `2` URL de sonda invalida |
 
 > **Preflight contornado pelo `diagnostico` (e pelo `completar`).** `bin/dbx` executa o preflight **bloqueante** (`lib/preflight`, para no primeiro problema e responde com a classe `configuracao`) para os comandos que declaram `ambiente` ou `credencial`. O `diagnostico` existe para **diagnosticar** exatamente o que o preflight recusa, entao declara `nenhum` e faz sua **propria inspecao, que nao para no primeiro item**: reporta cada utilitario ausente, a permissao da credencial e o resto, e sai com `3` se houver falha. Consequencias de desenho: (1) o comando so usa recursos do proprio shell ate emitir o relatorio, sem utilitario externo (mesma razao de `lib/preflight`, `TL-30`); (2) a inspecao reaproveita a **mesma lista** `DBX_PREFLIGHT_UTILITARIOS`, para nunca discordar do preflight (`DIV-36`, encerrada: `tail` e `df` ja constam da lista); (3) o contorno vale **so** para este comando, e os demais continuam recusados pelo preflight (regressao testada, `TC-DIA-04`); (4) `diagnostico` nao e rota para executar operacao com ambiente quebrado: ele nao escreve, local ou remotamente.
 
@@ -224,7 +226,7 @@ flowchart TD
 
 **Autocompletar (`RF-68`, `F-19`).** `completions/dbx.bash` e artefato estatico versionado, sem chamada de rede, sem leitura de credencial ou estado. O `install.sh` o grava em `~/.local/share/bash-completion/completions/dbx` (modo usuario, sem sudo); `dbx completar bash` o imprime a partir da arvore de instalacao. Deve acompanhar as ajudas de `bin/dbx` (teste de desvio `TC-CPL-02`) e entrar no pacote de `scripts/empacotar.sh`.
 
-### Revisoes, restauracao e lixeira *(v1.11, fase 3, em andamento)*
+### Revisoes, restauracao e lixeira *(v1.11, fase 3, concluida: PR #44, 2026-10-20)*
 
 Decisao do solicitante (`DP-37`, memoria `2026-10-19-1828-recuperacao-e-lixeira`); requisitos `RF-72` a `RF-78` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.11); divergencias `DIV-54` a `DIV-69`. Tres comandos novos, **nenhum componente novo em `lib/`**, **nenhum estado persistente** (`RNF-26` intacto) e **nenhum codigo de saida novo**. As tags de erro novas entram em `lib/errors` como mapeamento a classes existentes (`DIV-58`).
 
@@ -287,7 +289,7 @@ flowchart TD
   P -->|missing_scope| X5[autenticacao 5, remedio: App Console, dbx unlink e dbx config]
 ```
 
-### Filtros e limite de banda *(v1.12, fase 4, em andamento)*
+### Filtros e limite de banda *(v1.12, fase 4, concluida: PR #45, 2026-10-20)*
 
 Decisao do solicitante (memoria `2026-10-19-2141-filtros-e-banda`); requisitos `RF-79` a `RF-83` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.12); divergencias `DIV-79` a `DIV-94` decididas pelo Tech Lead conforme as recomendacoes (memoria `2026-10-19-2141-filtros-e-banda`). **Um componente novo (`lib/filtro`, `DIV-94`)**, **nenhum estado persistente novo** (filtros fora da memoria e da chave da trava), **nenhum codigo de saida novo**.
 
@@ -315,7 +317,7 @@ flowchart TD
   D -->|Nao| H[No escopo: entra na tabela de decisao]
 ```
 
-### Link temporario e link compartilhado *(v1.13, fase 5, em andamento)*
+### Link temporario e link compartilhado *(v1.13, fase 5, concluida: PR #46, 2026-10-20)*
 
 Decisao do solicitante (memoria `2026-10-20-1110-compartilhamento`); requisitos `RF-84` a `RF-92` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.13); divergencias `DIV-104` a `DIV-120` **decididas em 2026-10-20 conforme as recomendacoes**. Dois comandos novos, **um componente novo (`lib/compartilhamento`, decidido, `DIV-117`)**, **nenhum estado persistente** (`RNF-26` intacto), **nenhuma trava**, **nenhum codigo de saida novo**; tags de erro novas mapeadas a classes existentes (`RF-90(a)`). Porte G: integracao externa nova, exposicao de dado para fora da conta e segredo novo.
 
@@ -385,7 +387,7 @@ flowchart TD
 
 ---
 
-### Retencao e rotacao de backup *(v1.14, fase 6, em andamento)*
+### Retencao e rotacao de backup *(v1.14, fase 6, concluida: PR #47, 2026-10-21)*
 
 Decisao do solicitante (memoria `2026-10-20-2010-retencao`); requisitos `RF-93` a `RF-100` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.14); divergencias `DIV-130` a `DIV-147` **decididas pelo Tech Lead em 2026-10-20, todas conforme as recomendacoes** (memoria `2026-10-20-2010-retencao`). Um comando novo, **dois componentes novos**, **nenhum estado persistente** (`RNF-26` intacto), **nenhuma trava** (decidido, `DIV-140`), **nenhum codigo de saida novo**, **nenhum escopo OAuth novo**. Porte G: exclusao em lote no destino remoto, sem operador.
 
@@ -442,7 +444,7 @@ flowchart TD
   R -->|Sim| X14[nao_concluida 14 com o resumo]
 ```
 
-### Retomada entre execucoes *(v1.15, fase 7a, em andamento)*
+### Retomada entre execucoes *(v1.15, fase 7a, concluida: PR #48, 2026-10-21)*
 
 Decisao do solicitante (memoria `2026-10-20-2315-retomada`); requisitos `RF-101` a `RF-109` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.15); parecer do DBA aceito com as condicoes `C1` a `C6`; divergencias `DIV-171` a `DIV-190` decididas pelo Tech Lead; divergencias de implementacao `DIV-191` a `DIV-202` (registro de entrega da fase). **Nenhum comando novo, nenhum codigo de saida novo, nenhuma escrita remota nova**: a retomada usa as mesmas chamadas de `RF-08` e de `RF-55`, mais um `get_metadata` (leitura) antes do download de arquivo (`DIV-192`). Porte G: estado persistente novo entre execucoes.
 
@@ -494,7 +496,7 @@ flowchart TD
 **Divergencias do parecer do DBA tratadas aqui:** `DIV-a` (linha de `lib/state`: o cursor ainda nao existe), `DIV-b` (`RNF-26` com `retomada-*`, trava de registro e o `.part` persistente; secao "Criterios de aceite"), `DIV-c` ("F-03 segue fora", secao "Robustez de rede") e `DIV-d` (as chaves antigas de `memoria-*`, `upload-*` e `trava-*` usam `\n` como separador na entrada do resumo; risco teorico de colisao, mitigado pela reconferencia do cabecalho na `memoria-*` e sem reconferencia do par na trava; nao bloqueante, vai para o backlog junto da migracao para magia por namespace; o `retomada-*` ja nasce com separador NUL e reconferencia).
 
 
-### Cursor de listagem entre execucoes *(v1.16, fase 7b, em andamento)*
+### Cursor de listagem entre execucoes *(v1.16, fase 7b, concluida: PR #49, 2026-10-21)*
 
 Decisao do solicitante (memorias `2026-10-20-2315-retomada` e `2026-10-21-0713-cursor`); requisitos `RF-110` a `RF-119` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.16); parecer do DBA aceito com as condicoes `C1` a `C11`; divergencias `DIV-204` a `DIV-220` decididas pelo Tech Lead (`DIV-205`: **so o `sync --receber`**; o `download` de pasta, o `--enviar` e o `verificar` nunca usam o cursor). **Nenhum comando novo, nenhum codigo de saida novo, nenhuma escrita remota nova**: so leituras (`list_folder/continue` e `get_metadata`). Porte G: estado persistente novo entre execucoes.
 
@@ -541,7 +543,7 @@ flowchart TD
 
 ---
 
-### Perfis nomeados de credencial *(v1.17, fase 8, em andamento)*
+### Perfis nomeados de credencial *(v1.17, fase 8, concluida: PR #51, 2026-10-22)*
 
 Decisao do solicitante de 2026-10-21 (memoria `2026-10-21-1735-perfis`; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md`), que **reabriu e resolveu de novo a `DP-05`** (antes: "uma conta so, sem perfil"; o desenho da v0.6 fica como historico). Requisitos `RF-120` a `RF-132` e `RNF-37` ([Escopo e requisitos](../requisitos/escopo-requisitos-e-criterios-de-aceite.md), secao 5.17); divergencias `DIV-236` a `DIV-251` resolvidas pelo Tech Lead em 2026-10-21; parecer do DBA aceito com `C1` a `C10` (a `C7` substituida por `DIV-237`, a `C5` ampliada por `DIV-238`). Porte G. **Nao ha interface grafica**: Design System nao se aplica. **Nenhum formato de estado muda** (`C9`) e **nenhum codigo de saida e novo**.
 
@@ -1301,7 +1303,7 @@ flowchart LR
 
 ---
 
-## Desempenho: paralelismo, lote e bancada (fase 9, v1.25)
+## Desempenho: paralelismo, lote e bancada (fase 9, v1.25; concluida: PR #52, 2026-10-22)
 
 Visao apenas; o detalhe tecnico e do Senior Developer. Requisitos: secao 5.18 do escopo (`RF-133` a `RF-139`, `RNF-21` emendado, `RNF-38`).
 
@@ -1350,7 +1352,7 @@ sequenceDiagram
 
 Componentes: `commands/sync` monta as listas ja guardadas; `lib/transfer` executa as transferencias e fixa o limiar de pequeno; `lib/lote` executa a exclusao e o fechamento do envio em lote; `lib/http` mantem retentativa e `Retry-After`; `lib/state` so e escrito pelo processo principal; a bancada e um script separado da suite (`DIV-265`). Metadados em lote ficam fora (`F-46`) e a conferencia de `content_hash` no `files/upload` unitario vai ao backlog (`F-47`, `DIV-280`). Interrupcao durante o `check` pode deixar a fatia apagada no servidor sem contagem; sai `14` e os itens vao para a lixeira (`DIV-275`).
 
-## Progresso por arquivo (fase 10, v1.20)
+## Progresso por arquivo (fase 10, v1.20; concluida: PR #55, 2026-10-22)
 
 Visao apenas; o detalhe tecnico e do Senior Developer. Requisitos: secao 5.19 do escopo (`RF-140` a `RF-147`, `TC-PRG-01` a `TC-PRG-36`, `F-49`). Divergencias de especificacao e de implementacao: `DIV-282` a `DIV-306`. Registro de entrega: [registro](../reviews/2026-10-22-1600-registro-progresso-por-arquivo.md).
 

@@ -35,6 +35,8 @@ _dbx_http_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_http_diretorio=$(cd -P -- "$_dbx_http_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_http_diretorio/errors.sh"
+# shellcheck source=lib/debug.sh
+. "$_dbx_http_diretorio/debug.sh"
 # shellcheck source=lib/json.sh
 . "$_dbx_http_diretorio/json.sh"
 # shellcheck source=lib/progress.sh
@@ -209,28 +211,30 @@ dbx_http_validar_ambiente() {
 }
 
 
-# _dbx_http_esperar <tentativa> — espera antes da tentativa seguinte (RNF-07).
-#
-# O `Retry-After` do servidor PREVALECE, limitado ao seu teto, mesmo acima do
-# teto do recuo: e o servico dizendo quando volta. Valido e so o inteiro de
-# segundos; a forma de data HTTP cai no recuo (decisao do Tech Lead). Sem ele,
-# `base * 2^(n-1)` mais variacao de 0 a `base`, limitado ao teto por espera.
-#
-# A espera e o `sleep` do sistema, chamado por nome: e o que deixa a suite
-# observa-la por um substituto, sem dormir (RNF-07(g)).
-_dbx_http_esperar() {
-  local tentativa=$1 milissegundos indice texto
+# _dbx_http_retry_after_efetivo — publica em _DBX_HTTP_RETRY_AFTER_S o
+# `Retry-After` valido apos o teto (vazio quando ausente ou invalido).
+_dbx_http_retry_after_efetivo() {
+  local teto_servidor=${DBX_HTTP_EFETIVO[DBX_HTTP_RETRY_AFTER_TETO_S]}
+  _DBX_HTTP_RETRY_AFTER_S=''
+  [[ $DBX_HTTP_RETRY_AFTER =~ ^[0-9]+$ ]] || return 0
+  # Inteiro grande demais para a aritmetica ainda e inteiro valido: vale o teto.
+  if ((${#DBX_HTTP_RETRY_AFTER} > 9 || 10#$DBX_HTTP_RETRY_AFTER > teto_servidor)); then
+    _DBX_HTTP_RETRY_AFTER_S=$teto_servidor
+  else
+    _DBX_HTTP_RETRY_AFTER_S=$((10#$DBX_HTTP_RETRY_AFTER))
+  fi
+}
+
+# _dbx_http_espera_calcular <tentativa> — publica em _DBX_HTTP_ESPERA_MS a
+# espera antes da tentativa seguinte (RNF-07), sem dormir.
+_dbx_http_espera_calcular() {
+  local tentativa=$1 milissegundos indice
   local base=${DBX_HTTP_EFETIVO[DBX_HTTP_ESPERA_BASE_MS]}
   local teto=${DBX_HTTP_EFETIVO[DBX_HTTP_ESPERA_TETO_MS]}
-  local teto_servidor=${DBX_HTTP_EFETIVO[DBX_HTTP_RETRY_AFTER_TETO_S]}
 
-  if [[ $DBX_HTTP_RETRY_AFTER =~ ^[0-9]+$ ]]; then
-    # Inteiro grande demais para a aritmetica ainda e inteiro valido: vale o teto.
-    if ((${#DBX_HTTP_RETRY_AFTER} > 9 || 10#$DBX_HTTP_RETRY_AFTER > teto_servidor)); then
-      milissegundos=$((teto_servidor * 1000))
-    else
-      milissegundos=$((10#$DBX_HTTP_RETRY_AFTER * 1000))
-    fi
+  _dbx_http_retry_after_efetivo
+  if [[ -n $_DBX_HTTP_RETRY_AFTER_S ]]; then
+    milissegundos=$((_DBX_HTTP_RETRY_AFTER_S * 1000))
   else
     # Dobra ate o expoente ou ate o teto, o que vier antes: o deslocamento
     # direto transbordaria com muitas tentativas.
@@ -243,8 +247,85 @@ _dbx_http_esperar() {
     milissegundos=$((milissegundos + ((RANDOM << 15) | RANDOM) % (base + 1)))
     [[ $milissegundos -gt $teto ]] && milissegundos=$teto
   fi
-  printf -v texto '%d.%03d' "$((milissegundos / 1000))" "$((milissegundos % 1000))"
+  _DBX_HTTP_ESPERA_MS=$milissegundos
+}
+
+# _dbx_http_dormir — dorme a espera calculada. A espera e o `sleep` do sistema,
+# chamado por nome: e o que deixa a suite observa-la por um substituto, sem
+# dormir (RNF-07(g)).
+_dbx_http_dormir() {
+  local texto
+  printf -v texto '%d.%03d' "$((_DBX_HTTP_ESPERA_MS / 1000))" "$((_DBX_HTTP_ESPERA_MS % 1000))"
   sleep "$texto"
+}
+
+# _dbx_http_esperar <tentativa> — espera antes da tentativa seguinte (RNF-07).
+#
+# O `Retry-After` do servidor PREVALECE, limitado ao seu teto, mesmo acima do
+# teto do recuo: e o servico dizendo quando volta. Valido e so o inteiro de
+# segundos; a forma de data HTTP cai no recuo (decisao do Tech Lead). Sem ele,
+# `base * 2^(n-1)` mais variacao de 0 a `base`, limitado ao teto por espera.
+_dbx_http_esperar() {
+  _dbx_http_espera_calcular "$1"
+  _dbx_http_dormir
+}
+
+# _dbx_http_endpoint_debug <url> — publica em _DBX_HTTP_ENDPOINT_DEBUG o host
+# mais o caminho fixo da API (DIV-335): sem esquema, userinfo, porta, query nem
+# fragmento. Host fora de `dropboxapi.com` sai so como host.
+_dbx_http_endpoint_debug() {
+  local resto=${1#*://} autoridade caminho=''
+  autoridade=${resto%%[/?#]*}
+  if [[ $resto == "$autoridade" ]]; then
+    caminho=''
+  else
+    caminho=${resto#"$autoridade"}
+    [[ $caminho == /* ]] || caminho=''
+    caminho=${caminho%%[?#]*}
+  fi
+  autoridade=${autoridade##*@}
+  autoridade=${autoridade%%:*}
+  autoridade=${autoridade,,}
+  if [[ $autoridade == dropboxapi.com || $autoridade == *.dropboxapi.com ]]; then
+    _DBX_HTTP_ENDPOINT_DEBUG=$autoridade$caminho
+  else
+    _DBX_HTTP_ENDPOINT_DEBUG=$autoridade
+  fi
+}
+
+# _dbx_http_debug_preparar <metodo> <url> <tentativa> <codigo> <estado> <medidas>
+#
+# RF-157: monta, sem escrever, a linha da tentativa em _DBX_HTTP_LINHA_DEBUG
+# (vetor). `medidas` e o que o `-w` ampliado devolveu apos o codigo: tempo
+# total em segundos, bytes enviados e bytes recebidos; ausente vale zero.
+_dbx_http_debug_preparar() {
+  local metodo=$1 url=$2 tentativa=$3 codigo=$4 estado=$5 medidas=$6
+  local tempo='' enviados='' recebidos='' inteiro fracao duracao_ms=0
+  read -r tempo enviados recebidos <<<"$medidas"
+  [[ $enviados =~ ^[0-9]+$ ]] || enviados=0
+  [[ $recebidos =~ ^[0-9]+$ ]] || recebidos=0
+  if [[ $tempo =~ ^([0-9]+)(\.([0-9]*))?$ ]]; then
+    inteiro=${BASH_REMATCH[1]}
+    fracao=${BASH_REMATCH[3]}000
+    duracao_ms=$((10#$inteiro * 1000 + 10#${fracao:0:3}))
+  fi
+  _dbx_http_endpoint_debug "$url"
+  _DBX_HTTP_LINHA_DEBUG=("$metodo" "$_DBX_HTTP_ENDPOINT_DEBUG" "tentativa=$tentativa" "status=$codigo")
+  [[ $codigo -eq 0 ]] && _DBX_HTTP_LINHA_DEBUG+=("curl=$estado")
+  _DBX_HTTP_LINHA_DEBUG+=("duracao_ms=$duracao_ms" "enviados=$enviados" "recebidos=$recebidos")
+  _dbx_http_retry_after_efetivo
+  [[ -n $_DBX_HTTP_RETRY_AFTER_S ]] && _DBX_HTTP_LINHA_DEBUG+=("retry_after=$_DBX_HTTP_RETRY_AFTER_S")
+  # RF-160(b): requisicao com `Range` leva a faixa pedida.
+  [[ -n $_DBX_HTTP_FAIXA_INICIO ]] && _DBX_HTTP_LINHA_DEBUG+=("faixa=$_DBX_HTTP_FAIXA_INICIO-")
+  return 0
+}
+
+# _dbx_http_debug_emitir [espera_ms] — escreve a linha pendente, uma vez.
+_dbx_http_debug_emitir() {
+  [[ ${#_DBX_HTTP_LINHA_DEBUG[@]} -gt 0 ]] || return 0
+  [[ -n ${1-} ]] && _DBX_HTTP_LINHA_DEBUG+=("espera_ms=$1")
+  dbx_debug_linha http "${_DBX_HTTP_LINHA_DEBUG[@]}"
+  _DBX_HTTP_LINHA_DEBUG=()
 }
 
 # _dbx_http_correlacao_de <arquivo_de_cabecalhos>
@@ -548,6 +629,56 @@ dbx_http_formulario() {
   _dbx_http_executar POST "$1" '' nao
 }
 
+# dbx_http_sondar <url> — sonda de disponibilidade (RF-149): um GET simples,
+# SEM token, SEM corpo, SEM repeticao e SEM seguir redirecionamento, com
+# `connect-timeout 5` e `max-time 10` fixos (DIV-312). Devolve 0 quando HOUVE
+# resposta HTTP completa, de qualquer status (DNS, TCP e TLS funcionaram), e
+# publica o status em DBX_HTTP_SONDA_CODIGO; sem resposta devolve nao zero e o
+# codigo e 0. O corpo da resposta e descartado. Mesmo transporte, proxy e TLS do
+# resto (variaveis padrao do cURL); sem arquivos temporarios.
+readonly DBX_HTTP_ESQUEMA_SONDA='https://'
+dbx_http_sondar() {
+  local url=${1-} codigo estado
+  DBX_HTTP_SONDA_CODIGO=0
+  [[ $url == "$DBX_HTTP_ESQUEMA_SONDA"* ]] || return "$DBX_HTTP_ERRO_USO"
+  DBX_HTTP_REQUISICOES=$((DBX_HTTP_REQUISICOES + 1))
+  codigo=$(
+    {
+      printf '%s\n' silent show-error 'connect-timeout = 5' 'max-time = 10' |
+        curl -K - -X GET -o /dev/null -w '%{http_code}' "$url"
+    } 2>/dev/null
+  )
+  estado=$?
+  [[ $codigo =~ ^[1-9][0-9][0-9]$ ]] || codigo=0
+  # shellcheck disable=SC2034  # canal publico, ver nota no topo
+  DBX_HTTP_SONDA_CODIGO=$codigo
+  # RF-149(c)(f): com --debug, a requisicao mascarada (so esquema e host, sem
+  # caminho nem parametros) e o status recebido; nunca o segredo.
+  if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+    # RF-162: a sonda e uma chamada; `chamadas` do resumo bate com DBX_HTTP_REQUISICOES.
+    dbx_debug_somar_http 1 0 0
+    # R4: com `@` na URL, so ha host identificavel se nada de `/`, `?` ou `#`
+    # vier antes do primeiro `@` (senao a senha pode conter o delimitador sem
+    # encoding e qualquer corte vazaria um pedaco dela): ai so o esquema sai.
+    local anfitriao=${url#"$DBX_HTTP_ESQUEMA_SONDA"}
+    if [[ $anfitriao == *@* ]]; then
+      if [[ ${anfitriao%%@*} == *[/?#]* ]]; then
+        anfitriao='<host omitido>'
+      else
+        # Como o curl: a autoridade vai ate o primeiro delimitador e o userinfo
+        # ate o ULTIMO `@` dela (a senha pode conter `@`).
+        anfitriao=${anfitriao%%[/?#]*}
+        anfitriao=${anfitriao##*@}
+      fi
+    else
+      anfitriao=${anfitriao%%[/?#]*}
+    fi
+    dbx_errors_redigir "$(printf 'debug: sonda GET %s%s -> status %s' "$DBX_HTTP_ESQUEMA_SONDA" "$anfitriao" "$codigo")" >/dev/null
+    printf '%s\n' "$DBX_ERRORS_REDIGIDO" >&2
+  fi
+  [[ $estado -eq 0 && $codigo != 0 ]]
+}
+
 # _dbx_http_executar <metodo> <url> <corpo> <idempotente>
 #
 # Dono do ciclo de vida da area temporaria de UMA requisicao: cria, entrega a
@@ -590,6 +721,11 @@ _dbx_http_conduzir() {
   local area=$1 metodo=$2 url=$3 corpo=$4 idempotente=$5
   local tentativa=1 estado codigo politica
   local destino=$_DBX_HTTP_DESTINO saida_padrao='' saida_e_cano='nao'
+  # RF-157(f) / DIV-334 A: so com --debug o cliente informa tempo e bytes.
+  local formato_w='%{http_code}' medidas=''
+  [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] &&
+    formato_w='%{http_code} %{time_total} %{size_upload} %{size_download}'
+  _DBX_HTTP_LINHA_DEBUG=()
 
   # QA-B5-05: o arquivo de corpo nasce 0600 (pode levar a senha do link,
   # RF-86(e)), alem da area 0700. A mascara muda so no subshell: a do
@@ -637,20 +773,25 @@ _dbx_http_conduzir() {
           # do arquivo (um 409 sairia com status zero e um JSON dentro): com
           # ele, zero bytes emitidos e status 22.
           curl -K - --fail -X "$metodo" \
-            -o "$destino" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+            -o "$destino" -D "$area/cabecalhos" -w "$formato_w" "$url"
         elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
           curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
-            -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+            -o "$area/resposta" -D "$area/cabecalhos" -w "$formato_w" "$url"
         elif [[ -n $corpo ]]; then
           curl -K - -X "$metodo" --data-binary "@$area/requisicao" \
-            -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+            -o "$area/resposta" -D "$area/cabecalhos" -w "$formato_w" "$url"
         else
           curl -K - -X "$metodo" \
-            -o "$area/resposta" -D "$area/cabecalhos" -w '%{http_code}' "$url"
+            -o "$area/resposta" -D "$area/cabecalhos" -w "$formato_w" "$url"
         fi
       } 2>"$area/erro_cliente"
     )
     estado=$?
+    medidas=''
+    if [[ $codigo == *[[:space:]]* ]]; then
+      medidas=${codigo#*[[:space:]]}
+      codigo=${codigo%%[[:space:]]*}
+    fi
 
 
     # DEFEITO NOSSO NAO PODE CHEGAR AO OPERADOR COMO PROBLEMA DE REDE.
@@ -708,6 +849,9 @@ _dbx_http_conduzir() {
     [[ -r $area/resposta ]] && IFS= read -r -d '' DBX_HTTP_CORPO <"$area/resposta"
 
     _dbx_http_correlacao_de "$area/cabecalhos"
+    if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+      _dbx_http_debug_preparar "$metodo" "$url" "$tentativa" "$codigo" "$estado" "$medidas"
+    fi
 
     DBX_HTTP_RESUMO_DE_ERRO=''
     if [[ $codigo -eq 0 || $codigo -ge 400 ]]; then
@@ -777,7 +921,14 @@ _dbx_http_conduzir() {
         if [[ $_DBX_HTTP_CANAL == 'fluxo' && $estado -ne 22 && $estado -ne 7 ]]; then
           break
         fi
-        _dbx_http_esperar "$tentativa"
+        if [[ ${#_DBX_HTTP_LINHA_DEBUG[@]} -gt 0 ]]; then
+          # RF-157(a): a linha sai antes da espera e a leva em `espera_ms`.
+          _dbx_http_espera_calcular "$tentativa"
+          _dbx_http_debug_emitir "$_DBX_HTTP_ESPERA_MS"
+          _dbx_http_dormir
+        else
+          _dbx_http_esperar "$tentativa"
+        fi
         tentativa=$((tentativa + 1))
         continue
         ;;
@@ -786,6 +937,7 @@ _dbx_http_conduzir() {
         ;;
     esac
   done
+  _dbx_http_debug_emitir
   if [[ -n $rele ]]; then
     # Fim do repasse: fechado o cano, o `cat` termina, e o status dele diz se o
     # socket aceitou tudo.

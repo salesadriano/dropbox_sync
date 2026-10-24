@@ -118,6 +118,11 @@ dbx_sync_filtrados_zerar() {
 
 _dbx_sync_contar_filtrado() {
   _dbx_sync_chave "$1"
+  # RF-161(b)(c): o item filtrado e "pulado" com `motivo=filtrado`, uma vez por
+  # chave. So o `sync` liga (DBX_SYNC_DEBUG_DECISAO); `verificar` usa o mesmo
+  # predicado e nao emite decisao.
+  [[ ${DBX_SYNC_DEBUG_DECISAO:-nao} == 'sim' && -z ${DBX_SYNC_FILTRADOS_CHAVES[$DBX_SYNC_CHAVE]+definido} ]] &&
+    dbx_debug_linha sync decisao=pular motivo=filtrado item="$1"
   DBX_SYNC_FILTRADOS_CHAVES[$DBX_SYNC_CHAVE]=1
   # shellcheck disable=SC2034  # canal publico, lido por commands/sync e verificar
   DBX_SYNC_FILTRADOS=${#DBX_SYNC_FILTRADOS_CHAVES[@]}

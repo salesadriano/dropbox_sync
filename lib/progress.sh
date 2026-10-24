@@ -223,12 +223,14 @@ _DBX_PRG_ESTADO='ativo'
 
 # _dbx_progress_terminal — desenho no lugar: stderr e terminal e TERM entende (DIV-292).
 _dbx_progress_terminal() {
+  # DIV-287, RF-165: com --debug as linhas de depuracao quebrariam o retorno de
+  # carro; vale tambem sobre a semente, entao nenhuma linha mistura os dois.
+  [[ ${DBX_CLI_DEBUG:-nao} != 'sim' ]] || return 1
   case ${DBX_PROGRESS_TERMINAL:-auto} in
     sim) return 0 ;;
     nao) return 1 ;;
   esac
-  # DIV-287: com --debug as linhas de depuracao quebrariam o retorno de carro.
-  [[ -t 2 && ${TERM:-dumb} != 'dumb' && ${DBX_CLI_DEBUG:-nao} != 'sim' ]]
+  [[ -t 2 && ${TERM:-dumb} != 'dumb' ]]
 }
 
 # _dbx_progress_arquivo_montar <item> <com_bytes> <sufixo> — monta _DBX_PRG_LINHA.
