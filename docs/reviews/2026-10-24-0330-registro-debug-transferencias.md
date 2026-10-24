@@ -265,3 +265,9 @@ Red (base extraida de `a718ec4`, so com o `tmp_test` novo): 8/1 (`gancho_sozinho
 Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/tmp.sh`, `lib/debug.sh`, `tests/unit/tmp_test.sh`.
 
 Recomendacoes que ficam (menores, fora desta entrega): 5, 10 e 11 da rodada 1; 8 (parcial) da rodada 1; N4 da rodada 2.
+
+## Validacao independente do QA
+
+Detalhe em [validacao-qa-debug-transferencias](2026-10-24-0330-validacao-qa-debug-transferencias.md). Ciclo 1 (em quatro retomadas, 1 a 1d, pelo teto de chamadas) APROVADO, sem defeito de produto: `qa_debug_transferencias_b12_test` 27 aprovados, 0 reprovados, 1 pulado (`download_hash_divergente`: o duplo nao envia `Dropbox-API-Result`; `RF-160(c)` coberto por `retomada_download_test` `tc_dbg_15`). `QA-DBG-01` (linhas `http` x `chamadas` na falha de rede) foi erro de premissa da suite: a terceira requisicao era a sonda, que sai como `debug: sonda`; o Tech Lead acrescentou `rf162e_reemissao_diagnostica_do_503_conta_igual_nos_tres_lugares` (`debug_http_test`) e decidiu `DIV-351`. `QA-DBG-02` (linha `sonda` fora de `chave=valor`) e a decisao `DIV-337` A.
+
+- **Aceite do solicitante pela regra 12, em 2026-10-24 ("Aprovo"):** suite `tests/integracao/qa_debug_transferencias_b12_test.sh`, 28 casos, sha256 `ef18bce7a96fe4f10ecde9d5fc7f6a9fd4b1d16d878b99b99caeee8fbfb6386d` (arquivo final, depois de o Tech Lead remover a linha morta do SC2317; lint rc 0, `harness` 22/22, `json` 62/62).

@@ -39,3 +39,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-0330-registro-debug-transferencias
 - **DIV-339:** "Sem limite (Recomendado)" — um nivel unico, uma linha por decisao, inclusive `pular`.
 
 **Decididas pelo Tech Lead na recomendacao do BA (tecnicas, sem efeito de contrato alem do ja decidido):** `DIV-333` (linhas dos auxiliares em arquivo por item no canal efemero `0700` de `DIV-290`, descarregadas pelo principal na ordem do plano), `DIV-334` (duracao e bytes pelo `-w` do cURL ampliado so com `--debug`), `DIV-335` (host mais o caminho fixo do endpoint da API), `DIV-336` (formato `chave=valor`), `DIV-337` (sonda como categoria `sonda` do mesmo prefixo, sem reescrever seu formato), `DIV-340` (vocabulario fechado de motivos, a conferir contra o codigo pelo Senior Developer), `DIV-341` (resumo tambem em falha e, em melhor esforco, em sinal).
+
+**Implementacao:** tarefas 1 a 6 (commits `cf21498` a `698fc41`); gate de conformidade APROVADO COM RESSALVAS nas rodadas 1 e 2, com os importantes corrigidos (rodada 1: ordem do resumo no sinal, camadas, resumo armado antes do requisito; rodada 2, N1: codigo do sinal igual com e sem `--debug`). Divergencias decididas pelo Tech Lead durante a implementacao: `DIV-342` a `DIV-351`.
+
+**QA:** ciclo 1 (1, 1b, 1c, 1d) APROVADO, sem defeito de produto; `QA-DBG-01` foi erro de premissa da suite e levou a `DIV-351`.
+
+**Aceite da suite do QA (regra 12, AskUserQuestion, 2026-10-24):** "Aprovo (Recomendado)" — `tests/integracao/qa_debug_transferencias_b12_test.sh`, 28 casos (27 aprovados, 1 pulado por limite do duplo), sha256 `ef18bce7a96fe4f10ecde9d5fc7f6a9fd4b1d16d878b99b99caeee8fbfb6386d`.
