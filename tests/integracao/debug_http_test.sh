@@ -331,6 +331,25 @@ teste_rf162e_sonda_entra_em_chamadas() {
   assert_contem "debug: resumo comando=download chamadas=$n " "$DBX_ERRO" 'chamadas = requisicoes feitas, sonda inclusive'
 }
 
+# QA-DBG-01: 503 no canal de fluxo tem reemissao diagnostica (lib/http): as tres
+# contagens (requisicoes ao duplo, linhas http, chamadas do resumo) concordam.
+teste_rf162e_reemissao_diagnostica_do_503_conta_igual_nos_tres_lugares() {
+  local base linha linhas=0 primeiras=0 feitas
+  base=$(_dbg_cenario)
+  printf '503' >"$base/content"
+  _dbg_executar "$base" --debug download /arq.bin "$base/destino.bin"
+  [[ $DBX_ESTADO -ne 0 ]] || _harness_falhar 'o 503 deveria falhar o download'
+  while IFS= read -r linha; do
+    [[ $linha == 'debug: http '* ]] || continue
+    linhas=$((linhas + 1))
+    [[ $linha == *' tentativa=1 '* ]] && primeiras=$((primeiras + 1))
+  done <"$base/err"
+  feitas=$(_conta_linhas "$base/chamadas")
+  assert_igual "$feitas" "$linhas" "uma linha http por requisicao feita: $DBX_ERRO"
+  assert_contem "debug: resumo comando=download chamadas=$primeiras " "$DBX_ERRO" 'chamadas = linhas com tentativa=1'
+  assert_igual "$feitas" "$primeiras" 'sem retentativa, toda requisicao e uma primeira tentativa'
+}
+
 teste_rf162_codigo_do_resumo_nao_vem_do_ambiente() {
   local base
   base=$(_dbg_cenario)
