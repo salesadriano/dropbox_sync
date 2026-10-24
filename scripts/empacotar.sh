@@ -22,6 +22,16 @@ done
 VERSAO=$(grep -E "^readonly DBX_CLI_VERSAO=" "$RAIZ_PROJETO/lib/cli.sh" | cut -d"'" -f2)
 [[ -n $VERSAO ]] || { printf 'Erro: Nao foi possivel identificar a versao em lib/cli.sh\n' >&2; exit 1; }
 
+if [[ $PUBLICAR == "sim" ]]; then
+  # As notas da versao vivem em docs/releases/v<versao>.md: a primeira linha
+  # ("# <titulo>") vira o titulo da release e o resto, o corpo.
+  NOTAS="$RAIZ_PROJETO/docs/releases/v${VERSAO}.md"
+  [[ -f $NOTAS ]] || { printf 'Erro: notas da release ausentes em %s\n' "$NOTAS" >&2; exit 1; }
+  TITULO_RELEASE=$(head -n 1 -- "$NOTAS")
+  TITULO_RELEASE=${TITULO_RELEASE#\# }
+  [[ -n $TITULO_RELEASE ]] || { printf 'Erro: titulo vazio na primeira linha de %s\n' "$NOTAS" >&2; exit 1; }
+fi
+
 printf '==> Empacotando dropbox_sync v%s para Linux...\n' "$VERSAO"
 
 DIR_DIST="$RAIZ_PROJETO/dist"
@@ -81,28 +91,19 @@ if [[ $PUBLICAR == "sim" ]]; then
     exit 0
   fi
 
+  CORPO_NOTAS="$STAGING/notas.md"
+  tail -n +2 -- "$NOTAS" > "$CORPO_NOTAS"
+
   TAG="v${VERSAO}"
   printf '==> Publicando Release %s no GitHub via gh release...\n' "$TAG"
   if gh release view "$TAG" >/dev/null 2>&1; then
     printf '==> Release %s ja existe, enviando artefatos atualizados...\n' "$TAG"
     gh release upload "$TAG" "$ARQUIVO_TAR" "$ARQUIVO_SHA" --clobber
+    gh release edit "$TAG" --title "$TITULO_RELEASE" --notes-file "$CORPO_NOTAS"
   else
     printf '==> Criando nova Release %s no GitHub...\n' "$TAG"
     gh release create "$TAG" "$ARQUIVO_TAR" "$ARQUIVO_SHA" \
-      --title "Release v${VERSAO} — Progresso em Tempo Real, Diagnostico e Branch Master" \
-      --notes "## O que ha de novo na v${VERSAO}
-
-- **Progresso grafico em tempo real para upload e download:** barra grafica dinamica no terminal com taxa de transferencia, bytes transferidos e precisao percentual adaptativa.
-- **Feedback de andamento no sync:** acompanhamento interativo do escaneamento local e consulta remota durante a sincronizacao.
-- **Diagnostico e modo debug (--debug):** novo sinalizador 'dbx config --debug' para validacao de integridade do ambiente e persistencia de credenciais.
-- **Compatibilidade expandida:** suporte aprimorado para ambientes BSD, UFS e conteineres restritos.
-- **Roteiros de instalacao oficiais na branch master:** instalador portavel 'install.sh' e documentacao atualizados para consumo estavel da branch 'master'.
-
-### Instalacao rapida no Linux:
-\`\`\`bash
-curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/master/install.sh | bash
-\`\`\`
-"
+      --title "$TITULO_RELEASE" --notes-file "$CORPO_NOTAS"
   fi
   printf '[ok] Release %s publicada com sucesso no GitHub!\n' "$TAG"
 fi
