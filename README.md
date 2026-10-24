@@ -49,7 +49,7 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 - **Sistema Operacional:** Linux (POSIX compatível).
 - **Interpretador:** GNU Bash 4.4 ou superior.
 - **Rede:** `cURL` com suporte a HTTPS e TLS 1.2+ (única dependência externa).
-- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum` ou `openssl`.
+- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum`, `sha256` ou `openssl`.
 - **Opcionais, só no diagnóstico de `dbx config --debug`:** `mount`, `grep`, `getenforce` e `lsattr`; na falta deles, a linha correspondente do relatório é omitida.
 
 ---

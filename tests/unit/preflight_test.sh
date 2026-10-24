@@ -28,7 +28,7 @@ _sem() {
   mkdir -p "$dir"
   # `timeout` e os utilitarios usados pela propria sonda precisam existir no
   # PATH reduzido, senao a sonda mede a si mesma em vez do componente.
-  for alvo in bash curl sha256sum shasum openssl timeout env head wc mktemp stat \
+  for alvo in bash curl sha256sum shasum sha256 openssl timeout env head wc mktemp stat \
     readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od tail df sleep ln rmdir; do
     for faltante in "${ausentes[@]}"; do
       [[ $alvo == "$faltante" ]] && continue 2
@@ -76,7 +76,7 @@ teste_utilitario_de_resumo_ausente_e_recusado() {
   local caminho saida
   # Precisa remover TODOS: lib/hash aceita mais de um utilitario de resumo, e
   # deixar um deles no PATH faria a sonda medir outra coisa.
-  caminho=$(_sem sha256sum shasum openssl)
+  caminho=$(_sem sha256sum shasum sha256 openssl)
   saida=$(PATH="$caminho" timeout 30 bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_verificar 2>&1
@@ -276,7 +276,7 @@ teste_inspecao_sem_parada_nomeia_cada_ausente() {
 
 teste_inspecao_sem_parada_inclui_o_resumo_sha256() {
   local caminho saida
-  caminho=$(_sem sha256sum shasum openssl)
+  caminho=$(_sem sha256sum shasum sha256 openssl)
   saida=$(PATH="$caminho" timeout 30 bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_ausentes
@@ -414,7 +414,7 @@ _nao_e_comando_externo() {
   # presenca e
   # verificada em conjunto por `dbx_hash_verificar_dependencias`, e nao
   # individualmente: exigir os tres reprovaria ambiente que tem apenas um.
-  local excecoes=' sudo env sha256sum openssl shasum '
+  local excecoes=' sudo env sha256sum openssl shasum sha256 '
   [[ $excecoes == *" $palavra "* ]] && return 0
   return 1
 }
@@ -746,7 +746,7 @@ teste_lista_de_utilitarios_do_readme_e_a_do_preflight() {
   local esperado obtido
   esperado=$({
     tr ' ' '\n' <<<"$DBX_PREFLIGHT_UTILITARIOS"
-    printf '%s\n' sha256sum shasum openssl
+    printf '%s\n' sha256sum shasum sha256 openssl
   } | grep -vx -e curl -e '' | sort -u)
   obtido=$(_utilitarios_do_readme)
   assert_diferente '' "$obtido" 'o README precisa trazer a linha de utilitarios'

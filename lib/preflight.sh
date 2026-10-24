@@ -181,7 +181,7 @@ dbx_preflight_verificar() {
       { _dbx_preflight_falhar dependencia 'nenhum utilitario de resumo SHA-256 disponivel'; return $?; }
   else
     command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 ||
-      command -v openssl >/dev/null 2>&1 ||
+      command -v sha256 >/dev/null 2>&1 || command -v openssl >/dev/null 2>&1 ||
       { _dbx_preflight_falhar dependencia 'nenhum utilitario de resumo SHA-256 disponivel'; return $?; }
   fi
 
@@ -228,7 +228,8 @@ dbx_preflight_ausentes() {
     dbx_hash_verificar_dependencias || DBX_PREFLIGHT_AUSENTES+=(sha256sum)
   else
     command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 ||
-      command -v openssl >/dev/null 2>&1 || DBX_PREFLIGHT_AUSENTES+=(sha256sum)
+      command -v sha256 >/dev/null 2>&1 || command -v openssl >/dev/null 2>&1 ||
+      DBX_PREFLIGHT_AUSENTES+=(sha256sum)
   fi
   [[ ${#DBX_PREFLIGHT_AUSENTES[@]} -eq 0 ]] || return "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
   return 0

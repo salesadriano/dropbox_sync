@@ -82,9 +82,10 @@ verificar_prerequisitos() {
     fi
   done
 
-  # Algoritmo de hash (sha256sum ou shasum)
-  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
-    erro "Utilitario de integridade sha256sum ou shasum nao encontrado."
+  # Algoritmo de hash (sha256sum, shasum, sha256 ou openssl)
+  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1 &&
+    ! command -v sha256 >/dev/null 2>&1 && ! command -v openssl >/dev/null 2>&1; then
+    erro "Utilitario de integridade (sha256sum, shasum, sha256 ou openssl) nao encontrado."
   fi
 
   ok "Pre-requisitos validados com sucesso."

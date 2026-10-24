@@ -85,7 +85,7 @@ readonly DBX_HASH_ERRO_DEPENDENCIA DBX_HASH_ERRO_ORIGEM
 # Utilitarios de resumo aceitos. A lista e fechada de proposito: DBX_HASH_BACKEND
 # vem do ambiente, e aceitar um valor arbitrario transformaria uma variavel de
 # ambiente em escolha de programa a executar.
-readonly DBX_HASH_BACKENDS_ACEITOS='sha256sum shasum openssl'
+readonly DBX_HASH_BACKENDS_ACEITOS='sha256sum shasum sha256 openssl'
 
 DBX_HASH_BACKEND=${DBX_HASH_BACKEND:-}
 DBX_HASH_FORMATO=''
@@ -139,6 +139,11 @@ _dbx_hash_sha256_hex() {
       ;;
     shasum)
       saida=$(shasum -a 256) || return "$DBX_HASH_ERRO_RESUMO"
+      saida=${saida%% *}
+      ;;
+    sha256)
+      # Base do FreeBSD (RF-169): `-q` imprime so o resumo; sem arquivo le a stdin.
+      saida=$(sha256 -q) || return "$DBX_HASH_ERRO_RESUMO"
       saida=${saida%% *}
       ;;
     openssl)

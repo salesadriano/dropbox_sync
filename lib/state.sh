@@ -1658,7 +1658,7 @@ _dbx_state_retomada_podar_um() {
 # `upload-*` nem `trava-*`; o registro do contexto nunca sai por aqui. O relogio
 # decide so o que TENTAR limpar, nunca a validade de um registro em uso.
 _dbx_state_retomada_podar() {
-  local diretorio=$1 arquivo linha carimbo antigo antigo_carimbo tinha_nullglob='nao'
+  local diretorio=$1 arquivo antigo tinha_nullglob='nao'
   local -a registros=()
   while IFS= read -r -d '' arquivo; do
     [[ $arquivo == "$DBX_STATE_RETOMADA_ARQUIVO" ]] && continue
@@ -1673,18 +1673,16 @@ _dbx_state_retomada_podar() {
   local -A mantidos=()
   while [[ $excesso -gt 0 && $voltas -lt $((excesso + 50)) ]]; do
     voltas=$((voltas + 1))
-    antigo='' antigo_carimbo=''
-    while IFS= read -r -d '' linha; do
-      carimbo=${linha%% *}
-      carimbo=${carimbo%%.*}
-      arquivo=${linha#* }
+    # O mais antigo sai do teste `-ot` do bash sobre a lista do glob, sem `find
+    # -printf` (RF-168): o utilitario do FreeBSD nao o conhece.
+    antigo=''
+    for arquivo in "${registros[@]}"; do
       [[ $arquivo == "$DBX_STATE_RETOMADA_ARQUIVO" || -n ${mantidos[$arquivo]:-} ]] && continue
-      [[ $carimbo =~ ^[0-9]+$ ]] || continue
-      if [[ -z $antigo || $carimbo -lt $antigo_carimbo ]]; then
+      [[ -f $arquivo && ! -L $arquivo ]] || continue
+      if [[ -z $antigo || $arquivo -ot $antigo ]]; then
         antigo=$arquivo
-        antigo_carimbo=$carimbo
       fi
-    done < <(find "$diretorio" -maxdepth 1 -type f -name 'retomada-*' -printf '%T@ %p\0' 2>/dev/null)
+    done
     [[ -n $antigo ]] || break
     if _dbx_state_retomada_podar_um "$antigo"; then
       excesso=$((excesso - 1))
@@ -2259,7 +2257,7 @@ dbx_state_cursor_remover() {
 # de 8 dias e, acima de 100, os mais antigos por modificacao. So arquivo
 # regular do usuario; nunca o registro do contexto; nunca outro namespace.
 _dbx_state_cursor_podar() {
-  local diretorio=$1 arquivo linha carimbo antigo antigo_carimbo tinha_nullglob='nao'
+  local diretorio=$1 arquivo antigo tinha_nullglob='nao'
   local -a registros=()
   while IFS= read -r -d '' arquivo; do
     [[ $arquivo == "$DBX_STATE_CURSOR_ARQUIVO" ]] && continue
@@ -2274,18 +2272,15 @@ _dbx_state_cursor_podar() {
   local -A mantidos=()
   while [[ $excesso -gt 0 && $voltas -lt $((excesso + 50)) ]]; do
     voltas=$((voltas + 1))
-    antigo='' antigo_carimbo=''
-    while IFS= read -r -d '' linha; do
-      carimbo=${linha%% *}
-      carimbo=${carimbo%%.*}
-      arquivo=${linha#* }
+    # Mesmo criterio da poda de `retomada-*`: `-ot` sobre o glob (RF-168).
+    antigo=''
+    for arquivo in "${registros[@]}"; do
       [[ $arquivo == "$DBX_STATE_CURSOR_ARQUIVO" || -n ${mantidos[$arquivo]:-} ]] && continue
-      [[ $carimbo =~ ^[0-9]+$ ]] || continue
-      if [[ -z $antigo || $carimbo -lt $antigo_carimbo ]]; then
+      [[ -f $arquivo && ! -L $arquivo ]] || continue
+      if [[ -z $antigo || $arquivo -ot $antigo ]]; then
         antigo=$arquivo
-        antigo_carimbo=$carimbo
       fi
-    done < <(find "$diretorio" -maxdepth 1 -type f -name 'cursor-*' -printf '%T@ %p\0' 2>/dev/null)
+    done
     [[ -n $antigo ]] || break
     if [[ -f $antigo && ! -L $antigo && -O $antigo ]] && rm -f -- "$antigo" 2>/dev/null; then
       excesso=$((excesso - 1))
