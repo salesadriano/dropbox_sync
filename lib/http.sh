@@ -315,6 +315,8 @@ _dbx_http_debug_preparar() {
   _DBX_HTTP_LINHA_DEBUG+=("duracao_ms=$duracao_ms" "enviados=$enviados" "recebidos=$recebidos")
   _dbx_http_retry_after_efetivo
   [[ -n $_DBX_HTTP_RETRY_AFTER_S ]] && _DBX_HTTP_LINHA_DEBUG+=("retry_after=$_DBX_HTTP_RETRY_AFTER_S")
+  # RF-160(b): requisicao com `Range` leva a faixa pedida.
+  [[ -n $_DBX_HTTP_FAIXA_INICIO ]] && _DBX_HTTP_LINHA_DEBUG+=("faixa=$_DBX_HTTP_FAIXA_INICIO-")
   return 0
 }
 

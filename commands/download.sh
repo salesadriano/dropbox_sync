@@ -315,6 +315,7 @@ dbx_cmd_download_executar() {
         'a saida padrao e um arquivo que ja tem conteudo e seria sobrescrito; use ">" para um arquivo novo, um cano, ou informe o destino'
       return $?
     fi
+    _dbx_cmd_debug_plano_download "$alvo" '' '' 0
     dbx_auth_conteudo_receber GET \
       'https://content.dropboxapi.com/2/files/download' "$argumento" "$alvo"
     estado_recebimento=$?
@@ -325,8 +326,11 @@ dbx_cmd_download_executar() {
       "$DBX_CMD_DOWNLOAD_HASH"
     estado_recebimento=$?
   else
+    DBX_CMD_DEBUG_SEM_RETOMADA=$sem_retomada
     dbx_cmd_receber_arquivo "$remoto" "$alvo"
     estado_recebimento=$?
+    # shellcheck disable=SC2034 # lida por lib/cmd.sh (_dbx_cmd_debug_plano_download)
+    DBX_CMD_DEBUG_SEM_RETOMADA='nao'
   fi
   if [[ $estado_recebimento -ne 0 ]]; then
     # O remoto que e pasta nao e falha de arquivo: a linha sai sem ` falhou`.

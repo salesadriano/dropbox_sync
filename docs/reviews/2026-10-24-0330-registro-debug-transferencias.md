@@ -74,3 +74,37 @@ Cobertura: `TC-DBG-20` (linhas dos auxiliares chegam ao operador e somam), `21` 
 Pendente para as tarefas seguintes: ordem das linhas por item na ordem do plano (`RF-158(b)`, `TC-DBG-20`) so e verificavel com as linhas de decisao de `RF-161` (tarefa 4); `RF-162(c)` (resumo antes da mensagem de interrupcao) nao tem assercao de ordem; com `--dry-run --paralelo N` o resumo diria `paralelo=N` embora a simulacao nunca use paralelismo (o valor vem do N pedido).
 
 Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/debug.sh` (apos trocar `>&"$fd"` por `1>&"$fd"`, SC2261), `lib/tmp.sh`, `commands/sync.sh`, `bin/dbx`, `tests/integracao/paralelo_test.sh`, `tests/integracao/debug_http_test.sh`.
+
+## Tarefa 3: etapas do upload e do download (RF-159, RF-160)
+
+Implementacao e testes pelo Senior Developer (tarefa 3; so o arquivo novo executado); bateria, red, lint e decisoes de divergencia pelo Tech Lead.
+
+Arquivos:
+- `lib/transfer.sh`: `modalidade=simples|sessao ... bloco_tamanho=` em `dbx_transfer_enviar_arquivo`; `bloco=<n> deslocamento= tamanho=` e `bloco=<n> confirmado=` no laco de `_dbx_transfer_percurso`; linhas de retomada em `_dbx_transfer_ret_abrir`, `_dbx_transfer_ret_mudou` e `_dbx_transfer_anexar_retomado`; `DBX_TRANSFER_DEBUG_SEM_RETOMADA`.
+- `lib/cmd.sh`: `_dbx_cmd_debug_plano_download` (plano: `destino`, `bytes`, `retomada` com `faixa`/`part_bytes` ou `motivo`) e `_dbx_cmd_debug_hash` (`hash=ok|divergente bytes=`), nos dois caminhos de recebimento e nos dois pontos de faixa ignorada.
+- `lib/http.sh`: a linha `http` ganha `faixa=<inicio>-` quando a requisicao leva `Range` (`RF-160(b)`), no fim da linha.
+- `commands/upload.sh` (modalidade da sessao por stdin: `arquivo=- bytes=desconhecido`; repasse de `--sem-retomada`), `commands/download.sh` (plano para stdout sem `destino`; repasse de `--sem-retomada`; `disable=SC2034` comentado na variavel lida por `lib/cmd.sh`).
+- Testes: `tests/integracao/debug_transferencia_test.sh` (novo, 5 casos); 4 casos novos em `retomada_upload_test.sh` e 4 em `retomada_download_test.sh` (onde estao os duplos com estado de sessao e de `Range`).
+
+Vocabulario de motivos (conferido contra o codigo, `DIV-340`): upload `arquivo-alterado` (`_dbx_transfer_ret_mudou`), `estado-invalido` (registro descartado ou de outro usuario), `estado-ausente`, `sessao-expirada` (tag `not_found`/`closed`), `deslocamento-incorreto`, `sem-retomada`; download `hash-remoto-mudou`, `estado-invalido`, `servidor-ignorou-faixa`, `sem-retomada`. `DIV-343` e `DIV-344` decididas pelo Tech Lead (A): `part-maior-que-remoto` sai do `RF-160(a)` e cai em `estado-invalido`, como os casos de `.part` sumido/trocado e registro alheio; a retomada desligada no meio do upload nao ganha linha propria (ja emite aviso em stderr).
+
+Red (base extraida de `23be9d4`, so com os testes novos): `debug_transferencia_test` 0/1 (sem `debug: upload modalidade=sessao`); `retomada_upload_test` 39/1 (`tc_dbg_08_09_24`: sem modalidade nem blocos); `retomada_download_test` 28/1 (`tc_dbg_13`: sem `retomada=encontrada faixa=... part_bytes=...`).
+
+| Comando | Total | Aprovados | Falhos | Pulados |
+|---|---|---|---|---|
+| `bash tests/run.sh debug_transferencia_test` | 5 | 5 | 0 | 0 |
+| `bash tests/run.sh retomada_upload_test` | 43 | 43 | 0 | 0 |
+| `bash tests/run.sh retomada_download_test` | 32 | 32 | 0 | 0 |
+| `bash tests/run.sh debug_http_test` | 16 | 16 | 0 | 0 |
+| `bash tests/run.sh http_test` (casou tambem `debug_http_test`) | 69 | 69 | 0 | 0 |
+| `bash tests/run.sh comandos_test` | 119 | 119 | 0 | 0 |
+| `bash tests/run.sh sync_test` | 85 | 85 | 0 | 0 |
+| `bash tests/run.sh composicao_test` | 28 | 28 | 0 | 0 |
+| `bash tests/run.sh json` | 62 | 62 | 0 | 0 |
+| `bash tests/run.sh harness` | 22 | 22 | 0 | 0 |
+
+Cobertura: `TC-DBG-08` (simples e sessao; lote pendente), `09`, `10`, `11`, `12`, `13`, `14`, `15`, `16`; `TC-DBG-24` agora com sessao real (bloco grande e sentinela de `session_id`), o que fecha a cobertura reduzida registrada na Tarefa 1.
+
+Pendente para a Tarefa 4: `modalidade=lote` do `sync --enviar` (parte de `TC-DBG-08`) e `RF-159(d)` (`debug: upload resultado=ok|falha classe=` por item). Observacao aceita: depois de `hash=divergente` com recomeco, a segunda tentativa emite um segundo plano (`retomada=nenhuma`), porque e um recebimento novo.
+
+Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/cmd.sh`, `lib/transfer.sh`, `lib/http.sh`, `commands/upload.sh`, `commands/download.sh`, `tests/integracao/debug_transferencia_test.sh`, `tests/integracao/retomada_upload_test.sh`, `tests/integracao/retomada_download_test.sh`.

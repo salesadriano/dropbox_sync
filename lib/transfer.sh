@@ -686,6 +686,7 @@ _dbx_transfer_percurso() {
       return $?
     }
 
+    dbx_debug_linha upload bloco="$parte" deslocamento="$deslocamento" tamanho="$tamanho"
     # Fase 7a: o `prefixo_hash` do registro e o do que o servidor ja confirmou,
     # isto e, o acumulador ANTES desta parte.
     _dbx_transfer_ret_prefixo
@@ -742,6 +743,7 @@ _dbx_transfer_percurso() {
       maior_confirmado=$deslocamento
       retomadas=0
     fi
+    dbx_debug_linha upload bloco="$parte" confirmado="$deslocamento"
     dbx_progress_arquivo_avancar "$deslocamento"
     parte=$((parte + 1))
   done
@@ -837,7 +839,8 @@ _dbx_transfer_conclusao_recusada() {
         ;;
       incorrect_offset)
         if [[ $_DBX_TRANSFER_RET_PRIMEIRA == 'sim' ]]; then
-          _dbx_transfer_avisar 'estado de retomada descartado: o servico informou um deslocamento que nao confere com o registro; o envio recomeca do zero'
+          dbx_debug_linha upload retomada=descartada motivo=deslocamento-incorreto
+    _dbx_transfer_avisar 'estado de retomada descartado: o servico informou um deslocamento que nao confere com o registro; o envio recomeca do zero'
           return "$_DBX_TRANSFER_RECOMECAR"
         fi
         ;;
@@ -960,6 +963,7 @@ _dbx_transfer_ret_gravar() {
 # _dbx_transfer_ret_mudou — arquivo local diferente do registrado: descarta.
 _dbx_transfer_ret_mudou() {
   dbx_state_retomada_remover
+  dbx_debug_linha upload retomada=descartada motivo=arquivo-alterado
   # shellcheck disable=SC2034  # canal publico, lido por commands/upload
   DBX_TRANSFER_RETOMADA='recomecada'
   _dbx_transfer_avisar 'arquivo local mudou desde a interrupcao; o envio recomeca do zero'
@@ -983,6 +987,7 @@ _dbx_transfer_ret_abrir() {
     0) ;;
     2)
       _dbx_transfer_avisar "estado de retomada descartado: $DBX_STATE_MOTIVO"
+      dbx_debug_linha upload retomada=descartada motivo=estado-invalido
       # shellcheck disable=SC2034  # canal publico, lido por commands/upload
       DBX_TRANSFER_RETOMADA='recomecada'
       return 0
@@ -991,9 +996,13 @@ _dbx_transfer_ret_abrir() {
       dbx_state_retomada_soltar
       DBX_TRANSFER_RETOMADA_ATIVA='nao'
       _dbx_transfer_avisar 'sem retomada nesta execucao: o registro de retomada nao e um arquivo deste usuario'
+      dbx_debug_linha upload retomada=descartada motivo=estado-invalido
       return 0
       ;;
-    *) return 0 ;;
+    *)
+      dbx_debug_linha upload retomada=descartada motivo=estado-ausente
+      return 0
+      ;;
   esac
   sessao=${DBX_STATE_RETOMADA_CAMPOS[0]}
   confirmado=$((10#${DBX_STATE_RETOMADA_CAMPOS[1]}))
@@ -1050,6 +1059,7 @@ _dbx_transfer_ret_abrir() {
   DBX_TRANSFER_RETOMADA='sim'
   # shellcheck disable=SC2034
   DBX_TRANSFER_RETOMADO_DE=$confirmado
+  dbx_debug_linha upload retomada=encontrada deslocamento="$confirmado"
   return 0
 }
 
@@ -1066,6 +1076,7 @@ _dbx_transfer_anexar_retomado() {
   _dbx_transfer_tag_sessao
   case $_DBX_TRANSFER_TAG in
     not_found | closed)
+      dbx_debug_linha upload retomada=descartada motivo=sessao-expirada
       _dbx_transfer_avisar 'sessao de envio expirada no servidor; recomecando'
       return "$_DBX_TRANSFER_RECOMECAR"
       ;;
@@ -1087,6 +1098,7 @@ _dbx_transfer_anexar_retomado() {
         return 0
       fi
     fi
+    dbx_debug_linha upload retomada=descartada motivo=deslocamento-incorreto
     _dbx_transfer_avisar 'estado de retomada descartado: o servico informou um deslocamento que nao confere com o registro; o envio recomeca do zero'
     return "$_DBX_TRANSFER_RECOMECAR"
   fi
@@ -1103,6 +1115,8 @@ DBX_TRANSFER_COMMIT=''
 # shellcheck disable=SC2034
 # Justificativa: `sim` quando o ultimo envio de arquivo foi por sessao.
 DBX_TRANSFER_POR_SESSAO='nao'
+# `sim` quando o operador pediu `--sem-retomada` (so para a linha de depuracao).
+DBX_TRANSFER_DEBUG_SEM_RETOMADA='nao'
 
 # dbx_transfer_objeto_de_publicacao <remoto> <modo> <rev> <origem> [mute]
 #
@@ -1187,11 +1201,15 @@ dbx_transfer_enviar_arquivo() {
   if dbx_transfer_precisa_de_sessao "$DBX_TRANSFER_TAMANHO"; then
     # shellcheck disable=SC2034  # canal publico, lido por commands/upload
     DBX_TRANSFER_POR_SESSAO='sim'
+    dbx_debug_linha upload modalidade=sessao arquivo="$origem" bytes="$DBX_TRANSFER_TAMANHO" bloco_tamanho="$DBX_TRANSFER_TAMANHO_PARTE"
+    [[ $DBX_TRANSFER_DEBUG_SEM_RETOMADA == 'sim' ]] &&
+      dbx_debug_linha upload retomada=descartada motivo=sem-retomada
     # shellcheck disable=SC2094  # `origem` e so lida: o nome viaja para a retomada
     dbx_transfer_sessao "$commit" "$origem" <"$origem"
     return $?
   fi
 
+  dbx_debug_linha upload modalidade=simples arquivo="$origem" bytes="$DBX_TRANSFER_TAMANHO"
   dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
     "$commit" "$origem" nao && return 0
   _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
