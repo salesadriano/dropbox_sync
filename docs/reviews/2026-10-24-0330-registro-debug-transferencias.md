@@ -108,3 +108,41 @@ Cobertura: `TC-DBG-08` (simples e sessao; lote pendente), `09`, `10`, `11`, `12`
 Pendente para a Tarefa 4: `modalidade=lote` do `sync --enviar` (parte de `TC-DBG-08`) e `RF-159(d)` (`debug: upload resultado=ok|falha classe=` por item). Observacao aceita: depois de `hash=divergente` com recomeco, a segunda tentativa emite um segundo plano (`retomada=nenhuma`), porque e um recebimento novo.
 
 Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/cmd.sh`, `lib/transfer.sh`, `lib/http.sh`, `commands/upload.sh`, `commands/download.sh`, `tests/integracao/debug_transferencia_test.sh`, `tests/integracao/retomada_upload_test.sh`, `tests/integracao/retomada_download_test.sh`.
+
+## Tarefa 4: decisoes do sync, cursor e resultado do envio (RF-161, RF-158(b), RF-159(a)(d))
+
+Implementacao e testes pelo Senior Developer (tarefa 4; nenhum teste executado: a unica tentativa chamou o arquivo sem o executor); bateria, red, correcoes, lint e decisoes de divergencia pelo Tech Lead.
+
+Arquivos:
+- `commands/sync.sh`: `_dbx_cmd_sync_debug_decisoes` (uma linha `debug: sync decisao= motivo= item=<relativo>` por item, antes da primeira transferencia, tambem em simulacao); linha do cursor no `--receber` (`cursor=usado|reconstruido|desligado|forcado`, nunca o valor); `upload modalidade=lote` por item pequeno e `upload resultado=ok|falha classe=` por item do lote; `_dbx_cmd_sync_enviar` recebe o item relativo e o publica em `DBX_TRANSFER_DEBUG_ITEM`.
+- `lib/sync.sh`: `_dbx_sync_contar_filtrado` emite `decisao=pular motivo=filtrado` uma vez por chave, so com `DBX_SYNC_DEBUG_DECISAO=sim` (o `verificar` nao emite).
+- `lib/transfer.sh`: `_dbx_transfer_debug_resultado` (`RF-159(d)`) nas tres saidas de `dbx_transfer_enviar_arquivo`; a linha `modalidade` usa `DBX_TRANSFER_DEBUG_ITEM` quando o `sync` o publica.
+- `tests/integracao/debug_sync_test.sh` (novo, 8 casos).
+
+Correcoes do Tech Lead:
+- `RF-161(c)` / `DIV-345`: o item so do destino sem `--espelhar` ficava sem linha, e o protegido sob `--espelhar` era pulado em silencio; agora `pular motivo=so-no-destino` e `pular motivo=protegido`. Caso novo `dbg17_so_no_destino_sem_espelhar...`.
+- `RF-164(b)` / `DIV-332`: no `sync --enviar` a linha `upload modalidade=` trazia o caminho local completo; agora o item relativo a raiz. Assercao nova no caso `dbg159_envio_unitario...`.
+- Testes: o item igual usava `dbx_hash_conteudo_arquivo` (imprime) em vez de `dbx_hash_publicar_arquivo` (publica em `DBX_HASH_RESULTADO`) e saia `content-hash-diferente`; `TC-DBG-20` procurava `download hash=ok`, que nao existe quando a listagem nao traz `content_hash` (passa a identificar o item pelo `destino` do plano); atribuicao morta de `DBX_SAIDA` (SC2034) trocada por assercao real da sentinela de cursor no texto dos dois canais.
+
+Divergencias decididas pelo Tech Lead (A em todas; detalhe na secao 9 do escopo): `DIV-345` (so no destino e protegido tem linha), `DIV-346` (`mais-novo` e `cache-igual` saem do vocabulario: o `sync` so decide por `content_hash`), `DIV-347` (`guarda` e `filtro=<n>` saem: a guarda recusa o plano inteiro e ja tem mensagem), `DIV-348` (decisoes em bloco, depois as linhas por item na ordem do plano; `RF-161(f)` reescrito), `DIV-349` (`cursor=usado` sem `motivo=`).
+
+Red (base extraida da Tarefa 3, so com o teste novo): `debug_sync_test` 0/1 (`dbg159_envio_unitario`: sem `upload resultado=ok`; a base ainda mostrava `arquivo=<caminho local completo>`). O red especifico das duas correcoes do Tech Lead (`so-no-destino` e item relativo) nao foi medido isoladamente: a base nao tem nenhuma linha de decisao, e o caso do item relativo reprova na base pela linha de resultado antes de chegar a ele.
+
+| Comando | Total | Aprovados | Falhos | Pulados |
+|---|---|---|---|---|
+| `bash tests/run.sh debug_sync_test` | 8 | 8 | 0 | 0 |
+| `bash tests/run.sh sync_test` (casou tambem `debug_sync_test`) | 93 | 93 | 0 | 0 |
+| `bash tests/run.sh paralelo_test` | 18 | 18 | 0 | 0 |
+| `bash tests/run.sh verificar_test` | 17 | 17 | 0 | 0 |
+| `bash tests/run.sh retomada_upload_test` | 43 | 43 | 0 | 0 |
+| `bash tests/run.sh comandos_test` | 119 | 119 | 0 | 0 |
+| `bash tests/run.sh debug_transferencia_test` | 5 | 5 | 0 | 0 |
+| `bash tests/run.sh composicao_test` | 28 | 28 | 0 | 0 |
+| `bash tests/run.sh json` | 62 | 62 | 0 | 0 |
+| `bash tests/run.sh harness` | 22 | 22 | 0 | 0 |
+
+Cobertura: `TC-DBG-08` (lote), `17`, `18`, `19` (`reconstruido`, `desligado`, `forcado`), `20` (decisao antes das linhas do item com `--paralelo 4`), `25` (sentinela de cursor ausente de stdout e stderr: fecha a cobertura reduzida da Tarefa 1), `RF-159(d)`.
+
+Pendente: `cursor=usado` sem caso (o duplo devolve a mesma listagem no `list_folder/continue`); `upload -` (fluxo, `commands/upload.sh`) nao emite `resultado=`; no `--receber` com segunda rodada de varredura completa (contradicao na exclusao) o `filtrado` pode sair duas vezes para o mesmo item.
+
+Lint (`sh scripts/lint.sh`, um por vez, rc 0): `commands/sync.sh`, `lib/sync.sh`, `lib/transfer.sh`, `tests/integracao/debug_sync_test.sh`.

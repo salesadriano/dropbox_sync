@@ -1201,19 +1201,37 @@ dbx_transfer_enviar_arquivo() {
   if dbx_transfer_precisa_de_sessao "$DBX_TRANSFER_TAMANHO"; then
     # shellcheck disable=SC2034  # canal publico, lido por commands/upload
     DBX_TRANSFER_POR_SESSAO='sim'
-    dbx_debug_linha upload modalidade=sessao arquivo="$origem" bytes="$DBX_TRANSFER_TAMANHO" bloco_tamanho="$DBX_TRANSFER_TAMANHO_PARTE"
+    dbx_debug_linha upload modalidade=sessao arquivo="${DBX_TRANSFER_DEBUG_ITEM:-$origem}" bytes="$DBX_TRANSFER_TAMANHO" bloco_tamanho="$DBX_TRANSFER_TAMANHO_PARTE"
     [[ $DBX_TRANSFER_DEBUG_SEM_RETOMADA == 'sim' ]] &&
       dbx_debug_linha upload retomada=descartada motivo=sem-retomada
     # shellcheck disable=SC2094  # `origem` e so lida: o nome viaja para a retomada
     dbx_transfer_sessao "$commit" "$origem" <"$origem"
+    _dbx_transfer_debug_resultado $?
     return $?
   fi
 
-  dbx_debug_linha upload modalidade=simples arquivo="$origem" bytes="$DBX_TRANSFER_TAMANHO"
-  dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
-    "$commit" "$origem" nao && return 0
+  dbx_debug_linha upload modalidade=simples arquivo="${DBX_TRANSFER_DEBUG_ITEM:-$origem}" bytes="$DBX_TRANSFER_TAMANHO"
+  if dbx_auth_conteudo POST 'https://content.dropboxapi.com/2/files/upload' \
+    "$commit" "$origem" nao; then
+    _dbx_transfer_debug_resultado 0
+    return 0
+  fi
   _dbx_transfer_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
     "envio recusado: ${DBX_HTTP_RESUMO_DE_ERRO:-sem detalhe}"
+  _dbx_transfer_debug_resultado $?
+}
+
+# _dbx_transfer_debug_resultado <status> — RF-159(d): `resultado=ok` ou
+# `resultado=falha classe=<classe>`; devolve o proprio <status>, para quem chama
+# fazer `return $?` sem que a depuracao mude o resultado.
+_dbx_transfer_debug_resultado() {
+  local status=$1
+  if [[ $status -eq 0 ]]; then
+    dbx_debug_linha upload resultado=ok
+  else
+    dbx_debug_linha upload resultado=falha classe="${DBX_TRANSFER_CLASSE:-erro_remoto}"
+  fi
+  return "$status"
 }
 
 # ---------------------------------------------------------------------------
