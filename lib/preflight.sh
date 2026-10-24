@@ -34,8 +34,13 @@
 # escassez de codigos —, e a mensagem de `configuracao` foi reescrita para nao
 # presumir credencial.
 #
-# NAO ha camada de compatibilidade GNU/BSD: DP-07 fixou Linux, e detectar
-# variante de sistema aqui traria de volta o que a decisao removeu.
+# Plataforma (DP-07 reaberta, secao 5.22, DIV-356): Linux e FreeBSD sao
+# suportados. A portabilidade vem da forma POSIX unica ou da capacidade do
+# utilitario (ex.: `stat -c` e, se recusado, `stat -f`). Deteccao do sistema e
+# liberada, mas so num PONTO UNICO, `dbx_preflight_plataforma`, que so existira
+# quando houver caso que a forma unica e a capacidade nao resolvam: ramificar
+# por `uname`, `OSTYPE` ou `MACHTYPE` espalhado pelo codigo recriaria a camada
+# de compatibilidade GNU/BSD. Ha caso de teste que reprova isso.
 
 [[ -n ${DBX_PREFLIGHT_CARREGADO:-} ]] && return 0
 DBX_PREFLIGHT_CARREGADO=1

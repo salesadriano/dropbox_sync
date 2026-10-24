@@ -522,7 +522,7 @@ dbx_config_gravar() {
   local saida_gravacao
   if ! saida_gravacao=$(
     printf '%s\n' "$corpo" >"$temporario" &&
-      chmod 600 -- "$temporario" &&
+      chmod -- 600 "$temporario" &&
       mv -f -- "$temporario" "$DBX_CONFIG_RESULTADO"
   ) 2>&1; then
     dbx_tmp_remover "$temporario"

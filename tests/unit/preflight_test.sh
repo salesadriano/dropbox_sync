@@ -94,13 +94,37 @@ teste_jq_nao_e_exigido() {
   assert_igual '' "$achados" "preflight exige jq: $achados"
 }
 
-teste_camada_de_compatibilidade_nao_foi_reintroduzida() {
-  # DP-07 fixou Linux; a camada GNU/BSD saiu do desenho. Detectar variante de
-  # sistema aqui traria de volta o que a decisao removeu.
-  local achados
-  achados=$(grep -vE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ/lib/preflight.sh" |
-    grep -nEi '(uname|darwin|bsd|freebsd|macos)' || true)
-  assert_igual '' "$achados" "deteccao de plataforma reintroduzida: $achados"
+# _deteccao_fora_do_ponto_unico <arquivo...> — `uname`, `OSTYPE` e `MACHTYPE`
+# fora de comentario e fora do corpo de `dbx_preflight_plataforma`.
+_deteccao_fora_do_ponto_unico() {
+  awk '
+    /^dbx_preflight_plataforma\(\) \{/ { dentro = 1 }
+    dentro { if ($0 ~ /^\}/) dentro = 0; next }
+    /^[[:space:]]*#/ { next }
+    /(^|[^A-Za-z0-9_])(uname|OSTYPE|MACHTYPE)([^A-Za-z0-9_]|$)/ { print FILENAME ":" FNR ": " $0 }
+  ' "$@"
+}
+
+teste_deteccao_de_plataforma_so_no_ponto_unico() {
+  # DP-07 reaberta (secao 5.22, DIV-356): a deteccao e liberada, mas num ponto
+  # unico. Ramificar por sistema espalhado pelo codigo recriaria a camada de
+  # compatibilidade que a decisao original removeu.
+  local area mutacao achados
+  area=$(mktemp -d "$DBX_TESTES_TMP/ponto.XXXXXX")
+  printf '%s\n' 'sistema=$(uname -s)' >"$area/uname.sh"
+  printf '%s\n' '[[ $OSTYPE == freebsd* ]] && x=1' >"$area/ostype.sh"
+  printf '%s\n' 'arq=$MACHTYPE' >"$area/machtype.sh"
+  for mutacao in uname ostype machtype; do
+    [[ -n $(_deteccao_fora_do_ponto_unico "$area/$mutacao.sh") ]] ||
+      _harness_falhar "a auditoria nao acusou a forma '$mutacao'"
+  done
+  printf '%s\n' '# uname em comentario' 'dbx_preflight_plataforma() {' \
+    '  sistema=$(uname -s)' '}' 'x=1' >"$area/permitido.sh"
+  assert_igual '' "$(_deteccao_fora_do_ponto_unico "$area/permitido.sh")" \
+    'comentario e corpo do ponto unico nao sao acusados'
+  achados=$(_deteccao_fora_do_ponto_unico "$DBX_HARNESS_RAIZ"/lib/*.sh "$DBX_HARNESS_RAIZ"/commands/*.sh \
+    "$DBX_HARNESS_RAIZ/bin/dbx" "$DBX_HARNESS_RAIZ/install.sh" "$DBX_HARNESS_RAIZ/uninstall.sh")
+  assert_igual '' "$achados" "deteccao de plataforma fora de dbx_preflight_plataforma: $achados"
 }
 
 # ---------------------------------------------------------------------------

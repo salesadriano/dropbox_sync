@@ -150,7 +150,7 @@ _dbx_state_preparar_diretorio() {
     DBX_STATE_MOTIVO='diretorio de estado pertence a outro usuario: memoria nao gravada'
     return "$DBX_STATE_ERRO_PERMISSAO"
   fi
-  chmod 700 -- "$diretorio" 2>/dev/null || return 1
+  chmod -- 700 "$diretorio" 2>/dev/null || return 1
   # RNF-25(c): `-mtime +0` e "mais de 24 h". Os recentes podem ser gravacao
   # concorrente de outro processo e ficam.
   # RF-69(o): `.trava.*` entra na mesma regra; `trava-*` nunca e varrido.

@@ -660,7 +660,7 @@ dbx_cmd_receber_arquivo() {
     modo=$(stat -c %a -- "$alvo" 2>/dev/null) || modo=''
   fi
   [[ -n ${modo:-} ]] || printf -v modo '%o' $((0666 & ~$(umask)))
-  chmod "$modo" -- "$temporario" 2>/dev/null || :
+  chmod -- "$modo" "$temporario" 2>/dev/null || :
   mv -f -- "$temporario" "$alvo" 2>/dev/null || {
     dbx_tmp_remover "$temporario"
     # shellcheck disable=SC2034  # canais publicos, ver nota no topo
@@ -1046,7 +1046,7 @@ dbx_cmd_receber_retomavel() {
     modo=$(stat -c %a -- "$alvo" 2>/dev/null) || modo=''
   fi
   [[ -n $modo ]] || printf -v modo '%o' $((0666 & ~$(umask)))
-  chmod "$modo" -- "$part" 2>/dev/null || :
+  chmod -- "$modo" "$part" 2>/dev/null || :
   # O nome so e trocado pelo alvo se ainda for o `.part` conferido.
   if ! dbx_state_retomada_part_barreira "$diretorio" "${part##*/}" "$devino" ||
     ! mv -f -- "$part" "$alvo" 2>/dev/null; then
