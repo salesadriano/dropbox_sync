@@ -548,6 +548,54 @@ dbx_http_formulario() {
   _dbx_http_executar POST "$1" '' nao
 }
 
+# dbx_http_sondar <url> — sonda de disponibilidade (RF-149): um GET simples,
+# SEM token, SEM corpo, SEM repeticao e SEM seguir redirecionamento, com
+# `connect-timeout 5` e `max-time 10` fixos (DIV-312). Devolve 0 quando HOUVE
+# resposta HTTP completa, de qualquer status (DNS, TCP e TLS funcionaram), e
+# publica o status em DBX_HTTP_SONDA_CODIGO; sem resposta devolve nao zero e o
+# codigo e 0. O corpo da resposta e descartado. Mesmo transporte, proxy e TLS do
+# resto (variaveis padrao do cURL); sem arquivos temporarios.
+readonly DBX_HTTP_ESQUEMA_SONDA='https://'
+dbx_http_sondar() {
+  local url=${1-} codigo estado
+  DBX_HTTP_SONDA_CODIGO=0
+  [[ $url == "$DBX_HTTP_ESQUEMA_SONDA"* ]] || return "$DBX_HTTP_ERRO_USO"
+  DBX_HTTP_REQUISICOES=$((DBX_HTTP_REQUISICOES + 1))
+  codigo=$(
+    {
+      printf '%s\n' silent show-error 'connect-timeout = 5' 'max-time = 10' |
+        curl -K - -X GET -o /dev/null -w '%{http_code}' "$url"
+    } 2>/dev/null
+  )
+  estado=$?
+  [[ $codigo =~ ^[1-9][0-9][0-9]$ ]] || codigo=0
+  # shellcheck disable=SC2034  # canal publico, ver nota no topo
+  DBX_HTTP_SONDA_CODIGO=$codigo
+  # RF-149(c)(f): com --debug, a requisicao mascarada (so esquema e host, sem
+  # caminho nem parametros) e o status recebido; nunca o segredo.
+  if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+    # R4: com `@` na URL, so ha host identificavel se nada de `/`, `?` ou `#`
+    # vier antes do primeiro `@` (senao a senha pode conter o delimitador sem
+    # encoding e qualquer corte vazaria um pedaco dela): ai so o esquema sai.
+    local anfitriao=${url#"$DBX_HTTP_ESQUEMA_SONDA"}
+    if [[ $anfitriao == *@* ]]; then
+      if [[ ${anfitriao%%@*} == *[/?#]* ]]; then
+        anfitriao='<host omitido>'
+      else
+        # Como o curl: a autoridade vai ate o primeiro delimitador e o userinfo
+        # ate o ULTIMO `@` dela (a senha pode conter `@`).
+        anfitriao=${anfitriao%%[/?#]*}
+        anfitriao=${anfitriao##*@}
+      fi
+    else
+      anfitriao=${anfitriao%%[/?#]*}
+    fi
+    dbx_errors_redigir "$(printf 'debug: sonda GET %s%s -> status %s' "$DBX_HTTP_ESQUEMA_SONDA" "$anfitriao" "$codigo")" >/dev/null
+    printf '%s\n' "$DBX_ERRORS_REDIGIDO" >&2
+  fi
+  [[ $estado -eq 0 && $codigo != 0 ]]
+}
+
 # _dbx_http_executar <metodo> <url> <corpo> <idempotente>
 #
 # Dono do ciclo de vida da area temporaria de UMA requisicao: cria, entrega a

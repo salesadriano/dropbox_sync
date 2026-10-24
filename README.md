@@ -599,6 +599,17 @@ A tabela de códigos de saída não muda.
 
 ---
 
+## Teste de disponibilidade
+
+`dbx testar` (alias `check`) checa, nesta ordem, `internet`, `servico` (e `servico_conteudo`) e `credencial`, uma linha por checagem (`ok`, `aviso` ou `falha`) com o remédio. Só lê: faz a sonda, uma requisição sem token a cada host do Dropbox e **uma** renovação de token. O código de saída é `0` sem falha, ou o da primeira falha (`9` sem internet ou Dropbox inacessível, `10` serviço indisponível, `8` limite de taxa, `3` credencial ausente ou incompleta, `5` recusada).
+
+- **Sonda de internet:** um `GET` sem token e sem corpo a `https://www.gstatic.com/generate_204`, **servidor de terceiro** (Google); qualquer resposta HTTP conta como "responde". `DBX_TESTE_INTERNET_URL` troca o endereço (só `https://`); definida e **vazia desliga a sonda**. Nada além da requisição vai ao servidor, e nenhum segredo.
+- **Nos demais comandos** a checagem é automática e não custa requisição no caminho feliz: só depois de uma falha na obtenção do token a sonda roda, uma vez, para dizer se faltou internet ou se o Dropbox está inacessível. O código de saída não muda.
+- **Com terminal**, credencial ausente ou inválida pergunta `Configurar agora? [s/N]`; aceito e `config` concluído, o comando continua com os mesmos argumentos. `DBX_TESTE_CONFIG=nao` desliga a pergunta.
+- **Sem terminal** (stdin ou stderr redirecionados, `TERM=dumb`, `--dry-run`, ou comando que lê a entrada padrão como `upload -`): não há pergunta, nenhum byte de stdin é lido, e mensagens e códigos (`3` ou `5`) são os de sempre.
+
+---
+
 ## Testes e Qualidade
 
 O projeto conta com uma suíte abrangente de testes automatizados com saída **TAP 13**, cobrindo cenários unitários e de integração com dublês de rede e auditorias adversariais:

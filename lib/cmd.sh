@@ -96,6 +96,12 @@ _dbx_cmd_consultar() {
   dbx_auth_requisitar POST "$url" "$corpo" sim
   estado=$?
   [[ $estado -eq 0 ]] || {
+    # DIV-327: falha da obtencao do token sai pela classe do token, com o motivo
+    # da autenticacao (ja redigido); nao pela classe da requisicao de renovacao.
+    if dbx_auth_falha_e_do_token; then
+      dbx_auth_falhar_com dbx_cmd_falhar
+      return $?
+    fi
     # O resumo de erro vem do servico e vai para o canal de diagnostico, que
     # redige; o corpo bruto nunca e publicado.
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
@@ -1184,6 +1190,14 @@ DBX_CMD_ESPACO_MOTIVO=''
 # _dbx_cmd_inteiro <valor> — 0 quando e inteiro nao negativo.
 _dbx_cmd_inteiro() { [[ ${1-} =~ ^[0-9]+$ ]]; }
 
+# dbx_cmd_falha_registrar <classe> <motivo> — grava a falha nos canais
+# DBX_CMD_FALHA_CLASSE e DBX_CMD_FALHA_MOTIVO, sem emitir (par de
+# `dbx_auth_falhar_com` para quem devolve a falha em canal, DIV-327).
+dbx_cmd_falha_registrar() {
+  DBX_CMD_FALHA_CLASSE=$1
+  DBX_CMD_FALHA_MOTIVO=$2
+}
+
 # dbx_cmd_espaco_consultar — uma chamada `get_space_usage`, sem emitir nada.
 #
 # Status 0 quando a consulta foi lida; a folga vai em DBX_CMD_ESPACO_LIVRE e
@@ -1196,6 +1210,10 @@ dbx_cmd_espaco_consultar() {
   DBX_CMD_ESPACO_USADO='' DBX_CMD_ESPACO_ALOCADO='' DBX_CMD_ESPACO_LIVRE=''
   DBX_CMD_FALHA_CLASSE='' DBX_CMD_FALHA_MOTIVO=''
   dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/users/get_space_usage' 'null' sim >/dev/null 2>&1 || {
+    if dbx_auth_falha_e_do_token; then
+      dbx_auth_falhar_com dbx_cmd_falha_registrar
+      return 1
+    fi
     DBX_CMD_FALHA_CLASSE=${DBX_HTTP_CLASSE:-erro_remoto}
     DBX_CMD_FALHA_MOTIVO="consulta de espaco recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
     return 1

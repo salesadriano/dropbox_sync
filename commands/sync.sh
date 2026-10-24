@@ -423,6 +423,7 @@ _dbx_cmd_sync_transferir_paralelo() {
   done
   dbx_progress_bloco_encerrar
   wait 2>/dev/null || :
+  dbx_disp_emitir_aviso_pendente
   set +m
   _DBX_CMD_SYNC_AUX_PIDS=()
   dbx_tmp_acao_cancelar "$acao_id"
@@ -503,6 +504,7 @@ _dbx_cmd_sync_lote_iniciar() {
     set +m
     _DBX_CMD_SYNC_AUX_PIDS=()
     dbx_tmp_acao_cancelar "$acao_id"
+    dbx_disp_emitir_aviso_pendente
   else
     for ((k = 0; k < total; k++)); do
       _dbx_cmd_sync_aux_iniciar "$pasta/$k" "${_DBX_CMD_SYNC_LOTE_ITENS[k]}" </dev/null
@@ -1313,6 +1315,10 @@ dbx_cmd_sync_executar() {
   local -a transferir_aqui=(${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"})
   # RF-137: pequenos do plano em lote (start, finish_batch_v2); o laco abaixo e o
   # paralelo so consomem o resultado, na ordem do plano.
+  # RF-149(g), DIV-331 (R2): a sonda de disponibilidade e uma por execucao, tambem
+  # entre os auxiliares da etapa de lote e da transferencia (a marca fica na area
+  # do ciclo, herdada por eles); semeada antes de qualquer auxiliar.
+  dbx_disp_compartilhar_sonda "$area"
   _dbx_cmd_sync_lote_envio
   if [[ $paralelo -gt 1 && ${#DBX_SYNC_TRANSFERIR[@]} -gt 1 ]]; then
     _dbx_cmd_sync_transferir_paralelo
