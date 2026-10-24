@@ -1,6 +1,30 @@
-# Registro de entrega: depuracao das transferencias (em andamento)
+# Registro de entrega: depuracao das transferencias (entrega completa)
 
 Log de prompt: docs/prompts/2026-10-24_0330_debug-transferencias.md. Porte M.
+
+## Resumo da decisao
+
+`--debug` (ou `DBX_DEBUG=1`) em `download`, `upload` e `sync` emite em stderr linhas `debug: <categoria> chave=valor` (`F-51`, `RF-156` a `RF-165`): uma linha `http` por tentativa (metodo, host e endpoint fixo, status, duracao, bytes, tentativa, `Retry-After`, espera, faixa); as etapas do upload (modalidade, blocos, retomada encontrada ou descartada com motivo, resultado) e do download (plano, faixa e `.part`, servidor que ignorou a faixa, hash); a decisao do `sync` por item com motivo e o cursor sem o valor; as linhas dos auxiliares do `--paralelo`, descarregadas pelo principal; e um `debug: resumo` unico no fim, tambem em falha, credencial ausente e sinal. Nunca token, segredo, id de sessao, cursor, URL temporaria, query ou cabecalho; stdout, codigo de saida (inclusive no sinal), cache e numero de requisicoes iguais com e sem `--debug`. Decisoes do solicitante: conteudo completo, so stderr, base depois da PR de disponibilidade, `DIV-332` (caminho completo), `DIV-338` (resumo unico no lugar da linha `paralelo`), `DIV-339` (sem limite); as demais (`DIV-333` a `DIV-351`) pelo Tech Lead, detalhe na secao 9 do escopo.
+
+## Arquivos alterados (conjunto final)
+
+Conferido pelo Tech Lead com `git diff --stat origin/develop`.
+
+- Codigo novo: `lib/debug.sh` (ponto unico de emissao, canal proprio do stderr do operador, destino em arquivo para os auxiliares, contadores, campos e resumo).
+- Codigo alterado: `lib/http.sh` (linha por tentativa, `-w` ampliado so com `--debug`, endpoint de depuracao, sonda nos contadores); `lib/tmp.sh` (`DBX_TMP_SAIDA_CODIGO`, gancho "antes" e armamento leve); `lib/transfer.sh` (modalidade, blocos, retomada, resultado); `lib/cmd.sh` (plano e hash do download); `lib/sync.sh` (filtrado); `lib/progress.sh` (`--debug` vence a semente de terminal); `commands/sync.sh` (decisoes, cursor, auxiliares, lote, campos do resumo, item relativo); `commands/upload.sh`, `commands/download.sh`; `bin/dbx` (canal e resumo armados antes do requisito; ajuda).
+- Testes: `tests/unit/debug_test.sh`, `tests/integracao/debug_http_test.sh`, `debug_transferencia_test.sh`, `debug_sync_test.sh`, `debug_ajuda_progresso_test.sh` (novos); `tests/integracao/qa_debug_transferencias_b12_test.sh` (suite do QA, sha256 `ef18bce7a96fe4f10ecde9d5fc7f6a9fd4b1d16d878b99b99caeee8fbfb6386d`); casos novos em `paralelo_test.sh`, `retomada_upload_test.sh`, `retomada_download_test.sh`, `tests/unit/tmp_test.sh`; duplo de cURL em `tests/support/disponibilidade.sh` (`--fail` como o cURL real, fila de respostas, `-w` ampliado, `enviados` so com corpo).
+- Documentacao: `README.md` (`--debug`); `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (secao 5.21, v1.29, `DIV-332` a `DIV-351`); `docs/requisitos/funcionalidades-candidatas.md` (F-51); `docs/testes/mapa-modulos.md`.
+- Trilha: este registro; `docs/reviews/2026-10-24-0330-validacao-qa-debug-transferencias.md`; `docs/prompts/2026-10-24_0330_debug-transferencias.md`; memoria `.github/agents/memoria/entradas/2026-10-24-0330-debug-transferencias.md`.
+
+## Riscos residuais e recomendacoes
+
+- Recomendacoes da conformidade (menores, fora desta entrega): protecao de userinfo em `_dbx_http_endpoint_debug` (so URL interna passa); um fork por valor redigido e truncamento sem marca em sync muito grande; `lib/transfer`, `lib/cmd` e `lib/sync` dependem da carga de `lib/debug.sh` feita por `lib/http.sh`; `_dbx_cmd_sync_debug_decisoes` le os locais do executor por escopo dinamico; `chamadas` menor que `DBX_HTTP_REQUISICOES` se `dbx_tmp_area http` falhar (TMPDIR cheio).
+- Sem caso: `cursor=usado` (o duplo nao simula `list_folder/continue`); `RF-162(c)` provado em `lib/tmp` e nao no comando inteiro (a unica mensagem de interrupcao, a da exclusao em lote do `--enviar --espelhar`, nao e interrompivel de forma deterministica no duplo); `filtrado` pode sair duas vezes no `--receber` com segunda varredura completa.
+- `RSK-DSP-01` (corrida rara em `state_trava_test`, preexistente, registrada na demanda de disponibilidade) continua aberto e pode aparecer na suite completa.
+
+## Rollback
+
+Reverter o merge (`git revert -m 1 <sha-do-merge>`). Sem migracao de dado nem de configuracao: tudo e condicionado a `--debug`/`DBX_DEBUG`; sem a opcao, o unico efeito que permanece e o vocabulario de `RF-161(b)` e a mudanca de texto da linha `paralelo` (que so existia com `--debug`).
 
 ## Tarefa 1: formato e chamadas HTTP (RF-156, RF-157)
 
