@@ -55,6 +55,10 @@ _dbx_cmd_restaurar_revisoes() {
   fi
   corpo+='}'
   dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/list_revisions' "$corpo" sim || {
+    if dbx_auth_falha_e_do_token; then
+      dbx_auth_falhar_com dbx_cmd_falha_registrar
+      return "$(dbx_errors_codigo_saida "$DBX_CMD_FALHA_CLASSE")"
+    fi
     DBX_CMD_FALHA_CLASSE=${DBX_HTTP_CLASSE:-erro_remoto}
     dbx_errors_classe_valida "$DBX_CMD_FALHA_CLASSE" || DBX_CMD_FALHA_CLASSE='erro_remoto'
     DBX_CMD_FALHA_MOTIVO="consulta de revisoes recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
@@ -201,6 +205,10 @@ dbx_cmd_restaurar_executar() {
   dbx_json_escapar_cadeia "$remoto"
   dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/get_metadata' \
     "{\"path\":\"$DBX_JSON_ESCAPADO\",\"include_deleted\":true}" sim || {
+    if dbx_auth_falha_e_do_token; then
+      dbx_auth_falhar_com dbx_cmd_falhar
+      return $?
+    fi
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
       "consulta do caminho recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
     return $?

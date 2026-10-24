@@ -102,7 +102,8 @@ dbx_cli_comando_valido() {
   case ${1-} in
     upload | download | list | delete | info | space) return 0 ;;
     config | unlink | sync) return 0 ;;
-    verificar | diagnostico | completar) return 0 ;;
+    verificar | diagnostico | completar | testar) return 0 ;;
+    check) return 0 ;;
     verify | doctor | completion) return 0 ;;
     revisoes | restaurar | lixeira) return 0 ;;
     revisions | restore | trash) return 0 ;;
@@ -123,6 +124,7 @@ dbx_cli_canonico() {
   case ${1-} in
     verify) DBX_CLI_CANONICO='verificar' ;;
     doctor) DBX_CLI_CANONICO='diagnostico' ;;
+    check) DBX_CLI_CANONICO='testar' ;;
     completion) DBX_CLI_CANONICO='completar' ;;
     revisions) DBX_CLI_CANONICO='revisoes' ;;
     restore) DBX_CLI_CANONICO='restaurar' ;;
@@ -155,6 +157,7 @@ _dbx_cli_arquivo_do_comando() {
     verificar) printf '%s' "$raiz/commands/verificar.sh" ;;
     diagnostico) printf '%s' "$raiz/commands/diagnostico.sh" ;;
     completar) printf '%s' "$raiz/commands/completar.sh" ;;
+    testar) printf '%s' "$raiz/commands/testar.sh" ;;
     revisoes) printf '%s' "$raiz/commands/revisoes.sh" ;;
     restaurar) printf '%s' "$raiz/commands/restaurar.sh" ;;
     lixeira) printf '%s' "$raiz/commands/lixeira.sh" ;;

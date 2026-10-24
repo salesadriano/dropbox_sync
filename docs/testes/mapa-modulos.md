@@ -135,6 +135,20 @@ Nenhum comando tem teste unitario: todos sao exercitados por `bin/dbx` em testes
 | `commands/compartilhar.sh` (fase 5, RF-85 a RF-90; alias `share`) | compartilhamento; **chama** cli (`dbx_cli_ler_oculto`), tmp (`dbx_tmp_armar`), cmd (`_dbx_cmd_caminho_remoto`, `_dbx_cmd_escrita_remota` silencioso e idempotente) e auth | `compartilhar_test` (TC-CMP, TC-SNH com `script(1)` e pula sem ele, TC-LEX, TC-LST, TC-RVG, TC-SHE) | `completar` |
 | `commands/perfis.sh` (fase 8, RF-126, F-18; alias `profiles`) | nenhum `source`; **chama** config (`dbx_config_perfis_listar`, `DBX_CONFIG_PERFIS_*`), cmd (`dbx_cmd_falhar`, `dbx_cmd_iniciar_saida`, `dbx_cmd_campo_caminho`), output (`dbx_output_campo`, `dbx_output_render`) e `dbx_carregar_camada_de_credencial` (bin/dbx); so le, requisito `ambiente` | `perfis_test` (ponta a ponta), `perfis_cli_test` (tabela de comandos e alias, `lib/cli`) | `perfis_unlink`, `perfis_trava_raiz`, `qa_perfis`, `completar` |
 
+## Testes da fase 11 (teste de disponibilidade, F-50)
+
+Conferido em 2026-10-23 por `grep -o 'lib/...'` em cada arquivo. Cuidado com substring: `disponibilidade` casa `disponibilidade_test`, `disponibilidade_automatica_test` e `qa_disponibilidade_b11_test`.
+
+| Arquivo | Filtro proprio | Carrega / executa | Selecionado por diff em |
+|---|---|---|---|
+| `tests/unit/disponibilidade_test.sh` (RF-149, RF-150, DIV-331) | `disponibilidade_test` | carrega `lib/errors`, `json`, `http`, `auth`, `disponibilidade`; sonda memoizada e compartilhada entre processos (reserva, espera com prazo, reserva orfa), classificacao e mensagens, aviso de URL invalida | `lib/disponibilidade.sh`, `lib/http.sh`, `lib/auth.sh` |
+| `tests/integracao/testar_test.sh` (RF-148, RF-155; TC-DSP-01 a 27) | `testar_test` | `bin/dbx testar`/`check` com `tests/support/disponibilidade.sh`; linhas e codigos por causa, remedio por motivo de config, `--json`/`--null`, `--debug` da sonda sem segredo | `commands/testar.sh`, `lib/disponibilidade.sh`, `lib/http.sh`, `lib/config.sh`, `bin/dbx`, `tests/support/disponibilidade.sh` |
+| `tests/integracao/disponibilidade_automatica_test.sh` (RF-151 a RF-154; TC-DSP-28 a 64) | `disponibilidade_automatica` | `bin/dbx` nos comandos de nivel `credencial` (consulta, `upload`, `download`, `sync`, `revisoes`, `lixeira`, `restaurar`) com pty; oferta do `config`, caminho feliz sem requisicao extra (guardas dsp28/dsp31), sonda unica no `sync` paralelo | `bin/dbx`, `lib/disponibilidade.sh`, `lib/auth.sh`, `lib/cmd.sh`, `commands/sync.sh`, `commands/revisoes.sh`, `commands/lixeira.sh`, `commands/restaurar.sh`, `tests/support/disponibilidade.sh` |
+| `tests/integracao/qa_disponibilidade_b11_test.sh` (suite do QA, 33 casos; sha256 `ffe3ef0e...96ec`, aceite do solicitante em 2026-10-23) | `qa_disponibilidade` | `bin/dbx` com `tests/support/disponibilidade.sh` | os mesmos de `testar_test` e `disponibilidade_automatica` |
+| `tests/support/disponibilidade.sh` (apoio) | — | duplo de curl (sonda, api, content, rpc; travas vivas e proxies por chamada), `_rodar` e `_rodar_tty` | diff nele seleciona `testar_test`, `disponibilidade_automatica` e `qa_disponibilidade` |
+
+`tests/integracao/composicao_test.sh` tambem foi alterado nesta fase (canais da sonda declarados sem credencial).
+
 ## Testes da fase 10 do backlog (progresso por arquivo, F-49)
 
 Conferido em 2026-10-22 por `grep -o 'lib/...'` em cada arquivo. Cuidado com substring: `progress` casa os quatro arquivos de progresso (`progress_test`, `progresso_linha`, `progresso_arquivo`, `qa_progresso_arquivo_b10`), e `progresso_arquivo` casa tambem o do QA.

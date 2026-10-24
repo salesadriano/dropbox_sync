@@ -191,6 +191,7 @@ _dbx_auth_limpar_transporte() {
 dbx_auth_renovar() {
   # shellcheck disable=SC2034  # canal publico
   DBX_AUTH_MOTIVO=''
+  DBX_AUTH_CODIGO_HTTP=''
   # Recusa antes de sair na rede: credencial incompleta e erro de uso, e nao
   # erro do servico. Distinguir os dois e o que impede diagnostico enganoso.
   [[ -n ${DBX_CONFIG_REFRESH_TOKEN:-} && -n ${DBX_CONFIG_APP_KEY:-} ]] || {
@@ -222,6 +223,7 @@ dbx_auth_renovar() {
 
   if [[ $estado -ne 0 ]]; then
     local erro=''
+    DBX_AUTH_CODIGO_HTTP=${DBX_HTTP_CODIGO:-0}
     _dbx_auth_interpretar "$DBX_HTTP_CORPO" error && erro=$DBX_AUTH_LIDO
     # `invalid_grant` significa refresh revogado ou invalido: terminal. Repetir
     # nao muda o resultado e a cascata ja invalidou todo access derivado.
@@ -270,10 +272,65 @@ dbx_auth_renovar() {
   return 0
 }
 
+# Gancho da disponibilidade (RF-151(c), DIV-313): nome de uma funcao que o ponto de
+# entrada define para os comandos de nivel `credencial`. E chamada na falha da
+# obtencao de token enquanto nenhum token foi obtido (antes de qualquer efeito), com
+# o codigo da falha; devolve o codigo final (0 = token obtido). Vazio = sem gancho.
+DBX_AUTH_GANCHO_FALHA=''
+# Gancho da falha de requisicao depois da obtencao do token (RF-151(e)): so
+# enriquece a mensagem; nunca muda o codigo, repete efeito ou oferece config.
+DBX_AUTH_GANCHO_MEIO=''
+DBX_AUTH_PRIMEIRA_OBTENCAO='sim'
+# Codigo HTTP da ultima renovacao que falhou na rede/servico (vazio quando a
+# falha foi de credencial local ou nao houve falha): permite classificar 5xx pelo
+# codigo, e nao pelo texto do motivo.
+DBX_AUTH_CODIGO_HTTP=''
+
+# dbx_auth_registrar_ganchos <falha_do_token> <falha_da_chamada> — arma os
+# ganchos da disponibilidade (nomes de funcao; vazio desarma). Ponto unico de
+# escrita: o ponto de entrada nao atribui os canais crus.
+dbx_auth_registrar_ganchos() {
+  DBX_AUTH_GANCHO_FALHA=${1-}
+  DBX_AUTH_GANCHO_MEIO=${2-}
+}
+
+# dbx_auth_definir_motivo <texto> — substitui o motivo da ultima falha do token
+# (redigido), para a disponibilidade nomear a causa sem escrever o canal.
+dbx_auth_definir_motivo() {
+  dbx_errors_redigir "${1-}" >/dev/null
+  DBX_AUTH_MOTIVO=$DBX_ERRORS_REDIGIDO
+}
+
+# dbx_auth_enriquecer_motivo <texto> — poe a causa na frente do motivo da ultima
+# falha do token e preserva o original entre parenteses (redigido).
+dbx_auth_enriquecer_motivo() {
+  local original=$DBX_AUTH_MOTIVO
+  dbx_errors_redigir "${1-}${original:+ ($original)}" >/dev/null
+  DBX_AUTH_MOTIVO=$DBX_ERRORS_REDIGIDO
+}
+
+# dbx_auth_falha_de_servidor — a ultima renovacao falhou com HTTP 5xx?
+dbx_auth_falha_de_servidor() {
+  [[ ${DBX_AUTH_CODIGO_HTTP:-} == 5?? ]]
+}
+
 # dbx_auth_token — garante um token curto valido em memoria.
 dbx_auth_token() {
+  local estado
   dbx_auth_expirado || return 0
   dbx_auth_renovar
+  estado=$?
+  if [[ $DBX_AUTH_PRIMEIRA_OBTENCAO == 'sim' ]]; then
+    # Enquanto nenhum token foi obtido, cada falha passa pelo gancho (a oferta de
+    # config e a sonda sao de uma vez so, no proprio gancho): o `download` pede o
+    # token duas vezes antes de qualquer efeito e a causa nomeada nao pode se perder.
+    if [[ $estado -ne 0 && -n $DBX_AUTH_GANCHO_FALHA ]]; then
+      "$DBX_AUTH_GANCHO_FALHA" "$estado"
+      estado=$?
+    fi
+    [[ $estado -eq 0 ]] && DBX_AUTH_PRIMEIRA_OBTENCAO='nao'
+  fi
+  return "$estado"
 }
 
 # dbx_auth_preparar — `dbx_auth_token` que, na falha, publica tambem a CLASSE da
@@ -289,16 +346,37 @@ DBX_AUTH_CLASSE=''
 dbx_auth_preparar() {
   DBX_AUTH_CLASSE=''
   dbx_auth_token && return 0
-  local estado=$? candidata
+  local estado=$?
+  _dbx_auth_classe_de "$estado"
+  return "$estado"
+}
+
+# dbx_auth_falha_e_do_token — a ultima falha de `dbx_auth_requisitar` (e irmas)
+# veio da obtencao do token (DIV-327)? Quem chama nao le o canal: usa isto e
+# `dbx_auth_falhar_com`, que entrega classe e motivo (ja redigido) a uma funcao.
+dbx_auth_falha_e_do_token() {
+  [[ -n ${DBX_AUTH_CLASSE:-} && $DBX_AUTH_CLASSE != 'desconhecido' ]]
+}
+
+# dbx_auth_falhar_com <funcao> — chama `<funcao> <classe> <motivo>` com a classe
+# e o motivo da falha do token e devolve o que ela devolver.
+dbx_auth_falhar_com() {
+  "$1" "$DBX_AUTH_CLASSE" "${DBX_AUTH_MOTIVO:-autenticacao recusada}"
+}
+
+# _dbx_auth_classe_de <codigo> — publica em DBX_AUTH_CLASSE a classe da taxonomia
+# cujo codigo de saida e <codigo> (`desconhecido` quando nenhuma).
+_dbx_auth_classe_de() {
+  local candidata
+  # shellcheck disable=SC2034  # canal publico, lido por dbx_auth_falhar_com
   DBX_AUTH_CLASSE='desconhecido'
   for candidata in "${DBX_ERRORS_CLASSES[@]}"; do
-    if [[ ${DBX_ERRORS_CODIGO[$candidata]} == "$estado" ]]; then
-      # shellcheck disable=SC2034  # canal publico, lido por commands/upload e commands/sync
+    if [[ ${DBX_ERRORS_CODIGO[$candidata]} == "$1" ]]; then
+      # shellcheck disable=SC2034  # canal publico, lido por commands/upload, commands/sync e lib/cmd
       DBX_AUTH_CLASSE=$candidata
       break
     fi
   done
-  return "$estado"
 }
 
 # dbx_auth_requisitar <metodo> <url> <corpo> <idempotente>
@@ -320,13 +398,24 @@ _dbx_auth_com_renovacao() {
   shift 3
   local estado
   DBX_AUTH_RENOVOU='nao'
+  # DIV-327: a falha do TOKEN sai pela classe do token (DBX_AUTH_CLASSE preenchida),
+  # nao pela da requisicao; falha da requisicao deixa a classe vazia.
+  DBX_AUTH_CLASSE=''
 
   while :; do
-    dbx_auth_token || return $?
+    dbx_auth_token || {
+      estado=$?
+      _dbx_auth_classe_de "$estado"
+      return "$estado"
+    }
     "$funcao" "$metodo" "$url" "$DBX_AUTH_TOKEN" "$@"
     estado=$?
     [[ $estado -eq 0 ]] && return 0
-    [[ $DBX_HTTP_POLITICA == 'renovar_token_uma_vez' && $DBX_AUTH_RENOVOU == 'nao' ]] || return $estado
+    if ! [[ $DBX_HTTP_POLITICA == 'renovar_token_uma_vez' && $DBX_AUTH_RENOVOU == 'nao' ]]; then
+      # RF-151(e): falha no meio da execucao; o gancho so enriquece a mensagem.
+      [[ -n $DBX_AUTH_GANCHO_MEIO ]] && "$DBX_AUTH_GANCHO_MEIO" "$estado"
+      return "$estado"
+    fi
     DBX_AUTH_RENOVOU='sim'
     dbx_auth_esquecer
   done
