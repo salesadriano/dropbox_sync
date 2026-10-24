@@ -208,6 +208,33 @@ teste_gancho_antes_roda_antes_das_acoes_no_sinal() {
   done
 }
 
+# RF-163(b): so o gancho (antes de qualquer area ou acao, como o resumo armado
+# antes do preflight e da oferta do config) nao troca o codigo do sinal por 14.
+teste_gancho_sozinho_mantem_o_codigo_do_proprio_sinal() {
+  local sinal codigo
+  for sinal in INT TERM; do
+    _base
+    _rodar_e_sinalizar "$sinal" -- "$_roteiro_com_gancho"'
+      : >"$BASE/pronto"
+      while :; do sleep 0.05; done'
+    codigo=130
+    [[ $sinal == TERM ]] && codigo=143
+    assert_igual "$codigo" "$TMP_ESTADO" "$sinal: o codigo do proprio sinal, como sem gancho ($TMP_SAIDA)"
+    assert_igual "gancho:$codigo" "$(cat "$BASE/ordem")" "$sinal: o gancho rodou uma vez e viu esse codigo"
+  done
+}
+
+teste_segundo_gancho_no_mesmo_processo_e_recusado() {
+  _base
+  _rodar "$_roteiro_com_gancho"'
+    outro() { :; }
+    dbx_tmp_gancho_antes dbx_teste_gancho
+    printf "%s" "$?"
+    exit 0'
+  [[ $TMP_SAIDA != 0 ]] || _harness_falhar 'o segundo registro deveria ser recusado'
+  assert_igual 'gancho:0' "$(cat "$BASE/ordem")" 'o primeiro gancho continua e roda uma vez'
+}
+
 teste_gancho_antes_recusa_texto_que_nao_e_funcao() {
   _base
   _rodar 'dbx_tmp_gancho_antes "touch $BASE/injetado"; printf "%s" "$?"'

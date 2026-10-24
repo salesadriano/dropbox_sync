@@ -233,3 +233,35 @@ Red (base extraida de `a78f6a8`, so com os testes desta tarefa): `tmp_test` 6/1 
 | `bash tests/run.sh harness` | 22 | 22 | 0 | 0 |
 
 Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/tmp.sh`, `lib/debug.sh`, `lib/http.sh`, `lib/transfer.sh`, `commands/sync.sh`, `commands/upload.sh`, `bin/dbx`, `tests/unit/tmp_test.sh`, `tests/integracao/debug_http_test.sh`, `tests/integracao/debug_sync_test.sh`, `tests/integracao/paralelo_test.sh`.
+
+## Gate protocolo-conformidade (rodada 2): APROVADO COM RESSALVAS, e correcao N1 pelo Tech Lead
+
+Mesmo revisor, diff `a78f6a8..a718ec4`. Rodada 1: 1, 2, 3, 4, 6, 7 e 9 fechados; 8 parcial (`_dbx_cmd_sync_debug_decisoes` le os locais do executor por escopo dinamico: recomendacao). Mecanismo do gancho conferido: subshell e auxiliar herdam o alvo mas o dono (`BASHPID`) impede a execucao; sinal durante o gancho fica anotado e a finalizacao nao se repete; falha do gancho absorvida por `|| :`.
+
+| # | Sev. | Local | Achado | Destino |
+|---|---|---|---|---|
+| N1 | importante | `bin/dbx:727-740`, `lib/tmp.sh:80-86` | armar o resumo antes do requisito armava tambem os tratadores completos de INT/TERM/HUP: so com `--debug`, Ctrl-C no preflight ou nas perguntas do `config` oferecido saia 14 (`nao_concluida`); sem `--debug`, 130. Fere `RF-163(b)` | corrigido (abaixo) |
+| N2 | menor | `lib/tmp.sh:305-315` | segundo `dbx_tmp_gancho_antes` substituia o primeiro sem aviso | corrigido: o segundo registro no mesmo processo e recusado (erro de uso) |
+| N3 | menor | `lib/tmp.sh:16-20` | cabecalho "ORDEM DA LIMPEZA" sem o gancho | corrigido |
+| N4 | menor | `lib/http.sh:704-708` | `dbx_tmp_area http` que falha ja contou `DBX_HTTP_REQUISICOES` e nao emite linha `http` (`chamadas` menor; TMPDIR cheio) | recomendacao |
+| N5 | menor | `commands/sync.sh:232` | `paralelo=` passa a sair tambem no `download` de pasta com `DBX_PARALELO`, e `+=` repetiria o campo se o executor rodasse duas vezes | aceito o primeiro (o `download` de pasta usa o mesmo motor paralelo, o campo e verdadeiro); o segundo corrigido: `dbx_debug_resumo_campo` troca o valor da chave ja publicada |
+
+Correcao N1 (Tech Lead): `dbx_tmp_gancho_antes` deixa de chamar `_dbx_tmp_armar` e usa `_dbx_tmp_armar_leve`: EXIT mais INT/TERM/HUP que gravam `128+N` em `DBX_TMP_SAIDA_CODIGO`, finalizam (o gancho) e devolvem ao processo o proprio sinal, que morre com o codigo de sempre. O primeiro `_dbx_tmp_armar` real (area ou acao) substitui os leves pelos completos, no mesmo ponto em que ja os arma sem `--debug`. Conferido antes no bash: com so o trap de EXIT o sinal mantem 130, mas `$?` dentro do trap vale 0; por isso o armamento leve grava o codigo do sinal em vez de deixar o resumo com `saida=0`.
+
+Red (base extraida de `a718ec4`, so com o `tmp_test` novo): 8/1 (`gancho_sozinho_mantem_o_codigo_do_proprio_sinal`: INT saia 14, esperado 130).
+
+| Comando | Total | Aprovados | Falhos | Pulados |
+|---|---|---|---|---|
+| `bash tests/run.sh tmp_test` | 21 | 21 | 0 | 0 |
+| `bash tests/run.sh disponibilidade_automatica_test` (inclui `dsp51`, SIGINT dentro do `config`) | 48 | 48 | 0 | 0 |
+| `bash tests/run.sh paralelo_test` | 18 | 18 | 0 | 0 |
+| `bash tests/run.sh debug_http_test` | 19 | 19 | 0 | 0 |
+| `bash tests/run.sh qa_trava_tmp_b2_test` | 23 | 23 | 0 | 0 |
+| `bash tests/run.sh sync_test` (com `debug_sync_test`) | 93 | 93 | 0 | 0 |
+| `bash tests/run.sh composicao_test` | 28 | 28 | 0 | 0 |
+| `bash tests/run.sh json` | 62 | 62 | 0 | 0 |
+| `bash tests/run.sh harness` | 22 | 22 | 0 | 0 |
+
+Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/tmp.sh`, `lib/debug.sh`, `tests/unit/tmp_test.sh`.
+
+Recomendacoes que ficam (menores, fora desta entrega): 5, 10 e 11 da rodada 1; 8 (parcial) da rodada 1; N4 da rodada 2.

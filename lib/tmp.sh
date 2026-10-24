@@ -15,9 +15,10 @@
 #
 # ORDEM DA LIMPEZA (RNF-35(d))
 #
-#   Acoes primeiro, em ordem inversa a do registro; depois as areas, tambem em
-#   ordem inversa. A acao de quem chamou (liberar a trava, por exemplo) ainda ve
-#   as areas que registrou.
+#   Primeiro o gancho "antes" (`dbx_tmp_gancho_antes`, um por processo: o resumo
+#   de --debug, RF-162(c)); depois as acoes, em ordem inversa a do registro; por
+#   fim as areas, tambem em ordem inversa. A acao de quem chamou (liberar a
+#   trava, por exemplo) ainda ve as areas que registrou.
 #
 # SEM JANELA ENTRE CRIACAO E REGISTRO (OBS-03)
 #
@@ -85,6 +86,26 @@ _dbx_tmp_armar() {
   trap '_dbx_tmp_saida' EXIT
   _dbx_tmp_armado=$BASHPID
   _dbx_tmp_finalizado=''
+}
+
+# _dbx_tmp_armar_leve — so para o gancho "antes": EXIT e sinais que rodam o
+# gancho e devolvem ao processo o proprio sinal (codigo 128+N, como sem tratador).
+# `_dbx_tmp_armar` posterior os substitui pelos completos.
+_dbx_tmp_armar_leve() {
+  [[ $_dbx_tmp_armado == "$BASHPID" ]] && return 0
+  trap '_dbx_tmp_sinal_leve INT 2' INT
+  trap '_dbx_tmp_sinal_leve TERM 15' TERM
+  trap '_dbx_tmp_sinal_leve HUP 1' HUP
+  trap '_dbx_tmp_saida' EXIT
+  _dbx_tmp_finalizado=''
+}
+
+# _dbx_tmp_sinal_leve <nome> <numero> — finaliza (o gancho) e morre do sinal.
+_dbx_tmp_sinal_leve() {
+  DBX_TMP_SAIDA_CODIGO=$((128 + $2))
+  _dbx_tmp_finalizar
+  trap - "$1" EXIT
+  kill -s "$1" "$BASHPID"
 }
 
 # _dbx_tmp_critico_inicio — entra na secao critica; aninha por contagem, e o
@@ -302,11 +323,18 @@ _dbx_tmp_gancho_alvo=''
 _dbx_tmp_gancho_dono=''
 
 # dbx_tmp_gancho_antes <funcao> — roda UMA vez no termino (normal ou por sinal),
-# antes de todas as acoes registradas. So nome de funcao existente.
+# antes de todas as acoes registradas. So nome de funcao existente; um gancho por
+# processo (o segundo registro e recusado).
+#
+# O gancho NAO arma os tratadores completos: eles mudam o codigo do sinal para 14
+# e so devem existir a partir do primeiro registro real (area ou acao), como sem o
+# gancho. Ate la vale o armamento leve: o sinal roda o gancho e o processo morre
+# do mesmo sinal, com o codigo de sempre (RF-163(b): igual com e sem --debug).
 dbx_tmp_gancho_antes() {
   [[ $# -eq 1 && $1 =~ ^_?dbx_[a-z0-9_]+$ ]] || return "$DBX_TMP_ERRO_USO"
   declare -F -- "$1" >/dev/null || return "$DBX_TMP_ERRO_USO"
-  _dbx_tmp_armar
+  [[ -n $_dbx_tmp_gancho_alvo && $_dbx_tmp_gancho_dono == "$BASHPID" ]] && return "$DBX_TMP_ERRO_USO"
+  _dbx_tmp_armar_leve
   _dbx_tmp_critico_inicio
   _dbx_tmp_gancho_alvo=$1
   _dbx_tmp_gancho_dono=$BASHPID
