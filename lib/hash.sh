@@ -68,6 +68,8 @@ _dbx_hash_diretorio=$(cd -P -- "$_dbx_hash_diretorio" && pwd -P)
 . "$_dbx_hash_diretorio/errors.sh"
 # shellcheck source=lib/tmp.sh
 . "$_dbx_hash_diretorio/tmp.sh"
+# shellcheck source=lib/atributos.sh
+. "$_dbx_hash_diretorio/atributos.sh"
 unset _dbx_hash_diretorio
 
 readonly DBX_HASH_TAMANHO_BLOCO=4194304
@@ -381,6 +383,9 @@ dbx_hash_conteudo_arquivo_com_tamanho() {
 #   mesma leitura de `stat` que ja fazia por arquivo, o `upload` e o `sync` a
 #   releem depois do calculo, e `lib/state` so compara cadeias. Morar aqui, e
 #   nao num dos consumidores, mantem as dependencias apontando para o dominio.
+# A leitura mora em `lib/atributos` (forma GNU e recuo BSD); esta constante e a
+# referencia da forma GNU que identidade_gnustat_test confronta com o resultado.
+# shellcheck disable=SC2034  # lida pelos testes
 readonly DBX_HASH_FORMATO_IDENTIDADE='%Y|%y|%z|%d|%i|%s'
 DBX_HASH_IDENTIDADE=''
 DBX_HASH_TAMANHO_ARQUIVO=''
@@ -393,8 +398,8 @@ dbx_hash_identidade() {
   local leitura
   DBX_HASH_IDENTIDADE=''
   DBX_HASH_TAMANHO_ARQUIVO=''
-  leitura=$(stat -c "%s"$'\t'"$DBX_HASH_FORMATO_IDENTIDADE" -- "$1" 2>/dev/null) ||
-    return "$DBX_HASH_ERRO_ORIGEM"
+  dbx_atributo identidade "$1" || return "$DBX_HASH_ERRO_ORIGEM"
+  leitura=$DBX_ATRIBUTO
   [[ $leitura == *$'\t'* ]] || return "$DBX_HASH_ERRO_ORIGEM"
   # shellcheck disable=SC2034  # canais publicos, lidos por lib/walk e pelos comandos
   DBX_HASH_TAMANHO_ARQUIVO=${leitura%%$'\t'*}

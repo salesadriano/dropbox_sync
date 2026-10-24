@@ -657,7 +657,7 @@ dbx_cmd_receber_arquivo() {
   # O modo entra so na troca: aplicado antes, um alvo 0444 deixaria o
   # temporario sem escrita e a falha pareceria divergencia de conteudo.
   if [[ -f $alvo ]]; then
-    modo=$(stat -c %a -- "$alvo" 2>/dev/null) || modo=''
+    dbx_atributo modo "$alvo" && modo=$DBX_ATRIBUTO || modo=""
   fi
   [[ -n ${modo:-} ]] || printf -v modo '%o' $((0666 & ~$(umask)))
   chmod -- "$modo" "$temporario" 2>/dev/null || :
@@ -763,7 +763,7 @@ _dbx_cmd_part_abrir() {
   { exec {leitura}<"$caminho"; } 2>/dev/null || return 1
   info=''
   if [[ -f /dev/fd/$leitura && -O /dev/fd/$leitura ]]; then
-    info=$(stat -L -c '%d|%i|%s' -- "/dev/fd/$leitura" 2>/dev/null) || info=''
+    dbx_atributo -L dev_ino_tamanho "/dev/fd/$leitura" && info=$DBX_ATRIBUTO || info=""
   fi
   tamanho=${info##*|}
   if [[ ${info%|*} != "$devino" || ! $tamanho =~ ^[0-9]{1,18}$ ]] || ((10#$tamanho > maximo)); then
@@ -831,7 +831,7 @@ _dbx_cmd_debug_plano_download() {
 _dbx_cmd_debug_hash() {
   [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] || return 0
   local gravados
-  gravados=$(stat -c %s -- "$2" 2>/dev/null) || gravados=0
+  dbx_atributo tamanho "$2" && gravados=$DBX_ATRIBUTO || gravados=0
   dbx_debug_linha download hash="$1" bytes="$gravados"
   return 0
 }
@@ -939,7 +939,7 @@ dbx_cmd_receber_retomavel() {
       return "$(dbx_errors_codigo_saida configuracao)"
     }
     part=$DBX_TMP_CAMINHO
-    devino=$(stat -c '%d|%i' -- "$part" 2>/dev/null) || devino=''
+    dbx_atributo dev_ino "$part" && devino=$DBX_ATRIBUTO || devino=""
     if [[ $ativa == 'sim' ]]; then
       printf -v criado '%(%s)T' -1
       if dbx_state_retomada_gravar "$rev" "$tamanho" "$esperado" "${part##*/}" "$devino" "$criado"; then
@@ -1043,7 +1043,7 @@ dbx_cmd_receber_retomavel() {
   fi
   modo=''
   if [[ -f $alvo ]]; then
-    modo=$(stat -c %a -- "$alvo" 2>/dev/null) || modo=''
+    dbx_atributo modo "$alvo" && modo=$DBX_ATRIBUTO || modo=""
   fi
   [[ -n $modo ]] || printf -v modo '%o' $((0666 & ~$(umask)))
   chmod -- "$modo" "$part" 2>/dev/null || :

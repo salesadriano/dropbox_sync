@@ -159,7 +159,8 @@ _dbx_walk_descer() {
     if dbx_hash_identidade "$nome"; then
       tamanho=$DBX_HASH_TAMANHO_ARQUIVO
       identidade=$DBX_HASH_IDENTIDADE
-    elif tamanho=$(stat -f '%z' "$nome" 2>/dev/null); then
+    elif dbx_atributo tamanho "$nome"; then
+      tamanho=$DBX_ATRIBUTO
       identidade=''
     else
       printf 'nao foi possivel inspecionar: %s\n' "$relativo" >&3

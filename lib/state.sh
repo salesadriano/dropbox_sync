@@ -665,7 +665,7 @@ dbx_state_host_id() {
     IFS= read -r boot </proc/sys/kernel/random/boot_id || :
   fi
   [[ $boot =~ ^[A-Za-z0-9-]{1,64}$ ]] || boot=x
-  [[ -e /proc/self/ns/pid ]] && ns=$(stat -L -c %i -- /proc/self/ns/pid 2>/dev/null)
+  [[ -e /proc/self/ns/pid ]] && dbx_atributo -L ino /proc/self/ns/pid && ns=$DBX_ATRIBUTO
   [[ $ns =~ ^[0-9]{1,20}$ ]] || ns=x
   DBX_STATE_HOST_NOME=$nome
   DBX_STATE_HOST_BOOT=$boot
@@ -1111,7 +1111,7 @@ dbx_state_trava_raiz_caminho() {
   _dbx_state_base || return $?
   base=$DBX_STATE_RESULTADO
   DBX_STATE_RESULTADO=''
-  devino=$(stat -L -c '%d:%i' -- "$1" 2>/dev/null) || return 1
+  dbx_atributo -L dev_ino "$1" || return 1; devino=${DBX_ATRIBUTO/|/:}
   [[ $devino =~ ^[0-9]+:[0-9]+$ ]] || return 1
   resumo=$(printf 'trava-raiz\n%s' "$devino" | dbx_hash_conteudo_fluxo) || return $?
   DBX_STATE_RESULTADO="$base/trava-${resumo:0:32}"
@@ -1608,7 +1608,7 @@ dbx_state_retomada_part_barreira() {
   caminho="$diretorio/$nome"
   [[ -L $caminho ]] && return 1
   [[ -f $caminho && -O $caminho ]] || return 1
-  atual=$(stat -c '%d|%i' -- "$caminho" 2>/dev/null) || return 1
+  dbx_atributo dev_ino "$caminho" || return 1; atual=$DBX_ATRIBUTO
   [[ $atual == "$devino" ]]
 }
 
@@ -1792,7 +1792,7 @@ dbx_state_retomada_listar() {
   printf -v agora '%(%s)T' -1
   for arquivo in ${arquivos[@]+"${arquivos[@]}"}; do
     [[ -e $arquivo || -L $arquivo ]] || continue
-    mtime=$(stat -c %Y -- "$arquivo" 2>/dev/null) || mtime=$agora
+    dbx_atributo mtime "$arquivo" && mtime=$DBX_ATRIBUTO || mtime=$agora
     [[ $mtime =~ ^[0-9]+$ ]] || mtime=$agora
     idade=$(((agora - mtime) / 86400))
     DBX_STATE_RETOMADAS_ARQUIVO+=("$arquivo")
@@ -1809,7 +1809,7 @@ dbx_state_retomada_listar() {
         part="$DBX_STATE_RESULTADO/${c[9]}"
         devino=${c[10]}
         if dbx_state_retomada_part_barreira "$DBX_STATE_RESULTADO" "${c[9]}" "$devino"; then
-          bytes=$(stat -c %s -- "$part" 2>/dev/null) || bytes=0
+          dbx_atributo tamanho "$part" && bytes=$DBX_ATRIBUTO || bytes=0
         fi
         DBX_STATE_RETOMADAS_LOCAL+=("${c[12]}")
       fi
@@ -2086,7 +2086,7 @@ dbx_state_cursor_carregar() {
     2) return 1 ;;
     *) return 3 ;;
   esac
-  tamanho=$(stat -L -c %s -- "/dev/fd/$fd" 2>/dev/null) || tamanho=-1
+  dbx_atributo -L tamanho "/dev/fd/$fd" && tamanho=$DBX_ATRIBUTO || tamanho=-1
   _dbx_state_cursor_consumido=0
   if [[ ! $tamanho =~ ^[0-9]+$ || $tamanho -gt $DBX_STATE_CURSOR_BYTES ]]; then
     exec {fd}<&-
@@ -2201,7 +2201,7 @@ _dbx_state_conteudo_cursor() {
 # ja escritos; recusa o que passaria do teto de 512 MiB (nao persiste).
 _dbx_state_rodape_cursor() {
   local temporario=$1 tamanho resumo
-  tamanho=$(stat -c %s -- "$temporario" 2>/dev/null) || return 1
+  dbx_atributo tamanho "$temporario" || return 1; tamanho=$DBX_ATRIBUTO
   [[ $tamanho =~ ^[0-9]+$ && $tamanho -le $((DBX_STATE_CURSOR_BYTES - 80)) ]] || return 1
   resumo=$(_dbx_hash_sha256_hex <"$temporario") || return 1
   [[ $resumo =~ ^[0-9a-f]{64}$ ]] || return 1

@@ -16,6 +16,12 @@
 [[ -n ${DBX_PROGRESS_CARREGADO:-} ]] && return 0
 DBX_PROGRESS_CARREGADO=1
 
+_dbx_progress_diretorio=${BASH_SOURCE[0]%/*}
+[[ $_dbx_progress_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_progress_diretorio=.
+# shellcheck source=lib/atributos.sh
+. "$_dbx_progress_diretorio/atributos.sh"
+unset _dbx_progress_diretorio
+
 # dbx_progress_ativo — verifica se a emissao de progresso esta habilitada.
 dbx_progress_ativo() {
   case ${DBX_CLI_PROGRESSO:-auto} in
@@ -503,7 +509,7 @@ dbx_progress_neutralizar() {
 # fallback BSD `stat -f`, como em commands/config.sh); devolve em <var> e falha se ilegivel.
 dbx_progress_tamanho_de() {
   local t=''
-  IFS= read -r t < <(stat -c %s -- "$1" 2>/dev/null || stat -f %z -- "$1" 2>/dev/null)
+  dbx_atributo tamanho "$1" && t=$DBX_ATRIBUTO
   [[ $t =~ ^[0-9]+$ ]] || return 1
   printf -v "$2" '%s' "$t"
 }

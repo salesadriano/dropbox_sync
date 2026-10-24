@@ -152,7 +152,7 @@ _dbx_cmd_diag_travas() {
   # Exclusao entre hosts em NFS e melhor esforco (RSK-49): avisa, nunca bloqueia.
   # Sem `stat -f`, nao ha o que dizer.
   [[ -n $estado && -d $estado ]] && _dbx_cmd_diag_tem stat || return 0
-  tipo=$(stat -f -c %T -- "$estado" 2>/dev/null) || return 0
+  dbx_atributo fs_tipo "$estado" || return 0; tipo=$DBX_ATRIBUTO
   if [[ ${tipo,,} == nfs* ]]; then
     _dbx_cmd_diag trava aviso "o diretorio de estado esta em NFS ($tipo): a exclusao da trava entre hosts e melhor esforco: $estado" \
       'aponte XDG_STATE_HOME para um disco local'
@@ -382,8 +382,8 @@ dbx_cmd_diagnostico_executar() {
       'instale o utilitario stat'
   else
     local modo dono
-    modo=$(stat -c '%a' -- "$estado" 2>/dev/null) || modo=''
-    dono=$(stat -c '%u' -- "$estado" 2>/dev/null) || dono=''
+    dbx_atributo modo "$estado" && modo=$DBX_ATRIBUTO || modo=""
+    dbx_atributo dono "$estado" && dono=$DBX_ATRIBUTO || dono=""
     if [[ $dono != "$EUID" ]]; then
       _dbx_cmd_diag estado falha "o diretorio de estado pertence a outro usuario: $estado" \
         "remova $estado; ele e refeito na proxima execucao"

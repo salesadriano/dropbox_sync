@@ -376,4 +376,22 @@ teste_dia16_escopo_opcional_ausente_e_ok_informativo_sem_mudar_o_codigo() {
   return 0
 }
 
+# TC-FBSD-15 (RF-167, I-65) — com o stat do BSD (rejeita `-c`) o diretorio de
+# estado 0700 do proprio usuario nao pode virar "permissao incorreta" falsa.
+# O PATH do cenario so tem o `bin` dele, entao o duble entra como invocacao
+# explicita do bash: o `env bash` do shebang nao existe ali.
+teste_fbsd15_estado_0700_com_stat_bsd_nao_reporta_permissao_falsa() {
+  local base
+  base=$(_cenario)
+  mkdir -p "$base/estado/dbx"
+  chmod 700 "$base/estado/dbx"
+  rm -f -- "$base/bin/stat"
+  printf '#!%s\nexec %s %s "$@"\n' "$BASH_ABSOLUTO" "$BASH_ABSOLUTO" \
+    "$DBX_HARNESS_RAIZ/tests/duplos/freebsd/bin/stat" >"$base/bin/stat"
+  chmod +x "$base/bin/stat"
+  _rodar "$base" diagnostico
+  assert_contem 'estado=ok' "$DBX_SAIDA" "estado 0700 e ok com o stat BSD: $(_linha estado)"
+  assert_contem 'com permissao 700' "$(_linha estado)" 'o modo foi lido, nao assumido vazio'
+}
+
 harness_executar "$@"

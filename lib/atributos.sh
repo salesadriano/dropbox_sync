@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# lib/atributos.sh — leitura UNICA de atributos de arquivo (RF-167, F-52).
+#
+# Camada: adaptadores. Nao depende de nenhum outro modulo; so do `stat`, que o
+# preflight ja exige.
+#
+# POR QUE UM PONTO SO
+#
+#   O `stat` do GNU le por `-c <formato>`; o do FreeBSD, por `-f <formato>`, e no
+#   GNU `-f` e "estado do sistema de arquivos" e SUCEDE com saida errada. Por isso
+#   a forma GNU vem sempre primeiro e a BSD so e tentada quando o utilitario
+#   RECUSA a primeira (portabilidade por capacidade, nunca por nome de sistema).
+#   Nenhum outro arquivo do produto chama `stat` com `-c` ou `-f`.
+#
+# USO
+#
+#   dbx_atributo [-L] <campo> <arquivo>
+#
+#   Publica o valor em DBX_ATRIBUTO (sem subshell, de modo que o formato
+#   aprendido na primeira leitura vale para as seguintes: uma chamada por
+#   atributo). Status 0 com o valor; 1 quando a leitura falha, com DBX_ATRIBUTO
+#   vazio — quem chama decide o que fazer, nunca assume `0` nem vazio (RF-167(e));
+#   2 em uso invalido. `-L` segue elo simbolico (e /dev/fd/N).
+#
+#   Campos: modo (octal) | modo_simbolico | dono (uid) | grupo (gid) | tamanho |
+#   mtime (segundos) | dev | ino | dev_ino (`d|i`) | dev_ino_tamanho (`d|i|s`) |
+#   identidade | fs_tipo.
+#
+# IDENTIDADE
+#
+#   `tamanho<TAB>mtime|mtime-com-ns|ctime-com-ns|dev|ino|tamanho`. No GNU os
+#   nanossegundos vem do texto de `%y`/`%z` (exato, ver lib/hash). RECUO BSD: o
+#   `stat` basico do BSD nao traz nanossegundos, entao os dois campos de tempo
+#   saem em segundos com fracao `.000000000`. A cadeia continua estavel entre
+#   duas leituras do mesmo arquivo e muda quando tamanho, dispositivo, inode,
+#   mtime ou ctime (em segundos) mudam; a unica perda e distinguir reescrita no
+#   mesmo segundo com o mesmo tamanho e o mesmo inode.
+#
+# fs_tipo
+#
+#   `stat -f -c %T` so existe no GNU. No BSD nao ha forma portavel: a leitura
+#   falha e o diagnostico diz "nao verificado" (I-64).
+
+[[ -n ${DBX_ATRIBUTOS_CARREGADO:-} ]] && return 0
+DBX_ATRIBUTOS_CARREGADO=1
+
+DBX_ATRIBUTO=''
+# Forma que o utilitario aceitou: vazio (ainda nao aprendida), gnu ou bsd.
+_dbx_atributos_forma=''
+# Formatos do campo em leitura, preenchidos por _dbx_atributos_formatos.
+_dbx_atributos_formato_gnu=''
+_dbx_atributos_formato_bsd=''
+
+# _dbx_atributos_formatos <campo> — define os dois formatos; 1 se o campo e desconhecido.
+_dbx_atributos_formatos() {
+  local tab=$'\t'
+  case $1 in
+    modo) _dbx_atributos_formato_gnu='%a' _dbx_atributos_formato_bsd='%Lp' ;;
+    modo_simbolico) _dbx_atributos_formato_gnu='%A' _dbx_atributos_formato_bsd='%Sp' ;;
+    modo_exibicao) _dbx_atributos_formato_gnu='%a (%A)' _dbx_atributos_formato_bsd='%Lp (%Sp)' ;;
+    dono_grupo) _dbx_atributos_formato_gnu='%u:%g' _dbx_atributos_formato_bsd='%u:%g' ;;
+    dono) _dbx_atributos_formato_gnu='%u' _dbx_atributos_formato_bsd='%u' ;;
+    grupo) _dbx_atributos_formato_gnu='%g' _dbx_atributos_formato_bsd='%g' ;;
+    tamanho) _dbx_atributos_formato_gnu='%s' _dbx_atributos_formato_bsd='%z' ;;
+    mtime) _dbx_atributos_formato_gnu='%Y' _dbx_atributos_formato_bsd='%m' ;;
+    dev) _dbx_atributos_formato_gnu='%d' _dbx_atributos_formato_bsd='%d' ;;
+    ino) _dbx_atributos_formato_gnu='%i' _dbx_atributos_formato_bsd='%i' ;;
+    dev_ino) _dbx_atributos_formato_gnu='%d|%i' _dbx_atributos_formato_bsd='%d|%i' ;;
+    dev_ino_tamanho) _dbx_atributos_formato_gnu='%d|%i|%s' _dbx_atributos_formato_bsd='%d|%i|%z' ;;
+    identidade)
+      _dbx_atributos_formato_gnu="%s${tab}%Y|%y|%z|%d|%i|%s"
+      _dbx_atributos_formato_bsd="%z${tab}%m|%m.000000000|%c.000000000|%d|%i|%z"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# dbx_atributo [-L] <campo> <arquivo> — ver o cabecalho do modulo.
+dbx_atributo() {
+  local seguir=() leitura=''
+  DBX_ATRIBUTO=''
+  if [[ ${1:-} == -L ]]; then
+    seguir=(-L)
+    shift
+  fi
+  [[ $# -eq 2 ]] || return 2
+  if [[ $1 == fs_tipo ]]; then
+    # Sem forma BSD: tenta so a GNU e falha no BSD ("nao verificado").
+    # Captura (e nao `read < <()`) para o status do stat decidir: o BSD ainda
+    # imprime algo para o operando valido ao recusar os demais.
+    leitura=$(stat -f -c %T -- "$2" 2>/dev/null) || return 1
+    DBX_ATRIBUTO=$leitura
+    return 0
+  fi
+  _dbx_atributos_formatos "$1" || return 2
+  if [[ $_dbx_atributos_forma != bsd ]]; then
+    # Captura, e nao `read < <()`: a substituicao de processo nao espera o
+    # `stat` terminar nem devolve o status dele, e quem chama confere o arquivo
+    # logo em seguida (barreira de inode do `.part`).
+    if leitura=$(stat "${seguir[@]}" -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null); then
+      _dbx_atributos_forma=gnu
+      DBX_ATRIBUTO=$leitura
+      return 0
+    fi
+    # Forma GNU recusada ou arquivo ilegivel; so recua se ainda nao aprendeu `gnu`.
+    [[ $_dbx_atributos_forma == gnu ]] && return 1
+  fi
+  if leitura=$(stat "${seguir[@]}" -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null); then
+    _dbx_atributos_forma=bsd
+    # shellcheck disable=SC2034  # canal publico, lido pelo chamador
+    DBX_ATRIBUTO=$leitura
+    return 0
+  fi
+  return 1
+}

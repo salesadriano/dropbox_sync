@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Duble do stat do FreeBSD (RF-167, TC-FBSD-02, 11 a 15).
+#
+# O stat do BSD nao tem `-c`: ali `-f` e o FORMATO (no GNU, `-f` e "estado do
+# sistema de arquivos" e sucede com saida errada, por isso a forma GNU vem
+# primeiro no produto). Este duble rejeita `-c` com a mensagem e o uso do BSD e
+# aceita `-L`, `--` e `-f <formato>` com os campos que o produto usa:
+#
+#   %Lp modo octal   %Sp modo simbolico   %u dono   %g grupo   %z tamanho
+#   %m mtime (s)     %a atime (s)         %c ctime (s)   %d dispositivo
+#   %i inode         %HT tipo do arquivo  %%  e literais (\t, \n incluidos)
+#
+# BSD NAO tem nanossegundos neste duble: `%m`, `%a` e `%c` sao so segundos, como
+# no formato basico do stat BSD. A traducao e para o stat do sistema, por
+# caminho absoluto, para nunca recair neste proprio duble pelo PATH.
+
+real=''
+for candidato in /usr/bin/stat /bin/stat; do
+  if [[ -x $candidato ]]; then
+    real=$candidato
+    break
+  fi
+done
+if [[ -z $real ]]; then
+  printf 'stat: duble sem stat do sistema para delegar\n' >&2
+  exit 2
+fi
+
+# _recusar <mensagem> — grava no registro dos dubles (o produto costuma engolir o
+# stderr) e termina com status 1.
+_recusar() {
+  printf '%s\n' "$1" >&2
+  [[ -n ${DBX_FREEBSD_REGISTRO:-} ]] && printf '%s\n' "$1" >>"$DBX_FREEBSD_REGISTRO"
+  exit 1
+}
+
+uso='usage: stat [-FLnq] [-f format | -l | -r | -s | -x] [-t timefmt] [file ...]'
+seguir=()
+formato=''
+while (($#)); do
+  case $1 in
+    --)
+      shift
+      break
+      ;;
+    -c*)
+      printf 'stat: illegal option -- c\n%s\n' "$uso" >&2
+      # Recusa de `-c` e a sonda de capacidade do produto (tenta GNU, recua para
+      # BSD): nao e erro e nao entra no registro dos dubles.
+      exit 1
+      ;;
+    -L)
+      seguir=(-L)
+      shift
+      ;;
+    -f)
+      # No BSD o argumento seguinte e sempre o formato, mesmo que pareca opcao.
+      (($# >= 2)) || _recusar "stat: option requires an argument -- f"
+      formato=$2
+      shift 2
+      ;;
+    -*) _recusar "stat: illegal option -- ${1#-}" ;;
+    *) break ;;
+  esac
+done
+
+[[ -n $formato ]] || formato='%d %i %Sp %l %Su %Sg %r %z "%Sa" "%Sm" "%Sc" "%SB" %k %b %#Xf %N'
+
+# Traducao do formato BSD para o formato do stat do sistema. Cada marcador BSD
+# vira o equivalente; `\t` e `\n` ficam literais para `--printf` interpretar.
+gnu=''
+resto=$formato
+while [[ -n $resto ]]; do
+  case $resto in
+    %Lp*) gnu+=%a resto=${resto#%Lp} ;;
+    %Sp*) gnu+=%A resto=${resto#%Sp} ;;
+    %HT*) gnu+=%F resto=${resto#%HT} ;;
+    %u*) gnu+=%u resto=${resto#%u} ;;
+    %g*) gnu+=%g resto=${resto#%g} ;;
+    %z*) gnu+=%s resto=${resto#%z} ;;
+    %m*) gnu+=%Y resto=${resto#%m} ;;
+    %a*) gnu+=%X resto=${resto#%a} ;;
+    %c*) gnu+=%Z resto=${resto#%c} ;;
+    %d*) gnu+=%d resto=${resto#%d} ;;
+    %i*) gnu+=%i resto=${resto#%i} ;;
+    '%%'*) gnu+=%% resto=${resto#%%} ;;
+    %*) _recusar "stat: unsupported format specifier in duble: ${resto:0:3}" ;;
+    *) gnu+=${resto:0:1} resto=${resto:1} ;;
+  esac
+done
+
+(($# >= 1)) || _recusar "$uso"
+"$real" "${seguir[@]}" --printf="$gnu\n" -- "$@"

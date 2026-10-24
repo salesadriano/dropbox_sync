@@ -56,6 +56,8 @@ _dbx_preflight_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_preflight_diretorio=$(cd -P -- "$_dbx_preflight_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_preflight_diretorio/errors.sh"
+# shellcheck source=lib/atributos.sh
+. "$_dbx_preflight_diretorio/atributos.sh"
 unset _dbx_preflight_diretorio
 
 DBX_PREFLIGHT_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -128,8 +130,9 @@ dbx_preflight_credencial() {
 
   [[ -f $arquivo ]] ||
     { _dbx_preflight_falhar credencial 'o caminho da credencial nao e arquivo comum'; return $?; }
-  modo=$(stat -c '%a' "$arquivo" 2>/dev/null || stat -f '%Lp' "$arquivo" 2>/dev/null) ||
+  dbx_atributo modo "$arquivo" ||
     { _dbx_preflight_falhar credencial 'nao foi possivel inspecionar a credencial'; return $?; }
+  modo=$DBX_ATRIBUTO
   # Mesma regra do caminho gemeo em lib/config: qualquer modo sem bits para
   # grupo e outros e aceito, porque recusar 0400 desfaria uma escolha MAIS
   # restritiva do operador. Manter as duas verificacoes identicas e o que
@@ -137,10 +140,10 @@ dbx_preflight_credencial() {
   [[ $modo =~ ^[4567]00$ ]] ||
     { _dbx_preflight_falhar credencial "permissao da credencial precisa nao ter bits para grupo e outros, encontrada $modo"; return $?; }
 
-  modo_diretorio=$(stat -c '%a' -- "$diretorio" 2>/dev/null || stat -f '%Lp' "$diretorio" 2>/dev/null)
+  dbx_atributo modo "$diretorio"; modo_diretorio=$DBX_ATRIBUTO
   [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
     { _dbx_preflight_falhar credencial "permissao do diretorio de configuracao precisa nao ter bits para grupo e outros, encontrada $modo_diretorio"; return $?; }
-  dono=$(stat -c '%u' "$arquivo" 2>/dev/null || stat -f '%u' "$arquivo" 2>/dev/null)
+  dbx_atributo dono "$arquivo"; dono=$DBX_ATRIBUTO
   [[ $dono == "$EUID" ]] ||
     { _dbx_preflight_falhar credencial 'a credencial pertence a outro usuario'; return $?; }
   return 0

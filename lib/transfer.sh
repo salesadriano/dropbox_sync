@@ -1146,7 +1146,7 @@ dbx_transfer_objeto_de_publicacao() {
   # local a funcao: capturar `date` seria captura fora do alfabeto fechado
   # (RNF-24). `TZ` precisa ser EXPORTADA: o shell so reaplica o fuso quando a
   # variavel esta no ambiente, e sem `-x` o carimbo sairia na hora local.
-  if [[ $origem != '-' ]] && mtime=$(stat -c %Y -- "$origem" 2>/dev/null) &&
+  if [[ $origem != '-' ]] && dbx_atributo mtime "$origem" && mtime=$DBX_ATRIBUTO &&
     [[ $mtime =~ ^[0-9]+$ ]]; then
     local -x TZ=UTC
     printf -v carimbo '%(%Y-%m-%dT%H:%M:%SZ)T' "$mtime"

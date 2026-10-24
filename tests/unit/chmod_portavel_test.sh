@@ -43,7 +43,7 @@ teste_duplo_de_chmod_trata_dois_hifens_depois_do_modo_como_operando() {
   estado=$?
   assert_igual 1 "$estado" 'no BSD o `--` apos o modo e operando e o chmod falha'
   assert_contem 'chmod: --: No such file or directory' "$saida"
-  assert_igual 640 "$(stat -c %a -- "$area/a")" 'os demais operandos validos recebem o modo'
+  assert_igual 640 "$(dbx_freebsd_real stat -c %a -- "$area/a")" 'os demais operandos validos recebem o modo'
 }
 
 teste_duplo_de_chmod_aceita_dois_hifens_antes_do_modo() {
@@ -53,10 +53,10 @@ teste_duplo_de_chmod_aceita_dois_hifens_antes_do_modo() {
   dbx_freebsd_ativar
   chmod -- 640 "$area/a"
   assert_igual 0 $? 'forma portavel'
-  assert_igual 640 "$(stat -c %a -- "$area/a")"
+  assert_igual 640 "$(dbx_freebsd_real stat -c %a -- "$area/a")"
   chmod -R -- 600 "$area/a"
   assert_igual 0 $? 'opcao antes do `--` continua opcao'
-  assert_igual 600 "$(stat -c %a -- "$area/a")"
+  assert_igual 600 "$(dbx_freebsd_real stat -c %a -- "$area/a")"
   assert_igual '' "$(dbx_freebsd_erros)" 'nada registrado como erro'
 }
 
@@ -72,7 +72,7 @@ teste_gravacao_da_credencial_conclui_com_chmod_bsd() {
   dbx_freebsd_ativar
   dbx_config_gravar 'AK' 'AS' 'RT' '/raiz'
   assert_igual 0 $? "a gravacao da credencial falhou: ${DBX_CONFIG_MOTIVO:-} ${DBX_CONFIG_DETALHE:-}"
-  assert_igual 600 "$(stat -c %a -- "$DBX_CONFIG_RESULTADO")" 'a credencial precisa ficar 0600'
+  assert_igual 600 "$(dbx_freebsd_real stat -c %a -- "$DBX_CONFIG_RESULTADO")" 'a credencial precisa ficar 0600'
   assert_nao_contem 'chmod: --' "${DBX_CONFIG_DETALHE:-}"
   assert_igual '' "$(dbx_freebsd_erros)" 'nenhum chmod falhou'
 }
@@ -85,7 +85,7 @@ teste_preparo_do_diretorio_de_estado_conclui_com_chmod_bsd() {
   dbx_freebsd_ativar
   _dbx_state_preparar_diretorio "$area/estado"
   assert_igual 0 $? 'o preparo do diretorio de estado nao pode falhar no BSD'
-  assert_igual 700 "$(stat -c %a -- "$area/estado")" 'o diretorio de estado precisa ficar 0700'
+  assert_igual 700 "$(dbx_freebsd_real stat -c %a -- "$area/estado")" 'o diretorio de estado precisa ficar 0700'
   assert_igual '' "$(dbx_freebsd_erros)" 'nenhum chmod falhou'
 }
 
@@ -128,7 +128,7 @@ teste_recebimento_aplica_o_modo_do_alvo_com_chmod_bsd() {
   TMPDIR=$area PATH=$dir:$PATH dbx_cmd_receber_arquivo /r/a.txt "$area/alvo.txt"
   assert_igual 0 $? 'recebimento conferido conclui'
   assert_igual 'novo conteudo' "$(cat "$area/alvo.txt")"
-  assert_igual 640 "$(stat -c %a -- "$area/alvo.txt")" 'o modo do alvo precisa ser preservado'
+  assert_igual 640 "$(dbx_freebsd_real stat -c %a -- "$area/alvo.txt")" 'o modo do alvo precisa ser preservado'
   assert_igual '' "$(dbx_freebsd_erros)" 'o chmod do modo falhou e o produto engoliu o erro'
 }
 

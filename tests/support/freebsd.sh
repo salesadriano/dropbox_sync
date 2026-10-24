@@ -19,6 +19,18 @@ dbx_freebsd_erros() {
   cat -- "$DBX_FREEBSD_REGISTRO"
 }
 
+# dbx_freebsd_real <comando> [args...] — roda o utilitario do sistema, sem os
+# dubles, para o teste conferir o resultado com o GNU mesmo com o PATH do BSD
+# ativo (o duble de stat rejeita `-c`, que o teste usa para ler o modo).
+dbx_freebsd_real() {
+  local PATH=${PATH//"$DBX_FREEBSD_DUPLOS:"/}
+  hash -r
+  "$@"
+  local estado=$?
+  hash -r
+  return "$estado"
+}
+
 # dbx_freebsd_ativar — antepoe o diretorio de dubles ao PATH do processo e abre
 # o registro de erros dos dubles (DBX_FREEBSD_REGISTRO).
 dbx_freebsd_ativar() {
