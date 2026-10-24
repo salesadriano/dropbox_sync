@@ -439,3 +439,7 @@ R4a fechado (expansoes simuladas: `https://u:p@ss@h/` -> `https://h`; `https://u
 Detalhe em [validacao-qa-teste-de-disponibilidade](2026-10-23-0900-validacao-qa-teste-de-disponibilidade.md). Ciclo 1 REPROVADO (QA-DSP-01, P1: `testar_test.sh:399-400` montava massa com `$(printf ...)`, contra RNF-24; corrigido pelo Tech Lead com here-string); ciclo 2 APROVADO: `qa_disponibilidade_b11_test` 33/0, `json` 62/0, `harness` 22/0, `testar_test` 29/0.
 
 - **Aceite do solicitante pela regra 12, em 2026-10-23 ("Aprovo"):** suite `tests/integracao/qa_disponibilidade_b11_test.sh`, 33 casos, sha256 `ffe3ef0ea7f4cf69d96465d2960828b30597b9735ec88412ca2231e4a3db96ec`.
+
+## Suite completa (regra 8 do protocolo-tdd)
+
+- 1a execucao em `23eb37a` (2026-10-24T03:14Z): **VERMELHA**, 841 aprovados, 1 reprovado, 3 pulados, 30 arquivos. Reprovou `state_trava_test::leitor_concorrente_nunca_ve_trava_vazia_ou_parcial` (TC-TRV-14): 1 leitura de trava parcial em 372, com 15 processos adquirindo a mesma trava. Fora do diff desta demanda (`lib/state.sh` e o teste intocados desde `877b708`); o mesmo arquivo passou 5/5 no worktree e 5/5 na `develop`. Unica ocorrencia no `tests/.diagnostico/reprovacoes.log`. Leitura do Tech Lead: corrida rara e preexistente na leitura da trava de `lib/state` (risco **RSK-DSP-01**, a abrir como demanda propria; nao corrigido aqui, para nao ampliar o escopo).
