@@ -88,6 +88,30 @@ dbx_carregar_camada_de_credencial() {
   dbx_http_validar_ambiente || _dbx_falhar uso_invalido "$DBX_HTTP_MOTIVO_AMBIENTE"
 }
 
+# dbx_iniciar_config [args] — roda o `config` no mesmo processo (RF-152(f)). Mora
+# aqui, e nao em lib/, porque lib nao carrega commands/ (DIV-325).
+dbx_iniciar_config() {
+  # source=/dev/null: com a cadeia de commands/config.sh e lib/disponibilidade.sh, o lint de bin/dbx
+  # passa do teto de 12 GB; os dois tem lint proprio, como os comandos do despacho.
+  # shellcheck source=/dev/null
+  . "$DBX_CLI_RAIZ/commands/config.sh"
+  dbx_cmd_config_executar "$@"
+}
+
+# _dbx_disponibilidade_preparar <argumentos...> — arma o gancho de RF-151(c) e
+# fecha o portao da oferta para o comando que consome a entrada padrao (DIV-315:
+# origem `-` e as opcoes de senha por stdin ou terminal).
+_dbx_disponibilidade_preparar() {
+  local argumento
+  dbx_auth_registrar_ganchos dbx_disp_ao_falhar_token dbx_disp_ao_falhar_chamada
+  # shellcheck disable=SC2034 # DBX_DISP_CONSOME_STDIN e lida por lib/disponibilidade.sh
+  for argumento in "$@"; do
+    case $argumento in
+      - | --senha | --password | --senha-stdin | --password-stdin) DBX_DISP_CONSOME_STDIN='sim' ;;
+    esac
+  done
+}
+
 _dbx_falhar() {
   local classe=$1 texto=$2
   dbx_output_iniciar
@@ -220,7 +244,12 @@ case $DBX_CLI_COMANDO in
         printf '  --perfil, --profile <nome>      Perfil da credencial (1 a 32 de a-z, 0-9, _ e -)\n'
         printf '  --substituir, --replace         Troca a credencial existente (o token antigo NAO e revogado)\n'
         printf '  --raiz, --root <caminho>        Raiz remota gravada na credencial (padrao: /)\n'
-        printf '  --debug                         Diagnostico do ambiente em stderr\n'
+        printf '  --debug                         Diagnostico do ambiente em stderr\n\n'
+        printf 'Oferta automatica: nos comandos que exigem credencial, com stdin e stderr em terminal,\n'
+        printf 'credencial ausente ou invalida pergunta "Configurar agora? [s/N]" (padrao: nao); aceito\n'
+        printf 'e o config ok, o comando continua com os mesmos argumentos. Recusa ou falha mantem o\n'
+        printf 'codigo de sempre (3 ou 5). DBX_TESTE_CONFIG=nao desliga a oferta; sem terminal, com\n'
+        printf '--dry-run ou em comando que le a entrada padrao (upload -) nao ha pergunta.\n'
         exit 0
         ;;
       unlink)
@@ -582,7 +611,26 @@ case $DBX_CLI_COMANDO in
         printf 'aviso ou falha) com o remedio.\n'
         printf 'Alias em ingles: doctor.\n\n'
         printf 'Nao passa pela verificacao previa, nunca imprime segredo e nao altera nada.\n'
+        printf 'O diagnostico nao inicia o config nem oferece corrigir; para testar a rede e a\n'
+        printf 'credencial com a oferta do config, use dbx testar.\n'
         printf 'Codigo de saida: 0 sem falha (aviso nao reprova); 3 com ao menos uma falha.\n'
+        exit 0
+        ;;
+      testar)
+        printf 'Uso: dbx testar\n\n'
+        printf 'Testa a disponibilidade, nesta ordem: internet (sonda neutra), servico Dropbox\n'
+        printf '(api e content, sem token) e credencial (campos locais e uma renovacao do token).\n'
+        printf 'Uma linha por checagem (ok, aviso ou falha) com o remedio; a dependente de uma\n'
+        printf 'falha sai como nao executada. Alias em ingles: check. Valem --json e --null.\n\n'
+        printf 'Codigo de saida: 0 sem falha; senao o da primeira falha: 9 sem internet ou Dropbox\n'
+        printf 'inacessivel, 10 servico indisponivel (5xx), 8 limite de taxa, 3 credencial ausente\n'
+        printf 'ou incompleta, 5 credencial recusada.\n\n'
+        printf 'Sonda: GET sem token em https://www.gstatic.com/generate_204 (servidor de\n'
+        printf 'terceiro; qualquer resposta HTTP conta). DBX_TESTE_INTERNET_URL troca o endereco\n'
+        printf '(so https://); definida e vazia desliga a sonda; invalida sai com 2.\n\n'
+        printf 'Com terminal interativo, credencial ausente ou invalida oferece o dbx config\n'
+        printf '([s/N]) e, configurado, refaz as checagens; DBX_TESTE_CONFIG=nao desliga a oferta.\n'
+        printf 'Nao altera nada alem disso. O diagnostico nao inicia o config.\n'
         exit 0
         ;;
       completar)
@@ -607,6 +655,7 @@ case $DBX_CLI_COMANDO in
         printf '  space        Exibe capacidade e uso do espaco da conta\n'
         printf '  verificar    Compara local e remoto por content_hash, so leitura (alias: verify)\n'
         printf '  diagnostico  Checa o ambiente e sugere o remedio (alias: doctor)\n'
+        printf '  testar       Testa internet, servico Dropbox e credencial (alias: check)\n'
         printf '  completar    Imprime o autocompletar do bash (alias: completion)\n'
         printf '  revisoes     Lista as revisoes de um arquivo (alias: revisions)\n'
         printf '  restaurar    Restaura revisao de arquivo ou pasta apagada (alias: restore)\n'
@@ -632,6 +681,10 @@ case $DBX_CLI_COMANDO in
         printf '  DBX_HTTP_RETRY_AFTER_TETO_S     teto do Retry-After do servidor, em s (padrao 300)\n\n'
         printf 'Variavel de ambiente do perfil (so o NOME, nunca segredo; vazia vale como nao definida):\n'
         printf '  DBX_PERFIL                      perfil de credencial; --perfil vence (padrao: perfil padrao)\n\n'
+        printf 'Credencial ausente ou invalida (comandos que exigem credencial, exceto config, perfis,\n'
+        printf 'diagnostico, testar, unlink, completar, help e version): com stdin e stderr em terminal\n'
+        printf 'o dbx pergunta "Configurar agora? [s/N]". DBX_TESTE_CONFIG=nao desliga a pergunta. Falha\n'
+        printf 'de rede na renovacao do token nomeia a causa (sem internet ou Dropbox inacessivel).\n\n'
         printf 'Recomendacao para upload de fluxo (RSK-36):\n'
         printf '  Em "dbx upload - <destino>", ative "set -o pipefail" no shell do operador ao usar pipes.\n'
         exit 0
@@ -671,8 +724,24 @@ case $_dbx_requisito in
       _dbx_falhar configuracao "$(dbx_preflight_mensagem)"
     if [[ $_dbx_requisito == 'credencial' ]]; then
       dbx_carregar_camada_de_credencial
-      dbx_config_carregar ||
-        _dbx_falhar configuracao "$(dbx_config_mensagem_de_indisponibilidade)"
+      # shellcheck source=/dev/null # ver dbx_iniciar_config
+      . "$DBX_CLI_RAIZ/lib/disponibilidade.sh"
+      _dbx_disponibilidade_preparar "${DBX_CLI_ARGS[@]:-}"
+      if ! dbx_config_carregar; then
+        # RF-151(b), RF-152: credencial ausente ou incompleta pode receber a oferta
+        # do `config`; recusa, cancelamento ou falha mantem a recusa de sempre.
+        _dbx_mensagem=$(dbx_config_mensagem_de_indisponibilidade)
+        case $DBX_CONFIG_MOTIVO in
+          permissao | permissao_diretorio | ligacao_simbolica) _dbx_causa='' ;;
+          ausente) _dbx_causa='ausente' ;;
+          *) _dbx_causa='invalida' ;;
+        esac
+        if [[ -n $_dbx_causa ]] && dbx_disp_oferecer_config "$_dbx_causa" && dbx_config_carregar; then
+          :
+        else
+          _dbx_falhar configuracao "$_dbx_mensagem"
+        fi
+      fi
     fi
     ;;
   *) _dbx_falhar uso_invalido "requisito nao reconhecido: $_dbx_requisito" ;;

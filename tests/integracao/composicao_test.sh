@@ -566,6 +566,9 @@ _canal_nao_carrega_credencial() {
     DBX_HTTP_CODIGO | DBX_HTTP_CLASSE | DBX_HTTP_POLITICA) return 0 ;;
     DBX_HTTP_CORRELACAO | DBX_HTTP_DEFEITO_CLIENTE) return 0 ;;
     DBX_HTTP_ERRO_USO | DBX_HTTP_ERRO_REDE) return 0 ;;
+    # Sonda de disponibilidade (fase 11): codigo HTTP de uma requisicao SEM token
+    # e a constante do esquema aceito; nenhum dos dois traz valor de credencial.
+    DBX_HTTP_SONDA_CODIGO | DBX_HTTP_ESQUEMA_SONDA) return 0 ;;
     # Nome de contexto e motivo de recusa do analisador: vocabulario fechado.
     DBX_JSON_CONTEXTO_ANTERIOR | DBX_JSON_MOTIVO) return 0 ;;
     DBX_JSON_MAXIMO_* ) return 0 ;;

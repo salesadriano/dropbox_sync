@@ -62,6 +62,10 @@ dbx_cmd_revisoes_executar() {
   dbx_json_escapar_cadeia "$remoto"
   dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/list_revisions' \
     "{\"path\":\"$DBX_JSON_ESCAPADO\",\"mode\":\"$modo\",\"limit\":$limite}" sim || {
+    if dbx_auth_falha_e_do_token; then
+      dbx_auth_falhar_com dbx_cmd_falhar
+      return $?
+    fi
     local classe=${DBX_HTTP_CLASSE:-erro_remoto}
     case ${DBX_HTTP_RESUMO_DE_ERRO:-} in
       *not_file*)

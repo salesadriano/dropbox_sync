@@ -186,6 +186,10 @@ _dbx_cmd_lixeira_excluir() {
   dbx_json_escapar_cadeia "$alvo"
   dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/get_metadata' \
     "{\"path\":\"$DBX_JSON_ESCAPADO\",\"include_deleted\":true}" sim || {
+    if dbx_auth_falha_e_do_token; then
+      dbx_auth_falhar_com dbx_cmd_falhar
+      return $?
+    fi
     dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" \
       "consulta do alvo recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
     return $?

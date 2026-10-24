@@ -53,6 +53,7 @@ _dbx_completar() {
   case $comando in
     verify) comando='verificar' ;;
     doctor) comando='diagnostico' ;;
+    check) comando='testar' ;;
     completion) comando='completar' ;;
     revisions) comando='revisoes' ;;
     restore) comando='restaurar' ;;
@@ -67,7 +68,7 @@ _dbx_completar() {
     if [[ -z $comando && $atual == -* ]]; then
       lista='--help -h --version -V --json --null --dry-run --progresso --progress -p --sem-progresso --no-progress --debug --perfil --profile'
     elif [[ -z $comando || $posicionais -eq 0 ]]; then
-      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor completar completion revisoes revisions restaurar restore lixeira trash link-temporario temp-link compartilhar share reter retain perfis profiles help'
+      lista='upload download list delete info space config unlink sync verificar verify diagnostico doctor testar check completar completion revisoes revisions restaurar restore lixeira trash link-temporario temp-link compartilhar share reter retain perfis profiles help'
     fi
     mapfile -t COMPREPLY < <(compgen -W "$lista" -- "$atual")
     return 0
