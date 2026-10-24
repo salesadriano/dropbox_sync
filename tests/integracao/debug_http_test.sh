@@ -305,4 +305,42 @@ teste_tc_dbg_32_download_com_falha_tem_resumo_com_o_codigo_e_a_mensagem_de_sempr
   assert_igual "$erro_sem" "$sem_debug" 'stderr sem as linhas debug e o de sempre'
 }
 
+# ---------------------------------------------------------------------------
+# Achados da conformidade (rodada 1): resumo armado antes do requisito, sonda
+# contada, codigo de saida que nao vem do ambiente
+# ---------------------------------------------------------------------------
+
+teste_rf162a_credencial_ausente_tambem_tem_resumo_com_o_codigo() {
+  local base
+  base=$(_dbg_cenario)
+  rm -f "$base/config/dbx/credencial.json"
+  _dbg_executar "$base" --debug download /arq.bin -
+  assert_igual 3 "$DBX_ESTADO" "credencial ausente sem terminal sai 3: $DBX_ERRO"
+  assert_contem 'debug: resumo comando=download chamadas=0 ' "$DBX_ERRO" 'resumo mesmo antes de qualquer requisicao'
+  assert_contem ' saida=3' "$DBX_ERRO" 'com o codigo real'
+}
+
+teste_rf162e_sonda_entra_em_chamadas() {
+  local base n=0
+  base=$(_dbg_cenario)
+  printf 'falha' >"$base/content"
+  _dbg_executar "$base" --debug download /arq.bin -
+  [[ $DBX_ESTADO -ne 0 ]] || _harness_falhar 'a falha de rede deveria falhar o download'
+  assert_contem 'debug: sonda ' "$DBX_ERRO" 'a sonda rodou'
+  n=$(_conta_linhas "$base/chamadas")
+  assert_contem "debug: resumo comando=download chamadas=$n " "$DBX_ERRO" 'chamadas = requisicoes feitas, sonda inclusive'
+}
+
+teste_rf162_codigo_do_resumo_nao_vem_do_ambiente() {
+  local base
+  base=$(_dbg_cenario)
+  printf '503' >"$base/content"
+  DBX_T_EXTRAS=(DBX_TMP_SAIDA_CODIGO=0)
+  _dbg_executar "$base" --debug download /arq.bin -
+  DBX_T_EXTRAS=()
+  [[ $DBX_ESTADO -ne 0 ]] || _harness_falhar 'o 503 deveria falhar o download'
+  assert_contem " saida=$DBX_ESTADO" "$DBX_ERRO" 'o codigo real, nao o semeado no ambiente'
+  assert_nao_contem ' saida=0' "$DBX_ERRO"
+}
+
 harness_executar "$@"

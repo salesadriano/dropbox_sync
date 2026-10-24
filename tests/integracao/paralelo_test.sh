@@ -484,9 +484,11 @@ teste_par14_ajuda_autocompletar_readme_e_diagnostico() {
 # ---------------------------------------------------------------------------
 
 teste_par15_debug_linhas_dos_auxiliares_chegam_ao_operador_e_somam_no_resumo() {
-  local base http total
+  local base http total i
   base=$(_cenario)
   _remoto "$base" 4
+  # Atraso de 1 s por download: as quatro precisam se sobrepor para o pico ser 4.
+  for i in 1 2 3 4; do printf '1' >"$base/atraso/a$i.txt"; done
   _rodar "$base" --debug sync --receber --origem /r --destino "$base/local" --paralelo 4
   assert_igual 0 "$DBX_ESTADO" "$DBX_ERRO"
   assert_igual 4 "$(_pico "$base")" 'paralelismo efetivo'

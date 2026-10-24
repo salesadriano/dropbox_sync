@@ -724,6 +724,21 @@ _dbx_arquivo=$(_dbx_cli_arquivo_do_comando "$DBX_CLI_COMANDO") ||
 # shellcheck source=/dev/null
 . "$_dbx_arquivo"
 
+# RF-162(a)(e): o resumo e armado ANTES do requisito (preflight, disponibilidade,
+# credencial), para que a falha de configuracao tambem o emita.
+if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+  case $DBX_CLI_COMANDO in
+    download | upload | sync)
+      # shellcheck source=lib/tmp.sh
+      . "$DBX_CLI_RAIZ/lib/tmp.sh"
+      # shellcheck source=lib/debug.sh
+      . "$DBX_CLI_RAIZ/lib/debug.sh"
+      dbx_debug_canal_abrir
+      dbx_debug_resumo_armar "$DBX_CLI_COMANDO"
+      ;;
+  esac
+fi
+
 _dbx_requisito=$("dbx_cmd_${DBX_CLI_COMANDO}_requisitos")
 case $_dbx_requisito in
   nenhum) ;;
@@ -759,17 +774,5 @@ case $_dbx_requisito in
     ;;
   *) _dbx_falhar uso_invalido "requisito nao reconhecido: $_dbx_requisito" ;;
 esac
-
-# RF-162: resumo no termino de download, upload e sync, tambem em falha e sinal.
-if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
-  case $DBX_CLI_COMANDO in
-    download | upload | sync)
-      # shellcheck source=/dev/null
-      . "$DBX_CLI_RAIZ/lib/debug.sh"
-      dbx_debug_canal_abrir
-      dbx_debug_resumo_armar "$DBX_CLI_COMANDO"
-      ;;
-  esac
-fi
 
 "dbx_cmd_${DBX_CLI_COMANDO}_executar" "${DBX_CLI_ARGS[@]:-}"

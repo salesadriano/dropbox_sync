@@ -105,6 +105,14 @@ _linha_de() {
   done <"$1"
 }
 
+_linhas_com() { # <arquivo> <trecho> — as linhas que contem o trecho
+  local linha saida=''
+  while IFS= read -r linha || [[ -n $linha ]]; do
+    [[ $linha == *"$2"* ]] && saida+="$linha"$'\n'
+  done <"$1"
+  printf '%s' "$saida"
+}
+
 _entrada() { # <caminho> <content_hash> <tamanho>
   printf '{".tag":"file","path_display":"%s","content_hash":"%s","size":%s}' "$1" "$2" "$3"
 }
@@ -233,6 +241,8 @@ teste_dbg159_lote_tem_modalidade_e_resultado_por_item() {
   _rodar "$base" sync --enviar --origem "$base/local" --destino /r
   for i in 1 2 3; do
     assert_contem "debug: upload modalidade=lote arquivo=p$i.txt bytes=" "$DBX_ERRO" "p$i em lote"
+    # O resultado leva o item: no lote as linhas de resultado saem juntas, depois do lote.
+    assert_contem "arquivo=p$i.txt" "$(_linhas_com "$base/err" 'debug: upload resultado=')" "resultado de p$i nomeia o item"
   done
   _linha_de "$base/err" 'debug: upload resultado='
   assert_igual 3 "$QTD" 'um resultado por item do lote'

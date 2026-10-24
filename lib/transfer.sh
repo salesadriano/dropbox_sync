@@ -840,7 +840,7 @@ _dbx_transfer_conclusao_recusada() {
       incorrect_offset)
         if [[ $_DBX_TRANSFER_RET_PRIMEIRA == 'sim' ]]; then
           dbx_debug_linha upload retomada=descartada motivo=deslocamento-incorreto
-    _dbx_transfer_avisar 'estado de retomada descartado: o servico informou um deslocamento que nao confere com o registro; o envio recomeca do zero'
+          _dbx_transfer_avisar 'estado de retomada descartado: o servico informou um deslocamento que nao confere com o registro; o envio recomeca do zero'
           return "$_DBX_TRANSFER_RECOMECAR"
         fi
         ;;
@@ -1117,6 +1117,10 @@ DBX_TRANSFER_COMMIT=''
 DBX_TRANSFER_POR_SESSAO='nao'
 # `sim` quando o operador pediu `--sem-retomada` (so para a linha de depuracao).
 DBX_TRANSFER_DEBUG_SEM_RETOMADA='nao'
+# Canal lido por quem publica o item da linha `upload` (commands/sync o declara
+# local antes de chamar o envio); vazio = o proprio caminho de origem.
+# shellcheck disable=SC2034  # lido em dbx_transfer_enviar_arquivo
+DBX_TRANSFER_DEBUG_ITEM=''
 
 # dbx_transfer_objeto_de_publicacao <remoto> <modo> <rev> <origem> [mute]
 #

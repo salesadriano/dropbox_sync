@@ -228,6 +228,8 @@ _dbx_cmd_sync_paralelo_resolver() {
     # shellcheck disable=SC2034  # canal publico, lido pelos testes e pelo debug
     DBX_CMD_SYNC_PARALELO_ORIGEM='ambiente'
   fi
+  # RF-162: campo extra do resumo de --debug (a lib nao conhece o comando).
+  ((DBX_CMD_SYNC_PARALELO > 1)) && dbx_debug_resumo_campo paralelo "$DBX_CMD_SYNC_PARALELO"
   return 0
 }
 
@@ -394,6 +396,7 @@ _dbx_cmd_sync_transferir_paralelo() {
       } <"$resultado"
       [[ $limites =~ ^[0-9]{1,9}$ ]] || limites=0
       DBX_CMD_SYNC_LIMITES_429=$((DBX_CMD_SYNC_LIMITES_429 + limites))
+      dbx_debug_somar_429 "$limites"
       caminho=${itens[descarregados]}
       if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' && -s $pasta/dbg.$descarregados ]]; then
         dbx_progress_bloco_pausar
@@ -539,6 +542,7 @@ _dbx_cmd_sync_lote_iniciar() {
     [[ $limites =~ ^[0-9]{1,9}$ ]] || limites=0
     [[ $desloc =~ ^[0-9]{1,18}$ ]] || desloc=0
     DBX_CMD_SYNC_LIMITES_429=$((DBX_CMD_SYNC_LIMITES_429 + limites))
+    dbx_debug_somar_429 "$limites"
     if [[ $status == '0' && -n $sessao ]]; then
       _DBX_CMD_SYNC_LOTE_STATUS[k]=0
     else
@@ -638,9 +642,9 @@ _dbx_cmd_sync_lote_envio() {
     _DBX_CMD_SYNC_LOTE_POS[${_DBX_CMD_SYNC_LOTE_ITENS[k]}]=$k
     # RF-159(d): resultado final de cada pequeno, na ordem do plano.
     if [[ ${_DBX_CMD_SYNC_LOTE_STATUS[k]} == 0 ]]; then
-      dbx_debug_linha upload resultado=ok
+      dbx_debug_linha upload resultado=ok arquivo="${_DBX_CMD_SYNC_LOTE_ITENS[k]}"
     else
-      dbx_debug_linha upload resultado=falha classe="${_DBX_CMD_SYNC_LOTE_CLASSE[k]:-erro_remoto}"
+      dbx_debug_linha upload resultado=falha arquivo="${_DBX_CMD_SYNC_LOTE_ITENS[k]}" classe="${_DBX_CMD_SYNC_LOTE_CLASSE[k]:-erro_remoto}"
     fi
   done
 }

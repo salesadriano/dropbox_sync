@@ -339,6 +339,7 @@ dbx_cmd_upload_executar() {
     DBX_TRANSFER_DEBUG_SEM_RETOMADA=$sem_retomada
     dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" upload
     local estado_envio=$?
+    DBX_TRANSFER_DEBUG_SEM_RETOMADA='nao'
     por_sessao=$DBX_TRANSFER_POR_SESSAO
     [[ $estado_envio -eq 0 ]] || {
       dbx_progress_arquivo_falhar

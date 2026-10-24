@@ -172,3 +172,64 @@ Red (base extraida da Tarefa 4, so com o teste novo): 2/1 (`tc_dbg_33_semente_de
 Cobertura: `TC-DBG-33` (sem terminal, com terminal por pty e com a semente), `34`, `35`, `RF-159(d)` no fluxo.
 
 Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/progress.sh`, `commands/upload.sh`, `bin/dbx`, `tests/integracao/debug_ajuda_progresso_test.sh`.
+
+## Gate protocolo-conformidade (rodada 1): APROVADO COM RESSALVAS
+
+Revisor independente (subagent sem o contexto da implementacao), leitura do diff contra `1e37b75` (21 arquivos de codigo, testes, completions e README); skills clean-architecture e security-best-practices. Sem bloqueante; 3 importantes (no limite da regra), 8 menores.
+
+Conferido sem achado: nenhum segredo nas linhas (todo valor passa por controle -> `?`, `dbx_errors_redigir` e aspas; nenhum id de sessao, cursor, corpo, query ou cabecalho entra em `dbx_debug_linha`; o link temporario nao passa pelos tres comandos); sem `--debug` nao nasce `-w` ampliado, descritor, arquivo `dbg.N`, `stat` nem `wc`; o `-w` sai pela captura, nunca pelo stdout; o resumo e filtrado por `BASHPID` (os auxiliares nao o emitem); os contadores dos auxiliares sao somados uma vez, na descarga.
+
+| # | Sev. | Local | Achado |
+|---|---|---|---|
+| 1 | importante | `lib/debug.sh:160`, `lib/tmp.sh:144-147`, `bin/dbx:770` | no sinal o resumo sai DEPOIS da mensagem de interrupcao (acoes em ordem inversa e o resumo e a primeira registrada), contra `RF-162(c)` |
+| 2 | importante | `lib/debug.sh:175-182` | lib le globais de commands (`DBX_CMD_SYNC_PARALELO`, `DBX_CMD_SYNC_LIMITES_429`): dependencia para fora |
+| 3 | importante | `bin/dbx:736-771`, `lib/http.sh:640-678` | resumo armado depois do preflight e da preparacao de disponibilidade: falha de configuracao/credencial sai sem resumo (`RF-162(a)`); a sonda soma `DBX_HTTP_REQUISICOES` sem passar pelos contadores (`RF-162(e)`) |
+| 4 | menor | `lib/tmp.sh:130` | `DBX_TMP_SAIDA_CODIGO` vem do ambiente (nao inicializado) |
+| 5 | menor | `lib/http.sh:276-294` | `_dbx_http_endpoint_debug` sem a protecao de userinfo da sonda (so URL interna passa: defesa em profundidade) |
+| 6 | menor | `lib/transfer.sh:~842` | indentacao |
+| 7 | menor | `commands/sync.sh:637-645` | `upload resultado=` do lote sem `arquivo=`: no lote paralelo o resultado nao se liga ao item |
+| 8 | menor | `commands/sync.sh:1618`, `lib/transfer.sh:1204,1213` | `DBX_TRANSFER_DEBUG_ITEM` como `local` dinamico sem declaracao na lib |
+| 9 | menor | `commands/upload.sh:339` | `DBX_TRANSFER_DEBUG_SEM_RETOMADA` nao volta a `nao` |
+| 10 | menor | `lib/transfer.sh`, `lib/cmd.sh`, `lib/sync.sh` | chamam `dbx_debug_linha` sem carregar `lib/debug.sh` (vem por `lib/http.sh`) |
+| 11 | menor | `lib/debug.sh:31` | um fork por valor redigido e truncamento sem marca; descritor do canal herdado pelos filhos (segue o padrao de `saida_padrao`) |
+
+Decisao do Tech Lead: as ressalvas nao ficam para depois. Tarefa 6 com 1, 2, 3, 4, 6, 7, 8 e 9; 5, 10 e 11 ficam como recomendacao registrada (5 e 11 sem efeito com as URLs e volumes de hoje; 10 funciona pela carga de `lib/http.sh`, que todos os chamadores fazem).
+
+## Tarefa 6: achados da conformidade (rodada 1)
+
+Implementacao pelo Senior Developer (tarefa 6, sem testes: parou no teto); testes, red, bateria e lint pelo Tech Lead.
+
+| # | Correcao | Teste |
+|---|---|---|
+| 1 | `lib/tmp.sh`: `dbx_tmp_gancho_antes <funcao>` (um gancho por processo, so nome de funcao, roda uma vez no termino normal ou por sinal ANTES de todas as acoes, sem mudar a ordem delas); `lib/debug.sh`: o resumo usa o gancho em vez de uma acao | `tmp_test`: `gancho_antes_roda_antes_das_acoes_no_termino_normal`, `..._no_sinal` (INT e TERM, com o codigo 14), `gancho_antes_recusa_texto_que_nao_e_funcao` |
+| 2 | `lib/debug.sh`: `dbx_debug_resumo_campo <chave> <valor>` e `dbx_debug_somar_429 <n>`; o resumo nao le mais `DBX_CMD_*`; `commands/sync.sh` publica `paralelo=N` e soma os 429 por esses canais | `paralelo_test` `par12`, `par15`, `par17` (saida identica a de antes) |
+| 3 | `bin/dbx`: o resumo e armado ANTES do bloco de requisito (so `download`/`upload`/`sync`, so com `--debug`); `lib/http.sh` `dbx_http_sondar`: a sonda entra nos contadores (a linha `debug: sonda` nao muda) | `debug_http_test`: `rf162a_credencial_ausente_tambem_tem_resumo_com_o_codigo` (`saida=3`, `chamadas=0`), `rf162e_sonda_entra_em_chamadas` |
+| 4 | `lib/tmp.sh`: `DBX_TMP_SAIDA_CODIGO=''` ao carregar | `debug_http_test`: `rf162_codigo_do_resumo_nao_vem_do_ambiente` |
+| 6, 8, 9, 7 | indentacao em `lib/transfer.sh`; `DBX_TRANSFER_DEBUG_ITEM=''` declarado; `DBX_TRANSFER_DEBUG_SEM_RETOMADA` volta a `nao` no `upload`; `upload resultado=` do lote com `arquivo=` | `debug_sync_test` `dbg159_lote...` (resultado nomeia o item) |
+
+Os achados 5, 10 e 11 ficam como recomendacao (ver a rodada 1).
+
+`RF-162(c)` no comando inteiro: no `sync --receber` interrompido durante o download nao ha mensagem de interrupcao (so o resumo, com `saida=14`); a mensagem citada pelo revisor so existe na exclusao em lote do `--enviar --espelhar`, que o duplo nao interrompe de forma deterministica. Por isso a ordem e provada em `lib/tmp`, onde ela e decidida.
+
+Teste instavel corrigido: `par15` (Tarefa 2) exigia pico 4 de transferencias simultaneas sem atraso no duplo; numa rodada deu 2. Agora cada download tem 1 s de atraso.
+
+Red (base extraida de `a78f6a8`, so com os testes desta tarefa): `tmp_test` 6/1 (`dbx_tmp_gancho_antes: command not found`); `debug_http_test` 0/1 (`saida=0` semeado pelo ambiente); `debug_sync_test` 1/1 (`resultado=` do lote sem `arquivo=`).
+
+| Comando | Total | Aprovados | Falhos | Pulados |
+|---|---|---|---|---|
+| `bash tests/run.sh tmp_test` | 19 | 19 | 0 | 0 |
+| `bash tests/run.sh debug_http_test` | 19 | 19 | 0 | 0 |
+| `bash tests/run.sh debug_sync_test` | 8 | 8 | 0 | 0 |
+| `bash tests/run.sh paralelo_test` | 18 | 18 | 0 | 0 |
+| `bash tests/run.sh disponibilidade_automatica_test` | 48 | 48 | 0 | 0 |
+| `bash tests/run.sh qa_disponibilidade_b11_test` | 33 | 33 | 0 | 0 |
+| `bash tests/run.sh qa_trava_tmp_b2_test` | 23 | 23 | 0 | 0 |
+| `bash tests/run.sh comandos_test` | 119 | 119 | 0 | 0 |
+| `bash tests/run.sh sync_test` (com `debug_sync_test`) | 93 | 93 | 0 | 0 |
+| `bash tests/run.sh retomada_upload_test` | 43 | 43 | 0 | 0 |
+| `bash tests/run.sh progress` (5 arquivos) | 87 | 87 | 0 | 0 |
+| `bash tests/run.sh composicao_test` | 28 | 28 | 0 | 0 |
+| `bash tests/run.sh json` | 62 | 62 | 0 | 0 |
+| `bash tests/run.sh harness` | 22 | 22 | 0 | 0 |
+
+Lint (`sh scripts/lint.sh`, um por vez, rc 0): `lib/tmp.sh`, `lib/debug.sh`, `lib/http.sh`, `lib/transfer.sh`, `commands/sync.sh`, `commands/upload.sh`, `bin/dbx`, `tests/unit/tmp_test.sh`, `tests/integracao/debug_http_test.sh`, `tests/integracao/debug_sync_test.sh`, `tests/integracao/paralelo_test.sh`.

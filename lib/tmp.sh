@@ -139,7 +139,14 @@ _dbx_tmp_finalizar() {
   _dbx_tmp_finalizado=$BASHPID
   _dbx_tmp_critico=$BASHPID
   _dbx_tmp_profundidade=1
-  local indice tipo
+  local indice tipo gancho
+  # Gancho "antes": roda antes de qualquer acao (RF-162(c): o resumo de --debug
+  # sai antes das mensagens das acoes de interrupcao). Nao muda a ordem das acoes.
+  if [[ -n $_dbx_tmp_gancho_alvo && $_dbx_tmp_gancho_dono == "$BASHPID" ]]; then
+    gancho=$_dbx_tmp_gancho_alvo
+    _dbx_tmp_gancho_alvo=''
+    "$gancho" || :
+  fi
   local -a indices=("${!_dbx_tmp_tipo[@]}")
   for tipo in acao area; do
     for ((indice = ${#indices[@]} - 1; indice >= 0; indice--)); do
@@ -285,3 +292,24 @@ dbx_tmp_critico_fim() { _dbx_tmp_critico_fim; }
 # criar a primeira area: a leitura da senha do `compartilhar` (RF-86(b)), que
 # vem antes de qualquer rede.
 dbx_tmp_armar() { _dbx_tmp_armar; }
+
+# Codigo de saida do processo: vazio ao carregar (nunca herdado do ambiente);
+# preenchido pelo tratador de EXIT ou de sinal, lido pelas acoes e pelo gancho.
+DBX_TMP_SAIDA_CODIGO=''
+
+# Gancho "antes das acoes": uma funcao, do processo que a registrou.
+_dbx_tmp_gancho_alvo=''
+_dbx_tmp_gancho_dono=''
+
+# dbx_tmp_gancho_antes <funcao> — roda UMA vez no termino (normal ou por sinal),
+# antes de todas as acoes registradas. So nome de funcao existente.
+dbx_tmp_gancho_antes() {
+  [[ $# -eq 1 && $1 =~ ^_?dbx_[a-z0-9_]+$ ]] || return "$DBX_TMP_ERRO_USO"
+  declare -F -- "$1" >/dev/null || return "$DBX_TMP_ERRO_USO"
+  _dbx_tmp_armar
+  _dbx_tmp_critico_inicio
+  _dbx_tmp_gancho_alvo=$1
+  _dbx_tmp_gancho_dono=$BASHPID
+  _dbx_tmp_critico_fim
+  return 0
+}

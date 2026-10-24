@@ -157,7 +157,24 @@ dbx_debug_resumo_armar() {
   else
     DBX_DEBUG_INICIO_US=$((SECONDS * 1000000))
   fi
-  dbx_tmp_acao_registrar _dbx_debug_resumo_emitir
+  # Gancho "antes das acoes": o resumo sai antes das mensagens de interrupcao.
+  dbx_tmp_gancho_antes _dbx_debug_resumo_emitir
+}
+
+# Canal para o comando publicar dados do resumo sem que a lib o conheca.
+DBX_DEBUG_LIMITES_429=0
+_DBX_DEBUG_CAMPOS=()
+
+# dbx_debug_resumo_campo <chave> <valor> — campo extra no fim do resumo.
+dbx_debug_resumo_campo() {
+  _DBX_DEBUG_CAMPOS+=("${1-}=${2-}")
+  return 0
+}
+
+# dbx_debug_somar_429 <n> — limites 429 contados fora de lib/http (auxiliares).
+dbx_debug_somar_429() {
+  DBX_DEBUG_LIMITES_429=$((DBX_DEBUG_LIMITES_429 + 10#${1:-0}))
+  return 0
 }
 
 _dbx_debug_resumo_emitir() {
@@ -172,14 +189,12 @@ _dbx_debug_resumo_emitir() {
   ms=$(((fim_us - DBX_DEBUG_INICIO_US) / 1000))
   ((ms >= 0)) || ms=0
   local -a extra=()
-  if [[ $DBX_DEBUG_COMANDO == 'sync' && ${DBX_CMD_SYNC_PARALELO:-1} -gt 1 ]]; then
-    extra=("paralelo=$DBX_CMD_SYNC_PARALELO")
-  fi
+  extra=(${_DBX_DEBUG_CAMPOS[@]+"${_DBX_DEBUG_CAMPOS[@]}"})
   local comando=$DBX_DEBUG_COMANDO
   DBX_DEBUG_COMANDO=''
   dbx_debug_linha resumo "comando=$comando" "chamadas=$DBX_DEBUG_CHAMADAS" \
     "tentativas_extras=$DBX_DEBUG_EXTRAS" \
-    "limites_429=$((${DBX_HTTP_LIMITES_429:-0} + ${DBX_CMD_SYNC_LIMITES_429:-0}))" \
+    "limites_429=$((${DBX_HTTP_LIMITES_429:-0} + DBX_DEBUG_LIMITES_429))" \
     "enviados=$DBX_DEBUG_ENVIADOS" "recebidos=$DBX_DEBUG_RECEBIDOS" \
     "duracao_ms=$ms" "saida=$codigo" ${extra[@]+"${extra[@]}"}
   return 0

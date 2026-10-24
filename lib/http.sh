@@ -655,6 +655,8 @@ dbx_http_sondar() {
   # RF-149(c)(f): com --debug, a requisicao mascarada (so esquema e host, sem
   # caminho nem parametros) e o status recebido; nunca o segredo.
   if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+    # RF-162: a sonda e uma chamada; `chamadas` do resumo bate com DBX_HTTP_REQUISICOES.
+    dbx_debug_somar_http 1 0 0
     # R4: com `@` na URL, so ha host identificavel se nada de `/`, `?` ou `#`
     # vier antes do primeiro `@` (senao a senha pode conter o delimitador sem
     # encoding e qualquer corte vazaria um pedaco dela): ai so o esquema sai.
