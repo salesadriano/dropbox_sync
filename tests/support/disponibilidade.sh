@@ -43,10 +43,10 @@ _cenario() {
   printf '#!%s\nbase=%s\n' "$BASH_ABSOLUTO" "$base" >"$base/bin/curl"
   cat >>"$base/bin/curl" <<'FIM'
 read -r -d '' conf
-saida=""; escrever=""; anterior=""; url=""
+saida=""; escrever=""; anterior=""; url=""; cabs=""; retry=""; falhar=""; com_corpo=""
 for arg in "$@"; do
-  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; esac
-  case $arg in http*) url=$arg ;; esac
+  case $anterior in -o) saida=$arg ;; -w) escrever=$arg ;; -D) cabs=$arg ;; esac
+  case $arg in http*) url=$arg ;; --fail) falhar=sim ;; --data-binary) com_corpo=sim ;; esac
   anterior=$arg
 done
 printf '%s\n' "$url" >>"$base/chamadas"
@@ -64,6 +64,12 @@ esac
 codigo=204
 [[ $quem == rpc ]] && codigo=200
 [[ -f $base/$quem ]] && codigo=$(cat "$base/$quem")
+# `<papel>.fila`: uma resposta por linha, "<codigo> [retry-after]"; consome a primeira.
+if [[ -s $base/$quem.fila ]]; then
+  mapfile -t fila <"$base/$quem.fila"
+  read -r codigo retry <<<"${fila[0]}"
+  if ((${#fila[@]} > 1)); then printf '%s\n' "${fila[@]:1}" >"$base/$quem.fila"; else : >"$base/$quem.fila"; fi
+fi
 [[ $quem == token && -f $base/troca_falha && $conf == *authorization_code* ]] && exit 6
 [[ $quem == sonda && -f $base/sonda_lenta ]] && exec sleep 3137
 [[ $codigo == falha:* ]] && exit "${codigo#falha:}" # falha:<codigo de saida do curl>
@@ -78,8 +84,25 @@ fi
 if [[ $quem == token && -f $base/recusar_refresh && $conf == *"$(cat "$base/recusar_refresh")"* ]]; then
   codigo=400; corpo='{"error":"invalid_grant"}'
 fi
-[[ -n $saida ]] && printf '%s' "$corpo" >"$saida"
-[[ -n $escrever ]] && printf '%s' "$codigo"
+[[ $quem == content && -f $base/content_corpo ]] && corpo=$(cat "$base/content_corpo")
+# `--fail` como no curl real (canal de fluxo de lib/http): resposta >= 400 nao escreve
+# corpo no `-o`, ainda imprime o `-w` e sai com 22.
+recusado=""
+[[ -n $falhar && $codigo =~ ^[0-9]+$ ]] && ((codigo >= 400)) && { recusado=sim; corpo=''; }
+[[ -n $saida && -z $recusado ]] && printf '%s' "$corpo" >"$saida"
+if [[ -n $cabs ]]; then
+  { [[ -n $retry ]] && printf 'Retry-After: %s\r\n' "$retry"; } >"$cabs"
+fi
+if [[ $escrever == *time_total* ]]; then
+  # Medidas do `-w` ampliado (--debug): tempo fixo 0.250 s; bytes enviados lidos de
+  # `enviados`, so na chamada com corpo (`--data-binary`), como o size_upload do curl.
+  enviados=0
+  [[ -n $com_corpo && -f $base/enviados ]] && enviados=$(cat "$base/enviados")
+  printf '%s 0.250 %s %s' "$codigo" "$enviados" "${#corpo}"
+elif [[ -n $escrever ]]; then
+  printf '%s' "$codigo"
+fi
+[[ -n $recusado ]] && exit 22
 exit 0
 FIM
   chmod +x "$base/bin/curl"

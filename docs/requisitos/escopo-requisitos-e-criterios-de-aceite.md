@@ -972,7 +972,7 @@ Formaliza `F-51`. Pedido do solicitante em 2026-10-24 (log `docs/prompts/2026-10
 |---|---|
 | TC-DBG-01 | Dado `upload` de 10 KiB com `--debug`, quando roda, entao stderr tem `debug: http POST content.dropboxapi.com/2/files/upload ... tentativa=1 status=200 duracao_ms=N enviados=10240 recebidos=N` e casa com `^debug: http [A-Z]+ [a-z.]+/[a-z0-9_/]+ tentativa=[0-9]+ status=[0-9]+ duracao_ms=[0-9]+ enviados=[0-9]+ recebidos=[0-9]+` |
 | TC-DBG-02 | Dado duplo com `503`, `503`, `200`, quando roda, entao ha 3 linhas `http` com `tentativa=1,2,3`, `espera_ms` nas duas primeiras e `tentativas_extras=2` no resumo |
-| TC-DBG-03 | Dado duplo com `429` e `Retry-After: 7`, quando roda, entao a linha da tentativa traz `status=429 retry_after=7` e o resumo `limites_429=1` |
+| TC-DBG-03 | Dado duplo com `429` e `Retry-After: 7`, quando roda, entao a linha da tentativa traz `status=429` e, depois de `recebidos=`, `retry_after=7` (ordem de `RF-157(a)(d)`, `DIV-342`), e o resumo `limites_429=1` |
 | TC-DBG-04 | Dado `Retry-After: 99999` acima do teto, quando roda, entao `retry_after` mostra o valor efetivo apos o teto |
 | TC-DBG-05 | Dado falha de transporte (cURL 7), quando roda, entao a linha traz `status=0 curl=7` |
 | TC-DBG-06 | Dado URL com userinfo, caminho de usuario e query, quando a linha `http` e emitida, entao nao ha esquema, userinfo, porta, query nem fragmento |
@@ -1598,6 +1598,7 @@ Registro exigido pelo item 22 do protocolo comum. Divergencias entre a demanda, 
 | ✅ **DIV-339** | **Volume em `sync` grande.** (A) um nivel unico, sem limite; (B) `--debug` com limite de linhas por categoria; (C) `pular` so em contagem | `RF-161(c)` | **RESOLVIDA em 2026-10-24 pelo solicitante (AskUserQuestion): A** ("Sem limite"). *Recomendacao do BA:* **A**. Quem liga `--debug` quer a trilha completa; o operador filtra com `grep`. Ver `F-51` fora de escopo: niveis |
 | ✅ **DIV-340** | **Vocabulario fechado de motivos** (retomada, decisao, guarda). (A) fixar na especificacao e no `help`; (B) livre | `RF-159(c)`, `RF-160(a)`, `RF-161(b)` | **RESOLVIDA em 2026-10-24 pelo Tech Lead (memoria `2026-10-24-0330-debug-transferencias`): A** (recomendacao do BA). *Recomendacao do BA:* **A**: estabilidade para `grep` (`RF-156(c)`); lista a confirmar contra o codigo pelo Senior Developer na implementacao (motivos reais de `DBX_CMD_RETOMADA`/`DBX_SYNC_CURSOR_MOTIVO`) |
 | ✅ **DIV-341** | **Resumo em saida anormal.** (A) emitir em falha e, em melhor esforco, em sinal; (B) so em termino normal | `RF-162(c)` | **RESOLVIDA em 2026-10-24 pelo Tech Lead (memoria `2026-10-24-0330-debug-transferencias`): A** (recomendacao do BA). *Recomendacao do BA:* **A**. E justamente na falha que a trilha importa; custo: trap de saida em tres comandos, ja ha limpeza por sinal (`lib/transfer`) |
+| ✅ **DIV-342** | **Posicao de `retry_after` na linha `http`** (Senior Developer, tarefa 1). `TC-DBG-03` mostrava `status=429 retry_after=7` contiguos; `RF-157(a)(d)` poe `retry_after` e `espera_ms` depois de `recebidos`. (A) seguir `RF-157` e alinhar o TC; (B) mover `retry_after` para logo apos `status` | `RF-157`, `TC-DBG-01`, `TC-DBG-03` | **RESOLVIDA em 2026-10-24 pelo Tech Lead: A** (contradicao interna da especificacao; a letra do RF vence e mantem estavel o prefixo do regex de `TC-DBG-01`); `TC-DBG-03` reescrito |
 
 ---
 
