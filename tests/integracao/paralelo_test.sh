@@ -137,6 +137,15 @@ _rodar() {
   return 0
 }
 
+_conta_prefixo() { # <prefixo> <arquivo> — linhas que comecam pelo prefixo
+  local n=0 linha
+  [[ -r $2 ]] || { printf 0; return 0; }
+  while IFS= read -r linha || [[ -n $linha ]]; do
+    [[ $linha == "$1"* ]] && n=$((n + 1))
+  done <"$2"
+  printf '%s' "$n"
+}
+
 _norm() { # <base> <texto> — troca o diretorio do cenario por BASE
   printf "%s" "${2//$1/BASE}"
 }
@@ -427,8 +436,11 @@ teste_par12_debug_informa_n_e_quantos_429_sem_reduzir_n() {
   : >"$base/r429/a2.txt"
   _rodar "$base" --debug sync --receber --origem /r --destino "$base/local" --paralelo 4
   assert_igual 0 "$DBX_ESTADO" "$DBX_ERRO"
-  assert_contem '4 transferencias simultaneas' "$DBX_ERRO" 'N no resumo'
-  assert_contem 'respostas 429 observadas: 2' "$DBX_ERRO" 'contagem de 429 dos auxiliares'
+  # DIV-338: o resumo unico de RF-162 substitui a linha `paralelo` de RF-135(d).
+  assert_contem 'debug: resumo comando=sync ' "$DBX_ERRO" 'resumo unico'
+  assert_contem ' limites_429=2 ' "$DBX_ERRO" 'contagem de 429 dos auxiliares'
+  assert_contem ' paralelo=4' "$DBX_ERRO" 'N no resumo'
+  assert_nao_contem 'transferencias simultaneas' "$DBX_ERRO" 'sem a linha paralelo antiga'
   assert_igual 4 "$(find "$base/local" -type f | wc -l)" 'todos recebidos apos o Retry-After'
 }
 
@@ -439,6 +451,8 @@ teste_par13_sem_a_opcao_e_sem_a_variavel_nada_muda_e_nao_ha_auxiliar() {
   _rodar "$base" --debug sync --receber --origem /r --destino "$base/local"
   assert_igual 0 "$DBX_ESTADO" "$DBX_ERRO"
   assert_nao_contem 'transferencias simultaneas' "$DBX_ERRO" 'sem resumo de paralelismo'
+  assert_contem 'debug: resumo comando=sync ' "$DBX_ERRO" 'resumo com N=1'
+  assert_nao_contem 'paralelo=' "$DBX_ERRO" 'N=1 omite paralelo= (RF-162(d))'
   assert_igual 1 "$(_pico "$base")" 'sequencial'
   assert_arquivo_ausente "$base/tmp/paralelo" 'sem area de auxiliares'
 }
@@ -463,6 +477,87 @@ teste_par14_ajuda_autocompletar_readme_e_diagnostico() {
   _rodar "$base" diagnostico
   assert_contem 'paralelo=aviso' "$DBX_SAIDA" 'variavel invalida e aviso'
   DBX_T_AMBIENTE=()
+}
+
+# ---------------------------------------------------------------------------
+# F-51: linhas dos auxiliares e resumo (RF-158, RF-162; TC-DBG-20, 21, 30, 31, 32)
+# ---------------------------------------------------------------------------
+
+teste_par15_debug_linhas_dos_auxiliares_chegam_ao_operador_e_somam_no_resumo() {
+  local base http total
+  base=$(_cenario)
+  _remoto "$base" 4
+  _rodar "$base" --debug sync --receber --origem /r --destino "$base/local" --paralelo 4
+  assert_igual 0 "$DBX_ESTADO" "$DBX_ERRO"
+  assert_igual 4 "$(_pico "$base")" 'paralelismo efetivo'
+  # TC-DBG-20: as quatro transferencias rodaram nos auxiliares e as linhas chegaram.
+  http=$(_conta_prefixo 'debug: http GET content.dropboxapi.com/2/files/download tentativa=1 ' "$base/err")
+  assert_igual 4 "$http" 'uma linha http por download dos auxiliares'
+  # RF-162(e): chamadas = requisicoes feitas (principal e auxiliares) = linhas com tentativa=1.
+  total=$(_conta_prefixo '' "$base/chamadas")
+  assert_igual "$total" "$(_conta_prefixo 'debug: http ' "$base/err")" \
+    "toda requisicao tem linha; chamadas: $(<"$base/chamadas") | stderr: $DBX_ERRO"
+  assert_contem "debug: resumo comando=sync chamadas=$total tentativas_extras=0 " "$DBX_ERRO" 'resumo soma os auxiliares'
+  assert_igual 1 "$(_conta_prefixo 'debug: resumo ' "$base/err")" 'um so resumo'
+  # TC-DBG-21: o arquivo de linhas de cada auxiliar nao sobrevive.
+  assert_igual 0 "$(find "$base/tmp" -name 'dbg.*' | wc -l)" 'sem arquivo de linhas ao fim'
+}
+
+teste_par16_sem_debug_nenhuma_linha_nem_arquivo_de_auxiliar() {
+  local base
+  base=$(_cenario)
+  _remoto "$base" 4
+  printf '2' >"$base/atraso/a1.txt"
+  env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$base/tmp" \
+    bash "$DBX_EXEC" sync --receber --origem /r --destino "$base/local" --paralelo 4 \
+    </dev/null >"$base/out" 2>"$base/err" &
+  local pid=$! i
+  for ((i = 0; i < 100; i++)); do
+    [[ -n $(find "$base/vivos" -type f 2>/dev/null) ]] && break
+    sleep 0.05
+  done
+  # TC-DBG-30: com a transferencia em curso, nenhum arquivo de linhas foi criado.
+  assert_igual 0 "$(find "$base/tmp" -name 'dbg.*' | wc -l)" 'sem arquivo de linhas durante a execucao'
+  wait "$pid"
+  assert_igual 0 "$?" 'sync concluido'
+  assert_nao_contem 'debug:' "$(<"$base/err")" 'nenhuma linha debug sem --debug'
+}
+
+teste_par17_falha_de_item_tem_resumo_com_o_codigo_de_saida() {
+  local base
+  base=$(_cenario)
+  _remoto "$base" 4
+  : >"$base/falha/a2.txt"
+  _rodar "$base" --debug sync --receber --origem /r --destino "$base/local" --paralelo 4
+  [[ $DBX_ESTADO -ne 0 ]] || _harness_falhar 'a falha do item deveria mudar o codigo'
+  # TC-DBG-32: o resumo sai tambem em falha, com o codigo real.
+  assert_contem 'debug: resumo comando=sync ' "$DBX_ERRO" 'resumo em falha'
+  assert_contem " saida=$DBX_ESTADO" "$DBX_ERRO" 'resumo traz o codigo de saida'
+  assert_contem 'a2.txt' "$DBX_ERRO" 'a mensagem de falha do item continua'
+}
+
+teste_par18_sinal_tem_resumo_em_melhor_esforco_e_nao_deixa_arquivo_de_linhas() {
+  local base pid i
+  base=$(_cenario)
+  _remoto "$base" 4
+  for i in 1 2 3 4; do printf '30' >"$base/atraso/a$i.txt"; done
+  env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$base/tmp" \
+    bash "$DBX_EXEC" --debug sync --receber --origem /r --destino "$base/local" --paralelo 4 \
+    </dev/null >"$base/out" 2>"$base/err" &
+  pid=$!
+  for ((i = 0; i < 100; i++)); do
+    [[ $(find "$base/vivos" -type f 2>/dev/null | wc -l) -ge 4 ]] && break
+    sleep 0.1
+  done
+  kill -TERM "$pid"
+  wait "$pid"
+  assert_igual 14 "$?" 'codigo de sinal'
+  # TC-DBG-32 / DIV-341: resumo em melhor esforco; TC-DBG-21: sem arquivo de linhas.
+  assert_contem 'debug: resumo comando=sync ' "$(<"$base/err")" 'resumo no sinal'
+  assert_contem ' saida=14' "$(<"$base/err")" 'resumo com o codigo do sinal'
+  assert_igual 0 "$(find "$base/tmp" -name 'dbg.*' | wc -l)" 'sem arquivo de linhas apos o sinal'
 }
 
 harness_executar "$@"

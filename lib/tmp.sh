@@ -119,12 +119,15 @@ _dbx_tmp_sinal() {
     _dbx_tmp_pendente=$1
     return 0
   fi
+  DBX_TMP_SAIDA_CODIGO=$DBX_TMP_ERRO_NAO_CONCLUIDA
   _dbx_tmp_finalizar
   exit "$DBX_TMP_ERRO_NAO_CONCLUIDA"
 }
 
-# _dbx_tmp_saida — EXIT. Sem `exit`: o codigo original fica.
+# _dbx_tmp_saida — EXIT. Sem `exit`: o codigo original fica. O codigo e
+# guardado em DBX_TMP_SAIDA_CODIGO para as acoes (resumo de --debug, RF-162).
 _dbx_tmp_saida() {
+  DBX_TMP_SAIDA_CODIGO=${DBX_TMP_SAIDA_CODIGO:-$?}
   _dbx_tmp_finalizar
 }
 

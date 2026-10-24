@@ -360,7 +360,11 @@ _dbx_cmd_sync_transferir_paralelo() {
       if [[ $sentido == 'enviar' && -n ${mapa_remoto[$alvo]+definido} ]]; then
         rev=${mapa_revs[$alvo]:-}
       fi
-      _dbx_cmd_sync_aux_item "$pasta/$lancados" "$sentido" "$caminho" "$alvo" "$rev" \
+      # RF-158: com --debug o auxiliar grava as linhas `debug:` em arquivo do item
+      # (canal 0700); o principal as descarrega na ordem do plano.
+      local destino_dbg=''
+      [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] && destino_dbg="$pasta/dbg.$lancados"
+      DBX_DEBUG_DESTINO=$destino_dbg _dbx_cmd_sync_aux_item "$pasta/$lancados" "$sentido" "$caminho" "$alvo" "$rev" \
         "$canal" "$((base_op + lancados + 1))" </dev/null >/dev/null 2>&1 &
       pids[lancados]=$!
       _DBX_CMD_SYNC_AUX_PIDS[lancados]=$!
@@ -391,6 +395,10 @@ _dbx_cmd_sync_transferir_paralelo() {
       [[ $limites =~ ^[0-9]{1,9}$ ]] || limites=0
       DBX_CMD_SYNC_LIMITES_429=$((DBX_CMD_SYNC_LIMITES_429 + limites))
       caminho=${itens[descarregados]}
+      if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' && -s $pasta/dbg.$descarregados ]]; then
+        dbx_progress_bloco_pausar
+        dbx_debug_descarregar "$pasta/dbg.$descarregados"
+      fi
       op_atual=$((op_atual + 1))
       if dbx_progress_bloco_ativo; then
         dbx_progress_bloco_fechar "$descarregados" "$status"
@@ -490,7 +498,9 @@ _dbx_cmd_sync_lote_iniciar() {
         kill -0 "$pid" 2>/dev/null && vivos=$((vivos + 1))
       done
       while ((lancados < total && vivos < paralelo)); do
-        _dbx_cmd_sync_aux_iniciar "$pasta/$lancados" "${_DBX_CMD_SYNC_LOTE_ITENS[lancados]}" \
+        local destino_dbg=''
+        [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] && destino_dbg="$pasta/dbg.$lancados"
+        DBX_DEBUG_DESTINO=$destino_dbg _dbx_cmd_sync_aux_iniciar "$pasta/$lancados" "${_DBX_CMD_SYNC_LOTE_ITENS[lancados]}" \
           </dev/null >/dev/null 2>&1 &
         pids+=("$!")
         _DBX_CMD_SYNC_AUX_PIDS[lancados]=$!
@@ -505,6 +515,10 @@ _dbx_cmd_sync_lote_iniciar() {
     _DBX_CMD_SYNC_AUX_PIDS=()
     dbx_tmp_acao_cancelar "$acao_id"
     dbx_disp_emitir_aviso_pendente
+    # RF-158: linhas dos auxiliares do lote, na ordem do plano.
+    for ((k = 0; k < total; k++)); do
+      dbx_debug_descarregar "$pasta/dbg.$k"
+    done
   else
     for ((k = 0; k < total; k++)); do
       _dbx_cmd_sync_aux_iniciar "$pasta/$k" "${_DBX_CMD_SYNC_LOTE_ITENS[k]}" </dev/null
@@ -1308,7 +1322,6 @@ dbx_cmd_sync_executar() {
   local op_atual=0 alvo rev antes
   local enviados=0 recebidos=0 apagados=0 falhas=0
   DBX_CMD_SYNC_LIMITES_429=0
-  local antes_429=${DBX_HTTP_LIMITES_429:-0}
   # RF-133(d): com N=1 (ou um item so) e o laco de sempre, sem auxiliar. Com
   # N>1 as transferencias do plano vao aos auxiliares e o laco abaixo fica sem
   # itens; as exclusoes, depois, seguem no principal.
@@ -1392,13 +1405,9 @@ dbx_cmd_sync_executar() {
 
   dbx_progress_mensagem "[sync] sincronizacao concluida: $enviados enviados, $recebidos recebidos, $apagados apagados, ${#DBX_SYNC_IDENTICOS[@]} omitidos"
 
-  # RF-135(d), DIV-258: com N>1 e --debug, o resumo diz o N e quantos `429`
-  # (principal e auxiliares) a execucao observou. Stderr; nada muda em stdout.
-  if [[ $paralelo -gt 1 && ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
-    dbx_cmd_iniciar_saida
-    dbx_output_diagnostico paralelo "$paralelo transferencias simultaneas; respostas 429 observadas: $((DBX_CMD_SYNC_LIMITES_429 + ${DBX_HTTP_LIMITES_429:-0} - antes_429))"
-    dbx_output_render_diagnostico >&2
-  fi
+  # RF-135(d), DIV-258, DIV-338 A: a linha `paralelo` deixou de existir; o N e os
+  # `429` (principal e auxiliares) vao na linha `debug: resumo` (RF-162), emitida
+  # no termino do processo por lib/debug (`dbx_debug_resumo_armar`).
 
   # A memoria e gravada mesmo com falha parcial de transferencia: os resumos
   # calculados continuam validos. Grava so as entradas visitadas (RF-38(b)).

@@ -747,4 +747,16 @@ case $_dbx_requisito in
   *) _dbx_falhar uso_invalido "requisito nao reconhecido: $_dbx_requisito" ;;
 esac
 
+# RF-162: resumo no termino de download, upload e sync, tambem em falha e sinal.
+if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
+  case $DBX_CLI_COMANDO in
+    download | upload | sync)
+      # shellcheck source=/dev/null
+      . "$DBX_CLI_RAIZ/lib/debug.sh"
+      dbx_debug_canal_abrir
+      dbx_debug_resumo_armar "$DBX_CLI_COMANDO"
+      ;;
+  esac
+fi
+
 "dbx_cmd_${DBX_CLI_COMANDO}_executar" "${DBX_CLI_ARGS[@]:-}"

@@ -55,6 +55,12 @@ _dbg_linhas_http() { # <base> — as linhas `debug: http` do stderr
   printf '%s' "$saida"
 }
 
+_conta_linhas() { # <arquivo> — numero de linhas
+  local n=0 linha
+  while IFS= read -r linha || [[ -n $linha ]]; do n=$((n + 1)); done <"$1"
+  printf '%s' "$n"
+}
+
 _dbg_conta() { # <texto> — numero de linhas nao vazias
   local n=0 linha
   while IFS= read -r linha; do [[ -n $linha ]] && n=$((n + 1)); done <<<"$1"
@@ -251,6 +257,52 @@ teste_tc_dbg_27_nome_com_controle_sai_em_uma_so_linha() {
   linhas=$(DBX_CLI_DEBUG=sim dbx_debug_linha upload $'arquivo=a\nb\x01c' 2>&1 >/dev/null)
   assert_igual 1 "$(_dbg_conta "$linhas")"
   assert_contem 'a?b?c' "$linhas"
+}
+
+# ---------------------------------------------------------------------------
+# RF-162: resumo no fim (TC-DBG-31, TC-DBG-32, RF-162(e))
+# ---------------------------------------------------------------------------
+
+teste_tc_dbg_rf162_upload_tem_um_resumo_com_totais_das_linhas_http() {
+  local base linha n=0 env=0 rec=0 resumo=''
+  base=$(_dbg_cenario)
+  _dbg_executar "$base" --debug upload "$base/arq.bin" /arq.bin
+  assert_igual 0 "$DBX_ESTADO" "erro: $DBX_ERRO"
+  while IFS= read -r linha; do
+    if [[ $linha == 'debug: http '* ]]; then
+      [[ $linha == *' tentativa=1 '* ]] && n=$((n + 1))
+      [[ $linha =~ ' enviados='([0-9]+) ]] && env=$((env + BASH_REMATCH[1]))
+      [[ $linha =~ ' recebidos='([0-9]+) ]] && rec=$((rec + BASH_REMATCH[1]))
+    fi
+    [[ $linha == 'debug: resumo '* ]] && resumo+="$linha"$'\n'
+  done <"$base/err"
+  assert_igual 1 "$(_dbg_conta "$resumo")" 'um so resumo'
+  assert_igual "$n" "$(_conta_linhas "$base/chamadas")" 'chamadas = requisicoes feitas'
+  # RF-162(a)(e): os totais sao a soma das linhas http.
+  assert_contem "debug: resumo comando=upload chamadas=$n tentativas_extras=0 limites_429=0 enviados=$env recebidos=$rec " "$resumo"
+  assert_contem ' saida=0' "$resumo"
+  assert_nao_contem 'paralelo=' "$resumo" 'fora do sync paralelo o resumo omite paralelo'
+}
+
+teste_tc_dbg_32_download_com_falha_tem_resumo_com_o_codigo_e_a_mensagem_de_sempre() {
+  local base
+  base=$(_dbg_cenario)
+  printf '503' >"$base/content"
+  _dbg_executar "$base" download /arq.bin -
+  local estado_sem=$DBX_ESTADO erro_sem=$DBX_ERRO
+  base=$(_dbg_cenario)
+  printf '503' >"$base/content"
+  _dbg_executar "$base" --debug download /arq.bin -
+  [[ $DBX_ESTADO -ne 0 ]] || _harness_falhar 'o 503 deveria falhar o download'
+  assert_igual "$estado_sem" "$DBX_ESTADO" 'mesmo codigo com e sem --debug'
+  assert_contem "debug: resumo comando=download " "$DBX_ERRO"
+  assert_contem " saida=$DBX_ESTADO" "$DBX_ERRO" 'resumo traz o codigo real'
+  # A mensagem de erro de sempre continua (sem as linhas debug, igual a sem --debug).
+  local linha sem_debug=''
+  while IFS= read -r linha; do
+    [[ $linha == 'debug: '* ]] || sem_debug+="$linha"$'\n'
+  done <"$base/err"
+  assert_igual "$erro_sem" "$sem_debug" 'stderr sem as linhas debug e o de sempre'
 }
 
 harness_executar "$@"
