@@ -41,3 +41,10 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 **Decisoes do solicitante sobre as DIV da secao 5.22 (AskUserQuestion, 2026-10-24):**
 - DIV-352 "Preflight recusa (Recomendado)"; DIV-353 "Degradar e documentar (Recomendado)"; DIV-354 "Aceitar sha256 e openssl (Recomendado)"; DIV-355 "Duble + voce no FreeBSD (Recomendado)"; DIV-357 "Mensagens neutras + pkg (Recomendado)".
 - DIV-356 "Liberar deteccao" (contra a recomendacao): o Tech Lead complementa com ponto unico de deteccao, `dbx_preflight_plataforma`.
+
+## Prompt 2 — 2026-10-24
+
+> (colagem da saida de `bash bin/dbx diagnostico` no FreeBSD do solicitante, passo 2 do roteiro; sanitizada, sem segredo)
+> `dependencias: ok ... resumo SHA-256 via sha256sum`; `credencial: falha: a credencial tem permissao para grupo ou outros: /root/.config/dbx/credencial.json; remedio: chmod 600 ...`; `estado: ok: ainda nao criado`; `trava: ok: sem travas`; `saida=3`.
+
+**Leitura do Tech Lead:** o modo `644` da credencial e o arquivo gravado pela tentativa de `dbx config` anterior a correcao (`chmod` falhou depois da escrita); o diagnostico o leu corretamente pelo `stat` do FreeBSD (`dbx_atributo`), o que ja confirma parte do RF-167 no sistema real. O FreeBSD do solicitante tem `sha256sum`. A linha "tipo do sistema de arquivos nao verificado" nao aparece porque o diretorio de estado ainda nao existe. Proximo passo: `chmod 600` (ou refazer o `dbx config`) e seguir o roteiro.
