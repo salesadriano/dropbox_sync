@@ -152,7 +152,13 @@ _dbx_cmd_diag_travas() {
   # Exclusao entre hosts em NFS e melhor esforco (RSK-49): avisa, nunca bloqueia.
   # Sem `stat -f`, nao ha o que dizer.
   [[ -n $estado && -d $estado ]] && _dbx_cmd_diag_tem stat || return 0
-  dbx_atributo fs_tipo "$estado" || return 0; tipo=$DBX_ATRIBUTO
+  # Sem `stat -f -c %T` (FreeBSD) o tipo nao pode ser lido: diz que nao foi
+  # verificado, em vez de omitir (RF-172(c)).
+  if ! dbx_atributo fs_tipo "$estado"; then
+    _dbx_cmd_diag trava ok "tipo do sistema de arquivos nao verificado (leitura indisponivel neste sistema); exclusao da trava entre hosts em sistema de arquivos de rede nao conferida: $estado"
+    return 0
+  fi
+  tipo=$DBX_ATRIBUTO
   if [[ ${tipo,,} == nfs* ]]; then
     _dbx_cmd_diag trava aviso "o diretorio de estado esta em NFS ($tipo): a exclusao da trava entre hosts e melhor esforco: $estado" \
       'aponte XDG_STATE_HOME para um disco local'
@@ -204,7 +210,7 @@ dbx_cmd_diagnostico_executar() {
     _dbx_cmd_diag_tem curl || remedio_dependencias='instale o utilitario curl'
   fi
   [[ $dependencias_ok == 'sim' ]] &&
-    _dbx_cmd_diag dependencias ok "bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}, curl e utilitarios presentes (vinculo de instalacao resolvido por readlink, ou find na falta dele)"
+    _dbx_cmd_diag dependencias ok "bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}, curl e utilitarios presentes (vinculo de instalacao resolvido por readlink, ou find na falta dele)${DBX_HASH_BACKEND:+; resumo SHA-256 via $DBX_HASH_BACKEND}"
   [[ -n $remedio_dependencias ]] || remedio_dependencias='atualize o bash para 4.4 ou superior'
 
   # 2. credencial — por nome de campo, nunca por valor.

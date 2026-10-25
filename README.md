@@ -5,7 +5,7 @@
 [![Testes Automatizados](https://img.shields.io/badge/testes-TAP%2013-brightgreen.svg)](#testes-e-qualidade)
 [![Piso de Shell](https://img.shields.io/badge/bash-4.4%2B-informational.svg)](#requisitos)
 
-**`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em ambientes Linux/POSIX.
+**`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em Linux e FreeBSD.
 
 Projetada com arquitetura modular e aderência estrita a contratos de rede e integridade, a ferramenta tem o `cURL` como **única dependência externa**, além do `bash` 4.4+ e dos utilitários da instalação base listados em [Requisitos do Sistema](#requisitos-do-sistema) — dispensando interpretadores de linguagens de alto nível e analisadores de JSON externos (`jq`).
 
@@ -46,8 +46,10 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 
 ## Requisitos do Sistema
 
-- **Sistema Operacional:** Linux (POSIX compatível).
-- **Interpretador:** GNU Bash 4.4 ou superior.
+- **Sistema Operacional:** Linux (POSIX compatível) ou FreeBSD 13/14 (UFS ou ZFS).
+- **Interpretador:** GNU Bash 4.4 ou superior. No FreeBSD, o `bash` e o `curl` vêm do `pkg`: `pkg install bash curl`.
+- **FreeBSD — `fdescfs`:** o `dbx` reabre descritores por `/dev/fd/<n>`, que no FreeBSD só existe com o `fdescfs` montado: `mount -t fdescfs fdesc /dev/fd` e, para persistir, a linha `fdesc /dev/fd fdescfs rw 0 0` no `/etc/fstab`. Sem ele, a verificação prévia recusa com código `3` e mostra essa instrução.
+- **FreeBSD — identificador do host nas travas:** sem `/proc`, as partes de boot e de namespace do identificador valem `x`; a trava continua valendo no mesmo host.
 - **Rede:** `cURL` com suporte a HTTPS e TLS 1.2+ (única dependência externa).
 - **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum`, `sha256` ou `openssl`.
 - **Opcionais, só no diagnóstico de `dbx config --debug`:** `mount`, `grep`, `getenforce` e `lsattr`; na falta deles, a linha correspondente do relatório é omitida.

@@ -100,6 +100,24 @@ dbx_preflight_versao_de_bash_suficiente() {
   [[ $maior -eq $DBX_PREFLIGHT_BASH_MAIOR && $menor -ge $DBX_PREFLIGHT_BASH_MENOR ]]
 }
 
+# dbx_preflight_descritores [diretorio] — /dev/fd/<n> utilizavel (RF-171(a),
+# DIV-352 C). O produto reabre descritores por /dev/fd/<n> para se defender da
+# troca de arquivo entre a abertura e o uso (RNF-30); no FreeBSD isso exige
+# `fdescfs`. Verifica a CAPACIDADE, sem perguntar o sistema: abre um descritor
+# proprio sobre um arquivo comum e testa o caminho como o produto testa. O
+# diretorio e parametro so para o teste apontar um vazio; o padrao e /dev/fd.
+dbx_preflight_descritores() {
+  local diretorio=${1:-/dev/fd} fd='' utilizavel=nao
+  if exec {fd}<"${BASH_SOURCE[0]}"; then
+    [[ -f $diretorio/$fd && -r $diretorio/$fd ]] && utilizavel=sim
+    exec {fd}<&-
+  fi
+  [[ $utilizavel == sim ]] && return 0
+  _dbx_preflight_falhar descritores \
+    "/dev/fd/<n> inacessivel; monte o fdescfs com: mount -t fdescfs fdesc /dev/fd (ou acrescente a /etc/fstab a linha: fdesc /dev/fd fdescfs rw 0 0)"
+  return $?
+}
+
 # dbx_preflight_diretorio_de_configuracao — XDG com fallback, em DBX_PREFLIGHT_DETALHE.
 dbx_preflight_diretorio_de_configuracao() {
   local base=${XDG_CONFIG_HOME:-}
@@ -184,6 +202,8 @@ dbx_preflight_verificar() {
       command -v sha256 >/dev/null 2>&1 || command -v openssl >/dev/null 2>&1 ||
       { _dbx_preflight_falhar dependencia 'nenhum utilitario de resumo SHA-256 disponivel'; return $?; }
   fi
+
+  dbx_preflight_descritores /dev/fd || return $?
 
   area_temporaria=${TMPDIR:-/tmp}
   [[ -d $area_temporaria ]] ||
