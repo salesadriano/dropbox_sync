@@ -57,3 +57,5 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 **Leitura do Tech Lead:** no FreeBSD, nenhuma forma do `fdescfs` faz o `stat -L /dev/fd/<n>` externo devolver o `dev:ino` do arquivo, que e o que o produto usa (barreira do `.part`, cursor, preflight). A premissa da `DIV-352` (montar o fdescfs resolve) nao vale. Alternativa verificada no Linux: ler os atributos pelo proprio descritor (`stat -L -c <fmt> - <&N` no GNU; `stat -f <fmt>` sem operando no BSD) e, onde o produto reabre o arquivo por `/dev/fd/<n>` para escrita, abrir pelo caminho e conferir o `dev:ino` do novo descritor. Decisao levada ao solicitante.
 
 **Decisao do solicitante (AskUserQuestion, 2026-10-24):** "Conferir pelo descritor (Recomendado)": substitui a DIV-352 C; atributos lidos do proprio descritor, reabertura por `/dev/fd` trocada por abertura pelo caminho com conferencia do `dev:ino`, sem exigir `fdescfs`.
+
+**Decisao do solicitante (AskUserQuestion, 2026-10-25):** "Versionar o bloco (Recomendado)": o bloco `ai-team:roteamento` que o plugin escreve no `CLAUDE.md` e versionado nesta branch, para a suite oficial nao registrar a arvore como suja.

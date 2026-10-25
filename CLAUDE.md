@@ -1,5 +1,15 @@
 # CLAUDE.md — Instrucoes para o Claude Code no projeto dropbox_sync
 
+<!-- ai-team:roteamento inicio -->
+## Entrada das solicitacoes (plugin ai-team)
+
+Toda solicitacao que nao comeca por `/` e lida como `/ai-team <solicitacao>`: antes de qualquer outra acao, invoque a skill `ai-team:tech-lead` com o texto literal da solicitacao como argumento; ela assume a persona do Tech Lead nesta sessao e abre a demanda (regras 44 e 49 do protocolo `.github/agents/AGENTS.md`).
+
+- Com a demanda ja aberta pelo Tech Lead, resposta a pergunta dele ou ajuste da mesma demanda segue nela; pedido novo abre outra demanda pelo mesmo caminho.
+- Pedido que comeca por `/` segue como digitado; invocacao direta e admitida so para QA Expert, UX Expert e Business Analyst (regra 44).
+- Bloco mantido pelo plugin ai-team (`alinhar-instrucoes.sh`, no inicio da sessao): editar fora dos marcadores.
+<!-- ai-team:roteamento fim -->
+
 > Este arquivo orienta o Claude Code (e qualquer agent) ao operar neste repositorio.
 > A fonte autoritativa do protocolo e o pacote de agents em [.github/agents/AGENTS.md](.github/agents/AGENTS.md), composto por **48 regras**.
 > O repositorio canonico e `salesadriano/dropbox_sync` e a branch principal declarada e `develop`.
