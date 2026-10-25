@@ -1,0 +1,17 @@
+---
+id: 2026-10-24-1153-aceite-testes-qa-freebsd
+tipo: aceite
+escopo: projeto
+titulo: Solicitante aprova a suite do QA do suporte a FreeBSD e reaprova a da fase 4
+data: 2026-10-24
+dono: Tech Lead
+instancia: myPCWin/Desenvolvedor Hydros
+agentes: tech-lead, qa-expert
+status: ativa
+regra: AGENTS.md 12
+ref: docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md
+---
+
+O solicitante aprovou explicitamente (AskUserQuestion, 2026-10-24):
+- `tests/integracao/qa_freebsd_b13_test.sh` (novo, 5 casos, sha256 `fb7e9191…ca7488`);
+- `tests/integracao/qa_docs_aliases_p4_test.sh` (reaprovacao; o filtro dos utilitarios de resumo passou a incluir `sha256`, DIV-354; sha256 `17192612…708467`).
