@@ -61,7 +61,14 @@ Total de linhas de codigo de runtime: **0**.
 
 ## 6. QA
 
-Validacao independente (`ai-team:qa-expert`): ver a linha acrescentada abaixo apos o ciclo.
+Validacao independente (`ai-team:qa-expert`, ciclo 1), sem arquivo `qa-*` (nao ha comportamento novo; a validacao e por inspecao e pelos validadores do projeto):
+
+- Nada removido era unico do projeto: `diff -rq` da arvore anterior (`HEAD~1`) contra o plugin; os unicos arquivos so locais eram `scripts/tests/*.bats` de `governanca-por-hooks`, `instrucoes-do-projeto` e `selecao-de-modelo` (testes do pacote). Onde diferiam, a copia local era a mais antiga. As sete personas existem em `agents/` do plugin, o Tech Lead em `personas/tech-lead.agent.md` e o prompt em `commands/execucao-enxuta.md` (so existencia, sem comparar conteudo).
+- Nada que o projeto executa depende do removido: `grep` sem ocorrencia em scripts, tests, `.claude`, runtime, `install.sh`, `CLAUDE.md`, `AGENTS.md` e templates; `scripts/suite-completa.sh` identico ao do plugin; `--mostrar` responde com exit 0.
+- Hooks: `.claude/settings.json` valido; `hooks/hooks.json` do plugin cobre `resumo-de-estado` (SessionStart) e `guarda-de-comandos` com `scripts/guarda-de-comandos.txt` do projeto, que existe.
+- Referencias: os dois validadores sem erro; amostra de cinco `ai-team:<x>` confere com as skills do plugin.
+- Achado informativo: o bloco `ai-team:roteamento` nao existe no `CLAUDE.md` versionado. E esperado: o plugin o escreve no inicio da sessao (`alinhar-instrucoes.sh`) e ele fica sem commit no checkout principal; fora do escopo.
+- Veredito do QA: Aprovado, 2026-10-24.
 
 ## 7. Riscos e rollback
 
