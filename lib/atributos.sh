@@ -24,6 +24,14 @@
 #   vazio — quem chama decide o que fazer, nunca assume `0` nem vazio (RF-167(e));
 #   2 em uso invalido. `-L` segue elo simbolico (e /dev/fd/N).
 #
+#   dbx_atributo_fd <campo> <fd>
+#
+#   Os mesmos campos, mais `tipo` (regular|outro), lidos do PROPRIO descritor
+#   aberto, sem montar `/dev/fd/<n>` (que no FreeBSD nao e o arquivo, ou nem
+#   existe): GNU `stat -L -c <fmt> -` e BSD `stat -f <fmt>` sem operando, ambos
+#   sobre a entrada padrao redirecionada do descritor. `dbx_fd_regular_proprio
+#   <fd>` confere regular + dono = EUID.
+#
 #   Campos: modo (octal) | modo_simbolico | dono (uid) | grupo (gid) | tamanho |
 #   mtime (segundos) | dev | ino | dev_ino (`d|i`) | dev_ino_tamanho (`d|i|s`) |
 #   identidade | fs_tipo.
@@ -69,6 +77,7 @@ _dbx_atributos_formatos() {
     ino) _dbx_atributos_formato_gnu='%i' _dbx_atributos_formato_bsd='%i' ;;
     dev_ino) _dbx_atributos_formato_gnu='%d|%i' _dbx_atributos_formato_bsd='%d|%i' ;;
     dev_ino_tamanho) _dbx_atributos_formato_gnu='%d|%i|%s' _dbx_atributos_formato_bsd='%d|%i|%z' ;;
+    tipo) _dbx_atributos_formato_gnu='%F' _dbx_atributos_formato_bsd='%HT' ;;
     identidade)
       _dbx_atributos_formato_gnu="%s${tab}%Y|%y|%z|%d|%i|%s"
       _dbx_atributos_formato_bsd="%z${tab}%m|%m.000000000|%c.000000000|%d|%i|%z"
@@ -103,17 +112,64 @@ dbx_atributo() {
     leitura=$(stat "${seguir[@]}" -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null) || return 1
   else
     leitura=$(stat "${seguir[@]}" -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null) || return 1
-    # `%Mp%03Lp` traz o digito suid/sgid/sticky e tres digitos de permissao (o
-    # `%Lp` do BSD sai sem zeros a esquerda: 0044 seria "44"); o GNU nao
-    # escreve zeros a esquerda.
-    if [[ $1 == modo || $1 == modo_exibicao ]]; then
-      leitura=${leitura#"${leitura%%[!0]*}"}
-      [[ $leitura == [0-9]* ]] || leitura=0$leitura
-    fi
+    _dbx_atributos_normalizar_modo "$1"
   fi
   # shellcheck disable=SC2034  # canal publico, lido pelo chamador
   DBX_ATRIBUTO=$leitura
   return 0
+}
+
+# _dbx_atributos_normalizar_modo <campo> — `%Mp%03Lp` traz o digito
+# suid/sgid/sticky e tres digitos de permissao (o `%Lp` do BSD sai sem zeros a
+# esquerda: 0044 seria "44"); o GNU nao escreve zeros a esquerda. Age sobre
+# `leitura` de quem chama (escopo dinamico).
+_dbx_atributos_normalizar_modo() {
+  if [[ $1 == modo || $1 == modo_exibicao ]]; then
+    leitura=${leitura#"${leitura%%[!0]*}"}
+    [[ $leitura == [0-9]* ]] || leitura=0$leitura
+  fi
+}
+
+# dbx_atributo_fd <campo> <fd> — como dbx_atributo, mas do PROPRIO descritor
+# aberto <fd> (nao de um caminho), sem jamais montar `/dev/fd/<n>`: no FreeBSD
+# esse caminho nao existe sem `fdescfs` e, com ele, aponta o no do fdescfs e nao
+# o arquivo (RF-171(a), DIV-352). O GNU le por `stat -L -c <fmt> -` e o BSD por
+# `stat -f <fmt>` SEM operando, que le a entrada padrao (fstat do descritor 0);
+# nos dois, a entrada padrao do utilitario e o descritor. Funciona tambem com
+# descritor so de escrita. Mais um campo, `tipo`: `regular` ou `outro`.
+dbx_atributo_fd() {
+  local leitura=''
+  DBX_ATRIBUTO=''
+  [[ $# -eq 2 && $2 =~ ^[0-9]+$ ]] || return 2
+  _dbx_atributos_formatos "$1" || return 2
+  _dbx_atributos_aprender_forma || return 1
+  # A redirecao do erro vem ANTES da do descritor, para um descritor fechado nao
+  # escrever a mensagem do shell.
+  if [[ $_dbx_atributos_forma == gnu ]]; then
+    leitura=$(stat -L -c "$_dbx_atributos_formato_gnu" - 2>/dev/null <&"$2") || return 1
+  else
+    leitura=$(stat -f "$_dbx_atributos_formato_bsd" 2>/dev/null <&"$2") || return 1
+    _dbx_atributos_normalizar_modo "$1"
+  fi
+  if [[ $1 == tipo ]]; then
+    leitura=${leitura,,}
+    case $leitura in
+      regular*) leitura=regular ;;
+      *) leitura=outro ;;
+    esac
+  fi
+  # shellcheck disable=SC2034  # canal publico, lido pelo chamador
+  DBX_ATRIBUTO=$leitura
+  return 0
+}
+
+# dbx_fd_regular_proprio <fd> — 0 quando o descritor e de arquivo regular do
+# usuario (a conferencia que o produto fazia por `[[ -f /dev/fd/N && -O ... ]]`).
+dbx_fd_regular_proprio() {
+  dbx_atributo_fd tipo "$1" || return 1
+  [[ $DBX_ATRIBUTO == regular ]] || return 1
+  dbx_atributo_fd dono "$1" || return 1
+  [[ $DBX_ATRIBUTO == "$EUID" ]]
 }
 
 # _dbx_atributos_aprender_forma — sonda UNICA sobre um caminho garantido (este

@@ -64,7 +64,26 @@ while (($#)); do
   esac
 done
 
+formato_dado=$formato
 [[ -n $formato ]] || formato='%d %i %Sp %l %Su %Sg %r %z "%Sa" "%Sm" "%Sc" "%SB" %k %b %#Xf %N'
+
+# `stat -f <fmt>` SEM operando le a entrada padrao (fstat do descritor 0): e a
+# forma com que o produto confere o proprio descritor. O stat do sistema faz o
+# mesmo com `-L -` (o `-L` e necessario para o `-` ser a entrada padrao).
+if (($# == 0)) && [[ -n $formato_dado ]]; then
+  seguir=(-L)
+  set -- -
+fi
+
+# fdescfs sem opcao (FreeBSD 15): QUALQUER `/dev/fd/<n>` e um no proprio do
+# fdescfs, um dispositivo de caracteres com dev/ino fixos, e nunca o arquivo
+# aberto. O duble reproduz isso para provar o defeito de quem ainda confere o
+# descritor pelo caminho.
+fdescfs=nao
+if (($# >= 1)) && [[ ${!#} =~ ^/dev/fd/[0-9]+$ ]]; then
+  fdescfs=sim
+  set -- /dev/null
+fi
 
 # Traducao do formato BSD para o formato do stat do sistema. Cada marcador BSD
 # vira o equivalente; `\t` e `\n` ficam literais para `--printf` interpretar.
@@ -102,4 +121,9 @@ while [[ -n $resto ]]; do
 done
 
 (($# >= 1)) || _recusar "$uso"
+if [[ $fdescfs == sim ]]; then
+  gnu=${gnu//%F/Character Device}
+  gnu=${gnu//%d/9999}
+  gnu=${gnu//%i/4242}
+fi
 "$real" "${seguir[@]}" --printf="$gnu\n" -- "$@"

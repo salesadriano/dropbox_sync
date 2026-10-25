@@ -737,25 +737,34 @@ _dbx_http_conduzir() {
   # misturaria ao codigo. A saida padrao do processo e duplicada antes e o
   # cliente escreve nela pelo descritor.
   #
-  # LIMITE DECLARADO: o cliente REABRE o descritor. Cano e terminal se
+  # O destino `fd:<n>` (RF-171(a), DIV-352) e um descritor JA ABERTO do
+  # processo. Nunca se monta `/dev/fd/<n>`: no FreeBSD, sem `fdescfs`, nao
+  # existe para n>2 e, com ele, nao e o arquivo. O cliente escreve em
+  # `/dev/stderr` (sempre presente no devfs), e a saida de erro do COMANDO e
+  # redirecionada para o descritor (`2>&<n>`); as mensagens do cliente vao para
+  # `$area/erro_cliente` por `--stderr`, e o `-w` segue na saida padrao
+  # capturada.
+  #
+  # LIMITE DECLARADO: o cliente REABRE `/dev/stderr`. Cano e terminal se
   # comportam como a saida padrao; arquivo regular e reaberto do inicio e
-  # truncado, e socket nao reabre. Por isso `download` recusa saida padrao em
-  # arquivo nao vazio (o `>>` sobre conteudo existente).
+  # truncado (com faixa, `continue-at` anexa), e socket nao reabre. Por isso
+  # `download` recusa saida padrao em arquivo nao vazio (o `>>` sobre conteudo
+  # existente).
   local rele='' pid_rele='' estado_rele=0
   if [[ $_DBX_HTTP_CANAL == 'fluxo' && ($destino == '-' || $destino == '/dev/stdout') ]]; then
     exec {saida_padrao}>&1
-    destino="/dev/fd/$saida_padrao"
+    destino="fd:$saida_padrao"
     # Teste de tipo, sem captura: e o que distingue consumidor de disco.
     [[ -p /dev/stdout ]] && saida_e_cano='sim'
-    # SOCKET (DIV-51, OBS-04): o cliente nao reabre socket por `/dev/fd`. Ele
-    # escreve num cano, que reabre, e um `cat` repassa ao socket. Socket vivo
+    # SOCKET (DIV-51, OBS-04): o cliente nao escreve direto em socket. Ele
+    # escreve num cano e um `cat` repassa ao socket. Socket vivo
     # recebe tudo e o comando sai 0; so a falha de escrita do repasse (EPIPE ou
     # SIGPIPE: o consumidor encerrou de fato) vira `consumidor_encerrou`.
     if [[ -S /dev/stdout ]]; then
       saida_e_cano='sim'
       exec {rele}> >(exec cat >&"$saida_padrao")
       pid_rele=$!
-      destino="/dev/fd/$rele"
+      destino="fd:$rele"
     fi
   fi
 
@@ -766,14 +775,24 @@ _dbx_http_conduzir() {
     # A redirecao do stderr fica DENTRO da substituicao: aplicada do lado de
     # fora, a substituicao ja teria sido expandida com o stderr original e a
     # mensagem do cliente se perderia.
+    # shellcheck disable=SC2094  # `--stderr` e o grupo apontam o mesmo arquivo de proposito: so o cliente escreve nele
     codigo=$(
       {
         _dbx_http_opcoes | if [[ $_DBX_HTTP_CANAL == 'fluxo' ]]; then
           # `--fail` impede a resposta de ERRO de sair como se fosse o conteudo
           # do arquivo (um 409 sairia com status zero e um JSON dentro): com
           # ele, zero bytes emitidos e status 22.
-          curl -K - --fail -X "$metodo" \
-            -o "$destino" -D "$area/cabecalhos" -w "$formato_w" "$url"
+          if [[ $destino == fd:* ]]; then
+            # O descritor do destino e a SAIDA DE ERRO deste comando (`2>&<n>`) e
+            # o cliente escreve em `/dev/stderr`, que existe sempre (devfs), ao
+            # contrario de `/dev/fd/<n>`. As mensagens do cliente vao por
+            # `--stderr` para o arquivo; o `-w` segue na saida padrao capturada.
+            curl -K - --fail -X "$metodo" --stderr "$area/erro_cliente" \
+              -o /dev/stderr -D "$area/cabecalhos" -w "$formato_w" "$url" 2>&"${destino#fd:}"
+          else
+            curl -K - --fail -X "$metodo" \
+              -o "$destino" -D "$area/cabecalhos" -w "$formato_w" "$url"
+          fi
         elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
           curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
             -o "$area/resposta" -D "$area/cabecalhos" -w "$formato_w" "$url"

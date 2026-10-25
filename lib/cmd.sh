@@ -762,18 +762,27 @@ _dbx_cmd_part_abrir() {
   caminho="$diretorio/$nome"
   { exec {leitura}<"$caminho"; } 2>/dev/null || return 1
   info=''
-  if [[ -f /dev/fd/$leitura && -O /dev/fd/$leitura ]]; then
-    dbx_atributo -L dev_ino_tamanho "/dev/fd/$leitura" && info=$DBX_ATRIBUTO || info=""
+  if dbx_fd_regular_proprio "$leitura" && dbx_atributo_fd dev_ino_tamanho "$leitura"; then
+    info=$DBX_ATRIBUTO
   fi
   tamanho=${info##*|}
   if [[ ${info%|*} != "$devino" || ! $tamanho =~ ^[0-9]{1,18}$ ]] || ((10#$tamanho > maximo)); then
     exec {leitura}<&-
     return 1
   fi
-  { exec {escrita}>>"/dev/fd/$leitura"; } 2>/dev/null || {
+  # Reabre pelo CAMINHO (`/dev/fd/<n>` nao e o arquivo no FreeBSD) e confere que
+  # o descritor de escrita e do MESMO dev|ino do de leitura: nome trocado entre
+  # a conferencia e a abertura reprova, e nada e escrito (abrir para anexar nao
+  # escreve).
+  { exec {escrita}>>"$caminho"; } 2>/dev/null || {
     exec {leitura}<&-
     return 1
   }
+  if ! dbx_atributo_fd dev_ino "$escrita" || [[ $DBX_ATRIBUTO != "$devino" ]]; then
+    exec {escrita}>&-
+    exec {leitura}<&-
+    return 1
+  fi
   exec {leitura}<&-
   _DBX_CMD_PART_FD=$escrita
   _DBX_CMD_PART_T=$((10#$tamanho))
@@ -969,10 +978,10 @@ dbx_cmd_receber_retomavel() {
   dbx_progress_arquivo_observar "$part"
   if [[ $inicio -gt 0 ]]; then
     dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
-      "$argumento" "/dev/fd/$_DBX_CMD_PART_FD" "$inicio"
+      "$argumento" "fd:$_DBX_CMD_PART_FD" "$inicio"
   else
     dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
-      "$argumento" "/dev/fd/$_DBX_CMD_PART_FD"
+      "$argumento" "fd:$_DBX_CMD_PART_FD"
   fi
   estado=$?
   dbx_progress_arquivo_observar_parar "$part"

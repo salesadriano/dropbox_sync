@@ -48,7 +48,7 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 
 - **Sistema Operacional:** Linux (POSIX compatível) ou FreeBSD 13/14 (UFS ou ZFS).
 - **Interpretador:** GNU Bash 4.4 ou superior. No FreeBSD, o `bash` e o `curl` vêm do `pkg`: `pkg install bash curl`.
-- **FreeBSD — `fdescfs`:** o `dbx` reabre descritores por `/dev/fd/<n>`, que no FreeBSD só existe com o `fdescfs` montado: `mount -t fdescfs fdesc /dev/fd` e, para persistir, a linha `fdesc /dev/fd fdescfs rw 0 0` no `/etc/fstab`. Sem ele, a verificação prévia recusa com código `3` e mostra essa instrução.
+- **FreeBSD — sem `fdescfs`:** o `dbx` confere arquivos abertos (o `.part` da retomada, o cursor, o estado) pelo próprio descritor, e não por `/dev/fd/<n>`; o `fdescfs` não é necessário, montado ou não.
 - **FreeBSD — identificador do host nas travas:** sem `/proc`, as partes de boot e de namespace do identificador valem `x`; a trava continua valendo no mesmo host.
 - **Rede:** `cURL` com suporte a HTTPS e TLS 1.2+ (única dependência externa).
 - **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum`, `sha256` ou `openssl`.

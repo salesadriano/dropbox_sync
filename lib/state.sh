@@ -247,7 +247,7 @@ _dbx_state_ler_limitado() {
   # para sempre; a conferencia pelo descritor, abaixo, vem tarde demais.
   [[ -f $arquivo ]] || return 1  # nao regular
   { exec {fd}<"$arquivo"; } 2>/dev/null || return 1
-  if [[ ! -f /dev/fd/$fd || ! -O /dev/fd/$fd ]]; then
+  if ! dbx_fd_regular_proprio "$fd"; then
     exec {fd}<&-
     return 1
   fi
@@ -725,7 +725,7 @@ _dbx_state_trava_ler() {
     [[ -e $arquivo || -L $arquivo ]] && return 1
     return 2
   }
-  if [[ -f /dev/fd/$fd && -O /dev/fd/$fd ]]; then
+  if dbx_fd_regular_proprio "$fd"; then
     # A leitura tem de chegar ao FIM DO ARQUIVO (status diferente de zero) em
     # ate 513 bytes: se ela para antes, achou um nulo (o delimitador) ou o
     # limite, e ha bytes que a linha nao contem (QA-B2-01). Depois disso, a
@@ -2011,7 +2011,7 @@ _dbx_state_cursor_abrir() {
   # Como no leitor da 7a (QA-B7A-01): FIFO nunca e aberta, pois bloquearia.
   [[ -f $arquivo && -O $arquivo ]] || return 1
   { exec {fd}<"$arquivo"; } 2>/dev/null || return 1
-  if [[ ! -f /dev/fd/$fd || ! -O /dev/fd/$fd ]]; then
+  if ! dbx_fd_regular_proprio "$fd"; then
     exec {fd}<&-
     return 1
   fi
@@ -2032,11 +2032,14 @@ _dbx_state_cursor_entrada_valida() {
   fi
 }
 
-# _dbx_state_cursor_rodape_confere <fd> <bytes_do_prefixo> — 0 quando os dois
-# campos seguintes sao `fim` e o SHA-256 dos <bytes_do_prefixo> primeiros bytes
-# do MESMO arquivo, e nada vem depois. 1 truncado ou ausente; 2 divergente.
+# _dbx_state_cursor_rodape_confere <fd> <bytes_do_prefixo> <arquivo> — 0 quando
+# os dois campos seguintes sao `fim` e o SHA-256 dos <bytes_do_prefixo>
+# primeiros bytes do MESMO arquivo, e nada vem depois. 1 truncado ou ausente; 2
+# divergente. O arquivo e reaberto pelo CAMINHO (nao por `/dev/fd/<n>`, que no
+# FreeBSD nao e o arquivo) e so e lido se o novo descritor tiver o dev|ino do
+# original: nome trocado desde a abertura reprova.
 _dbx_state_cursor_rodape_confere() {
-  local fd=$1 prefixo=$2 resumo conferido resto='' LC_ALL=C
+  local fd=$1 prefixo=$2 arquivo=$3 resumo conferido resto='' novo identidade LC_ALL=C
   _dbx_state_cursor_campo "$fd" && [[ $_DBX_STATE_CURSOR_LIDO == 'fim' ]] || return 1
   _dbx_state_cursor_campo "$fd" && [[ $_DBX_STATE_CURSOR_LIDO =~ ^[0-9a-f]{64}$ ]] || return 1
   resumo=$_DBX_STATE_CURSOR_LIDO
@@ -2045,9 +2048,17 @@ _dbx_state_cursor_rodape_confere() {
     return 1
   fi
   dbx_hash_verificar_dependencias || return 1
-  # `/dev/fd/N` aberto pelo `head` reabre o inode DO DESCRITOR, e nao o nome,
-  # que poderia ter sido trocado desde a abertura.
-  conferido=$(_dbx_hash_sha256_hex < <(head -c "$prefixo" -- "/dev/fd/$fd" 2>/dev/null)) || return 2
+  dbx_atributo_fd dev_ino "$fd" || return 2
+  identidade=$DBX_ATRIBUTO
+  { exec {novo}<"$arquivo"; } 2>/dev/null || return 2
+  if ! dbx_atributo_fd dev_ino "$novo" || [[ $DBX_ATRIBUTO != "$identidade" ]]; then
+    exec {novo}<&-
+    return 2
+  fi
+  conferido=$(_dbx_hash_sha256_hex < <(head -c "$prefixo" <&"$novo" 2>/dev/null))
+  resto=$?
+  exec {novo}<&-
+  [[ $resto -eq 0 ]] || return 2
   [[ $conferido == "$resumo" ]] || return 2
   return 0
 }
@@ -2084,7 +2095,11 @@ dbx_state_cursor_carregar() {
     2) return 1 ;;
     *) return 3 ;;
   esac
-  dbx_atributo -L tamanho "/dev/fd/$fd" && tamanho=$DBX_ATRIBUTO || tamanho=-1
+  if dbx_atributo_fd tamanho "$fd"; then
+    tamanho=$DBX_ATRIBUTO
+  else
+    tamanho=-1
+  fi
   _dbx_state_cursor_consumido=0
   if [[ ! $tamanho =~ ^[0-9]+$ || $tamanho -gt $DBX_STATE_CURSOR_BYTES ]]; then
     exec {fd}<&-
@@ -2138,7 +2153,7 @@ dbx_state_cursor_carregar() {
     fi
   done
   if [[ $estado -eq 0 ]]; then
-    _dbx_state_cursor_rodape_confere "$fd" "$_dbx_state_cursor_consumido"
+    _dbx_state_cursor_rodape_confere "$fd" "$_dbx_state_cursor_consumido" "$arquivo"
     case $? in
       0) ;;
       1) estado=1 ;;

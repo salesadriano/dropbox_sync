@@ -1,6 +1,6 @@
 # Roteiro de validacao no FreeBSD real (TC-FBSD-24)
 
-Validacao manual do solicitante antes do merge da demanda `suporte-freebsd` (secao 5.22 do escopo, `DIV-355`). A suite roda em Linux com dubles dos utilitarios do FreeBSD; este roteiro cobre o que o duble nao reproduz: `/dev/fd` com e sem `fdescfs`, ausencia de `/proc`, `getopt` real dos utilitarios e as mensagens exatas.
+Validacao manual do solicitante antes do merge da demanda `suporte-freebsd` (secao 5.22 do escopo, `DIV-355`). A suite roda em Linux com dubles dos utilitarios do FreeBSD; este roteiro cobre o que o duble nao reproduz: o comportamento sem `fdescfs`, ausencia de `/proc`, `getopt` real dos utilitarios e as mensagens exatas.
 
 Rode como o usuario que vai usar o `dbx` (root, no caso do solicitante). Use uma pasta remota de teste vazia, por exemplo `/teste-freebsd`.
 
@@ -13,18 +13,17 @@ cd /tmp/dbx-freebsd
 freebsd-version; bash --version | head -1
 ```
 
-## 2. Preflight e fdescfs
+## 2. Sem fdescfs
+
+O `dbx` nao depende mais do `fdescfs` (a validacao anterior mostrou que, no FreeBSD 15, nenhum modo dele serve). Rode com ele desmontado:
 
 ```sh
-mount | grep fdescfs || echo "fdescfs NAO montado"
-# Sem fdescfs: a verificacao previa deve recusar citando o fdescfs.
-bash bin/dbx space; echo "saida=$?"
-mount -t fdescfs fdesc /dev/fd
+umount /dev/fd 2>/dev/null; mount | grep fdescfs || echo "fdescfs NAO montado"
 bash bin/dbx space; echo "saida=$?"
 bash bin/dbx diagnostico; echo "saida=$?"
 ```
 
-Esperado: sem `fdescfs`, a primeira execucao sai com `3` e a mensagem cita `mount -t fdescfs fdesc /dev/fd`. Montado, a segunda execucao nao cita mais o `fdescfs` (ainda sem credencial, ela pode oferecer o `dbx config` ou sair com `3` por credencial ausente). No `diagnostico`, a linha `dependencias` diz `resumo SHA-256 via sha256` (ou `openssl`) e a linha `trava` diz que o tipo do sistema de arquivos nao foi verificado.
+Esperado: nenhuma mensagem cita o `fdescfs`. Sem credencial valida, `space` pode oferecer o `dbx config` ou sair com `3` por credencial. No `diagnostico`, a linha `dependencias` diz de qual utilitario vem o resumo SHA-256.
 
 ## 3. Instalacao
 
@@ -64,12 +63,23 @@ Esperado: todos saem com `0`; a segunda execucao do `sync --enviar` nao reenvia 
 
 Interrompa com Ctrl-C o upload de `grande.bin` no meio e rode de novo: com `--debug`, deve aparecer `debug: upload retomada=encontrada`.
 
+Download (o caminho de escrita do `curl` mudou nesta versao; e o ponto mais importante a conferir):
+
+```sh
+dbx --debug download /teste-freebsd/grande.bin /tmp/dbx-grande.bin   # Ctrl-C no meio
+dbx --debug download /teste-freebsd/grande.bin /tmp/dbx-grande.bin   # retoma
+cmp /tmp/dbx-local/grande.bin /tmp/dbx-grande.bin && echo IGUAL
+dbx download /teste-freebsd/a.txt - | cat                             # saida padrao
+```
+
+Esperado: a segunda execucao mostra `retomada=encontrada` e uma faixa no `debug: http`; o `cmp` diz `IGUAL`; a saida padrao imprime `ola freebsd`.
+
 ## 7. Duas conferencias do sistema (para o Tech Lead)
 
 ```sh
 stat -f '%.9Fm|%.9Fc' /tmp/dbx-local/a.txt     # nanossegundos disponiveis? (achado 5 da conformidade)
 chmod 4044 /tmp/dbx-local/a.txt; stat -f '%Mp|%Lp|%03Lp' /tmp/dbx-local/a.txt; chmod 644 /tmp/dbx-local/a.txt   # esperado: 4|44|044 (achado N1)
-bash -c 'exec 3</etc/passwd; [[ -f /dev/fd/3 ]] && echo bash-ve-fd3; stat -L -f %i /dev/fd/3'   # com e sem fdescfs
+bash -c 'exec 3</etc/passwd; stat -f "%d|%i|%HT" <&3; stat -f "%d|%i" /etc/passwd'   # o stat pelo descritor devolve o mesmo dev|ino do arquivo?
 ```
 
 ## 8. Resultado
