@@ -153,9 +153,9 @@ _dbx_walk_descer() {
       continue
     fi
 
-    # Uma leitura so: tamanho e identidade. Sem `stat -c` (BSD) a identidade
-    # fica vazia, e quem a consome nao reaproveita resumo algum — mais lento,
-    # nunca errado.
+    # Uma leitura so: tamanho e identidade, ambos por dbx_atributo (GNU ou BSD;
+    # no BSD sem nanossegundos). Se a leitura falha a identidade fica vazia, e
+    # quem a consome nao reaproveita resumo algum — mais lento, nunca errado.
     if dbx_hash_identidade "$nome"; then
       tamanho=$DBX_HASH_TAMANHO_ARQUIVO
       identidade=$DBX_HASH_IDENTIDADE

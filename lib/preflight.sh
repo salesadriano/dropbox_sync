@@ -107,9 +107,14 @@ dbx_preflight_versao_de_bash_suficiente() {
 # proprio sobre um arquivo comum e testa o caminho como o produto testa. O
 # diretorio e parametro so para o teste apontar um vazio; o padrao e /dev/fd.
 dbx_preflight_descritores() {
-  local diretorio=${1:-/dev/fd} fd='' utilizavel=nao
+  local diretorio=${1:-/dev/fd} fd='' utilizavel=nao propria=''
   if exec {fd}<"${BASH_SOURCE[0]}"; then
-    [[ -f $diretorio/$fd && -r $diretorio/$fd ]] && utilizavel=sim
+    # `[[ -f ]]` sozinho um bash com emulacao de /dev/fd aprova sem fdescfs; o
+    # `stat -L` externo do produto exige o MESMO dev:ino do arquivo aberto.
+    if [[ -f $diretorio/$fd && -r $diretorio/$fd ]] && dbx_atributo -L dev_ino "$diretorio/$fd"; then
+      propria=$DBX_ATRIBUTO
+      dbx_atributo dev_ino "${BASH_SOURCE[0]}" && [[ $DBX_ATRIBUTO == "$propria" ]] && utilizavel=sim
+    fi
     exec {fd}<&-
   fi
   [[ $utilizavel == sim ]] && return 0

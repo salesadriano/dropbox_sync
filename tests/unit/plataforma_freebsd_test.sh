@@ -44,6 +44,20 @@ teste_diretorio_de_descritores_inexistente_tambem_recusa_com_3() {
   assert_igual 3 "${saida%%|*}" 'sem o diretorio nao ha descritor utilizavel'
 }
 
+teste_descritor_que_so_parece_arquivo_comum_mas_nao_e_o_mesmo_inode_recusa() {
+  # Um bash com emulacao de /dev/fd aprova `[[ -f ]]` sem fdescfs; o produto le
+  # /dev/fd/<n> com o `stat -L` externo, que ali nao enxerga o descritor. O
+  # diretorio traz arquivos comuns com todos os numeros que o descritor pode ter.
+  local falso n saida
+  falso=$(mktemp -d "$DBX_TESTES_TMP/devfd-falso.XXXXXX")
+  for n in {10..99}; do
+    : >"$falso/$n"
+  done
+  saida=$(_descritores "$falso")
+  assert_igual 3 "${saida%%|*}" 'RF-171(a): o descritor precisa ser o MESMO arquivo (dev:ino), nao so um arquivo legivel'
+  assert_contem "$INSTRUCAO_MONTAGEM" "$saida" 'a recusa traz o comando de montagem do fdescfs'
+}
+
 teste_a_verificacao_de_descritores_roda_no_nivel_ambiente_do_preflight() {
   local saida
   saida=$(env -i PATH="$PATH" HOME="$DBX_TESTES_TMP" "$BASH" -c '

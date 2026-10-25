@@ -18,6 +18,7 @@ DBX_PROGRESS_CARREGADO=1
 
 _dbx_progress_diretorio=${BASH_SOURCE[0]%/*}
 [[ $_dbx_progress_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_progress_diretorio=.
+_dbx_progress_diretorio=$(cd -P -- "$_dbx_progress_diretorio" && pwd -P)
 # shellcheck source=lib/atributos.sh
 . "$_dbx_progress_diretorio/atributos.sh"
 unset _dbx_progress_diretorio
@@ -505,8 +506,8 @@ dbx_progress_neutralizar() {
   if [[ -n ${2-} ]]; then printf -v "$2" '%s' "$t"; else printf '%s' "$t"; fi
 }
 
-# dbx_progress_tamanho_de <arquivo> <var> — tamanho em bytes (GNU `stat -c`, com o
-# fallback BSD `stat -f`, como em commands/config.sh); devolve em <var> e falha se ilegivel.
+# dbx_progress_tamanho_de <arquivo> <var> — tamanho em bytes, lido por
+# dbx_atributo (lib/atributos.sh, GNU ou BSD); devolve em <var> e falha se ilegivel.
 dbx_progress_tamanho_de() {
   local t=''
   dbx_atributo tamanho "$1" && t=$DBX_ATRIBUTO

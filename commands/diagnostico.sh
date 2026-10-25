@@ -150,7 +150,7 @@ _dbx_cmd_diag_travas() {
     esac
   done
   # Exclusao entre hosts em NFS e melhor esforco (RSK-49): avisa, nunca bloqueia.
-  # Sem `stat -f`, nao ha o que dizer.
+  # Sem o utilitario stat, nao ha o que dizer.
   [[ -n $estado && -d $estado ]] && _dbx_cmd_diag_tem stat || return 0
   # Sem `stat -f -c %T` (FreeBSD) o tipo nao pode ser lido: diz que nao foi
   # verificado, em vez de omitir (RF-172(c)).

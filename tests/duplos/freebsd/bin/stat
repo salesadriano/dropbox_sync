@@ -6,7 +6,7 @@
 # primeiro no produto). Este duble rejeita `-c` com a mensagem e o uso do BSD e
 # aceita `-L`, `--` e `-f <formato>` com os campos que o produto usa:
 #
-#   %Lp modo octal   %Sp modo simbolico   %u dono   %g grupo   %z tamanho
+#   %Mp bits suid/sgid/sticky (um digito)   %Lp permissao (tres digitos)   %Sp modo simbolico   %u dono   %g grupo   %z tamanho
 #   %m mtime (s)     %a atime (s)         %c ctime (s)   %d dispositivo
 #   %i inode         %HT tipo do arquivo  %%  e literais (\t, \n incluidos)
 #
@@ -70,9 +70,18 @@ done
 # vira o equivalente; `\t` e `\n` ficam literais para `--printf` interpretar.
 gnu=''
 resto=$formato
+# `%Mp` (digito dos bits suid/sgid/sticky) e `%Lp` (tres digitos de permissao)
+# saem do `%a` do stat do sistema, que traz os quatro digitos juntos.
+if [[ $formato == *%Mp* || $formato == *%Lp* ]]; then
+  modo_gnu=$("$real" "${seguir[@]}" --printf=%a -- "${!#}" 2>/dev/null)
+  modo_gnu=${modo_gnu:-0}
+  printf -v digito_alto '%o' $(((8#$modo_gnu >> 9) & 7))
+  printf -v digitos_baixos '%03o' $((8#$modo_gnu & 511))
+fi
 while [[ -n $resto ]]; do
   case $resto in
-    %Lp*) gnu+=%a resto=${resto#%Lp} ;;
+    %Mp*) gnu+=$digito_alto resto=${resto#%Mp} ;;
+    %Lp*) gnu+=$digitos_baixos resto=${resto#%Lp} ;;
     %Sp*) gnu+=%A resto=${resto#%Sp} ;;
     %HT*) gnu+=%F resto=${resto#%HT} ;;
     %u*) gnu+=%u resto=${resto#%u} ;;

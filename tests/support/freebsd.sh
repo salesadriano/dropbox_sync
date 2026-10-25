@@ -2,7 +2,7 @@
 # freebsd.sh — poe os dubles de utilitario BSD a frente do PATH (RF-166).
 #
 # Os dubles ficam em tests/duplos/freebsd/bin e imitam o comportamento do
-# FreeBSD onde ele diverge do GNU (hoje: chmod). Uso em um teste, que ja roda em
+# FreeBSD onde ele diverge do GNU (chmod, stat e demais). Uso em um teste, que ja roda em
 # subshell proprio, entao o PATH alterado nao vaza para outros casos:
 #
 #   . "$DBX_HARNESS_RAIZ/tests/support/freebsd.sh"

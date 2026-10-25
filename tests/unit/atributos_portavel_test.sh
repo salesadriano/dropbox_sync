@@ -84,6 +84,65 @@ teste_atributo_le_do_mesmo_modo_com_stat_gnu() {
   assert_igual 5 "$DBX_ATRIBUTO"
 }
 
+teste_modo_mantem_suid_e_sticky_e_coincide_nas_duas_formas() {
+  local area
+  area=$(_area)
+  : >"$area/a"
+  chmod 4600 "$area/a"
+  mkdir -m 700 "$area/d"
+  chmod 1700 "$area/d"
+  dbx_atributo modo "$area/a"
+  assert_igual 4600 "$DBX_ATRIBUTO" 'GNU: suid preservado'
+  dbx_atributo modo "$area/d"
+  assert_igual 1700 "$DBX_ATRIBUTO" 'GNU: sticky preservado'
+  dbx_freebsd_ativar
+  _dbx_atributos_forma=''
+  dbx_atributo modo "$area/a"
+  assert_igual 4600 "$DBX_ATRIBUTO" 'BSD: suid preservado, igual ao GNU'
+  dbx_atributo modo "$area/d"
+  assert_igual 1700 "$DBX_ATRIBUTO" 'BSD: sticky preservado, igual ao GNU'
+  chmod 600 "$area/a"
+  dbx_atributo modo "$area/a"
+  assert_igual 600 "$DBX_ATRIBUTO" 'BSD: zeros a esquerda normalizados'
+  chmod 000 "$area/a"
+  dbx_atributo modo "$area/a"
+  assert_igual 0 "$DBX_ATRIBUTO" 'BSD: modo 000 vira 0, como o %a do GNU'
+  chmod 600 "$area/a"
+}
+
+# _stat_contador <dir> — stat no PATH que registra cada chamada e delega ao real.
+_stat_contador() {
+  mkdir -p "$1/bin"
+  printf '%s\n' '#!/usr/bin/env bash' \
+    "printf '%s\\n' \"\$*\" >>\"$1/chamadas\"" \
+    'exec /usr/bin/stat "$@"' >"$1/bin/stat"
+  chmod +x "$1/bin/stat"
+}
+
+teste_forma_aprendida_por_sonda_unica_uma_leitura_uma_chamada() {
+  local area chamadas linha
+  area=$(_area)
+  : >"$area/a"
+  : >"$area/chamadas"
+  _stat_contador "$area"
+  local PATH=$area/bin:$PATH
+  _dbx_atributos_forma=''
+  dbx_atributo modo "$area/nao-existe"
+  assert_igual 1 $? 'arquivo ausente falha'
+  mapfile -t chamadas <"$area/chamadas"
+  for linha in "${chamadas[@]}"; do
+    [[ $linha == -f\ * ]] && _harness_falhar "RF-167(d): arquivo ausente no GNU disparou a forma -f: $linha"
+  done
+  : >"$area/chamadas"
+  dbx_atributo modo "$area/a"
+  mapfile -t chamadas <"$area/chamadas"
+  assert_igual 1 "${#chamadas[@]}" 'forma aprendida: uma leitura, uma chamada'
+  : >"$area/chamadas"
+  dbx_atributo modo "$area/nao-existe"
+  mapfile -t chamadas <"$area/chamadas"
+  assert_igual 1 "${#chamadas[@]}" 'forma aprendida: arquivo ausente, uma chamada'
+}
+
 teste_atributo_falha_sem_assumir_valor_quando_o_arquivo_nao_existe() {
   local area
   area=$(_area)

@@ -94,14 +94,14 @@ teste_jq_nao_e_exigido() {
   assert_igual '' "$achados" "preflight exige jq: $achados"
 }
 
-# _deteccao_fora_do_ponto_unico <arquivo...> — `uname`, `OSTYPE` e `MACHTYPE`
+# _deteccao_fora_do_ponto_unico <arquivo...> — `uname`, `OSTYPE`, `MACHTYPE` e `BASH_VERSINFO[5]`
 # fora de comentario e fora do corpo de `dbx_preflight_plataforma`.
 _deteccao_fora_do_ponto_unico() {
   awk '
     /^dbx_preflight_plataforma\(\) \{/ { dentro = 1 }
     dentro { if ($0 ~ /^\}/) dentro = 0; next }
     /^[[:space:]]*#/ { next }
-    /(^|[^A-Za-z0-9_])(uname|OSTYPE|MACHTYPE)([^A-Za-z0-9_]|$)/ { print FILENAME ":" FNR ": " $0 }
+    /(^|[^A-Za-z0-9_])(uname|OSTYPE|MACHTYPE|BASH_VERSINFO\[5\])([^A-Za-z0-9_]|$)/ { print FILENAME ":" FNR ": " $0 }
   ' "$@"
 }
 
@@ -114,7 +114,8 @@ teste_deteccao_de_plataforma_so_no_ponto_unico() {
   printf '%s\n' 'sistema=$(uname -s)' >"$area/uname.sh"
   printf '%s\n' '[[ $OSTYPE == freebsd* ]] && x=1' >"$area/ostype.sh"
   printf '%s\n' 'arq=$MACHTYPE' >"$area/machtype.sh"
-  for mutacao in uname ostype machtype; do
+  printf '%s\n' 'sistema=${BASH_VERSINFO[5]}' >"$area/versinfo.sh"
+  for mutacao in uname ostype machtype versinfo; do
     [[ -n $(_deteccao_fora_do_ponto_unico "$area/$mutacao.sh") ]] ||
       _harness_falhar "a auditoria nao acusou a forma '$mutacao'"
   done

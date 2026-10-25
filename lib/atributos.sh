@@ -8,8 +8,10 @@
 #
 #   O `stat` do GNU le por `-c <formato>`; o do FreeBSD, por `-f <formato>`, e no
 #   GNU `-f` e "estado do sistema de arquivos" e SUCEDE com saida errada. Por isso
-#   a forma GNU vem sempre primeiro e a BSD so e tentada quando o utilitario
-#   RECUSA a primeira (portabilidade por capacidade, nunca por nome de sistema).
+#   a forma GNU vem sempre primeiro, numa sonda unica sobre este proprio arquivo
+#   antes da primeira leitura; a BSD so e adotada quando o utilitario RECUSA a
+#   primeira (portabilidade por capacidade, nunca por nome de sistema). Falha de
+#   leitura no alvo nao decide a forma.
 #   Nenhum outro arquivo do produto chama `stat` com `-c` ou `-f`.
 #
 # USO
@@ -55,9 +57,9 @@ _dbx_atributos_formato_bsd=''
 _dbx_atributos_formatos() {
   local tab=$'\t'
   case $1 in
-    modo) _dbx_atributos_formato_gnu='%a' _dbx_atributos_formato_bsd='%Lp' ;;
+    modo) _dbx_atributos_formato_gnu='%a' _dbx_atributos_formato_bsd='%Mp%Lp' ;;
     modo_simbolico) _dbx_atributos_formato_gnu='%A' _dbx_atributos_formato_bsd='%Sp' ;;
-    modo_exibicao) _dbx_atributos_formato_gnu='%a (%A)' _dbx_atributos_formato_bsd='%Lp (%Sp)' ;;
+    modo_exibicao) _dbx_atributos_formato_gnu='%a (%A)' _dbx_atributos_formato_bsd='%Mp%Lp (%Sp)' ;;
     dono_grupo) _dbx_atributos_formato_gnu='%u:%g' _dbx_atributos_formato_bsd='%u:%g' ;;
     dono) _dbx_atributos_formato_gnu='%u' _dbx_atributos_formato_bsd='%u' ;;
     grupo) _dbx_atributos_formato_gnu='%g' _dbx_atributos_formato_bsd='%g' ;;
@@ -93,23 +95,35 @@ dbx_atributo() {
     return 0
   fi
   _dbx_atributos_formatos "$1" || return 2
-  if [[ $_dbx_atributos_forma != bsd ]]; then
-    # Captura, e nao `read < <()`: a substituicao de processo nao espera o
-    # `stat` terminar nem devolve o status dele, e quem chama confere o arquivo
-    # logo em seguida (barreira de inode do `.part`).
-    if leitura=$(stat "${seguir[@]}" -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null); then
-      _dbx_atributos_forma=gnu
-      DBX_ATRIBUTO=$leitura
-      return 0
+  _dbx_atributos_aprender_forma || return 1
+  # Captura, e nao `read < <()`: a substituicao de processo nao espera o `stat`
+  # terminar nem devolve o status dele, e quem chama confere o arquivo logo em
+  # seguida (barreira de inode do `.part`).
+  if [[ $_dbx_atributos_forma == gnu ]]; then
+    leitura=$(stat "${seguir[@]}" -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null) || return 1
+  else
+    leitura=$(stat "${seguir[@]}" -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null) || return 1
+    # `%Mp%Lp` traz o digito suid/sgid/sticky; o GNU nao escreve zeros a esquerda.
+    if [[ $1 == modo || $1 == modo_exibicao ]]; then
+      leitura=${leitura#"${leitura%%[!0]*}"}
+      [[ $leitura == [0-9]* ]] || leitura=0$leitura
     fi
-    # Forma GNU recusada ou arquivo ilegivel; so recua se ainda nao aprendeu `gnu`.
-    [[ $_dbx_atributos_forma == gnu ]] && return 1
   fi
-  if leitura=$(stat "${seguir[@]}" -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null); then
+  # shellcheck disable=SC2034  # canal publico, lido pelo chamador
+  DBX_ATRIBUTO=$leitura
+  return 0
+}
+
+# _dbx_atributos_aprender_forma — sonda UNICA sobre um caminho garantido (este
+# proprio arquivo) antes da primeira leitura: a falha no alvo (ausente, sem
+# permissao) nunca decide a forma. 1 se nenhuma das duas formas funciona.
+_dbx_atributos_aprender_forma() {
+  [[ -n $_dbx_atributos_forma ]] && return 0
+  if stat -c %a -- "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
+    _dbx_atributos_forma=gnu
+  elif stat -f %Lp -- "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
     _dbx_atributos_forma=bsd
-    # shellcheck disable=SC2034  # canal publico, lido pelo chamador
-    DBX_ATRIBUTO=$leitura
-    return 0
+  else
+    return 1
   fi
-  return 1
 }

@@ -177,8 +177,9 @@ dbx_sync_filtrar_caminhos() {
 # dbx_sync_filtrar_meta <vetor_caminhos> <vetor_tamanhos> <vetor_identidades>
 #
 # RF-81(c): data e tamanho, so na origem LOCAL. A data e o `mtime` da identidade
-# lida pela travessia (primeiro campo, `%Y`), convertido em UTC sem utilitario;
-# sem identidade (sem `stat -c`), o arquivo nao passa num filtro de data.
+# lida pela travessia (segundo campo da identidade, mtime em segundos), convertido
+# em UTC sem utilitario; sem identidade (leitura falhou), o arquivo nao passa num
+# filtro de data.
 dbx_sync_filtrar_meta() {
   [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
   local -n _fm_c=$1 _fm_t=$2 _fm_i=$3
