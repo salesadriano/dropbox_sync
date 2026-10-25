@@ -48,3 +48,12 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > `dependencias: ok ... resumo SHA-256 via sha256sum`; `credencial: falha: a credencial tem permissao para grupo ou outros: /root/.config/dbx/credencial.json; remedio: chmod 600 ...`; `estado: ok: ainda nao criado`; `trava: ok: sem travas`; `saida=3`.
 
 **Leitura do Tech Lead:** o modo `644` da credencial e o arquivo gravado pela tentativa de `dbx config` anterior a correcao (`chmod` falhou depois da escrita); o diagnostico o leu corretamente pelo `stat` do FreeBSD (`dbx_atributo`), o que ja confirma parte do RF-167 no sistema real. O FreeBSD do solicitante tem `sha256sum`. A linha "tipo do sistema de arquivos nao verificado" nao aparece porque o diretorio de estado ainda nao existe. Proximo passo: `chmod 600` (ou refazer o `dbx config`) e seguir o roteiro.
+
+## Prompt 3 — 2026-10-24
+
+> (colagem: passo 2 do roteiro e o teste de /dev/fd no FreeBSD 15.1-RELEASE-p3 do solicitante; sem segredo)
+> Com `fdescfs` montado, `dbx space` ainda recusa com a instrucao do fdescfs. Sem opcao: `/dev/fd/3` e `Character Device`, `stat -L` da `1493237509|6`, `/etc/passwd` da `95|6572838`. Com `-o linrdlnk`: `/dev/fd/3 -> /etc/passwd`, mas `stat -L` da `1493237510|6|Symbolic Link` (o no do fdescfs, nao o arquivo).
+
+**Leitura do Tech Lead:** no FreeBSD, nenhuma forma do `fdescfs` faz o `stat -L /dev/fd/<n>` externo devolver o `dev:ino` do arquivo, que e o que o produto usa (barreira do `.part`, cursor, preflight). A premissa da `DIV-352` (montar o fdescfs resolve) nao vale. Alternativa verificada no Linux: ler os atributos pelo proprio descritor (`stat -L -c <fmt> - <&N` no GNU; `stat -f <fmt>` sem operando no BSD) e, onde o produto reabre o arquivo por `/dev/fd/<n>` para escrita, abrir pelo caminho e conferir o `dev:ino` do novo descritor. Decisao levada ao solicitante.
+
+**Decisao do solicitante (AskUserQuestion, 2026-10-24):** "Conferir pelo descritor (Recomendado)": substitui a DIV-352 C; atributos lidos do proprio descritor, reabertura por `/dev/fd` trocada por abertura pelo caminho com conferencia do `dev:ino`, sem exigir `fdescfs`.
