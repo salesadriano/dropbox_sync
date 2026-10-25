@@ -113,7 +113,8 @@ dbx_preflight_descritores() {
     # `stat -L` externo do produto exige o MESMO dev:ino do arquivo aberto.
     if [[ -f $diretorio/$fd && -r $diretorio/$fd ]] && dbx_atributo -L dev_ino "$diretorio/$fd"; then
       propria=$DBX_ATRIBUTO
-      dbx_atributo dev_ino "${BASH_SOURCE[0]}" && [[ $DBX_ATRIBUTO == "$propria" ]] && utilizavel=sim
+      # `-L` porque o `exec` acima segue ligacao simbolica (lib/ instalada por stow).
+      dbx_atributo -L dev_ino "${BASH_SOURCE[0]}" && [[ $DBX_ATRIBUTO == "$propria" ]] && utilizavel=sim
     fi
     exec {fd}<&-
   fi

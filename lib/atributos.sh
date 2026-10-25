@@ -57,9 +57,9 @@ _dbx_atributos_formato_bsd=''
 _dbx_atributos_formatos() {
   local tab=$'\t'
   case $1 in
-    modo) _dbx_atributos_formato_gnu='%a' _dbx_atributos_formato_bsd='%Mp%Lp' ;;
+    modo) _dbx_atributos_formato_gnu='%a' _dbx_atributos_formato_bsd='%Mp%03Lp' ;;
     modo_simbolico) _dbx_atributos_formato_gnu='%A' _dbx_atributos_formato_bsd='%Sp' ;;
-    modo_exibicao) _dbx_atributos_formato_gnu='%a (%A)' _dbx_atributos_formato_bsd='%Mp%Lp (%Sp)' ;;
+    modo_exibicao) _dbx_atributos_formato_gnu='%a (%A)' _dbx_atributos_formato_bsd='%Mp%03Lp (%Sp)' ;;
     dono_grupo) _dbx_atributos_formato_gnu='%u:%g' _dbx_atributos_formato_bsd='%u:%g' ;;
     dono) _dbx_atributos_formato_gnu='%u' _dbx_atributos_formato_bsd='%u' ;;
     grupo) _dbx_atributos_formato_gnu='%g' _dbx_atributos_formato_bsd='%g' ;;
@@ -103,7 +103,9 @@ dbx_atributo() {
     leitura=$(stat "${seguir[@]}" -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null) || return 1
   else
     leitura=$(stat "${seguir[@]}" -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null) || return 1
-    # `%Mp%Lp` traz o digito suid/sgid/sticky; o GNU nao escreve zeros a esquerda.
+    # `%Mp%03Lp` traz o digito suid/sgid/sticky e tres digitos de permissao (o
+    # `%Lp` do BSD sai sem zeros a esquerda: 0044 seria "44"); o GNU nao
+    # escreve zeros a esquerda.
     if [[ $1 == modo || $1 == modo_exibicao ]]; then
       leitura=${leitura#"${leitura%%[!0]*}"}
       [[ $leitura == [0-9]* ]] || leitura=0$leitura

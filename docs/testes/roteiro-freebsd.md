@@ -68,6 +68,7 @@ Interrompa com Ctrl-C o upload de `grande.bin` no meio e rode de novo: com `--de
 
 ```sh
 stat -f '%.9Fm|%.9Fc' /tmp/dbx-local/a.txt     # nanossegundos disponiveis? (achado 5 da conformidade)
+chmod 4044 /tmp/dbx-local/a.txt; stat -f '%Mp|%Lp|%03Lp' /tmp/dbx-local/a.txt; chmod 644 /tmp/dbx-local/a.txt   # esperado: 4|44|044 (achado N1)
 bash -c 'exec 3</etc/passwd; [[ -f /dev/fd/3 ]] && echo bash-ve-fd3; stat -L -f %i /dev/fd/3'   # com e sem fdescfs
 ```
 

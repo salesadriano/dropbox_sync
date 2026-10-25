@@ -101,6 +101,10 @@ teste_modo_mantem_suid_e_sticky_e_coincide_nas_duas_formas() {
   assert_igual 4600 "$DBX_ATRIBUTO" 'BSD: suid preservado, igual ao GNU'
   dbx_atributo modo "$area/d"
   assert_igual 1700 "$DBX_ATRIBUTO" 'BSD: sticky preservado, igual ao GNU'
+  # O `%Lp` do BSD sai sem zeros a esquerda: sem largura fixa, 4044 viraria 444.
+  chmod 4044 "$area/a"
+  dbx_atributo modo "$area/a"
+  assert_igual 4044 "$DBX_ATRIBUTO" 'BSD: digito especial com permissao de zero a esquerda'
   chmod 600 "$area/a"
   dbx_atributo modo "$area/a"
   assert_igual 600 "$DBX_ATRIBUTO" 'BSD: zeros a esquerda normalizados'
