@@ -149,6 +149,9 @@ dbx_cmd_upload_executar() {
   local resolver_pasta='nao'
   if [[ $eh_diretorio == 'nao' ]]; then
     if [[ $destino == */ ]]; then
+      # O confinamento da PASTA vem antes do uso invalido da entrada padrao:
+      # pasta fora da `raiz_remota` e recusada como tal (13), nunca como uso (2).
+      _dbx_cmd_caminho_remoto "$destino" || return $?
       _dbx_cmd_upload_alvo_em_pasta "$destino" "$origem" || return $?
       destino=$DBX_CMD_UPLOAD_ALVO
     else

@@ -54,7 +54,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **731**.
 | `protocolo-tdd` | Regras 1 a 9; `Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados` | Menor: asserção de `caminho` do caso identico removida por engano no ciclo do developer; reinserida (`upload_pasta_test.sh:173`) | Aprovado |
 | `protocolo-conformidade` | `clean-architecture` + shell; `Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados` | Nenhum: resolucao em `commands/upload.sh` (`_dbx_cmd_upload_alvo_em_pasta`, `_dbx_cmd_upload_trocar_para_pasta`), alvo pelo ponto unico `_dbx_cmd_caminho_remoto` | Aprovado |
 
-- Ciclo: 1
+- Ciclo: 2. A suite completa do ciclo 1 (`80d412d`) reprovou em `confinamento_remoto_test.sh::sec18_raiz_da_conta_fora_da_raiz_configurada_e_recusada`: entrada padrao para `/` com `raiz_remota` configurada saia `2` (uso) em vez de `13` (confinamento), porque a `/` final era resolvida antes do confinamento. Corrigido em `commands/upload.sh`: o confinamento da pasta vem antes do uso invalido. `confinamento_remoto`, `upload_pasta` e `qa_upload_para_pasta_b15` verdes; shellcheck limpo.
 - `sh scripts/alteracoes-externas.sh --detectar`: so o log de prompt do proprio Tech Lead foi acusado e registrado.
 
 ## 6. QA
