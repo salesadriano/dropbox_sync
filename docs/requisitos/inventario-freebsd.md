@@ -30,7 +30,7 @@ Achado de contexto: o codigo nao usa `sed`, `date`, `awk`, `sort`, `cut`, `tr`, 
 | I-05 | `lib/hash.sh:138-139` | `shasum -a 256` | FALHA (ausente na base; so com `p5-Digest-SHA`) | idem I-04 | sim |
 | I-06 | `lib/hash.sh:144` | `openssl dgst -sha256` | DIFERE (saida `SHA2-256(stdin)= <hex>` ou `(stdin)= <hex>`, conforme a versao) | extrair o ultimo campo apos `= `; testar nos duplos | n/a |
 | I-07 | `lib/hash.sh:223,285` | `tamanho=$(wc -c <arq)` | DIFERE (BSD preenche com espacos a esquerda) | ja tratado por `${t//[^0-9]/}` nas linhas 224 e 286; manter e cobrir por teste | sim |
-| I-08 | `lib/hash.sh:284` | `head -c N >buf` | IGUAL (`head -c` existe no FreeBSD) | manter | n/a |
+| I-08 | `lib/hash.sh:284` | `head -c N >buf` | **DIFERE** (o `head -c` do FreeBSD le alem de N do descritor; medido no FreeBSD 15.1, 2026-10-26) | `dbx_ler_exato` (`RF-173`) | **sim** |
 | I-09 | `lib/hash.sh:396` | `stat -c "%s<TAB>%Y\|%y\|%z\|%d\|%i\|%s" -- arq` | FALHA (`stat: illegal option -- c`) | formato BSD equivalente `stat -f '%z<TAB>%m\|%a\|%c\|%d\|%i\|%z'` tentado so quando a forma GNU falha (ver 2.1) | **nao** (o chamador `lib/walk.sh:162` recupera so o tamanho; identidade fica vazia e o resumo e sempre recalculado) |
 
 ### 1.3 `lib/tmp.sh`, `lib/progress.sh`, `lib/path.sh`, `lib/walk.sh`
@@ -93,10 +93,10 @@ Achado de contexto: o codigo nao usa `sed`, `date`, `awk`, `sort`, `cut`, `tr`, 
 | I-48 | `lib/config.sh:480,485,488,526` | `mkdir -p --`, `chmod 700 "$d"`, `mv -f --` | IGUAL (um operando; sem `--` depois do modo) | manter | n/a |
 | I-49 | `lib/config.sh:525` | `chmod 600 -- "$temporario"` | **FALHA** (a causa do relato do solicitante: `dbx config`) | `chmod -- 600 "$temporario"` | **nao** |
 | I-50 | `lib/transfer.sh:188,679` | `wc -c <arq` + `${v//[^0-9]/}` | IGUAL (sanitizado) | manter | sim |
-| I-51 | `lib/transfer.sh:445,674,1031` | `head -c N <&fd >bloco` | IGUAL | manter | n/a |
+| I-51 | `lib/transfer.sh:445,674,1031` | `head -c N <&fd >bloco` | **DIFERE** (mesmo motivo de `I-08`; partes perdidas entre leituras) | `dbx_ler_exato` (`RF-173`) | **sim** |
 | I-52 | `lib/transfer.sh:1149` | `stat -c %Y -- "$origem"` (carimbo `client_modified`) | FALHA (silencioso: o envio segue sem a data de modificacao) | auxiliar de 2.1 (`stat -f %m`) | **nao** |
 | I-53 | `lib/transfer.sh:655,1152`; `lib/compartilhamento.sh:64,70`; `lib/state.sh` (`%(%s)T`); `commands/reter.sh:176`; `lib/cmd.sh` (`%(%s)T`) | `printf '%(%s)T'` | IGUAL (builtin do bash 4.2+) | manter | n/a |
-| I-54 | `lib/preflight.sh:77` | lista `curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir` | IGUAL (todos na base) | manter | n/a |
+| I-54 | `lib/preflight.sh:77` | lista `curl mktemp mv rm chmod mkdir stat head dd wc readlink dirname find cat sleep tail df ln rmdir` | IGUAL (todos na base) | manter | n/a |
 | I-55 | `lib/preflight.sh:126,135,138` | `stat -c .. \|\| stat -f ..` | IGUAL | manter | sim |
 | I-56 | `lib/preflight.sh:175,222-223` | `command -v sha256sum \|\| command -v shasum` (so a linha 223 tem `openssl`) | FALHA/DIFERE (sem coreutils, a linha 175 recusa mesmo havendo `openssl`/`sha256`) | usar a mesma lista de I-03 nos dois pontos | parcial |
 | I-57 | `lib/disponibilidade.sh:109-110`; `lib/debug.sh:153,190` | `EPOCHREALTIME` (bash 5.0) | IGUAL (guardado por `-n`; o `bash` do `pkg` e 5.x) | manter | sim |
