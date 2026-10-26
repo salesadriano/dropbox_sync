@@ -105,3 +105,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > (colagem: `dbx --debug download -p "/ASJ/ASJEP/backup/nossoerp bkp" /tmp/test` no FreeBSD; sem segredo) `get_metadata` 200; dois `GET files/download` com 409; `[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente...`; `sync --receber` interno lista 4 arquivos e imprime o plano (`a_transferir: 4`). A colagem termina no plano.
 
 **Leitura do Tech Lead:** a listagem e o plano no FreeBSD estao corretos; a colagem para antes das transferencias (execucao em andamento ou saida cortada). Achado menor, fora do escopo FreeBSD: o `download` tenta `files/download` duas vezes (409) depois de o `get_metadata` ja ter dito que o caminho e pasta.
+
+## Prompt 10 — 2026-10-26
+
+> (colagem: `dbx verificar --receber --origem "/ASJ/ASJEP/backup/nossoerp bkp" --destino "/tmp/test/nossoerp bkp"` no FreeBSD; sem segredo) `iguais: 4`, `diferentes: 0`, `so_origem: 0`, `so_destino: 0`, `total: 4` (inclui `nossoerp.bak.zip`, 388 MiB).
+
+**Leitura do Tech Lead:** o download de pasta terminou e o `content_hash` local de arquivos de varios blocos confere com o remoto no FreeBSD real: `RF-173` confirmado no calculo do resumo (antes da correcao, o `head -c` do FreeBSD daria resumo errado acima de 4 MiB). Pendentes: sonda da retomada, passo 6 e secao 7.
