@@ -25,3 +25,5 @@ Aprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_leitura_exata_b14_
 Reaprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_consulta_diagnostico_b1_test.sh` (sha256 `9a0dab8d…e661920a`) e `tests/integracao/qa_debug_transferencias_b12_test.sh` (sha256 `fa2d971d…e2fca987`); unica mudanca: `dd` na lista de utilitarios do PATH reduzido, exigido pelo preflight (RF-173(c)).
 
 Aprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_download_curl_real_b16_test.sh` (novo, 7 casos, curl real contra servidor HTTP local; RF-171(a) emendado, destino `fd:` sem `--stderr`), sha256 `d0c1dd49…5af129`.
+
+Aprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_regex_portavel_b17_test.sh` (novo, 19 casos, RF-173(e), TC-FBSD-28; repeticao de regex ate 255), sha256 `1406718c…138a015d8`.

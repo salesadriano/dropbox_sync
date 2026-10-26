@@ -673,7 +673,7 @@ dbx_sync_listar_delta() {
     anterior=$DBX_SYNC_CURSOR_NOVO
   done
   # shellcheck disable=SC2154  # constante de lib/state, carregada por commands/sync
-  if [[ ! $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]]; then
+  if [[ ${#DBX_SYNC_CURSOR_NOVO} -gt 8192 || ! $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]]; then
     DBX_SYNC_CURSOR_NOVO=''
     DBX_SYNC_CURSOR_MOTIVO='descartado'
     return 1

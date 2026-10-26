@@ -1453,7 +1453,7 @@ _dbx_state_retomada_formato() {
   [[ ${c[3]} =~ ^cred-[0-9a-f]{32}$ && ${c[4]} =~ ^[A-Za-z0-9._-]{1,64}$ && -n ${c[5]} && -n ${c[n - 1]} ]] ||
     return 1
   if [[ ${c[2]} == 'upload' ]]; then
-    [[ ${c[6]} =~ ^[A-Za-z0-9:_-]{1,256}$ && ${c[7]} =~ ^[0-9]{1,18}$ && ${c[8]} =~ ^[0-9]{1,18}$ &&
+    [[ ${c[6]} =~ ^[A-Za-z0-9:_-]+$ && ${#c[6]} -le 256 && ${c[7]} =~ ^[0-9]{1,18}$ && ${c[8]} =~ ^[0-9]{1,18}$ &&
       ${c[10]} =~ ^[0-9]{1,18}$ && ${c[12]} =~ ^[0-9]{1,18}$ && ${c[13]} =~ ^[0-9a-f]{64}$ ]] || return 1
     _dbx_state_identidade_valida "${c[11]}" || return 1
     local confirmado=$((10#${c[7]})) voo=$((10#${c[8]})) total=$((10#${c[10]}))
@@ -1890,9 +1890,12 @@ readonly DBX_STATE_CURSOR_DIAS=8
 readonly DBX_STATE_CURSOR_VALIDADE_S=604800
 readonly DBX_STATE_CURSOR_INCREMENTAIS=100
 readonly DBX_STATE_CURSOR_FOLGA_S=300
-readonly DBX_STATE_CURSOR_RE_CURSOR='^[A-Za-z0-9_=+/.-]{1,8192}$'
+# FreeBSD: RE_DUP_MAX = 255, e `{n,m}` com m > 255 e regex invalida no regcomp.
+# Por isso o comprimento (8192 e 256) e testado a parte, nos pontos de uso
+# (`${#valor} -le N`); as regex so conferem o alfabeto.
+readonly DBX_STATE_CURSOR_RE_CURSOR='^[A-Za-z0-9_=+/.-]+$'
 readonly DBX_STATE_CURSOR_RE_CONTA='^dbid:[A-Za-z0-9_-]{1,128}$'
-readonly DBX_STATE_CURSOR_RE_ASSINATURA='^[A-Za-z0-9_;=.-]{1,256}$'
+readonly DBX_STATE_CURSOR_RE_ASSINATURA='^[A-Za-z0-9_;=.-]+$'
 readonly DBX_STATE_CURSOR_RE_ENTRADA=$'^(f|d)\t(id:[A-Za-z0-9_-]{1,64})\t([0-9a-f]{9,64}|-)\t([0-9a-f]{64}|-)\t([0-9]{1,18})\t([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z|-)\t(.+)$'
 
 # Contexto (`dbx_state_cursor_contexto`).
@@ -1936,7 +1939,7 @@ dbx_state_cursor_contexto() {
   local LC_ALL=C
   DBX_STATE_CURSOR_ARQUIVO=''
   [[ $# -eq 5 && $1 =~ ^cred-[0-9a-f]{32}$ && $2 =~ $DBX_STATE_CURSOR_RE_CONTA && -n $3 &&
-    $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ]] || return "$DBX_STATE_ERRO_USO"
+    ${#5} -le 256 && $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ]] || return "$DBX_STATE_ERRO_USO"
   local conta=$1 account=$2 local_=$3 remoto=$4 assinatura=$5 base dobrado resumo
   _dbx_state_base || return $?
   base=$DBX_STATE_RESULTADO
@@ -1965,8 +1968,8 @@ _dbx_state_cursor_cabecalho_formato() {
     return 1
   fi
   # O remoto ($6) vazio e a raiz `/` (QA-B7B-01); o local ($7) nunca e vazio.
-  if [[ ! $3 =~ ^cred-[0-9a-f]{32}$ || ! $4 =~ $DBX_STATE_CURSOR_RE_CONTA || ! $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ||
-    -z $7 || ! $8 =~ $DBX_STATE_CURSOR_RE_CURSOR || ! $9 =~ ^[0-9]{1,12}$ || ! ${10} =~ ^[0-9]{1,7}$ ||
+  if [[ ! $3 =~ ^cred-[0-9a-f]{32}$ || ! $4 =~ $DBX_STATE_CURSOR_RE_CONTA || ${#5} -gt 256 || ! $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ||
+    -z $7 || ${#8} -gt 8192 || ! $8 =~ $DBX_STATE_CURSOR_RE_CURSOR || ! $9 =~ ^[0-9]{1,12}$ || ! ${10} =~ ^[0-9]{1,7}$ ||
     ! ${11} =~ ^[0-9]{1,12}$ || ! ${12} =~ ^[0-9]{1,7}$ ]] || ((10#${12} > DBX_STATE_CURSOR_ENTRADAS)); then
     DBX_STATE_MOTIVO='registro de listagem com campo invalido'
     return 1

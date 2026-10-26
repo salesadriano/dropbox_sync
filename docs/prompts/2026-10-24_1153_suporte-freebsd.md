@@ -125,3 +125,11 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > (colagem: passo 6 no FreeBSD com a correcao do `--stderr`; sem segredo) primeira execucao avanca ate 30% e e interrompida; a segunda: `retomada=encontrada faixa=114294784- part_bytes=114294784`, `GET files/download status=206 recebidos=237284317`, `download hash=ok bytes=351579101`, `integridade: conferida`, `retomada: sim`, `retomado_de: 114294784`, saida 0.
 
 **Leitura do Tech Lead:** download retomavel validado no FreeBSD real: o `.part` recebe os bytes pelo descritor, a retomada anexa pela faixa 206 e o `content_hash` local (RF-173) confere. RF-171(a) emendado e RF-104 confirmados no sistema do solicitante. Pendentes: sonda da retomada do upload e secao 7.
+
+## Prompt 13 — 2026-10-26
+
+> (colagem: sonda da retomada no FreeBSD; conta ficticia, sem segredo) todas as etapas `0` exceto `gravar 2 registro com campo invalido`, com `lib/state.sh: line 1457: [[: invalid regular expression '^[A-Za-z0-9:_-]{1,256}$': invalid repetition count(s)`. Identidade BSD bem formada (`dev` 18446744071662796545 em fusefs).
+
+**Leitura do Tech Lead:** causa do registro de retomada do upload: no FreeBSD o `[[ =~ ]]` usa o regcomp da libc com RE_DUP_MAX 255; `{1,256}` e invalido. Mesma classe em `DBX_STATE_CURSOR_RE_CURSOR` (`{1,8192}`) e `_RE_ASSINATURA` (`{1,256}`): o cursor do `sync --receber` tambem seria sempre recusado no FreeBSD. Correcao: `+` com teste explicito de comprimento, e auditoria que proibe repeticao acima de 255.
+
+**Decisao do solicitante (AskUserQuestion, 2026-10-26):** "Aprovo (Recomendado)" para `qa_regex_portavel_b17_test.sh` (sha256 `1406718c…138a015d8`).
