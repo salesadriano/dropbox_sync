@@ -139,3 +139,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > (colagem: upload interrompido e reexecutado no FreeBSD com a correcao RF-173(e); sem segredo) primeira execucao sem o aviso de registro, 4 blocos confirmados, Ctrl+C no bloco 5; segunda: `upload retomada=encontrada deslocamento=16777216`, sem `upload_session/start`, segue no `bloco=5 deslocamento=16777216`. A colagem termina durante o envio.
 
 **Leitura do Tech Lead:** retomada do upload validada no FreeBSD real: o registro e gravado e a sessao e reaproveitada do ultimo bloco confirmado (RF-101..103 e RF-173(e) no sistema do solicitante). Pendente: fim do envio (integridade) e secao 7.
+
+## Prompt 15 — 2026-10-26
+
+> (colagem: fim do upload retomado no FreeBSD; sem segredo) blocos ate 97 confirmados; `bloco=98 deslocamento=406847488 tamanho=433651` (total 407281139, igual ao arquivo); `upload_session/finish` 409 `path/conflict/file/`; saida 7.
+
+**Leitura do Tech Lead:** o envio retomado no FreeBSD leu e enviou o arquivo inteiro (RF-173 e retomada confirmados). A recusa e do contrato: o modo padrao `add` nao sobrescreve, e ja existe um arquivo DIFERENTE em `<pasta>/nossoerp.bak.zip` (a pre-checagem disse "conteudo diferente no destino"). Remedio do operador: `--modo overwrite`. Achado de produto, fora do escopo FreeBSD (vale no Linux): com `add` e arquivo diferente ja no destino, a recusa so chega no `finish`, depois de enviar tudo; a pre-checagem RF-60 ja sabe. Oferecido ao solicitante como demanda separada.
