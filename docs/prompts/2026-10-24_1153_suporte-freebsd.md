@@ -133,3 +133,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 **Leitura do Tech Lead:** causa do registro de retomada do upload: no FreeBSD o `[[ =~ ]]` usa o regcomp da libc com RE_DUP_MAX 255; `{1,256}` e invalido. Mesma classe em `DBX_STATE_CURSOR_RE_CURSOR` (`{1,8192}`) e `_RE_ASSINATURA` (`{1,256}`): o cursor do `sync --receber` tambem seria sempre recusado no FreeBSD. Correcao: `+` com teste explicito de comprimento, e auditoria que proibe repeticao acima de 255.
 
 **Decisao do solicitante (AskUserQuestion, 2026-10-26):** "Aprovo (Recomendado)" para `qa_regex_portavel_b17_test.sh` (sha256 `1406718c…138a015d8`).
+
+## Prompt 14 — 2026-10-26
+
+> (colagem: upload interrompido e reexecutado no FreeBSD com a correcao RF-173(e); sem segredo) primeira execucao sem o aviso de registro, 4 blocos confirmados, Ctrl+C no bloco 5; segunda: `upload retomada=encontrada deslocamento=16777216`, sem `upload_session/start`, segue no `bloco=5 deslocamento=16777216`. A colagem termina durante o envio.
+
+**Leitura do Tech Lead:** retomada do upload validada no FreeBSD real: o registro e gravado e a sessao e reaproveitada do ultimo bloco confirmado (RF-101..103 e RF-173(e) no sistema do solicitante). Pendente: fim do envio (integridade) e secao 7.
