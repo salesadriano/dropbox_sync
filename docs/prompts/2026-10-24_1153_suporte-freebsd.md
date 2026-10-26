@@ -66,3 +66,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > `aviso: a credencial anterior foi substituida; o refresh token antigo NAO foi revogado e segue valido na Dropbox`; `operacao: config`; `credencial: /root/.config/dbx/credencial.json`; `raiz_remota:` (vazia); `conta: dbid:****`.
 
 **Leitura do Tech Lead:** o `dbx config` conclui no FreeBSD real, sem o `chmod: --: No such file or directory` que abriu a demanda (RF-166 confirmado no sistema real). O aviso de token nao revogado e o comportamento previsto ao substituir uma credencial existente. Falta conferir o modo `-rw-------` e seguir os passos 5, 6 e a secao 7 do roteiro.
+
+## Prompt 5 — 2026-10-25
+
+> `-rw-------  1 root wheel 172 Oct 25 19:21 /root/.config/dbx/credencial.json`
+
+**Leitura do Tech Lead:** credencial gravada com modo `600` pelo `chmod -- 600` no FreeBSD real (RF-166 e TC-FBSD-01 confirmados no sistema do solicitante). Seguem os passos 5, 6 e a secao 7 do roteiro.
