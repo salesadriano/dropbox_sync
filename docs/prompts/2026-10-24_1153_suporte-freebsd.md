@@ -117,3 +117,5 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > (colagem: `dbx --debug download -p ".../nossoerp.bak.zip" /tmp/test/n.zip` no FreeBSD, interrompido apos 39 s em 0%, e reexecutado; sem segredo) `retomada=nenhuma`; depois `retomada=encontrada faixa=0- part_bytes=0`; progresso parado em 0 B / 335 MiB.
 
 **Leitura do Tech Lead:** defeito da propria demanda (T5, destino `fd:` em `lib/http.sh`), em qualquer plataforma: o `--stderr <arquivo>` do curl reabre o stderr do processo, e o `-o /dev/stderr` passa a escrever no arquivo de mensagens, nao no `.part`. Medido com o curl real 8.18 no Linux (scratchpad `teste-curl-fd.sh`: `.part` 0 bytes, conteudo no arquivo de erros). A suite usa curl duble e nao via. Correcao: `--no-show-error` no lugar de `--stderr` no modo `fd:`, com teste que usa o curl real e URL `file://`. O registro de retomada do DOWNLOAD e gravado no FreeBSD (o do upload nao: sonda pendente).
+
+**Decisao do solicitante (AskUserQuestion, 2026-10-26):** "Aprovo (Recomendado)" para `qa_download_curl_real_b16_test.sh` (sha256 `d0c1dd49…5af129`).

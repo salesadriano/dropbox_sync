@@ -741,9 +741,15 @@ _dbx_http_conduzir() {
   # processo. Nunca se monta `/dev/fd/<n>`: no FreeBSD, sem `fdescfs`, nao
   # existe para n>2 e, com ele, nao e o arquivo. O cliente escreve em
   # `/dev/stderr` (sempre presente no devfs), e a saida de erro do COMANDO e
-  # redirecionada para o descritor (`2>&<n>`); as mensagens do cliente vao para
-  # `$area/erro_cliente` por `--stderr`, e o `-w` segue na saida padrao
+  # redirecionada para o descritor (`2>&<n>`); o `-w` segue na saida padrao
   # capturada.
+  #
+  # NUNCA `--stderr <arquivo>` neste modo: o cliente REABRE o stderr do processo
+  # antes de abrir a saida, e `-o /dev/stderr` passaria a ser o arquivo de erros;
+  # o conteudo baixado iria para la e o `.part` ficaria com 0 bytes. Por isso o
+  # cliente roda com `--no-show-error`: nenhuma mensagem sua pode cair no
+  # descritor do conteudo. A mensagem textual do cliente NAO e capturada neste
+  # modo; a classificacao segue pelo status do cliente e pelo `--fail`.
   #
   # LIMITE DECLARADO: o cliente REABRE `/dev/stderr`. Cano e terminal se
   # comportam como a saida padrao; arquivo regular e reaberto do inicio e
@@ -785,9 +791,11 @@ _dbx_http_conduzir() {
           if [[ $destino == fd:* ]]; then
             # O descritor do destino e a SAIDA DE ERRO deste comando (`2>&<n>`) e
             # o cliente escreve em `/dev/stderr`, que existe sempre (devfs), ao
-            # contrario de `/dev/fd/<n>`. As mensagens do cliente vao por
-            # `--stderr` para o arquivo; o `-w` segue na saida padrao capturada.
-            curl -K - --fail -X "$metodo" --stderr "$area/erro_cliente" \
+            # contrario de `/dev/fd/<n>`. Sem `--stderr` (reabriria o stderr e
+            # desviaria o conteudo) e com `--no-show-error` depois do `-K -`, que
+            # vence o `show-error` de `_dbx_http_opcoes`. O `-w` segue na saida
+            # padrao capturada.
+            curl -K - --no-show-error --fail -X "$metodo" \
               -o /dev/stderr -D "$area/cabecalhos" -w "$formato_w" "$url" 2>&"${destino#fd:}"
           else
             curl -K - --fail -X "$metodo" \
@@ -854,6 +862,10 @@ _dbx_http_conduzir() {
       dbx_errors_redigir "$bruto" >/dev/null
       # shellcheck disable=SC2034  # canal publico, ver nota no topo
       DBX_HTTP_DIAGNOSTICO=$DBX_ERRORS_REDIGIDO
+    elif [[ $_DBX_HTTP_CANAL == 'fluxo' && $destino == fd:* && $estado -ne 0 && $estado -ne 22 ]]; then
+      # Modo `fd:` roda sem mensagem textual do cliente (`--no-show-error`):
+      # a falha continua com motivo legivel, pelo status.
+      DBX_HTTP_DIAGNOSTICO="cliente HTTP falhou com codigo $estado"
     fi
 
     # shellcheck disable=SC2034  # canal publico, ver nota no topo

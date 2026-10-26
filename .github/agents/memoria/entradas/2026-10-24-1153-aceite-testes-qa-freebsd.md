@@ -23,3 +23,5 @@ Reaprovacao (AskUserQuestion, 2026-10-25): `tests/integracao/qa_trava_tmp_b2_tes
 Aprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_leitura_exata_b14_test.sh` (novo, 10 casos, RF-173, TC-FBSD-25..27; leitura exata sob o duble do `head` do FreeBSD), sha256 `c7de4ca5…76c920b8`.
 
 Reaprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_consulta_diagnostico_b1_test.sh` (sha256 `9a0dab8d…e661920a`) e `tests/integracao/qa_debug_transferencias_b12_test.sh` (sha256 `fa2d971d…e2fca987`); unica mudanca: `dd` na lista de utilitarios do PATH reduzido, exigido pelo preflight (RF-173(c)).
+
+Aprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_download_curl_real_b16_test.sh` (novo, 7 casos, curl real contra servidor HTTP local; RF-171(a) emendado, destino `fd:` sem `--stderr`), sha256 `d0c1dd49…5af129`.
