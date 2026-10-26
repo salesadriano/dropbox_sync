@@ -92,6 +92,7 @@ _dbx_cmd_download_retomavel() {
 
 dbx_cmd_download_executar() {
   local caminho='' destino='' opcao tem_limite='nao' opcao_limite='' valor_limite='' sem_retomada='nao'
+  local tem_paralelo='nao' opcao_paralelo='' valor_paralelo=''
   local -a filtros_caminho=() filtros_meta=()
   while [[ $# -gt 0 ]]; do
     case ${1-} in
@@ -119,6 +120,13 @@ dbx_cmd_download_executar() {
         shift
         valor_limite=${1-}
         tem_limite='sim'
+        ;;
+      # RF-175: transferencias simultaneas; o ultimo vence, validado depois do laco.
+      --paralelo | --parallel)
+        opcao_paralelo=$1
+        shift
+        valor_paralelo=${1-}
+        tem_paralelo='sim'
         ;;
       --progresso | --progress | -p)
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
@@ -189,10 +197,27 @@ dbx_cmd_download_executar() {
     dbx_cmd_falhar uso_invalido "$DBX_CMD_LIMITE_MOTIVO"
     return $?
   }
+  # RF-175: ponto unico de validacao, antes de qualquer rede ou estado. Saida
+  # padrao (destino omitido ou `-`): opcao explicita recusa, variavel ignorada
+  # (DIV-374 A).
+  DBX_CMD_PARALELO=1
+  if [[ -z $destino || $destino == '-' ]]; then
+    [[ $tem_paralelo == 'sim' ]] && {
+      dbx_cmd_falhar uso_invalido "$opcao_paralelo nao se aplica a saida padrao"
+      return $?
+    }
+  else
+    dbx_cmd_paralelo "$tem_paralelo" "$opcao_paralelo" "$valor_paralelo" || {
+      dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+      return $?
+    }
+  fi
   local tem_filtros='nao'
   local -a repasse=(${filtros_caminho[@]+"${filtros_caminho[@]}"} ${filtros_meta[@]+"${filtros_meta[@]}"})
   [[ ${#repasse[@]} -gt 0 ]] && tem_filtros='sim'
   [[ -n $DBX_CMD_LIMITE_BANDA ]] && repasse+=(--limite-banda "$DBX_CMD_LIMITE_BANDA")
+  # RF-176: o N validado segue ao `sync` interno como opcao (variavel nao relida).
+  ((DBX_CMD_PARALELO > 1)) && repasse+=(--paralelo "$DBX_CMD_PARALELO")
 
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
     dbx_cmd_iniciar_saida

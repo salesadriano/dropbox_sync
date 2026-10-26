@@ -75,8 +75,8 @@ _dbx_completar() {
   fi
 
   case $comando in
-    upload) lista='--modo --mode --rev --forcar --force --limite-banda --bwlimit --sem-retomada --no-resume --progresso --progress -p --sem-progresso --no-progress' ;;
-    download) lista='--excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --progresso --progress -p --sem-progresso --no-progress --forcar --force --sem-retomada --no-resume' ;;
+    upload) lista='--modo --mode --rev --forcar --force --limite-banda --bwlimit --paralelo --parallel --sem-retomada --no-resume --progresso --progress -p --sem-progresso --no-progress' ;;
+    download) lista='--excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --paralelo --parallel --progresso --progress -p --sem-progresso --no-progress --forcar --force --sem-retomada --no-resume' ;;
     list) lista='--limite --limit --recursivo --recursive -R' ;;
     delete) lista='--confirmar --yes -y --rev' ;;
     space) lista='--humano --human -H' ;;

@@ -209,7 +209,7 @@ teste_par02_variavel_invalida_nomeia_a_variavel_e_a_opcao_vence() {
   done
 }
 
-teste_par03_fora_do_sync_a_opcao_e_recusada_e_a_variavel_ignorada() {
+teste_par03_fora_do_sync_upload_download_a_opcao_e_recusada_e_a_variavel_ignorada() {
   local base
   base=$(_cenario)
   _rodar "$base" list --paralelo 2 /
@@ -217,13 +217,8 @@ teste_par03_fora_do_sync_a_opcao_e_recusada_e_a_variavel_ignorada() {
   _rodar "$base" info --paralelo 2 /x
   assert_igual "$USO" "$DBX_ESTADO" 'info recusa a opcao'
   DBX_T_AMBIENTE=(DBX_PARALELO=99)
-  printf 'abc' >"$base/arq"
-  _rodar "$base" upload --forcar "$base/arq" /r/arq
-  assert_igual 0 "$DBX_ESTADO" "upload ignora a variavel; $DBX_ERRO"
-  _rodar "$base" upload --forcar "$base/local" /r/pasta
-  assert_igual 0 "$DBX_ESTADO" "upload de pasta ignora a variavel; $DBX_ERRO"
-  _rodar "$base" download /r "$base/local"
-  assert_diferente "$USO" "$DBX_ESTADO" "download de pasta ignora a variavel invalida; $DBX_ERRO"
+  _rodar "$base" list /
+  assert_diferente "$USO" "$DBX_ESTADO" "list ignora a variavel invalida; $DBX_ERRO"
   DBX_T_AMBIENTE=()
 }
 
@@ -560,6 +555,166 @@ teste_par18_sinal_tem_resumo_em_melhor_esforco_e_nao_deixa_arquivo_de_linhas() {
   assert_contem 'debug: resumo comando=sync ' "$(<"$base/err")" 'resumo no sinal'
   assert_contem ' saida=14' "$(<"$base/err")" 'resumo com o codigo do sinal'
   assert_igual 0 "$(find "$base/tmp" -name 'dbg.*' | wc -l)" 'sem arquivo de linhas apos o sinal'
+}
+
+# ---------------------------------------------------------------------------
+# RF-175, RF-176: upload e download (etapa 1: pastas)
+# ---------------------------------------------------------------------------
+
+_grande() { # <base> — acima do limiar do lote (1 MiB): o envio segue o unitario
+  find "$1/local" -type f -exec sh -c 'for f; do head -c 1048577 /dev/zero >>"$f"; touch -d "2020-01-01 00:00:00" "$f"; done' _ {} +
+}
+
+teste_par20_opcao_e_alias_validam_nos_dois_comandos_antes_da_rede() {
+  local base valor op
+  base=$(_cenario)
+  printf 'abc' >"$base/arq"
+  for op in --paralelo --parallel; do
+    for valor in 0 9 -1 +2 01 abc '' ' 2' 1.5; do
+      _rodar "$base" upload "$op" "$valor" "$base/arq" /r/arq
+      assert_igual "$USO" "$DBX_ESTADO" "upload $op [$valor]"
+      assert_contem "$op" "$DBX_ERRO" "upload nomeia a opcao [$valor]"
+      _rodar "$base" download "$op" "$valor" /r/arq "$base/saida"
+      assert_igual "$USO" "$DBX_ESTADO" "download $op [$valor]"
+      assert_contem "$op" "$DBX_ERRO" "download nomeia a opcao [$valor]"
+    done
+  done
+  _rodar "$base" upload --paralelo
+  assert_igual "$USO" "$DBX_ESTADO" 'upload sem valor'
+  assert_arquivo_ausente "$base/chamadas" 'nenhuma chamada de rede'
+  for op in --paralelo --parallel; do
+    _rodar "$base" upload --forcar "$op" 2 "$base/arq" /r/arq
+    assert_igual 0 "$DBX_ESTADO" "upload $op 2 aceita; $DBX_ERRO"
+  done
+  assert_arquivo_ausente "$base/estado" 'nem estado'
+}
+
+teste_par21_variavel_vale_a_opcao_vence_e_variavel_invalida_recusa() {
+  local base valor
+  base=$(_cenario)
+  _remoto "$base" 2
+  printf 'abc' >"$base/arq"
+  for valor in 0 9 abc '' 01; do
+    DBX_T_AMBIENTE=("DBX_PARALELO=$valor")
+    _rodar "$base" upload "$base/arq" /r/arq
+    assert_igual "$USO" "$DBX_ESTADO" "upload variavel [$valor]"
+    assert_contem 'DBX_PARALELO' "$DBX_ERRO" 'upload nomeia a variavel'
+    _rodar "$base" download /r/d0/a2.txt "$base/saida"
+    assert_igual "$USO" "$DBX_ESTADO" "download variavel [$valor]"
+    assert_contem 'DBX_PARALELO' "$DBX_ERRO" 'download nomeia a variavel'
+  done
+  assert_arquivo_ausente "$base/chamadas" 'nenhuma chamada de rede'
+  DBX_T_AMBIENTE=(DBX_PARALELO=99)
+  _rodar "$base" upload --forcar --paralelo 2 "$base/arq" /r/arq
+  assert_igual 0 "$DBX_ESTADO" "upload: a opcao vence a variavel invalida; $DBX_ERRO"
+  _rodar "$base" download --paralelo 9 --paralelo 3 /r/d0/a2.txt "$base/saida"
+  assert_igual 0 "$DBX_ESTADO" "download: a ultima opcao vence; $DBX_ERRO"
+  DBX_T_AMBIENTE=(DBX_PARALELO=4)
+  _rodar "$base" upload --forcar "$base/arq" /r/arq
+  assert_igual 0 "$DBX_ESTADO" "upload: variavel valida; $DBX_ERRO"
+  _rodar "$base" download /r/d0/a2.txt "$base/saida"
+  assert_igual 0 "$DBX_ESTADO" "download: variavel valida; $DBX_ERRO"
+  DBX_T_AMBIENTE=()
+}
+
+teste_par22_download_de_pasta_com_n3_e_igual_a_n1_e_efetivo() {
+  local base foto_um foto_n pico_um
+  base=$(_cenario)
+  _remoto "$base" 7
+  printf '0.3' >"$base/atraso/a1.txt"
+  printf '0.3' >"$base/atraso/a2.txt"
+  _rodar "$base" download / "$base/local"
+  assert_igual 0 "$DBX_ESTADO" "N=1; $DBX_ERRO"
+  foto_um=$(_fotografia "$base" "$base/local")
+  pico_um=$(_pico "$base")
+  assert_igual 1 "$pico_um" 'sem opcao: sequencial'
+  _zerar "$base" receber
+  _rodar "$base" download --paralelo 1 / "$base/local"
+  assert_igual "$foto_um" "$(_fotografia "$base" "$base/local")" 'N=1 explicito identico ao anterior'
+  assert_igual 1 "$(_pico "$base")" 'N=1 sequencial'
+  _zerar "$base" receber
+  _rodar "$base" download --paralelo 3 / "$base/local"
+  assert_igual 0 "$DBX_ESTADO" "N=3; $DBX_ERRO"
+  foto_n=$(_fotografia "$base" "$base/local")
+  assert_igual "$foto_um" "$foto_n" 'N=3: saida, arquivos, cache e codigo iguais aos de N=1'
+  [[ $(_pico "$base") -gt 1 ]] || _harness_falhar "N=3 sem simultaneidade: pico $(_pico "$base")"
+  [[ $(_pico "$base") -le 3 ]] || _harness_falhar "pico acima de 3: $(_pico "$base")"
+  _zerar "$base" receber
+  DBX_T_AMBIENTE=(DBX_PARALELO=3)
+  _rodar "$base" download / "$base/local"
+  assert_igual 0 "$DBX_ESTADO" "variavel; $DBX_ERRO"
+  [[ $(_pico "$base") -gt 1 ]] || _harness_falhar "variavel sem simultaneidade: pico $(_pico "$base")"
+  DBX_T_AMBIENTE=()
+}
+
+teste_par23_upload_de_pasta_com_n3_e_igual_a_n1_e_efetivo() {
+  local base foto_um foto_n
+  base=$(_cenario)
+  _local "$base" 7
+  _grande "$base"
+  printf '0.3' >"$base/atraso/a1.txt"
+  printf '0.3' >"$base/atraso/a2.txt"
+  _rodar "$base" upload --forcar "$base/local" /r
+  assert_igual 0 "$DBX_ESTADO" "N=1; $DBX_ERRO"
+  foto_um="$(_fotografia "$base" "$base/local")
+$(_arvore "$base/enviado")"
+  assert_igual 1 "$(_pico "$base")" 'sem opcao: sequencial'
+  _zerar "$base" enviar
+  _rodar "$base" upload --forcar --paralelo 3 "$base/local" /r
+  assert_igual 0 "$DBX_ESTADO" "N=3; $DBX_ERRO"
+  foto_n="$(_fotografia "$base" "$base/local")
+$(_arvore "$base/enviado")"
+  assert_igual "$foto_um" "$foto_n" 'N=3: saida, arquivos, cache e codigo iguais aos de N=1'
+  [[ $(_pico "$base") -gt 1 ]] || _harness_falhar "N=3 sem simultaneidade: pico $(_pico "$base")"
+  [[ $(_pico "$base") -le 3 ]] || _harness_falhar "pico acima de 3: $(_pico "$base")"
+  _zerar "$base" enviar
+  DBX_T_AMBIENTE=(DBX_PARALELO=3)
+  _rodar "$base" upload --forcar "$base/local" /r
+  assert_igual 0 "$DBX_ESTADO" "variavel; $DBX_ERRO"
+  [[ $(_pico "$base") -gt 1 ]] || _harness_falhar "variavel sem simultaneidade: pico $(_pico "$base")"
+  DBX_T_AMBIENTE=()
+}
+
+teste_par24_dry_run_de_pasta_aceita_valida_e_ignora() {
+  local base
+  base=$(_cenario)
+  _remoto "$base" 3
+  _local "$base" 3
+  _rodar "$base" --dry-run upload --paralelo 4 "$base/local" /r
+  assert_igual 0 "$DBX_ESTADO" "upload dry-run aceita; $DBX_ERRO"
+  _rodar "$base" --dry-run download --paralelo 4 /r "$base/saida"
+  assert_igual 0 "$DBX_ESTADO" "download dry-run aceita; $DBX_ERRO"
+  _rodar "$base" --dry-run upload --paralelo 9 "$base/local" /r
+  assert_igual "$USO" "$DBX_ESTADO" 'upload dry-run valida N'
+  _rodar "$base" --dry-run download --paralelo 0 /r "$base/saida"
+  assert_igual "$USO" "$DBX_ESTADO" 'download dry-run valida N'
+  assert_igual 0 "$(_pico "$base")" 'nenhuma transferencia em simulacao'
+}
+
+teste_par25_entrada_e_saida_padrao_recusam_a_opcao_e_ignoram_a_variavel() {
+  local base
+  base=$(_cenario)
+  _remoto "$base" 2
+  _rodar "$base" upload --paralelo 2 - /r/arq
+  assert_igual "$USO" "$DBX_ESTADO" 'upload de entrada padrao com a opcao'
+  _rodar "$base" download --paralelo 2 /r/d0/a2.txt -
+  assert_igual "$USO" "$DBX_ESTADO" 'download para saida padrao com a opcao'
+  _rodar "$base" download --parallel 2 /r/d0/a2.txt
+  assert_igual "$USO" "$DBX_ESTADO" 'download sem destino (saida padrao) com a opcao'
+  assert_arquivo_ausente "$base/chamadas" 'nenhuma chamada de rede'
+  DBX_T_AMBIENTE=(DBX_PARALELO=99)
+  _rodar "$base" download /r/d0/a2.txt -
+  assert_igual 0 "$DBX_ESTADO" "saida padrao ignora a variavel; $DBX_ERRO"
+  DBX_T_AMBIENTE=()
+}
+
+teste_par26_outros_comandos_continuam_recusando() {
+  local base
+  base=$(_cenario)
+  _rodar "$base" list --parallel 2 /
+  assert_igual "$USO" "$DBX_ESTADO" 'list'
+  _rodar "$base" delete --paralelo 2 /x
+  assert_igual "$USO" "$DBX_ESTADO" 'delete'
 }
 
 harness_executar "$@"

@@ -1530,3 +1530,34 @@ dbx_cmd_limite_banda() {
   DBX_CMD_LIMITE_BANDA=$DBX_CLI_TAXA
   dbx_http_limite_banda "$DBX_CLI_TAXA"
 }
+
+# ---------------------------------------------------------------------------
+# Paralelismo (RF-133, RF-175) — ponto unico para `sync`, `upload` e `download`
+# ---------------------------------------------------------------------------
+
+# dbx_cmd_paralelo <tem_opcao: sim|nao> <opcao_como_digitada> <valor>
+#
+# RF-133(b)(c): a opcao vence, e presente a variavel DBX_PARALELO NAO e lida;
+# sem opcao, a variavel presente e invalida (inclusive vazia) recusa nomeando-a.
+# Resultado em DBX_CMD_PARALELO (N efetivo, 1 por padrao) e DBX_CMD_PARALELO_ORIGEM
+# (padrao|opcao|ambiente); o motivo da recusa fica em DBX_CLI_MOTIVO. Quem repassa
+# o N a outro comando (`upload`/`download` de pasta ao `sync`) o passa ja validado,
+# como opcao, para a variavel nao ser relida la (RF-176(a)).
+DBX_CMD_PARALELO=1
+DBX_CMD_PARALELO_ORIGEM='padrao'
+dbx_cmd_paralelo() {
+  local tem_opcao=$1 nome_opcao=$2 valor=${3-}
+  DBX_CMD_PARALELO=1
+  DBX_CMD_PARALELO_ORIGEM='padrao'
+  if [[ $tem_opcao == 'sim' ]]; then
+    dbx_cli_validar_paralelo "$nome_opcao" "$valor" opcao || return $?
+    DBX_CMD_PARALELO=$DBX_CLI_PARALELO
+    DBX_CMD_PARALELO_ORIGEM='opcao'
+  elif [[ -n ${DBX_PARALELO+definida} ]]; then
+    dbx_cli_validar_paralelo DBX_PARALELO "$DBX_PARALELO" variavel || return $?
+    DBX_CMD_PARALELO=$DBX_CLI_PARALELO
+    # shellcheck disable=SC2034  # canal publico, lido pelos comandos
+    DBX_CMD_PARALELO_ORIGEM='ambiente'
+  fi
+  return 0
+}
