@@ -99,3 +99,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > (colagem: `dbx --debug upload` com destino `/ASJ/ASJEP/backup/nossoerp bkp` (pasta), interrompido com Ctrl+C duas vezes; sem segredo) `aviso: sem retomada nesta execucao: o registro de retomada nao pode ser gravado`; a segunda execucao recomeca do bloco 1 (`retomada=descartada motivo=estado-ausente`).
 
 **Leitura do Tech Lead:** (1) o destino continua sendo pasta: a recusa viria no `finish`. (2) Defeito no FreeBSD real: `dbx_state_retomada_gravar` falha na primeira gravacao (logo apos o `start`); os dubles nao reproduzem (qa_leitura_exata_b14 retoma sob eles). Causa nao identificada pela leitura do codigo; sonda sem rede e sem credencial (conta ficticia) enviada ao solicitante para apontar a etapa. Hipotese residual: formato do `session_id` real (`^[A-Za-z0-9:_-]{1,256}$` em `_dbx_state_retomada_formato`).
+
+## Prompt 9 — 2026-10-26
+
+> (colagem: `dbx --debug download -p "/ASJ/ASJEP/backup/nossoerp bkp" /tmp/test` no FreeBSD; sem segredo) `get_metadata` 200; dois `GET files/download` com 409; `[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente...`; `sync --receber` interno lista 4 arquivos e imprime o plano (`a_transferir: 4`). A colagem termina no plano.
+
+**Leitura do Tech Lead:** a listagem e o plano no FreeBSD estao corretos; a colagem para antes das transferencias (execucao em andamento ou saida cortada). Achado menor, fora do escopo FreeBSD: o `download` tenta `files/download` duas vezes (409) depois de o `get_metadata` ja ter dito que o caminho e pasta.
