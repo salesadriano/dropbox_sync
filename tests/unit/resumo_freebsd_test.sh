@@ -27,7 +27,7 @@ _area() {
 _caminho() {
   local dir=$1/bin alvo origem
   mkdir -p "$dir"
-  for alvo in bash env head wc mktemp stat readlink find tr grep cat chmod mv rm mkdir \
+  for alvo in bash env head dd wc mktemp stat readlink find tr grep cat chmod mv rm mkdir \
     dirname basename sed seq awk od tail df sleep ln rmdir curl; do
     origem=$(command -v "$alvo" 2>/dev/null) || continue
     ln -sf "$origem" "$dir/$alvo"

@@ -22,7 +22,7 @@ _bin() {
   local dir=$1/bin alvo origem
   shift
   mkdir -p "$dir"
-  for alvo in bash env id dirname basename cat mkdir rm cp chmod mktemp stat sed tr head ln mv \
+  for alvo in bash env id dirname basename cat mkdir rm cp chmod mktemp stat sed tr head dd ln mv \
     readlink find df tail wc sleep rmdir "$@"; do
     origem=$(command -v "$alvo" 2>/dev/null) || continue
     ln -sf "$origem" "$dir/$alvo"

@@ -28,7 +28,7 @@ _sem() {
   mkdir -p "$dir"
   # `timeout` e os utilitarios usados pela propria sonda precisam existir no
   # PATH reduzido, senao a sonda mede a si mesma em vez do componente.
-  for alvo in bash curl sha256sum shasum sha256 openssl timeout env head wc mktemp stat \
+  for alvo in bash curl sha256sum shasum sha256 openssl timeout env head dd wc mktemp stat \
     readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od tail df sleep ln rmdir; do
     for faltante in "${ausentes[@]}"; do
       [[ $alvo == "$faltante" ]] && continue 2
@@ -240,7 +240,7 @@ teste_diagnostico_do_preflight_nao_ecoa_conteudo_da_credencial() {
 
 teste_todo_utilitario_ausente_reprova_e_e_nomeado() {
   local utilitario caminho saida
-  for utilitario in mktemp mv rm chmod mkdir stat head wc readlink dirname ln; do
+  for utilitario in mktemp mv rm chmod mkdir stat head dd wc readlink dirname ln; do
     caminho=$(_sem "$utilitario")
     saida=$(PATH="$caminho" timeout 30 bash -c '
       . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"

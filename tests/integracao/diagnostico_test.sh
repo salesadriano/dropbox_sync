@@ -41,7 +41,7 @@ _cenario() {
   printf '{"access_token":"%s","expires_in":14400,"scope":"%s"}' "$SENTINELA_TOKEN" "$ESCOPOS" \
     >"$base/token"
   printf '%s' '{"used":100,"allocation":{".tag":"individual","allocated":1000}}' >"$base/espaco"
-  for alvo in curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir \
+  for alvo in curl mktemp mv rm chmod mkdir stat head dd wc readlink dirname find cat sleep tail df ln rmdir \
     sha256sum; do
     origem=$(command -v "$alvo" 2>/dev/null) || continue
     ln -s "$origem" "$base/bin/$alvo"

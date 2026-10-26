@@ -81,7 +81,7 @@ readonly DBX_PREFLIGHT_BASH_MENOR=4
 # `commands/config.sh` (RNF-34(c)); `ln` pela criacao exclusiva da trava de
 # concorrencia (RF-69(j)); `rmdir` pela remocao do diretorio de estado vazio
 # (RF-69(e), `unlink`); a mesma lista esta no README.
-readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir'
+readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head dd wc readlink dirname find cat sleep tail df ln rmdir'
 
 DBX_PREFLIGHT_MOTIVO=''
 DBX_PREFLIGHT_DETALHE=''

@@ -19,3 +19,7 @@ O solicitante aprovou explicitamente (AskUserQuestion, 2026-10-24):
 Reaprovacao (AskUserQuestion, 2026-10-25): `tests/integracao/qa_freebsd_b13_test.sh` com 10 casos (o caso da recusa sem fdescfs saiu pela decisao "Conferir pelo descritor"; entraram 6 casos do comportamento novo), sha256 `20420830…711d006b`.
 
 Reaprovacao (AskUserQuestion, 2026-10-25): `tests/integracao/qa_trava_tmp_b2_test.sh` (suite da fase 2), caso `qa_b2_01` corrigido para aceitar as 2 travas (par e raiz, RF-132) quando a vencedora e um `sync`; defeito do teste anterior a demanda; sha256 `2114eaa2…df6d3333`.
+
+Aprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_leitura_exata_b14_test.sh` (novo, 10 casos, RF-173, TC-FBSD-25..27; leitura exata sob o duble do `head` do FreeBSD), sha256 `c7de4ca5…76c920b8`.
+
+Reaprovacao (AskUserQuestion, 2026-10-26): `tests/integracao/qa_consulta_diagnostico_b1_test.sh` (sha256 `9a0dab8d…e661920a`) e `tests/integracao/qa_debug_transferencias_b12_test.sh` (sha256 `fa2d971d…e2fca987`); unica mudanca: `dd` na lista de utilitarios do PATH reduzido, exigido pelo preflight (RF-173(c)).

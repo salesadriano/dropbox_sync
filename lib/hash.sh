@@ -26,7 +26,7 @@
 # Cada bloco e lido para UM arquivo de buffer reaproveitado, e nao por um cano.
 # A escolha nao e estetica:
 #
-#   a) `head -c N > buffer` expoe o status do leitor diretamente em `$?`. Na
+#   a) `dbx_ler_exato N 0 buffer` expoe o status do leitor diretamente em `$?`. Na
 #      versao anterior a leitura passava por um cano e apenas o status do
 #      ultimo comando era observado, de modo que EIO, truncamento sob leitura
 #      ou produtor morto no meio produziam um `content_hash` bem formado de
@@ -288,7 +288,7 @@ _dbx_hash_calcular() {
   dbx_hash_acumular_iniciar || return $?
   while :; do
     # Sem cano: o status abaixo e o do proprio leitor.
-    head -c "$DBX_HASH_TAMANHO_BLOCO" >"$buffer" || return "$DBX_HASH_ERRO_RESUMO"
+    dbx_ler_exato "$DBX_HASH_TAMANHO_BLOCO" 0 "$buffer" || return "$DBX_HASH_ERRO_RESUMO"
     tamanho=$(wc -c <"$buffer") || return "$DBX_HASH_ERRO_RESUMO"
     tamanho=${tamanho//[^0-9]/}
     [[ -n $tamanho ]] || return "$DBX_HASH_ERRO_RESUMO"

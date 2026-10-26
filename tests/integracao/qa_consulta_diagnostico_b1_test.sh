@@ -375,7 +375,7 @@ _qa_bin_sem() {
   local alvo origem dir="$BASE/bin-sem-$1"
   rm -rf "$dir"
   mkdir -p "$dir"
-  for alvo in mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir \
+  for alvo in mktemp mv rm chmod mkdir stat head dd wc readlink dirname find cat sleep tail df ln rmdir \
     sha256sum shasum locale; do
     [[ $alvo == "$1" ]] && continue
     origem=$(command -v "$alvo" 2>/dev/null) || continue
@@ -398,7 +398,7 @@ teste_qa_dia_cada_utilitario_ausente_um_por_um() {
   for entrada in "$DBX_EXEC" "$BASE/instalado/dbx"; do
     rotulo=direto
     [[ $entrada == "$DBX_EXEC" ]] || rotulo=vinculo
-    for utilitario in curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep \
+    for utilitario in curl mktemp mv rm chmod mkdir stat head dd wc readlink dirname find cat sleep \
       tail df sha256sum; do
       _qa_bin_sem "$utilitario"
       QA_EXEC=$entrada _qa_rodar -- diagnostico

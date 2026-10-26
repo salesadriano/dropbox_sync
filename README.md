@@ -51,7 +51,7 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 - **FreeBSD — sem `fdescfs`:** o `dbx` confere arquivos abertos (o `.part` da retomada, o cursor, o estado) pelo próprio descritor, e não por `/dev/fd/<n>`; o `fdescfs` não é necessário, montado ou não.
 - **FreeBSD — identificador do host nas travas:** sem `/proc`, as partes de boot e de namespace do identificador valem `x`; a trava continua valendo no mesmo host.
 - **Rede:** `cURL` com suporte a HTTPS e TLS 1.2+ (única dependência externa).
-- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum`, `sha256` ou `openssl`.
+- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `dd`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum`, `sha256` ou `openssl`.
 - **Opcionais, só no diagnóstico de `dbx config --debug`:** `mount`, `grep`, `getenforce` e `lsattr`; na falta deles, a linha correspondente do relatório é omitida.
 
 ---

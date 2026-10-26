@@ -185,3 +185,32 @@ _dbx_atributos_aprender_forma() {
     return 1
   fi
 }
+
+# dbx_ler_exato <bytes> <fd> <arquivo_destino> — le do descritor ate <bytes>
+# bytes, NUNCA alem, e grava em <arquivo_destino> (truncado antes). Status 0
+# quando a leitura terminou sem erro: o chamador mede o que veio (`wc -c`); menos
+# que <bytes> significa fim da entrada. Status 1 em falha do `dd`, 2 em uso.
+#
+# POR QUE NAO `head -c`: o `head` do FreeBSD le por stdio, com leitura antecipada,
+# e ao sair deixa o deslocamento do descritor ALEM de N; em leituras em partes
+# sobre o MESMO descritor os bytes entre uma parte e outra se perdem (medido num
+# upload de 412 MB em fusefs). O `dd` faz um unico read() por bloco, sem buffer,
+# entao o deslocamento fica exatamente em N. Leitura curta (cano, fusefs) volta
+# ao laco com o que falta; 0 bytes lidos e o fim. `conv=notrunc` (POSIX): sem ele
+# alguns `dd` truncam o destino ao terminar, apagando o que as voltas anteriores
+# anexaram.
+dbx_ler_exato() {
+  local _alvo=${1-} _fd=${2-} _destino=${3-} _lido=0 _antes _falta
+  [[ $_alvo =~ ^[0-9]+$ && $_fd =~ ^[0-9]+$ && -n $_destino ]] || return 2
+  : >"$_destino" || return 1
+  while [[ $_lido -lt $_alvo ]]; do
+    _falta=$((_alvo - _lido))
+    _antes=$_lido
+    dd bs="$_falta" count=1 conv=notrunc <&"$_fd" >>"$_destino" 2>/dev/null || return 1
+    _lido=$(wc -c <"$_destino") || return 1
+    _lido=${_lido//[^0-9]/}
+    [[ -n $_lido ]] || return 1
+    [[ $_lido -gt $_antes ]] || break
+  done
+  return 0
+}
