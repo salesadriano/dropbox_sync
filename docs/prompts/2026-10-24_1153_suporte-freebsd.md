@@ -59,3 +59,10 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 **Decisao do solicitante (AskUserQuestion, 2026-10-24):** "Conferir pelo descritor (Recomendado)": substitui a DIV-352 C; atributos lidos do proprio descritor, reabertura por `/dev/fd` trocada por abertura pelo caminho com conferencia do `dev:ino`, sem exigir `fdescfs`.
 
 **Decisao do solicitante (AskUserQuestion, 2026-10-25):** "Versionar o bloco (Recomendado)": o bloco `ai-team:roteamento` que o plugin escreve no `CLAUDE.md` e versionado nesta branch, para a suite oficial nao registrar a arvore como suja.
+
+## Prompt 4 — 2026-10-25
+
+> (colagem: saida de `bash bin/dbx config` no FreeBSD do solicitante, com a branch atualizada; sanitizada, identificador da conta mascarado)
+> `aviso: a credencial anterior foi substituida; o refresh token antigo NAO foi revogado e segue valido na Dropbox`; `operacao: config`; `credencial: /root/.config/dbx/credencial.json`; `raiz_remota:` (vazia); `conta: dbid:****`.
+
+**Leitura do Tech Lead:** o `dbx config` conclui no FreeBSD real, sem o `chmod: --: No such file or directory` que abriu a demanda (RF-166 confirmado no sistema real). O aviso de token nao revogado e o comportamento previsto ao substituir uma credencial existente. Falta conferir o modo `-rw-------` e seguir os passos 5, 6 e a secao 7 do roteiro.
