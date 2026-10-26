@@ -19,3 +19,5 @@
 - O caminho final (`<pasta>/<nome>`) vale para a pre-checagem por `content_hash`, a chave da retomada, o `--rev` e o campo `caminho` da saida.
 
 **Decisoes:** o Tech Lead aceitou a consulta so de tipo com `--forcar` e entrada padrao (emenda `RF-60(g)(h)`) e `--rev` sem consulta (com `/` final vale a regra da barra, `RF-174(f)`). **Aprovacao do solicitante (AskUserQuestion, 2026-10-26):** "Aprovo (Recomendado)" para `tests/integracao/qa_upload_para_pasta_b15_test.sh`, 26 casos, sha256 `dabdb304830025c12209554ab6111c31b2d8765015bcc8919d1f871d5934a867`.
+
+**Decisoes do solicitante (AskUserQuestion, 2026-10-26):** a suite completa do ciclo 2 reprovou em `qa_cache_unico_p3::qa_skip_forcar_rev_e_entrada_padrao_ignoram_cache_valido` (contrato antigo de RF-60(g)(h): zero consultas); "Ajustar a suite p3 (Recomendado)"; depois "Reaprovo (Recomendado)" para `tests/integracao/qa_cache_unico_p3_test.sh`, sha256 `f97c852faca1803d02f895e1dc1f2499647aad51ac6d78cc8bae975b24166a6a`.

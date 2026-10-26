@@ -77,4 +77,4 @@ Total de linhas de codigo (producao e teste, sem documentacao): **731**.
 - Commit(s): ver historico da branch.
 - PR: a abrir.
 - Tech Lead: **Aprovado**, 2026-10-26.
-- Solicitante: "Aprovo (Recomendado)" para `qa_upload_para_pasta_b15_test.sh`, sha256 `dabdb304830025c12209554ab6111c31b2d8765015bcc8919d1f871d5934a867` (AskUserQuestion, 2026-10-26).
+- Solicitante: reaprovou `qa_cache_unico_p3_test.sh` (sha256 `f97c852faca1803d02f895e1dc1f2499647aad51ac6d78cc8bae975b24166a6a`, caso ajustado a emenda de `RF-60(g)(h)`; AskUserQuestion, 2026-10-26); "Aprovo (Recomendado)" para `qa_upload_para_pasta_b15_test.sh`, sha256 `dabdb304830025c12209554ab6111c31b2d8765015bcc8919d1f871d5934a867` (AskUserQuestion, 2026-10-26).
