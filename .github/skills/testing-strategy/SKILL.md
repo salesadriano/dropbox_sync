@@ -18,8 +18,8 @@ Design effective testing strategies balancing coverage, speed, and maintenance.
 
 This skill is for **conceptual planning** of test strategy and coverage, when no code is being written.
 
-- The moment the task involves development, refactor, or bug fix, [`protocolo-tdd`](../protocolo-tdd/SKILL.md) becomes mandatory and authoritative: it owns the 70/20/10 pyramid, real integration through Testcontainers, real E2E through Cypress without network stubs, test data governance, and the blocking verdict for QA handoff. A plan produced here must fit that protocol, never replace or relax it.
-- [`tdd-test-design`](../tdd-test-design/SKILL.md) is the reference for test quality inside the red -> green cycle: what to assert and at which seam.
+- The moment the task involves development, refactor, or bug fix, `ai-team:protocolo-tdd` becomes mandatory and authoritative: it owns the 70/20/10 pyramid, real integration through Testcontainers, real E2E through Cypress without network stubs, test data governance, and the blocking verdict for QA handoff. A plan produced here must fit that protocol, never replace or relax it.
+- `ai-team:tdd-test-design` is the reference for test quality inside the red -> green cycle: what to assert and at which seam.
 - The generic pyramid below is a teaching model. When code is being delivered in this package, the binding proportions and the per-layer prohibitions are the ones in `protocolo-tdd`.
 
 ## Testing Pyramid

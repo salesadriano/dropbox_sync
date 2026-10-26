@@ -12,6 +12,15 @@ Processo de ingestao de skills externas para o catalogo versionado do pacote.
 
 Os agents leem **apenas** `.github/skills/`. Nada em `.agents/skills/` e consultado em execucao.
 
+## Origem das skills
+
+As skills e personas do pacote vem do plugin `ai-team` do Claude Code (instalado no usuario, nao no repositorio). Este catalogo guarda apenas as skills proprias do projeto. Por isso, as listas do catalogo separam:
+
+- **do plugin `ai-team`** (`ai-team:<nome>`, fora de `.github/skills/`): as skills de governanca, gates e documentacao (`gitflow`, `protocolo-tdd`, `protocolo-conformidade`, `review-documentation`, `documentation-sync`, entre outras listadas em `SKILL_HIERARCHY.md`);
+- **do projeto** (em `.github/skills/`): `bats-testing-patterns`, `clean-architecture`, `e2e-reexecucao-parcial`, `prd-generator`, `shellcheck-configuration`, `superficie-de-contrato`, `testing-strategy`, `use-case-specification` e `user-story-writing`.
+
+O fluxo de ingestao abaixo continua valendo para skills de fonte externa que entrem no catalogo do projeto.
+
 ## Fluxo de ingestao
 
 1. Instalar a skill upstream, que aparece em `.agents/skills/<nome-upstream>/` e e registrada em `skills-lock.json`.

@@ -22,7 +22,7 @@ Contexto vigente e stack: entradas `tipo: contexto` e `tipo: stack` (`sh scripts
 | Foco atual | **Etapa 4 — Envio em partes e entrada padrao no `upload` (`lib/transfer`, `lib/hash`, `commands/upload`) FECHADO em 2026-08-19: APROVADO** (`PRJ-DEC-81`, `TL-43`). Suite **526/0/2** (528 com rede), `shellcheck` exit 0 nos dois modos, guarda de remocao exit 0. Branch `feature/upload-em-partes-e-entrada-padrao` pronta para integracao em `develop` via PR. |
 | Repositorio | ✅ `github.com:salesadriano/dropbox_sync`. **Gitflow ativo.** Incremento atual em **`feature/upload-em-partes-e-entrada-padrao`**, arvore pronta para PR direcionado a `develop`. `LICENSE` com `Copyright (c) 2026 Adriano Sales Santos`. |
 | Estado | Ativo e versionado |
-| Stack detectada | **Shell script + `cURL`**, confirmada com a primeira entrega de codigo. **Agora tambem DECIDIDA, nao apenas observada:** `DP-07` fixou **Linux com `bash` 4+** (piso tecnico **4.4**) e `DP-08` fixou **`cURL` como unica dependencia**, com interpretador JSON proprio. Skill de referencia: `.claude/skills/protocolo-tdd/` |
+| Stack detectada | **Shell script + `cURL`**, confirmada com a primeira entrega de codigo. **Agora tambem DECIDIDA, nao apenas observada:** `DP-07` fixou **Linux com `bash` 4+** (piso tecnico **4.4**) e `DP-08` fixou **`cURL` como unica dependencia**, com interpretador JSON proprio. Skill de referencia: `ai-team:protocolo-tdd` |
 | Referencia conceitual | `/home/sales/Dropbox-Uploader` (GPLv3) — modelo de estudo, **sem derivacao de codigo** |
 | Responsavel de consolidacao | Tech Lead |
 
