@@ -119,3 +119,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 **Leitura do Tech Lead:** defeito da propria demanda (T5, destino `fd:` em `lib/http.sh`), em qualquer plataforma: o `--stderr <arquivo>` do curl reabre o stderr do processo, e o `-o /dev/stderr` passa a escrever no arquivo de mensagens, nao no `.part`. Medido com o curl real 8.18 no Linux (scratchpad `teste-curl-fd.sh`: `.part` 0 bytes, conteudo no arquivo de erros). A suite usa curl duble e nao via. Correcao: `--no-show-error` no lugar de `--stderr` no modo `fd:`, com teste que usa o curl real e URL `file://`. O registro de retomada do DOWNLOAD e gravado no FreeBSD (o do upload nao: sonda pendente).
 
 **Decisao do solicitante (AskUserQuestion, 2026-10-26):** "Aprovo (Recomendado)" para `qa_download_curl_real_b16_test.sh` (sha256 `d0c1dd49…5af129`).
+
+## Prompt 12 — 2026-10-26
+
+> (colagem: passo 6 no FreeBSD com a correcao do `--stderr`; sem segredo) primeira execucao avanca ate 30% e e interrompida; a segunda: `retomada=encontrada faixa=114294784- part_bytes=114294784`, `GET files/download status=206 recebidos=237284317`, `download hash=ok bytes=351579101`, `integridade: conferida`, `retomada: sim`, `retomado_de: 114294784`, saida 0.
+
+**Leitura do Tech Lead:** download retomavel validado no FreeBSD real: o `.part` recebe os bytes pelo descritor, a retomada anexa pela faixa 206 e o `content_hash` local (RF-173) confere. RF-171(a) emendado e RF-104 confirmados no sistema do solicitante. Pendentes: sonda da retomada do upload e secao 7.
