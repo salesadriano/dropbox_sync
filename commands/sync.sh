@@ -1877,7 +1877,8 @@ _dbx_cmd_sync_cursor_preparar() {
 # mesmo resultado e o mesmo codigo (RF-111(g)).
 _dbx_cmd_sync_cursor_gravar() {
   local completa incrementais agora
-  [[ $DBX_SYNC_TAB_PERSISTIVEL == 'sim' && $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]] || return 0
+  [[ $DBX_SYNC_TAB_PERSISTIVEL == 'sim' && ${#DBX_SYNC_CURSOR_NOVO} -le 8192 &&
+    $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]] || return 0
   dbx_sync_tabela_contar
   [[ $DBX_SYNC_LIDO -le $DBX_STATE_CURSOR_ENTRADAS ]] || return 0
   printf -v agora '%(%s)T' -1

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — Script de instalacao oficial do dropbox_sync (dbx) para Linux.
+# install.sh — Script de instalacao oficial do dropbox_sync (dbx) para Linux e FreeBSD.
 #
 # Uso:
 #   bash install.sh [opcoes]
@@ -39,7 +39,7 @@ erro()  { printf "%b[erro]%b %s\n" "$VERMELHO" "$SEM_COR" "$*" >&2; exit 1; }
 
 exibir_ajuda() {
   cat <<EOF
-Instalador do dropbox_sync (dbx) v${VERSAO_INSTALADOR} para Linux
+Instalador do dropbox_sync (dbx) v${VERSAO_INSTALADOR} para Linux e FreeBSD
 
 Uso:
   ./install.sh [opcoes]
@@ -60,18 +60,30 @@ Exemplos:
 EOF
 }
 
-# 1. Verificacao de pre-requisitos de ambiente Linux
+# sugerir_instalacao <pacote> — sugestao pelo gerenciador que EXISTE no host
+# (capacidade, `command -v`; DIV-357). Neutra quando nenhum e conhecido.
+sugerir_instalacao() {
+  if command -v pkg >/dev/null 2>&1; then
+    printf 'Instale com: pkg install %s' "$1"
+  elif command -v apt >/dev/null 2>&1; then
+    printf 'Instale com: apt install %s' "$1"
+  else
+    printf 'Instale o pacote "%s" pelo gerenciador de pacotes do seu sistema.' "$1"
+  fi
+}
+
+# 1. Verificacao de pre-requisitos de ambiente (Linux e FreeBSD)
 verificar_prerequisitos() {
   info "Verificando pre-requisitos do sistema..."
 
   # Bash 4.4+
   if [[ ${BASH_VERSINFO[0]} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -lt 4) ]]; then
-    erro "GNU Bash 4.4 ou superior e necessario. Versao detectada: ${BASH_VERSION}."
+    erro "Bash 4.4 ou superior e necessario. Versao detectada: ${BASH_VERSION}. $(sugerir_instalacao bash)"
   fi
 
   # cURL
   if ! command -v curl >/dev/null 2>&1; then
-    erro "cURL nao encontrado. Instale com: sudo apt install curl (ou equivalente da sua distribuicao)."
+    erro "cURL nao encontrado. $(sugerir_instalacao curl)"
   fi
 
   # Coreutils necessarios
@@ -82,9 +94,10 @@ verificar_prerequisitos() {
     fi
   done
 
-  # Algoritmo de hash (sha256sum ou shasum)
-  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
-    erro "Utilitario de integridade sha256sum ou shasum nao encontrado."
+  # Algoritmo de hash (sha256sum, shasum, sha256 ou openssl)
+  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1 &&
+    ! command -v sha256 >/dev/null 2>&1 && ! command -v openssl >/dev/null 2>&1; then
+    erro "Utilitario de integridade (sha256sum, shasum, sha256 ou openssl) nao encontrado. $(sugerir_instalacao openssl)"
   fi
 
   ok "Pre-requisitos validados com sucesso."

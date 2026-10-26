@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Duble do chmod do FreeBSD (RF-166, TC-FBSD-01).
+#
+# O chmod do BSD faz getopt so ate o primeiro operando: o primeiro argumento que
+# nao e opcao e o MODO, e tudo o que vem depois e operando, inclusive `--`.
+# `chmod 600 -- arquivo` falha ali com `chmod: --: No such file or directory`,
+# mas os demais operandos validos ainda recebem o modo. A forma portavel e
+# `chmod -- 600 arquivo`. O chmod do GNU aceita as duas, e por isso o defeito
+# passa despercebido em Linux.
+#
+# A mudanca real e delegada ao chmod do sistema, por caminho absoluto, para
+# nunca recair neste proprio duble pelo PATH.
+
+real=''
+for candidato in /bin/chmod /usr/bin/chmod; do
+  if [[ -x $candidato ]]; then
+    real=$candidato
+    break
+  fi
+done
+if [[ -z $real ]]; then
+  printf 'chmod: duble sem chmod do sistema para delegar\n' >&2
+  exit 2
+fi
+
+opcoes=()
+while (($#)); do
+  case $1 in
+    --)
+      shift
+      break
+      ;;
+    -[RHLPfhv]*)
+      # Letras de opcao do BSD. Qualquer outra coisa apos `-` (ex.: `-w`) e modo.
+      if [[ ${1#-} =~ ^[RHLPfhv]+$ ]]; then
+        opcoes+=("$1")
+        shift
+      else
+        break
+      fi
+      ;;
+    *) break ;;
+  esac
+done
+
+if (($# < 2)); then
+  printf 'usage: chmod [-fhv] [-R [-H | -L | -P]] mode file ...\n' >&2
+  exit 1
+fi
+
+modo=$1
+shift
+estado=0
+for operando in "$@"; do
+  if [[ $operando == -- ]]; then
+    printf 'chmod: --: No such file or directory\n' >&2
+    # Quem chama costuma engolir o stderr (`2>/dev/null || :`): o registro e o
+    # que permite ao teste ver a falha que o produto escondeu.
+    [[ -n ${DBX_FREEBSD_REGISTRO:-} ]] &&
+      printf 'chmod: --: No such file or directory\n' >>"$DBX_FREEBSD_REGISTRO"
+    estado=1
+    continue
+  fi
+  "$real" "${opcoes[@]}" -- "$modo" "$operando" || estado=1
+done
+exit "$estado"

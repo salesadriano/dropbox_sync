@@ -468,7 +468,8 @@ _captura_com_alfabeto_fechado() {
     # `lib/sync` passou a percorrer paginas de listagem.
     dbx_json_tamanho_arranjo) return 0 ;;
     _dbx_hash_sha256_hex | _dbx_hash_calcular) return 0 ;;
-    sha256sum | shasum | openssl) return 0 ;;
+    # `sha256` e o resumo da base do FreeBSD (secao 5.22, DIV-354).
+    sha256sum | shasum | sha256 | openssl) return 0 ;;
     stat | wc | umask | id | nproc) return 0 ;;
     mktemp | cd | pwd) return 0 ;;
     printf | compgen) return 0 ;;

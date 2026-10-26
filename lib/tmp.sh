@@ -227,7 +227,8 @@ dbx_tmp_area() {
 # `dbx_tmp_esquecer`. Caminho em DBX_TMP_CAMINHO.
 dbx_tmp_arquivo() {
   DBX_TMP_CAMINHO=''
-  [[ $# -eq 1 && $1 == *XXX ]] || return "$DBX_TMP_ERRO_USO"
+  # Seis `X` no fim: o `mktemp` do FreeBSD recusa modelo com menos (I-10).
+  [[ $# -eq 1 && $1 == *XXXXXX ]] || return "$DBX_TMP_ERRO_USO"
   _dbx_tmp_criar -f "$1"
 }
 
