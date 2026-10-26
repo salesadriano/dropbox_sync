@@ -77,6 +77,7 @@ Esperado: a segunda execucao mostra `retomada=encontrada` e uma faixa no `debug:
 ## 7. Duas conferencias do sistema (para o Tech Lead)
 
 ```sh
+mkdir -p /tmp/dbx-local && echo teste > /tmp/dbx-local/a.txt   # arquivo das duas primeiras conferencias
 stat -f '%.9Fm|%.9Fc' /tmp/dbx-local/a.txt     # nanossegundos disponiveis? (achado 5 da conformidade)
 chmod 4044 /tmp/dbx-local/a.txt; stat -f '%Mp|%Lp|%03Lp' /tmp/dbx-local/a.txt; chmod 644 /tmp/dbx-local/a.txt   # esperado: 4|44|044 (achado N1)
 bash -c 'exec 3</etc/passwd; stat -f "%d|%i|%HT" <&3; stat -f "%d|%i" /etc/passwd'   # o stat pelo descritor devolve o mesmo dev|ino do arquivo?

@@ -151,3 +151,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > (colagem: `dbx upload -p --modo overwrite` do `nossoerp.bak.zip` no FreeBSD; sem segredo) `modo_de_envio: sessao_em_partes`, `bytes_enviados: 407281139`, `integridade: conferida`, `retomada: nao`, `size: 407281139`, saida 0.
 
 **Leitura do Tech Lead:** upload por sessao de 388 MiB concluido e conferido no FreeBSD real (RF-173 de ponta a ponta). `retomada: nao` e esperado: a sessao anterior terminou no `finish` recusado. Pendente: secao 7 do roteiro.
+
+## Prompt 17 — 2026-10-26
+
+> (colagem: secao 7 do roteiro no FreeBSD; sem segredo) `stat -f %d|%i|%HT <&3` = `95|6572838|Regular File` e `stat -f %d|%i /etc/passwd` = `95|6572838`; `%.9Fm|%.9Fc` = `1793052680.989494000|1793052680.989494000`; `%Mp|%Lp|%03Lp` com 4044 = `4|44|044`. (A primeira tentativa das duas primeiras falhou porque o roteiro nao criava `/tmp/dbx-local/a.txt`; corrigido no roteiro.)
+
+**Leitura do Tech Lead:** as tres conferencias do sistema confirmam o desenho: leitura de atributos pelo descritor (RF-171(a)), modo com setuid/sticky (`%Mp%03Lp`, RF-167) e nanossegundos disponiveis no UFS (achado 5 da conformidade: a identidade BSD usa segundos com `.000000000`; os nanossegundos reais ficam como melhoria registrada, sem efeito de correcao). Roteiro do FreeBSD concluido.

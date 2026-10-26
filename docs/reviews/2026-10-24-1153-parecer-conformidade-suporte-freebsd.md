@@ -33,6 +33,36 @@ Verificado no ciclo 1: nenhum chamador migrado passou de "recusa" para "aceita" 
 
 Verificado no ciclo 2: com a sonda falhando, todo chamador falha fechado e nao ha aprendizado errado; o `stat` filho herda o descritor aberto pelo `exec`.
 
+## Escopo posterior ao ciclo 2
+
+Commits feitos apos `de4b66f`, avaliados no ciclo 3:
+
+| Commit | Tema | Requisito |
+|---|---|---|
+| `2d7ca4a`, `b797ae8` | Conferencia dos arquivos abertos pelo proprio descritor, sem `/dev/fd` (DIV-352 superada) | RF-171(a), RF-172(a) |
+| `cae6e36` | `qa_b2_01` aceita as duas travas do sync vencedor (teste da fase 2) | RF-132 |
+| `548b2f1`, `f614b02` | Leitura exata de N bytes do descritor, `dbx_ler_exato` com `dd` | RF-173(a) a (d) |
+| `5714175` | Download por descritor com `--no-show-error` no lugar de `--stderr` | RF-171(a) emendado |
+| `dd55b20` | Nenhuma repeticao de regex acima de 255 (RE_DUP_MAX do FreeBSD) | RF-173(e) |
+
+Os achados do ciclo 2 seguem validos.
+
+### Ciclo 3 (Tech Lead, 2026-10-26)
+
+Leitura do diff de cada commit acima, contra `clean-architecture` e as regras de shell do projeto (ponto unico por capacidade, sem deteccao de plataforma fora de `dbx_preflight_plataforma`, capturas no alfabeto do `json_test`, `stat -c/-f` so em `lib/atributos.sh`, shellcheck por arquivo).
+
+| Commit | Achados | Veredito |
+|---|---|---|
+| `b797ae8` | Nenhum bloqueante. Atributos de descritor num ponto unico (`dbx_atributo_fd`, `dbx_fd_regular_proprio`); a reabertura por `/dev/fd` vira abertura pelo caminho com conferencia do `dev:ino`. **Defeito latente** no ramo `fd:` de `lib/http.sh` (`--stderr` reabre o stderr), invisivel ao curl duble: achado no FreeBSD real e corrigido em `5714175` | Aprovado (defeito corrigido no ciclo) |
+| `cae6e36` | Nenhum. Teste do QA corrigido com o comportamento de RF-132, reaprovado pelo solicitante | Aprovado |
+| `f614b02` | Nenhum. `dbx_ler_exato` e o ponto unico de leitura exata; os 4 leitores em partes passam por ele; leitura unica de `lib/state.sh` fica com `head -c` (RF-173(d)) | Aprovado |
+| `5714175` | Nenhum. Motivo legivel para falha do cliente sem mensagem; limite do arquivo reaberto continua declarado | Aprovado |
+| `dd55b20` | Nenhum. Comprimento testado a parte nos pontos de uso; contrato de tamanho inalterado; auditoria impede regressao | Aprovado |
+
+Ressalva de processo: o ramo `fd:` foi aprovado na T5 so com curl duble. Daqui em diante, mudanca na invocacao do curl leva teste com o curl real (`tests/unit/http_fd_curl_real_test.sh`, `qa_download_curl_real_b16`).
+
+Achado da validacao no FreeBSD real (fora deste parecer, para o registro de entrega): a leitura por `head -c` deixava o descritor alem de N bytes; a correcao esta em `dbx_ler_exato`.
+
 ## Veredito final
 
-**Aprovado com ressalvas** (sem bloqueante; ressalvas 5, 7 e N3 justificadas; demais corrigidas).
+**Aprovado com ressalvas** no ciclo 2 (sem bloqueante; ressalvas 5, 7 e N3 justificadas; demais corrigidas). **Ciclo 3 (commits posteriores a `de4b66f`): Aprovado**, sem bloqueante, com a ressalva de processo acima.
