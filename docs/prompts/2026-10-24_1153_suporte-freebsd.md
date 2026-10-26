@@ -87,3 +87,15 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 - Encaminhamento: leitura exata de N bytes por um ponto unico, sem leitura antecipada, com duble do `head` do FreeBSD que reproduz o consumo excedente (red medido), dentro desta demanda.
 
 **Decisoes do solicitante (AskUserQuestion, 2026-10-26):** "Aprovo (Recomendado)" para `qa_leitura_exata_b14_test.sh` (sha256 `c7de4ca5…76c920b8`); "Reaprovo (Recomendado)" para `qa_consulta_diagnostico_b1` (`9a0dab8d…e661920a`) e `qa_debug_transferencias_b12` (`fa2d971d…e2fca987`).
+
+## Prompt 7 — 2026-10-26
+
+> (colagem: `dbx --debug upload` de `nossoerp.bak.zip` com a correcao RF-173 no FreeBSD; sem segredo) bloco 99 com `tamanho=1648053` (total 412689845, igual ao arquivo); `upload_session/finish` 409 `path/conflict/folder/`; `erro: envio em partes nao concluido: conclusao da sessao recusada: path/conflict/folder/`.
+
+**Leitura do Tech Lead:** RF-173 confirmado no FreeBSD real: as 99 partes somam o tamanho do arquivo. A recusa e do destino: o caminho remoto passado ja e uma PASTA no Dropbox (upload de arquivo exige o caminho completo do arquivo). Achado de produto, fora do escopo FreeBSD: a pre-checagem `get_metadata` (RF-60) ve a pasta e segue, e a recusa so chega no `finish`, depois de enviar 393 MiB; destino com `/` no fim tambem nao recebe o nome do arquivo no envio de arquivo (so no de pasta). Oferecido ao solicitante como demanda separada.
+
+## Prompt 8 — 2026-10-26
+
+> (colagem: `dbx --debug upload` com destino `/ASJ/ASJEP/backup/nossoerp bkp` (pasta), interrompido com Ctrl+C duas vezes; sem segredo) `aviso: sem retomada nesta execucao: o registro de retomada nao pode ser gravado`; a segunda execucao recomeca do bloco 1 (`retomada=descartada motivo=estado-ausente`).
+
+**Leitura do Tech Lead:** (1) o destino continua sendo pasta: a recusa viria no `finish`. (2) Defeito no FreeBSD real: `dbx_state_retomada_gravar` falha na primeira gravacao (logo apos o `start`); os dubles nao reproduzem (qa_leitura_exata_b14 retoma sob eles). Causa nao identificada pela leitura do codigo; sonda sem rede e sem credencial (conta ficticia) enviada ao solicitante para apontar a etapa. Hipotese residual: formato do `session_id` real (`^[A-Za-z0-9:_-]{1,256}$` em `_dbx_state_retomada_formato`).
