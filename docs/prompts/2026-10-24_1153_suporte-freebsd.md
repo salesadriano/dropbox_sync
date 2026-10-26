@@ -111,3 +111,9 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > (colagem: `dbx verificar --receber --origem "/ASJ/ASJEP/backup/nossoerp bkp" --destino "/tmp/test/nossoerp bkp"` no FreeBSD; sem segredo) `iguais: 4`, `diferentes: 0`, `so_origem: 0`, `so_destino: 0`, `total: 4` (inclui `nossoerp.bak.zip`, 388 MiB).
 
 **Leitura do Tech Lead:** o download de pasta terminou e o `content_hash` local de arquivos de varios blocos confere com o remoto no FreeBSD real: `RF-173` confirmado no calculo do resumo (antes da correcao, o `head -c` do FreeBSD daria resumo errado acima de 4 MiB). Pendentes: sonda da retomada, passo 6 e secao 7.
+
+## Prompt 11 — 2026-10-26
+
+> (colagem: `dbx --debug download -p ".../nossoerp.bak.zip" /tmp/test/n.zip` no FreeBSD, interrompido apos 39 s em 0%, e reexecutado; sem segredo) `retomada=nenhuma`; depois `retomada=encontrada faixa=0- part_bytes=0`; progresso parado em 0 B / 335 MiB.
+
+**Leitura do Tech Lead:** defeito da propria demanda (T5, destino `fd:` em `lib/http.sh`), em qualquer plataforma: o `--stderr <arquivo>` do curl reabre o stderr do processo, e o `-o /dev/stderr` passa a escrever no arquivo de mensagens, nao no `.part`. Medido com o curl real 8.18 no Linux (scratchpad `teste-curl-fd.sh`: `.part` 0 bytes, conteudo no arquivo de erros). A suite usa curl duble e nao via. Correcao: `--no-show-error` no lugar de `--stderr` no modo `fd:`, com teste que usa o curl real e URL `file://`. O registro de retomada do DOWNLOAD e gravado no FreeBSD (o do upload nao: sonda pendente).
