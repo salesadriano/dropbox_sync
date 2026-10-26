@@ -72,3 +72,16 @@ registro_de_entrega: "docs/reviews/2026-10-24-1153-registro-suporte-freebsd.md"
 > `-rw-------  1 root wheel 172 Oct 25 19:21 /root/.config/dbx/credencial.json`
 
 **Leitura do Tech Lead:** credencial gravada com modo `600` pelo `chmod -- 600` no FreeBSD real (RF-166 e TC-FBSD-01 confirmados no sistema do solicitante). Seguem os passos 5, 6 e a secao 7 do roteiro.
+
+## Prompt 6 — 2026-10-26
+
+> (colagens: passo 5 do roteiro no FreeBSD do solicitante; sem segredo)
+> 1. `upload` de pasta: item 247/524 falha com `conflito path/conflict/file_ancestor`; o solicitante nota que o destino deveria ser `/ASJ/BRASIMAQBRA/UniNFe/...` e nao `VLG Dropbox/Usuario BKP/ASJ/...`.
+> 2. `upload` de pasta com `nossoerp.bak.zip` (412689845 bytes, em `/mnt/e`): bloco 99 com `tamanho=18509`, `falha nossoerp.bak.zip: nao_concluida falha local`, saida 14.
+> 3. `upload` do arquivo sozinho: `erro: envio em partes nao concluido: o arquivo mudou de tamanho durante o envio: tinha 412689845 bytes no inicio e foram lidos 411060301`; `ls -l` antes e depois: 412689845 bytes, mesma data.
+
+**Leitura do Tech Lead:**
+- (1) Uso: a origem era a pasta acima de `VLG Dropbox`; `dbx upload <pasta>/ASJ /ASJ` resolve. O `file_ancestor` fica restrito a arvore errada. O README nao explica a regra da barra final do destino (achado de documentacao, oferecido ao solicitante).
+- (3) Defeito de portabilidade: o arquivo nao mudou, faltaram 1629544 bytes na leitura. `lib/transfer.sh` le cada parte com `head -c N <&fd` sobre o MESMO descritor; o `head` do FreeBSD le por stdio com leitura antecipada e consome do descritor mais do que imprime, entao o deslocamento avanca alem de N a cada parte. A conferencia de tamanho recusou a publicacao (nada corrompido foi enviado). O mesmo padrao esta em `lib/hash.sh` (`content_hash` do arquivo inteiro), `lib/transfer.sh` (reposicionamento e reabertura da retomada) e `lib/state.sh` (prefixo da retomada). O GNU `head -c` nao le alem de N, por isso a suite no Linux nao viu.
+- (2) Achado: o `sync` troca o motivo de falha local pelo texto "falha local" (RF-59(c) so repassa o motivo na classe `integridade`); o motivo real so apareceu no envio unitario.
+- Encaminhamento: leitura exata de N bytes por um ponto unico, sem leitura antecipada, com duble do `head` do FreeBSD que reproduz o consumo excedente (red medido), dentro desta demanda.
