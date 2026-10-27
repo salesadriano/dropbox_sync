@@ -338,7 +338,7 @@ teste_rmd05_mutante_sem_a_barreira_de_inode_anexa_ao_arquivo_do_usuario() {
   _interrompido "$base"
   part=$(_troca_part "$base" inode)
   mutante=$(_copia_mutante lib/state.sh 's/^  \[\[ \$atual == "\$devino" \]\]$/  :/' \
-    lib/cmd.sh 's/if \[\[ \${info%|\*} != "\$devino" || /if [[ /')
+    lib/cmd.sh 's/if \[\[ \${info%|\*} != "\$devino" || /if [[ /;s/ || \[\[ \$DBX_ATRIBUTO != "\$devino" \]\]; then$/; then/')
   DBX_T_EXEC=$mutante _down "$base"
   [[ $(stat -c %s "$part" 2>/dev/null) != 18 ]] ||
     _harness_falhar 'sem a barreira, o mutante deveria tocar o arquivo do usuario'
@@ -412,7 +412,7 @@ teste_rmd14_mutante_sem_a_conferencia_pelo_descritor_anexa_ao_trocado() {
       'exit $e'
   } >"$base/troca/stat"
   chmod +x "$base/troca/stat"
-  mutante=$(_copia_mutante lib/cmd.sh 's/if \[\[ \${info%|\*} != "\$devino" || /if [[ /')
+  mutante=$(_copia_mutante lib/cmd.sh 's/if \[\[ \${info%|\*} != "\$devino" || /if [[ /;s/ || \[\[ \$DBX_ATRIBUTO != "\$devino" \]\]; then$/; then/')
   DBX_T_EXEC=$mutante DBX_T_PATH="$base/troca" _down "$base"
   assert_arquivo_existe "$base/troca/feito" 'a troca aconteceu'
   [[ $(head -c 7 "$part") == 'trocado' && $(stat -c %s "$part") -gt 7 ]] ||

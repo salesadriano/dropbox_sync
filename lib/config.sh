@@ -262,8 +262,8 @@ dbx_config_caminho() {
 
 _dbx_config_dono_e_modo_do_diretorio_ok() {
   local diretorio=$1 modo dono
-  modo=$(stat -c '%a' -- "$diretorio" 2>/dev/null || stat -f '%Lp' "$diretorio" 2>/dev/null) || return 1
-  dono=$(stat -c '%u' -- "$diretorio" 2>/dev/null || stat -f '%u' "$diretorio" 2>/dev/null) || return 1
+  dbx_atributo modo "$diretorio" || return 1; modo=$DBX_ATRIBUTO
+  dbx_atributo dono "$diretorio" || return 1; dono=$DBX_ATRIBUTO
   [[ $modo =~ ^[0-7]00$ && $dono == "$EUID" ]]
 }
 
@@ -522,7 +522,7 @@ dbx_config_gravar() {
   local saida_gravacao
   if ! saida_gravacao=$(
     printf '%s\n' "$corpo" >"$temporario" &&
-      chmod 600 -- "$temporario" &&
+      chmod -- 600 "$temporario" &&
       mv -f -- "$temporario" "$DBX_CONFIG_RESULTADO"
   ) 2>&1; then
     dbx_tmp_remover "$temporario"
@@ -605,8 +605,8 @@ dbx_config_carregar() {
   # A permissao e verificada tambem aqui, e nao apenas no preflight: entre um e
   # outro o arquivo pode ter mudado, e a leitura e o ponto em que o segredo
   # efetivamente sai do disco.
-  modo=$(stat -c '%a' -- "$arquivo" 2>/dev/null || stat -f '%Lp' "$arquivo" 2>/dev/null) ||
-    { _dbx_config_falhar inspecao; return $?; }
+  dbx_atributo modo "$arquivo" || { _dbx_config_falhar inspecao; return $?; }
+  modo=$DBX_ATRIBUTO
   # Aceita QUALQUER modo sem bits para grupo e outros, e nao apenas 0600: 0400
   # e mais restritiva e recusa-la desfaria a escolha do operador — o mesmo
   # principio ja aplicado ao diretorio, que nao estava aplicado ao arquivo
@@ -620,12 +620,12 @@ dbx_config_carregar() {
   if [[ $nomeado == 'sim' || $nome != "$DBX_CONFIG_PERFIL_PADRAO" ]]; then
     _dbx_config_verificar_cadeia "$arquivo" completo || return $?
   else
-    modo_diretorio=$(stat -c '%a' -- "${arquivo%/*}" 2>/dev/null || stat -f '%Lp' "${arquivo%/*}" 2>/dev/null) ||
-      { _dbx_config_falhar inspecao; return $?; }
+    dbx_atributo modo "${arquivo%/*}" || { _dbx_config_falhar inspecao; return $?; }
+    modo_diretorio=$DBX_ATRIBUTO
     [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
       { _dbx_config_falhar permissao_diretorio; return $?; }
   fi
-  dono=$(stat -c '%u' -- "$arquivo" 2>/dev/null || stat -f '%u' "$arquivo" 2>/dev/null)
+  dbx_atributo dono "$arquivo"; dono=$DBX_ATRIBUTO
   [[ $dono == "$EUID" ]] || { _dbx_config_falhar dono; return $?; }
 
   IFS= read -r -d '' conteudo <"$arquivo"

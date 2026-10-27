@@ -6,9 +6,18 @@ Guia pratico para escolher a skill certa, evitar sobreposicao e reduzir invocaca
 
 Este documento responde a uma pergunta simples: qual skill usar para cada tipo de demanda?
 
-Use este mapa antes de escolher uma skill em `.github/skills/`, especialmente quando houver varias alternativas parecidas no mesmo ecossistema.
+Use este mapa antes de escolher uma skill, especialmente quando houver varias alternativas parecidas no mesmo ecossistema.
+
+As skills e personas do pacote vem do plugin `ai-team` do Claude Code; o repositorio guarda o protocolo, a memoria, os templates e as skills proprias do projeto.
 
 Para adicionar ou atualizar uma skill vinda de fonte externa, veja [SKILLS_SYNC.md](./SKILLS_SYNC.md).
+
+## Origem das skills
+
+- **Do plugin `ai-team`** (instalado no usuario do Claude Code, nao no repositorio; referenciadas como `ai-team:<nome>`): `api-security-best-practices`, `documentation-sync`, `entrega-por-porte`, `git-commit`, `gitflow`, `governanca-por-hooks`, `instrucoes-do-projeto`, `memoria-por-janela`, `mermaid-generator`, `prompt-logger`, `protocolo-conformidade`, `protocolo-tdd`, `review-documentation`, `security-best-practices`, `selecao-de-modelo`, `tdd-test-design`.
+- **Do projeto** (`.github/skills/<nome>/`, versionadas neste repositorio): `bats-testing-patterns`, `clean-architecture`, `e2e-reexecucao-parcial`, `prd-generator`, `shellcheck-configuration`, `superficie-de-contrato`, `testing-strategy`, `use-case-specification`, `user-story-writing`.
+
+Nas listas abaixo, cada entrada indica a origem entre parenteses.
 
 ## Regra geral
 
@@ -25,26 +34,26 @@ Escolha skills nesta ordem:
 
 Use estas skills quando a tarefa principal nao for uma implementacao de framework, mas sim estrutura, documentacao, revisao ou diagramacao.
 
-- [.github/skills/clean-architecture/](./clean-architecture/): use para desenho tecnico, separacao de camadas, boundaries e revisao arquitetural; e a referencia agnostica a linguagem e continua sendo o padrao do pacote
-- [.github/skills/documentation-sync/](./documentation-sync/): use depois de mudancas tecnicas para revisar impacto documental
-- [.github/skills/review-documentation/](./review-documentation/): use para registrar review tecnico, consolidacao de mudancas e evidencias
-- [.github/skills/mermaid-generator/](./mermaid-generator/): use quando a entrega pede diagramas Mermaid
-- [.github/skills/gitflow/](./gitflow/): use para governanca de branches, nomenclatura Gitflow, branch principal declarada, verificacao de PRs abertos antes da demanda, worktree por demanda, remocao local de branches apagadas no remoto, avaliacao da branch principal antes de cada push e coordenacao entre instancias do Tech Lead
-- [.github/skills/git-commit/](./git-commit/): use para gerar ou revisar commits com convencao semantica (Conventional Commits)
-- [.github/skills/prompt-logger/](./prompt-logger/): skill transversal obrigatoria — registra cada prompt recebido em `docs/prompts/`, um arquivo por demanda, com texto integral sanitizado, porte, intencao e inferencias; plano e resultado ficam no registro de entrega
+- [.github/skills/clean-architecture/](./clean-architecture/) (projeto): use para desenho tecnico, separacao de camadas, boundaries e revisao arquitetural; e a referencia agnostica a linguagem e continua sendo o padrao do pacote
+- `ai-team:documentation-sync` (plugin): use depois de mudancas tecnicas para revisar impacto documental
+- `ai-team:review-documentation` (plugin): use para registrar review tecnico, consolidacao de mudancas e evidencias
+- `ai-team:mermaid-generator` (plugin): use quando a entrega pede diagramas Mermaid
+- `ai-team:gitflow` (plugin): use para governanca de branches, nomenclatura Gitflow, branch principal declarada, verificacao de PRs abertos antes da demanda, worktree por demanda, remocao local de branches apagadas no remoto, avaliacao da branch principal antes de cada push e coordenacao entre instancias do Tech Lead
+- `ai-team:git-commit` (plugin): use para gerar ou revisar commits com convencao semantica (Conventional Commits)
+- `ai-team:prompt-logger` (plugin): skill transversal obrigatoria — registra cada prompt recebido em `docs/prompts/`, um arquivo por demanda, com texto integral sanitizado, porte, intencao e inferencias; plano e resultado ficam no registro de entrega
 
 ### Governanca operacional (custo por demanda)
 
 Skills trazidas de um projeto governado pelo pacote em 15/10/2026, que reduzem o contexto carregado por sessao e o custo fixo de cada demanda. `memoria-por-janela`, `entrega-por-porte` e a limpeza de worktrees sao norma do pacote desde 15/10/2026 (regras 1, 7, 40 e 46 e secao *Protocolo por porte* do `AGENTS.md`); as demais sao adotadas por decisao registrada do projeto.
 
-- [.github/skills/instrucoes-do-projeto/](./instrucoes-do-projeto/): use para compactar o arquivo de instrucoes da ferramenta de IA (erratas verbatim para `docs/historico/`, bloco de estado vigente) e prender com `verificar-instrucoes-do-projeto.sh` as frases e caminhos que ele afirma sobre o repositorio
-- [.github/skills/memoria-por-janela/](./memoria-por-janela/): use para dimensionar o bootstrap da memoria (`memoria-index.sh --desde`, janela de 90 dias por padrao) e para declarar `agentes:` sem `todos` fora de decisao de pacote
-- [.github/skills/governanca-por-hooks/](./governanca-por-hooks/): use quando o cliente de IA oferecer hooks ou permissoes versionaveis: resumo de estado no inicio da sessao, guarda de comandos antes de cada shell (detector antes do push; suite completa registrada por `suite-completa.sh` antes do push para a PR de integracao e do `gh pr create`), permissoes para comandos ja autorizados por demanda; secao por cliente em `references/clientes-de-ia.md`
-- [.github/skills/entrega-por-porte/](./entrega-por-porte/): use ao classificar o porte e escolher o formato do registro: criterios objetivos de P, Tech Lead implementa, parecer combinado, QA por amostragem, e o registro curto de um arquivo (`../agents/templates/registro-de-entrega-curto-template.md`) em P e M
-- [.github/skills/superficie-de-contrato/](./superficie-de-contrato/): use para decidir se a entrega exige remedir a superficie do contrato (so quando o diff toca o que a define) e para conferir, com `conferir-copias.sh`, que as copias do numero concordam
-- [.github/skills/e2e-reexecucao-parcial/](./e2e-reexecucao-parcial/): use para o diagnostico do E2E vermelho na pipeline (`specs-nao-executadas.sh`) e para a reexecucao so das specs que falharam ou nao rodaram, por workflow de disparo manual
-- [.github/skills/selecao-de-modelo/](./selecao-de-modelo/): use ao delegar e ao fixar `model:` numa persona: faixa do modelo pela classe da tarefa (`faixa-do-modelo.sh`: economico renderiza, padrao implementa e valida, maximo decide o que e caro errar; so sobe), pacote de transposicao e `avaliar-troca-de-modelo.sh`, que diz se sair da faixa da sessao economiza descontados o pacote e o cache perdido
-- [.github/skills/gitflow/references/limpeza-de-worktrees.md](./gitflow/references/limpeza-de-worktrees.md): referencia da `gitflow` para o fechamento: `scripts/limpar-worktrees.sh` remove os worktrees mesclados e lista os pendentes
+- `ai-team:instrucoes-do-projeto` (plugin): use para compactar o arquivo de instrucoes da ferramenta de IA (erratas verbatim para `docs/historico/`, bloco de estado vigente) e prender com `verificar-instrucoes-do-projeto.sh` as frases e caminhos que ele afirma sobre o repositorio
+- `ai-team:memoria-por-janela` (plugin): use para dimensionar o bootstrap da memoria (`memoria-index.sh --desde`, janela de 90 dias por padrao) e para declarar `agentes:` sem `todos` fora de decisao de pacote
+- `ai-team:governanca-por-hooks` (plugin): use quando o cliente de IA oferecer hooks ou permissoes versionaveis: resumo de estado no inicio da sessao, guarda de comandos antes de cada shell (detector antes do push; suite completa registrada por `suite-completa.sh` antes do push para a PR de integracao e do `gh pr create`), permissoes para comandos ja autorizados por demanda; secao por cliente em `references/clientes-de-ia.md`
+- `ai-team:entrega-por-porte` (plugin): use ao classificar o porte e escolher o formato do registro: criterios objetivos de P, Tech Lead implementa, parecer combinado, QA por amostragem, e o registro curto de um arquivo (`../agents/templates/registro-de-entrega-curto-template.md`) em P e M
+- [.github/skills/superficie-de-contrato/](./superficie-de-contrato/) (projeto): use para decidir se a entrega exige remedir a superficie do contrato (so quando o diff toca o que a define) e para conferir, com `conferir-copias.sh`, que as copias do numero concordam
+- [.github/skills/e2e-reexecucao-parcial/](./e2e-reexecucao-parcial/) (projeto): use para o diagnostico do E2E vermelho na pipeline (`specs-nao-executadas.sh`) e para a reexecucao so das specs que falharam ou nao rodaram, por workflow de disparo manual
+- `ai-team:selecao-de-modelo` (plugin): use ao delegar e ao fixar `model:` numa persona: faixa do modelo pela classe da tarefa (`faixa-do-modelo.sh`: economico renderiza, padrao implementa e valida, maximo decide o que e caro errar; so sobe), pacote de transposicao e `avaliar-troca-de-modelo.sh`, que diz se sair da faixa da sessao economiza descontados o pacote e o cache perdido
+- `ai-team:gitflow`, referencia `limpeza-de-worktrees.md` (plugin): referencia da `gitflow` para o fechamento: `scripts/limpar-worktrees.sh` remove os worktrees mesclados e lista os pendentes
 
 #### Decision tree rapido: `instrucoes-do-projeto` vs `documentation-sync` vs `superficie-de-contrato`
 
@@ -67,9 +76,9 @@ Regra pratica:
 
 ### Produto e requisitos
 
-- [.github/skills/use-case-specification/](./use-case-specification/): use como primeiro passo do escopo, para fixar problema de negocio, usuarios primarios e criterios mensuraveis de sucesso antes do PRD
-- [.github/skills/prd-generator/](./prd-generator/): use para gerar PRD
-- [.github/skills/user-story-writing/](./user-story-writing/): use para historias de usuario e criterios de aceite
+- [.github/skills/use-case-specification/](./use-case-specification/) (projeto): use como primeiro passo do escopo, para fixar problema de negocio, usuarios primarios e criterios mensuraveis de sucesso antes do PRD
+- [.github/skills/prd-generator/](./prd-generator/) (projeto): use para gerar PRD
+- [.github/skills/user-story-writing/](./user-story-writing/) (projeto): use para historias de usuario e criterios de aceite
 
 Regra de prioridade para produto:
 
@@ -83,11 +92,11 @@ Regra de prioridade para produto:
 
 ### Testes e qualidade
 
-- [.github/skills/protocolo-tdd/](./protocolo-tdd/): gate local obrigatorio de testes; use sempre que a tarefa envolver desenvolvimento, refatoracao ou correcao de codigo. Define o protocolo padrao de TDD, piramide 70/20/10, integracao com banco real via Testcontainers e E2E real com Cypress sem mocks de rede, e fecha com achados por severidade e veredito em `../agents/templates/evidencia-testes-template.md`. Achado bloqueante reprova e devolve ao agent originador. Nao depende de pipeline.
-- [.github/skills/tdd-test-design/](./tdd-test-design/): use dentro do ciclo red-green para decidir o que cada teste afirma e em qual seam; cobre seams, mocking apenas em fronteiras de sistema e anti-patterns (teste acoplado a implementacao, teste tautologico, fatiamento horizontal)
-- [.github/skills/protocolo-conformidade/](./protocolo-conformidade/): gate local obrigatorio de conformidade arquitetural e de boas praticas; use APOS implementar e ANTES de qualquer handoff, sobre o diff local, para verificar se o codigo entregue respeita `clean-architecture` e a skill da stack. Achado bloqueante reprova e devolve ao agent originador. Nao depende de pipeline.
-- [.github/skills/testing-strategy/](./testing-strategy/): use para desenhar estrategia/plano de testes quando a demanda for conceitual e nao um protocolo operacional normativo
-- [.github/skills/e2e-reexecucao-parcial/](./e2e-reexecucao-parcial/): use depois de um E2E vermelho na pipeline, para listar o que nao rodou e reexecutar so isso; a Regra 9 (parar no primeiro erro) continua sendo de `protocolo-tdd`
+- `ai-team:protocolo-tdd` (plugin): gate local obrigatorio de testes; use sempre que a tarefa envolver desenvolvimento, refatoracao ou correcao de codigo. Define o protocolo padrao de TDD, piramide 70/20/10, integracao com banco real via Testcontainers e E2E real com Cypress sem mocks de rede, e fecha com achados por severidade e veredito em `../agents/templates/evidencia-testes-template.md`. Achado bloqueante reprova e devolve ao agent originador. Nao depende de pipeline.
+- `ai-team:tdd-test-design` (plugin): use dentro do ciclo red-green para decidir o que cada teste afirma e em qual seam; cobre seams, mocking apenas em fronteiras de sistema e anti-patterns (teste acoplado a implementacao, teste tautologico, fatiamento horizontal)
+- `ai-team:protocolo-conformidade` (plugin): gate local obrigatorio de conformidade arquitetural e de boas praticas; use APOS implementar e ANTES de qualquer handoff, sobre o diff local, para verificar se o codigo entregue respeita `clean-architecture` e a skill da stack. Achado bloqueante reprova e devolve ao agent originador. Nao depende de pipeline.
+- [.github/skills/testing-strategy/](./testing-strategy/) (projeto): use para desenhar estrategia/plano de testes quando a demanda for conceitual e nao um protocolo operacional normativo
+- [.github/skills/e2e-reexecucao-parcial/](./e2e-reexecucao-parcial/) (projeto): use depois de um E2E vermelho na pipeline, para listar o que nao rodou e reexecutar so isso; a Regra 9 (parar no primeiro erro) continua sendo de `protocolo-tdd`
 
 Regra de prioridade para testes:
 
@@ -107,8 +116,8 @@ Toda alteracao de codigo passa por dois gates locais, executados pelo proprio ag
 
 | Gate | Skill | Pergunta que responde | Momento |
 |---|---|---|---|
-| Testes | [`protocolo-tdd`](./protocolo-tdd/) | o comportamento esta provado por testes reais? | durante a implementacao (red-green-refactor), fechando em `evidencia-testes-template.md` |
-| Conformidade | [`protocolo-conformidade`](./protocolo-conformidade/) | o codigo entregue respeita a arquitetura e as boas praticas da stack? | apos implementar, antes de qualquer handoff |
+| Testes | `ai-team:protocolo-tdd` | o comportamento esta provado por testes reais? | durante a implementacao (red-green-refactor), fechando em `evidencia-testes-template.md` |
+| Conformidade | `ai-team:protocolo-conformidade` | o codigo entregue respeita a arquitetura e as boas praticas da stack? | apos implementar, antes de qualquer handoff |
 
 Os dois sao obrigatorios e nao se substituem. `protocolo-tdd` valida que o comportamento funciona; `protocolo-conformidade` valida como ele foi construido. Ambos rodam localmente, classificam achados por severidade e emitem veredito em template proprio, no modo definido pelo porte da demanda (`AGENTS.md`, regra 40): compacto em P e M, completo em G. Reprovacao em qualquer um bloqueia o handoff e devolve a entrega ao agent originador.
 
@@ -120,13 +129,13 @@ Os dois sao obrigatorios e nao se substituem. `protocolo-tdd` valida que o compo
 
 ### Seguranca
 
-As skills abaixo definem o que deve estar protegido. A prova por teste (cenarios negativos de autenticacao, autorizacao, tenant, entrada maliciosa e vazamento, contra backend e banco reais) e exigida pela Regra 6 de [`protocolo-tdd`](./protocolo-tdd/), que e o gate; as skills de seguranca sao a fonte das regras que esses testes provam.
+As skills abaixo definem o que deve estar protegido. A prova por teste (cenarios negativos de autenticacao, autorizacao, tenant, entrada maliciosa e vazamento, contra backend e banco reais) e exigida pela Regra 6 de `ai-team:protocolo-tdd`, que e o gate; as skills de seguranca sao a fonte das regras que esses testes provam.
 
 #### Quando a tarefa for seguranca transversal web
 
 Use:
 
-- [.github/skills/security-best-practices/](./security-best-practices/)
+- `ai-team:security-best-practices` (plugin)
 
 Escopo ideal:
 
@@ -142,7 +151,7 @@ Escopo ideal:
 
 Use:
 
-- [.github/skills/api-security-best-practices/](./api-security-best-practices/)
+- `ai-team:api-security-best-practices` (plugin)
 
 Escopo ideal:
 
@@ -163,8 +172,8 @@ Skills de Python, FastAPI, Django, React, acessibilidade, Node.js, .NET, React N
 
 ### Shell scripts (POSIX sh e Bash)
 
-- [.github/skills/shellcheck-configuration/](./shellcheck-configuration/): use ao escrever, alterar ou revisar script shell (`*.sh` ou shebang `sh`/`bash`), para analise estatica com ShellCheck no dialeto do shebang, `.shellcheckrc`, diretivas e leitura dos codigos SC
-- [.github/skills/bats-testing-patterns/](./bats-testing-patterns/): use para escrever ou revisar testes de script shell com Bats, dentro do ciclo de `protocolo-tdd`
+- [.github/skills/shellcheck-configuration/](./shellcheck-configuration/) (projeto): use ao escrever, alterar ou revisar script shell (`*.sh` ou shebang `sh`/`bash`), para analise estatica com ShellCheck no dialeto do shebang, `.shellcheckrc`, diretivas e leitura dos codigos SC
+- [.github/skills/bats-testing-patterns/](./bats-testing-patterns/) (projeto): use para escrever ou revisar testes de script shell com Bats, dentro do ciclo de `protocolo-tdd`
 
 Regra de prioridade para shell:
 
@@ -211,56 +220,56 @@ Se duas skills parecerem servir:
 
 ### Quero criar arquitetura ou organizar camadas
 
-- [.github/skills/clean-architecture/](./clean-architecture/)
+- [.github/skills/clean-architecture/](./clean-architecture/) (projeto)
 
 ### Quero revisar impacto documental apos uma entrega
 
-- [.github/skills/documentation-sync/](./documentation-sync/)
+- `ai-team:documentation-sync` (plugin)
 
 ### Quero escrever ou consolidar um review tecnico
 
-- [.github/skills/review-documentation/](./review-documentation/)
+- `ai-team:review-documentation` (plugin)
 
 ### Quero atualizar docs existentes e tambem registrar a entrega
 
-1. [.github/skills/documentation-sync/](./documentation-sync/)
-2. [.github/skills/review-documentation/](./review-documentation/)
+1. `ai-team:documentation-sync` (plugin)
+2. `ai-team:review-documentation` (plugin)
 
 ### Quero gerar diagrama Mermaid
 
-- [.github/skills/mermaid-generator/](./mermaid-generator/)
+- `ai-team:mermaid-generator` (plugin)
 
 ### Quero escrever PRD ou historias
 
-- [.github/skills/prd-generator/](./prd-generator/)
-- [.github/skills/user-story-writing/](./user-story-writing/)
+- [.github/skills/prd-generator/](./prd-generator/) (projeto)
+- [.github/skills/user-story-writing/](./user-story-writing/) (projeto)
 
 ### Quero proteger uma API
 
-- [.github/skills/api-security-best-practices/](./api-security-best-practices/)
+- `ai-team:api-security-best-practices` (plugin)
 
 ### Quero endurecer uma aplicacao web
 
-- [.github/skills/security-best-practices/](./security-best-practices/)
+- `ai-team:security-best-practices` (plugin)
 
 ### Quero verificar se a implementacao que acabei de fazer respeita a arquitetura
 
-- [.github/skills/protocolo-conformidade/](./protocolo-conformidade/)
+- `ai-team:protocolo-conformidade` (plugin)
 
 ### Quero saber se posso encaminhar a entrega para QA
 
-- [.github/skills/protocolo-tdd/](./protocolo-tdd/): o handoff so e liberado com parecer de evidencias de testes Aprovado ou Aprovado com ressalvas
-- [.github/skills/protocolo-conformidade/](./protocolo-conformidade/): o handoff so e liberado com parecer Aprovado ou Aprovado com ressalvas
+- `ai-team:protocolo-tdd` (plugin): o handoff so e liberado com parecer de evidencias de testes Aprovado ou Aprovado com ressalvas
+- `ai-team:protocolo-conformidade` (plugin): o handoff so e liberado com parecer Aprovado ou Aprovado com ressalvas
 
 ### Quero escrever um teste melhor dentro do ciclo TDD
 
-1. [.github/skills/protocolo-tdd/](./protocolo-tdd/)
-2. [.github/skills/tdd-test-design/](./tdd-test-design/)
+1. `ai-team:protocolo-tdd` (plugin)
+2. `ai-team:tdd-test-design` (plugin)
 
 ### Quero escrever, revisar ou testar um script shell
 
-1. [.github/skills/shellcheck-configuration/](./shellcheck-configuration/)
-2. [.github/skills/bats-testing-patterns/](./bats-testing-patterns/)
+1. [.github/skills/shellcheck-configuration/](./shellcheck-configuration/) (projeto)
+2. [.github/skills/bats-testing-patterns/](./bats-testing-patterns/) (projeto)
 
 ## Resultado esperado
 

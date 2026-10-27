@@ -177,8 +177,9 @@ dbx_sync_filtrar_caminhos() {
 # dbx_sync_filtrar_meta <vetor_caminhos> <vetor_tamanhos> <vetor_identidades>
 #
 # RF-81(c): data e tamanho, so na origem LOCAL. A data e o `mtime` da identidade
-# lida pela travessia (primeiro campo, `%Y`), convertido em UTC sem utilitario;
-# sem identidade (sem `stat -c`), o arquivo nao passa num filtro de data.
+# lida pela travessia (segundo campo da identidade, mtime em segundos), convertido
+# em UTC sem utilitario; sem identidade (leitura falhou), o arquivo nao passa num
+# filtro de data.
 dbx_sync_filtrar_meta() {
   [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
   local -n _fm_c=$1 _fm_t=$2 _fm_i=$3
@@ -672,7 +673,7 @@ dbx_sync_listar_delta() {
     anterior=$DBX_SYNC_CURSOR_NOVO
   done
   # shellcheck disable=SC2154  # constante de lib/state, carregada por commands/sync
-  if [[ ! $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]]; then
+  if [[ ${#DBX_SYNC_CURSOR_NOVO} -gt 8192 || ! $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]]; then
     DBX_SYNC_CURSOR_NOVO=''
     DBX_SYNC_CURSOR_MOTIVO='descartado'
     return 1

@@ -442,7 +442,7 @@ _dbx_transfer_reposicionar() {
     fatia=$DBX_TRANSFER_TAMANHO_PARTE
     [[ $restante -lt $fatia ]] && fatia=$restante
     lido=''
-    head -c "$fatia" <&"$nova" >"$bloco" && lido=$(wc -c <"$bloco")
+    dbx_ler_exato "$fatia" "$nova" "$bloco" && lido=$(wc -c <"$bloco")
     lido=${lido//[^0-9]/}
     if [[ -z $lido || $lido -ne $fatia ]]; then
       exec {nova}<&-
@@ -671,7 +671,7 @@ _dbx_transfer_percurso() {
   while :; do
     # Sem cano: o status abaixo e o do proprio leitor. Falha de leitura aborta a
     # sessao ANTES de qualquer `finish`, e portanto nada e publicado.
-    head -c "$DBX_TRANSFER_TAMANHO_PARTE" <&"$_DBX_TRANSFER_FONTE" >"$bloco" || {
+    dbx_ler_exato "$DBX_TRANSFER_TAMANHO_PARTE" "$_DBX_TRANSFER_FONTE" "$bloco" || {
       _dbx_transfer_falhar nao_concluida \
         "falha ao ler a origem no deslocamento $deslocamento; nada foi publicado no destino"
       return $?
@@ -1028,7 +1028,7 @@ _dbx_transfer_ret_abrir() {
   restante=$confirmado
   while [[ $restante -gt 0 ]]; do
     lido=''
-    head -c "$DBX_TRANSFER_TAMANHO_PARTE" <&"$_DBX_TRANSFER_FONTE" >"$bloco" && lido=$(wc -c <"$bloco")
+    dbx_ler_exato "$DBX_TRANSFER_TAMANHO_PARTE" "$_DBX_TRANSFER_FONTE" "$bloco" && lido=$(wc -c <"$bloco")
     lido=${lido//[^0-9]/}
     if [[ -z $lido || $lido -ne $DBX_TRANSFER_TAMANHO_PARTE ]] || ! dbx_hash_acumular_bloco "$bloco"; then
       falhou='sim'
@@ -1146,7 +1146,7 @@ dbx_transfer_objeto_de_publicacao() {
   # local a funcao: capturar `date` seria captura fora do alfabeto fechado
   # (RNF-24). `TZ` precisa ser EXPORTADA: o shell so reaplica o fuso quando a
   # variavel esta no ambiente, e sem `-x` o carimbo sairia na hora local.
-  if [[ $origem != '-' ]] && mtime=$(stat -c %Y -- "$origem" 2>/dev/null) &&
+  if [[ $origem != '-' ]] && dbx_atributo mtime "$origem" && mtime=$DBX_ATRIBUTO &&
     [[ $mtime =~ ^[0-9]+$ ]]; then
     local -x TZ=UTC
     printf -v carimbo '%(%Y-%m-%dT%H:%M:%SZ)T' "$mtime"

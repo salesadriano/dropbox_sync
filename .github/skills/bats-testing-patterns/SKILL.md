@@ -20,8 +20,8 @@ This skill does not replace security hardening.
 Use this skill to write or review tests that prove the behavior of shell scripts.
 
 - [`shellcheck-configuration`](../shellcheck-configuration/SKILL.md) covers static analysis. It is complementary, not an alternative: lint does not prove behavior, and tests do not replace lint.
-- [`protocolo-tdd`](../protocolo-tdd/SKILL.md) is the mandatory delivery protocol (red-green-refactor, evidence verdict, local gate). This skill provides only the Bats tool mechanics; on conflict, `protocolo-tdd` prevails.
-- [`tdd-test-design`](../tdd-test-design/SKILL.md) decides what each test asserts and at which seam.
+- `ai-team:protocolo-tdd` is the mandatory delivery protocol (red-green-refactor, evidence verdict, local gate). This skill provides only the Bats tool mechanics; on conflict, `protocolo-tdd` prevails.
+- `ai-team:tdd-test-design` decides what each test asserts and at which seam.
 - [`testing-strategy`](../testing-strategy/SKILL.md) is for planning coverage without changing code.
 
 ## Package precedence

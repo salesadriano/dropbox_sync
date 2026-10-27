@@ -34,8 +34,13 @@
 # escassez de codigos —, e a mensagem de `configuracao` foi reescrita para nao
 # presumir credencial.
 #
-# NAO ha camada de compatibilidade GNU/BSD: DP-07 fixou Linux, e detectar
-# variante de sistema aqui traria de volta o que a decisao removeu.
+# Plataforma (DP-07 reaberta, secao 5.22, DIV-356): Linux e FreeBSD sao
+# suportados. A portabilidade vem da forma POSIX unica ou da capacidade do
+# utilitario (ex.: `stat -c` e, se recusado, `stat -f`). Deteccao do sistema e
+# liberada, mas so num PONTO UNICO, `dbx_preflight_plataforma`, que so existira
+# quando houver caso que a forma unica e a capacidade nao resolvam: ramificar
+# por `uname`, `OSTYPE` ou `MACHTYPE` espalhado pelo codigo recriaria a camada
+# de compatibilidade GNU/BSD. Ha caso de teste que reprova isso.
 
 [[ -n ${DBX_PREFLIGHT_CARREGADO:-} ]] && return 0
 DBX_PREFLIGHT_CARREGADO=1
@@ -51,6 +56,8 @@ _dbx_preflight_diretorio=${BASH_SOURCE[0]%/*}
 _dbx_preflight_diretorio=$(cd -P -- "$_dbx_preflight_diretorio" && pwd -P)
 # shellcheck source=lib/errors.sh
 . "$_dbx_preflight_diretorio/errors.sh"
+# shellcheck source=lib/atributos.sh
+. "$_dbx_preflight_diretorio/atributos.sh"
 unset _dbx_preflight_diretorio
 
 DBX_PREFLIGHT_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
@@ -74,7 +81,7 @@ readonly DBX_PREFLIGHT_BASH_MENOR=4
 # `commands/config.sh` (RNF-34(c)); `ln` pela criacao exclusiva da trava de
 # concorrencia (RF-69(j)); `rmdir` pela remocao do diretorio de estado vazio
 # (RF-69(e), `unlink`); a mesma lista esta no README.
-readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir'
+readonly DBX_PREFLIGHT_UTILITARIOS='curl mktemp mv rm chmod mkdir stat head dd wc readlink dirname find cat sleep tail df ln rmdir'
 
 DBX_PREFLIGHT_MOTIVO=''
 DBX_PREFLIGHT_DETALHE=''
@@ -123,8 +130,9 @@ dbx_preflight_credencial() {
 
   [[ -f $arquivo ]] ||
     { _dbx_preflight_falhar credencial 'o caminho da credencial nao e arquivo comum'; return $?; }
-  modo=$(stat -c '%a' "$arquivo" 2>/dev/null || stat -f '%Lp' "$arquivo" 2>/dev/null) ||
+  dbx_atributo modo "$arquivo" ||
     { _dbx_preflight_falhar credencial 'nao foi possivel inspecionar a credencial'; return $?; }
+  modo=$DBX_ATRIBUTO
   # Mesma regra do caminho gemeo em lib/config: qualquer modo sem bits para
   # grupo e outros e aceito, porque recusar 0400 desfaria uma escolha MAIS
   # restritiva do operador. Manter as duas verificacoes identicas e o que
@@ -132,10 +140,10 @@ dbx_preflight_credencial() {
   [[ $modo =~ ^[4567]00$ ]] ||
     { _dbx_preflight_falhar credencial "permissao da credencial precisa nao ter bits para grupo e outros, encontrada $modo"; return $?; }
 
-  modo_diretorio=$(stat -c '%a' -- "$diretorio" 2>/dev/null || stat -f '%Lp' "$diretorio" 2>/dev/null)
+  dbx_atributo modo "$diretorio"; modo_diretorio=$DBX_ATRIBUTO
   [[ $modo_diretorio =~ ^[0-7]00$ ]] ||
     { _dbx_preflight_falhar credencial "permissao do diretorio de configuracao precisa nao ter bits para grupo e outros, encontrada $modo_diretorio"; return $?; }
-  dono=$(stat -c '%u' "$arquivo" 2>/dev/null || stat -f '%u' "$arquivo" 2>/dev/null)
+  dbx_atributo dono "$arquivo"; dono=$DBX_ATRIBUTO
   [[ $dono == "$EUID" ]] ||
     { _dbx_preflight_falhar credencial 'a credencial pertence a outro usuario'; return $?; }
   return 0
@@ -173,7 +181,7 @@ dbx_preflight_verificar() {
       { _dbx_preflight_falhar dependencia 'nenhum utilitario de resumo SHA-256 disponivel'; return $?; }
   else
     command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 ||
-      command -v openssl >/dev/null 2>&1 ||
+      command -v sha256 >/dev/null 2>&1 || command -v openssl >/dev/null 2>&1 ||
       { _dbx_preflight_falhar dependencia 'nenhum utilitario de resumo SHA-256 disponivel'; return $?; }
   fi
 
@@ -220,7 +228,8 @@ dbx_preflight_ausentes() {
     dbx_hash_verificar_dependencias || DBX_PREFLIGHT_AUSENTES+=(sha256sum)
   else
     command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 ||
-      command -v openssl >/dev/null 2>&1 || DBX_PREFLIGHT_AUSENTES+=(sha256sum)
+      command -v sha256 >/dev/null 2>&1 || command -v openssl >/dev/null 2>&1 ||
+      DBX_PREFLIGHT_AUSENTES+=(sha256sum)
   fi
   [[ ${#DBX_PREFLIGHT_AUSENTES[@]} -eq 0 ]] || return "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
   return 0

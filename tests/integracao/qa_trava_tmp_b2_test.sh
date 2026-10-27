@@ -252,9 +252,35 @@ teste_qa_b2_01_dez_execucoes_simultaneas_do_mesmo_par_um_so_entra() {
     [[ $(cat "$e") == "$QA_CONFLITO" ]] && n7=$((n7 + 1))
   done
   assert_igual 9 "$n7" 'as nove perdedoras recusaram com conflito'
-  local -a vencedora=("$B"/estado/dbx/trava-*)
-  assert_igual 1 "${#vencedora[@]}" 'a trava da vencedora continua la depois das perdedoras'
-  assert_arquivo_existe "${vencedora[0]}" 'e e um arquivo de verdade'
+  # A vencedora e a unica sem codigo de saida. Se e `verificar`, detem 1 trava
+  # (a do par); se e `sync`, detem 2 (a do par e a da raiz local, RF-132), todas
+  # `trava-*` do mesmo diretorio e do MESMO pid, o da execucao presa.
+  local -a campo
+  local vencedora='' t pids='' comandos='' ntravas=0 esperadas=1
+  local -a travas=("$B"/estado/dbx/trava-*)
+  for i in 0 1 2 3 4 5 6 7 8 9; do
+    [[ -e $B/estado.p$i ]] || vencedora=$i
+  done
+  [[ -n $vencedora ]] || _harness_falhar 'nenhuma execucao presa'
+  for t in "${travas[@]}"; do
+    assert_arquivo_existe "$t" 'a trava viva e um arquivo de verdade'
+    IFS=$'\t' read -r -a campo <"$t"
+    assert_igual 'dbx-trava' "${campo[0]}" "formato da trava $t"
+    pids+="${campo[2]} "
+    comandos+="${campo[5]} "
+    ntravas=$((ntravas + 1))
+  done
+  assert_igual "$(<"$B/pid.p$vencedora")" "${pids%% *}" 'a trava e do pid da execucao presa'
+  for t in $pids; do
+    assert_igual "${pids%% *}" "$t" 'todas as travas presentes sao de um so pid'
+  done
+  if ((vencedora % 2)); then
+    assert_igual 'verificar ' "${comandos}" 'vencedora verificar: comando registrado'
+  else
+    esperadas=2
+    assert_igual 'sync sync ' "${comandos}" 'vencedora sync: comando registrado'
+  fi
+  assert_igual "$esperadas" "$ntravas" 'travas da vencedora continuam la depois das perdedoras (verificar 1, sync 2)'
   : >"$B/soltar"
   for i in 0 1 2 3 4 5 6 7 8 9; do
     _qa_esperar "$B/estado.p$i"

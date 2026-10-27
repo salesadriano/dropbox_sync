@@ -602,7 +602,7 @@ teste_qa_p4_doc_readme_lista_os_utilitarios_do_preflight_e_nao_tem_frase_revogad
   local linha readme preflight arquivo frase
   linha=$(grep -m1 'Utilit.rios da instala' "$DBX_HARNESS_RAIZ/README.md")
   readme=$(grep -oE '`[a-z0-9]+`' <<<"$linha" | tr -d '`' |
-    grep -vxE 'sha256sum|shasum|openssl' | LC_ALL=C sort | tr '\n' ' ')
+    grep -vxE 'sha256sum|shasum|sha256|openssl' | LC_ALL=C sort | tr '\n' ' ')
   preflight=$(bash -c '. "$1/lib/errors.sh"; . "$1/lib/preflight.sh"; printf "%s" "$DBX_PREFLIGHT_UTILITARIOS"' \
     _ "$DBX_HARNESS_RAIZ" | tr ' ' '\n' | grep -vx curl | LC_ALL=C sort | tr '\n' ' ')
   assert_diferente '' "$readme" 'o README tem a lista de utilitarios'
