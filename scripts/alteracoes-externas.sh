@@ -5,8 +5,8 @@
 # Tudo o que divergir dela e acusado: arquivo alterado, criado, apagado, renomeado ou com modo trocado,
 # na arvore de trabalho ou no indice (versao preparada); submodulo com outro commit ou sujo; commit na
 # branch sem a trilha do protocolo (linha `Prompt:` no corpo); commit ou merge com alteracao propria sem
-# trilha que chega a branch principal (no merge, o que difere do merge automatico refeito pelo git,
-# inclusive resolucao de conflito; merge limpo, mesmo com arquivo mudado pelos dois lados, nao conta);
+# trilha, na branch ou chegando a branch principal (no merge, o que difere do merge automatico refeito pelo
+# git, inclusive resolucao de conflito; merge limpo, mesmo com arquivo mudado pelos dois lados, nao conta);
 # historico reescrito. O script so le e acusa: nunca altera a arvore de trabalho, o indice ou o
 # historico; escreve apenas a linha de base e a marca, dentro de `.git/`.
 #
@@ -197,12 +197,6 @@ candidatos() {
   } | sed 's:/$::' | sort -u
 }
 
-sem_trilha() {  # commits sem a linha "Prompt:" no corpo
-  git rev-list "$@" | while read -r c; do
-    git show -s --format=%B "$c" | grep -q '^Prompt: ' || git show -s --format='%h %s (%an)' "$c"
-  done
-}
-
 # Alteracao propria de um merge: o que difere do merge automatico refeito (--remerge-diff), o que
 # inclui resolucao de conflito, mesmo a que mantem um dos lados. Octopus nao tem remerge: usa o diff
 # combinado (--cc -p). Arquivo mudado pelos dois pais e mesclado sem conflito nao conta. Falha do git
@@ -217,7 +211,9 @@ merge_com_alteracao_propria() {  # $1: commit; $2: total de ids em rev-list --pa
   [ -n "$d" ]
 }
 
-sem_trilha_principal() {  # idem, mas merge sem alteracao propria nao conta
+# Commits sem a linha "Prompt:" no corpo, na branch e na principal. Merge sem alteracao propria nao conta:
+# o merge de PR feito pelo GitHub com a mensagem padrao nao tem trilha, mas os commits que traz tem.
+sem_trilha() {
   git rev-list "$@" | while read -r c; do
     git show -s --format=%B "$c" | grep -q '^Prompt: ' && continue
     n=$(git rev-list --parents -n 1 "$c" | wc -w)
@@ -259,7 +255,7 @@ commits_da_principal() {
     echo "HISTORICO branch principal $principal reescrita no remoto ($(git rev-parse --short "$antes" 2>/dev/null || echo "$antes") -> $(git rev-parse --short "$agora"))"
     return 0
   fi
-  sem_trilha_principal "$antes..$agora" | sed 's/^/PRINCIPAL /'
+  sem_trilha "$antes..$agora" | sed 's/^/PRINCIPAL /'
 }
 
 arquivos() {
