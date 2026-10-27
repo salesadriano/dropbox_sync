@@ -76,9 +76,9 @@ sudo ./install.sh --system   # Instalação global (/usr/local/bin)
 ```
 
 #### Opção C: Instalação a partir do Tarball de Release
-Baixe o arquivo `dropbox_sync-2.0.0-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
+Baixe o arquivo `dropbox_sync-2.1.0-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
 ```bash
-tar -xzf dropbox_sync-2.0.0-linux.tar.gz
+tar -xzf dropbox_sync-2.1.0-linux.tar.gz
 ./install.sh
 ```
 
