@@ -16,7 +16,7 @@
 #
 set -euo pipefail
 
-VERSAO_INSTALADOR="2.0.0"
+VERSAO_INSTALADOR="2.1.0"
 REPO_URL="https://github.com/salesadriano/dropbox_sync.git"
 CANAL_PADRAO="master"
 
