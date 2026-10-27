@@ -31,7 +31,9 @@
 # em voo nao e registrada: na retomada e reenviada (DIV-367 A).
 #
 # `429` (DIV-365 A): cada auxiliar espera o seu `Retry-After` pela retentativa de
-# `lib/http`; o principal, ao ver um `429`, nao despacha parte nova ate as em voo
+# `lib/http`, que ANTES da espera cria a marca `p.<i>` na area do auxiliar
+# (DBX_HTTP_MARCA_PAUSA); o principal nao despacha parte nova enquanto houver
+# marca (pausa durante o `Retry-After`) e, vista a perda de limite, ate as em voo
 # terminarem (pausa compartilhada).
 
 [[ -n ${DBX_TRANSFER_PARALELO_CARREGADO:-} ]] && return 0
@@ -121,6 +123,8 @@ _dbx_transfer_par_aux() {
   local i=$1 fechar=$2 pasta=$_DBX_TRANSFER_PAR_PASTA parte status=0 tag='' antes_429=${DBX_HTTP_LIMITES_429:-0}
   local deslocamento=$((i * DBX_TRANSFER_PARALELO_PARTE)) argumento
   parte="$pasta/parte.$i"
+  # shellcheck disable=SC2034  # lido por lib/http, no mesmo processo auxiliar
+  DBX_HTTP_MARCA_PAUSA="$pasta/p.$i"
   _dbx_transfer_par_banda
   DBX_TRANSFER_CLASSE='' DBX_TRANSFER_MOTIVO=''
   dbx_debug_linha upload parte="$i" deslocamento="$deslocamento" close="$fechar"
@@ -314,7 +318,7 @@ dbx_transfer_sessao_paralela() {
 _dbx_transfer_par_conduzir() {
   local commit=$1 carregado=$2 pasta=$_DBX_TRANSFER_PAR_PASTA
   local total=$_DBX_TRANSFER_PAR_TOTAL partes=$_DBX_TRANSFER_PAR_PARTES n=$_DBX_TRANSFER_PAR_N
-  local identidade='' i vivos pausa='nao' falhou='nao' resultado acao_id='' recomecou='nao'
+  local identidade='' i vivos marcada pausa='nao' falhou='nao' resultado acao_id='' recomecou='nao'
   local st cl mo l429 tag argumento hex bytes pendentes
 
   dbx_hash_identidade "$_DBX_TRANSFER_PAR_ORIGEM" && identidade=$DBX_HASH_IDENTIDADE
@@ -379,7 +383,10 @@ _dbx_transfer_par_conduzir() {
       vivos=0
       for ((i = 0; i < partes; i++)); do [[ ${_DBX_TRANSFER_PAR_CONF[i]:-} == v ]] && vivos=$((vivos + 1)); done
       [[ $pausa == 'sim' && $vivos -eq 0 ]] && pausa='nao'
-      if [[ $falhou == 'nao' && $pausa == 'nao' ]]; then
+      # Pausa vigente: algum auxiliar recebeu 429 e ainda nao terminou (DIV-365 A).
+      marcada='nao'
+      compgen -G "$pasta/p.*" >/dev/null && marcada='sim'
+      if [[ $falhou == 'nao' && $pausa == 'nao' && $marcada == 'nao' ]]; then
         for ((i = 0; i < partes && vivos < n; i++)); do
           [[ -z ${_DBX_TRANSFER_PAR_CONF[i]:-} ]] || continue
           local destino_dbg='' fechar=false
@@ -408,7 +415,7 @@ _dbx_transfer_par_conduzir() {
           IFS= read -r l429
           IFS= read -r tag
         } <"$resultado"
-        rm -f -- "$resultado"
+        rm -f -- "$resultado" "$pasta/p.$i"
         _DBX_TRANSFER_PAR_PIDS[i]=''
         [[ $l429 =~ ^[0-9]{1,9}$ ]] || l429=0
         if ((l429 > 0)); then

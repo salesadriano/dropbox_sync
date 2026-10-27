@@ -105,6 +105,7 @@ case $ep in
     if [[ ! -d $base/sess/$sid ]]; then erro 'not_found/'
     else
       : >"$vivo"
+      printf 'ini %s\n' "$off" >>"$base/ev"
       n=$(ls "$base/vivos" | wc -l)
       printf '%s\n' "$n" >>"$base/picos"
       [[ -e $base/ctl/segura ]] && command -p sleep 0.4
@@ -123,6 +124,7 @@ case $ep in
       if [[ -e $base/ctl/falha && $off == "$(<"$base/ctl/falha")" ]]; then
         erro 'other/'
       elif [[ -e $base/ctl/r429 && $off == "$(<"$base/ctl/r429")" ]] && mv "$base/ctl/r429" "$base/ctl/r429.usado" 2>/dev/null; then
+        printf '429 %s\n' "$off" >>"$base/ev"
         codigo=429; resposta='{"error_summary":"too_many_requests/"}'; extra='Retry-After: 1'
       elif [[ $conc_s == nao && $off != "$(<"$base/sess/$sid/offset")" ]]; then
         codigo=409; resposta="{\"error_summary\":\"incorrect_offset/\",\"error\":{\".tag\":\"incorrect_offset\",\"correct_offset\":$(<"$base/sess/$sid/offset")}}"
@@ -168,7 +170,10 @@ fi
 [[ -n $escrever ]] && printf '%s' "$codigo"
 exit 0
 FIM
-  printf '#!%s\nexit 0\n' "$BASH" >"$base/bin/sleep"
+  {
+    printf '#!%s\n' "$BASH"
+    printf '[[ -e %q/ctl/sleep_real && $1 != 0.* ]] && exec /bin/sleep "$1"\nexit 0\n' "$base"
+  } >"$base/bin/sleep"
   chmod +x "$base/bin/curl" "$base/bin/sleep"
   printf '%s' "$base"
 }
@@ -343,6 +348,21 @@ teste_tc_pud_429_em_uma_parte_nao_perde_nem_duplica_e_entra_no_resumo() {
   assert_igual 0 "$DBX_ESTADO" "erro: $DBX_ERRO"
   assert_contem 'limites_429=1' "$DBX_ERRO"
   cmp -s "$base/montado" "$base/trabalho/grande.iso" || _harness_falhar 'bytes diferem'
+}
+
+# Pausar ANTES de esperar (DIV-365 A): a marca do 429 vale durante o Retry-After.
+teste_429_pausa_o_despacho_durante_o_retry_after() {
+  local base viol
+  base=$(_ambiente)
+  printf "%s" "$PARTE" >"$base/ctl/r429"
+  : >"$base/ctl/sleep_real"
+  _rodar "$base" upload --paralelo 4 grande.iso /Grande.iso
+  assert_igual 0 "$DBX_ESTADO" "erro: $DBX_ERRO"
+  assert_igual 1 "$(grep -c '^429 ' "$base/ev")" 'o cenario precisa ter produzido o 429'
+  viol=$(awk -v q="$PARTE" -v lim="$((4 * PARTE))" '
+    $1 == "429" { pausa = 1; next }
+    $1 == "ini" { if (pausa && $2 == q) pausa = 0; else if (pausa && $2 >= lim) print "ini " $2 " durante a espera" }' "$base/ev")
+  assert_igual '' "$viol" 'nenhuma parte nova durante o Retry-After'
 }
 
 teste_tc_pud_debug_traz_paralelo_no_resumo_e_uma_linha_por_parte() {

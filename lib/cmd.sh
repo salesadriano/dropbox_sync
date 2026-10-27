@@ -976,7 +976,16 @@ dbx_cmd_receber_retomavel() {
   DBX_JSON_ESCAPADO=''
   dbx_progress_arquivo_avancar "$inicio"
   dbx_progress_arquivo_observar "$part"
-  if [[ $inicio -gt 0 ]]; then
+  local faixas='nao'
+  if [[ ${DBX_CMD_PARALELO:-1} =~ ^[0-9]+$ ]] && ((DBX_CMD_PARALELO > 1)) && ((tamanho - inicio > 16777216)); then
+    # F-100 (RF-180): faixas simultaneas; o descritor do `.part` e so deste
+    # processo. N=1 e o que falta caber numa faixa seguem o caminho de sempre.
+    # shellcheck source=lib/download_paralelo.sh
+    . "${BASH_SOURCE[0]%/*}/download_paralelo.sh"
+    faixas='sim'
+    dbx_cmd_baixar_faixas "$argumento" "$_DBX_CMD_PART_FD" "$inicio" "$tamanho" "$DBX_CMD_PARALELO" "$rev" \
+      "$diretorio" "${part##*/}" "$devino"
+  elif [[ $inicio -gt 0 ]]; then
     dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
       "$argumento" "fd:$_DBX_CMD_PART_FD" "$inicio"
   else
@@ -991,7 +1000,10 @@ dbx_cmd_receber_retomavel() {
   coerente='nao'
   # O `416` chega como recusa de `lib/http`; com a faixa no fim, e a resposta
   # esperada (RF-104(d)).
-  if [[ $estado -eq 0 || ($inicio -gt 0 && $codigo == '416') ]]; then
+  if [[ $faixas == 'sim' && $estado -eq 0 ]]; then
+    # Cada faixa ja foi conferida (`206`, `Content-Range`, revisao) antes de gravar.
+    :
+  elif [[ $estado -eq 0 || ($inicio -gt 0 && $codigo == '416') ]]; then
     _dbx_cmd_resultado_campo rev
     resultado=$DBX_CMD_LIDO
     if [[ $inicio -eq 0 ]]; then
