@@ -201,7 +201,12 @@ dbx_cmd_baixar_faixas() {
       wait -n 2>/dev/null || sleep 0.05
     fi
   done
-  wait 2>/dev/null || :
+  # So os auxiliares: `wait` sem argumento esperaria tambem outros filhos do
+  # principal, como o observador de progresso do `.part` (`-p`), que so para
+  # depois desta funcao, e o download pendurava em 99%.
+  for j in "${!_DBX_TRANSFER_PAR_PIDS[@]}"; do
+    [[ -n ${_DBX_TRANSFER_PAR_PIDS[j]} ]] && wait "${_DBX_TRANSFER_PAR_PIDS[j]}" 2>/dev/null
+  done
   set +m
   _DBX_TRANSFER_PAR_PIDS=()
   dbx_tmp_acao_cancelar "$acao_id"

@@ -211,6 +211,18 @@ teste_limiar_mais_um_byte() {
   assert_contem 'integridade=conferida' "$DBX_SAIDA"
 }
 
+teste_progresso_ativo_nao_pendura_o_fim_das_faixas() {
+  # Medido no FreeBSD do solicitante: com `-p`, o observador de progresso do
+  # `.part` roda em segundo plano no principal; o `wait` sem argumento do
+  # coordenador esperava por ele e o download parava em 99% para sempre.
+  local base
+  base=$(_ambiente "$LIMIAR_MAIS_UM")
+  DBX_T_TETO=40 _down "$base" -p --paralelo 3
+  assert_igual 0 "$DBX_ESTADO" "download com progresso: $DBX_ERRO"
+  _iguais "$base" || _harness_falhar 'o alvo deveria ser identico ao remoto'
+  assert_contem 'integridade=conferida' "$DBX_SAIDA"
+}
+
 teste_multiplo_exato_de_16_mib() {
   local base
   base=$(_ambiente "$MULTIPLO")

@@ -458,7 +458,12 @@ _dbx_transfer_par_conduzir() {
         wait -n 2>/dev/null || sleep 0.05
       fi
     done
-    wait 2>/dev/null || :
+    # So os auxiliares: `wait` sem argumento esperaria qualquer outro filho do
+    # principal (ex.: observador de progresso), e o envio pendurava no fim.
+    local pid_aux
+    for pid_aux in "${_DBX_TRANSFER_PAR_PIDS[@]}"; do
+      [[ -n $pid_aux ]] && wait "$pid_aux" 2>/dev/null
+    done
     set +m
     _DBX_TRANSFER_PAR_PIDS=()
     dbx_tmp_acao_cancelar "$acao_id"
