@@ -211,6 +211,8 @@ dbx_cmd_download_executar() {
       dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
       return $?
     }
+    # RF-175(c): N efetivo no resumo de --debug.
+    ((DBX_CMD_PARALELO > 1)) && dbx_debug_resumo_campo paralelo "$DBX_CMD_PARALELO"
   fi
   local tem_filtros='nao'
   local -a repasse=(${filtros_caminho[@]+"${filtros_caminho[@]}"} ${filtros_meta[@]+"${filtros_meta[@]}"})

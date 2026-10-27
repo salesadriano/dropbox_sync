@@ -147,6 +147,8 @@ dbx_cmd_upload_executar() {
       dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
       return $?
     }
+    # RF-175(c): N efetivo no resumo de --debug.
+    ((DBX_CMD_PARALELO > 1)) && dbx_debug_resumo_campo paralelo "$DBX_CMD_PARALELO"
   fi
 
   local eh_diretorio='nao'
@@ -362,8 +364,10 @@ dbx_cmd_upload_executar() {
     dbx_debug_linha upload resultado=ok
   else
     DBX_TRANSFER_DEBUG_SEM_RETOMADA=$sem_retomada
+    DBX_TRANSFER_PARALELO=$DBX_CMD_PARALELO
     dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" upload
     local estado_envio=$?
+    DBX_TRANSFER_PARALELO=1
     DBX_TRANSFER_DEBUG_SEM_RETOMADA='nao'
     por_sessao=$DBX_TRANSFER_POR_SESSAO
     [[ $estado_envio -eq 0 ]] || {

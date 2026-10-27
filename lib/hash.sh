@@ -232,6 +232,17 @@ dbx_hash_acumular_bloco() {
   return "$DBX_HASH_OK"
 }
 
+# dbx_hash_acumular_resumo <sha256_hex_do_bloco> <bytes_do_bloco> — acrescenta a
+# cadeia o resumo de um bloco ja calculado por quem o leu (partes simultaneas,
+# RF-178(e)): o mesmo efeito de `dbx_hash_acumular_bloco`, sem reler o bloco.
+dbx_hash_acumular_resumo() {
+  local hex=${1-} bytes=${2-}
+  [[ $hex =~ ^[0-9a-f]{64}$ && $bytes =~ ^[0-9]{1,18}$ ]] || return "$DBX_HASH_ERRO_USO"
+  _dbx_hash_anexar_escapes "$hex"
+  DBX_HASH_BYTES=$((DBX_HASH_BYTES + 10#$bytes))
+  return "$DBX_HASH_OK"
+}
+
 # dbx_hash_acumular_encerrar <arquivo_de_trabalho> — resume a cadeia e publica o
 # `content_hash` em DBX_HASH_RESULTADO e o total em DBX_HASH_BYTES.
 #
