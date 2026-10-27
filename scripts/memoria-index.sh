@@ -14,6 +14,9 @@
 #   sh scripts/memoria-index.sh --check              # valida frontmatter e unicidade de id; exit 1 em erro.
 #                                                    # AVISO (sem reprovar) para `agentes: todos` fora de `tipo: decisao` + `escopo: pacote`;
 #                                                    # a entrada `branch-principal` (regra 46) e isenta
+#   sh scripts/memoria-index.sh --check --estrito    # idem, mas `todos` fora de decisao de pacote e ERRO (exit 1), e
+#                                                    # entrada ativa com cinco ou mais papeis em `agentes:` recebe AVISO:
+#                                                    # e o que faz o extrato por papel (regra 49) cortar de verdade
 #   sh scripts/memoria-index.sh --write              # grava .github/agents/memoria/INDICE.md (ignorado pelo git)
 
 set -eu
@@ -22,7 +25,7 @@ repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 dir="$repo_root/.github/agents/memoria/entradas"
 out="$repo_root/.github/agents/memoria/INDICE.md"
 
-escopo=""; tipo=""; status="ativa"; agente=""; desde=""; corpo=0; check=0; write=0
+escopo=""; tipo=""; status="ativa"; agente=""; desde=""; corpo=0; check=0; write=0; estrito=0
 AGENTES="tech-lead senior-developer qa-expert ux-expert dba business-analyst documentation-writer commit-writer todos"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -34,6 +37,7 @@ while [ $# -gt 0 ]; do
     --desde) if [ $# -lt 2 ] || [ -z "$2" ]; then echo "--desde exige uma data YYYY-MM-DD" >&2; exit 2; fi; desde="$2"; shift 2 ;;
     --corpo) corpo=1; shift ;;
     --check) check=1; shift ;;
+    --estrito) estrito=1; shift ;;
     --write) write=1; shift ;;
     *) echo "argumento desconhecido: $1" >&2; exit 2 ;;
   esac
@@ -99,7 +103,15 @@ if [ "$check" -eq 1 ]; then
     # `todos` fora de decisao de pacote entra no bootstrap de todo agent sem que nenhum a tenha pedido. Aviso, nao erro.
     # A entrada `branch-principal` leva `todos` por exigencia da regra 46 e fica isenta.
     if [ "$(echo "$ag" | tr -d ' ')" = "todos" ] && { [ "$t" != "decisao" ] || [ "$e" != "pacote" ]; } && [ "${file%-branch-principal}" = "$file" ]; then
-      echo "AVISO $file: 'agentes: todos' fora de tipo decisao + escopo pacote; nomeie os papeis (README das entradas)"
+      if [ "$estrito" -eq 1 ]; then
+        echo "ERRO $file: 'agentes: todos' fora de tipo decisao + escopo pacote; nomeie os papeis (README das entradas)"; err=1
+      else
+        echo "AVISO $file: 'agentes: todos' fora de tipo decisao + escopo pacote; nomeie os papeis (README das entradas)"
+      fi
+    fi
+    # Em --estrito, lista longa de papeis numa entrada ativa e quase `todos`: o extrato por papel nao corta nada.
+    if [ "$estrito" -eq 1 ] && [ "$s" = "ativa" ] && [ "$(echo "$ag" | tr ',' '\n' | grep -c .)" -ge 5 ]; then
+      echo "AVISO $file: $(echo "$ag" | tr ',' '\n' | grep -c .) papeis em agentes; nomeie so quem executa e quem valida (regra 49)"
     fi
     echo "$file" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}-[a-z0-9-]+$' || { echo "ERRO $file: nome fora do padrao YYYY-MM-DD-HHMM-slug"; err=1; }
     [ "$err" -eq 0 ] || exit 1
