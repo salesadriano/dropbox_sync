@@ -211,22 +211,20 @@ _DBX_CMD_SYNC_AUX_PIDS=()
 #
 # RF-133(b)(c): a opcao vence, e presente a variavel NAO e lida; sem opcao, a
 # variavel presente e invalida (inclusive vazia) e uso invalido nomeando-a.
-# Quando outro comando chama o `sync` (CHAMADOR), vale 1 e a variavel e
-# ignorada. Resultado em DBX_CMD_SYNC_PARALELO e DBX_CMD_SYNC_PARALELO_ORIGEM;
+# Quando outro comando chama o `sync` (CHAMADOR), a variavel e ignorada: o N
+# chega como opcao, ja resolvido pelo chamador (RF-176). Resultado em DBX_CMD_SYNC_PARALELO e DBX_CMD_SYNC_PARALELO_ORIGEM;
 # o motivo da recusa, em DBX_CLI_MOTIVO.
 _dbx_cmd_sync_paralelo_resolver() {
   local tem_opcao=$1 nome_opcao=$2 valor=${3-}
   DBX_CMD_SYNC_PARALELO=1
   DBX_CMD_SYNC_PARALELO_ORIGEM='padrao'
-  if [[ $tem_opcao == 'sim' ]]; then
-    dbx_cli_validar_paralelo "$nome_opcao" "$valor" opcao || return $?
-    DBX_CMD_SYNC_PARALELO=$DBX_CLI_PARALELO
-    DBX_CMD_SYNC_PARALELO_ORIGEM='opcao'
-  elif [[ -z ${DBX_CMD_SYNC_CHAMADOR:-} && -n ${DBX_PARALELO+definida} ]]; then
-    dbx_cli_validar_paralelo DBX_PARALELO "$DBX_PARALELO" variavel || return $?
-    DBX_CMD_SYNC_PARALELO=$DBX_CLI_PARALELO
+  # RF-175/RF-176: com CHAMADOR (`upload`/`download` de pasta) o N chega ja
+  # resolvido, como opcao; a variavel nao e relida aqui.
+  if [[ $tem_opcao == 'sim' || -z ${DBX_CMD_SYNC_CHAMADOR:-} ]]; then
+    dbx_cmd_paralelo "$tem_opcao" "$nome_opcao" "$valor" || return $?
+    DBX_CMD_SYNC_PARALELO=$DBX_CMD_PARALELO
     # shellcheck disable=SC2034  # canal publico, lido pelos testes e pelo debug
-    DBX_CMD_SYNC_PARALELO_ORIGEM='ambiente'
+    DBX_CMD_SYNC_PARALELO_ORIGEM=$DBX_CMD_PARALELO_ORIGEM
   fi
   # RF-162: campo extra do resumo de --debug (a lib nao conhece o comando).
   ((DBX_CMD_SYNC_PARALELO > 1)) && dbx_debug_resumo_campo paralelo "$DBX_CMD_SYNC_PARALELO"
@@ -874,7 +872,7 @@ dbx_cmd_sync_executar() {
   }
   # RF-133: antes de qualquer rede ou estado. `paralelo` e o N EFETIVO desta
   # execucao: 1 em simulacao (RF-134(e)) e quando o `sync` e chamado por outro
-  # comando (`download` de pasta, `upload` de pasta: fora do escopo da fase 9).
+  # comando (`download`/`upload` de pasta repassam o N, RF-176).
   local paralelo=1
   _dbx_cmd_sync_paralelo_resolver "$tem_paralelo" "$opcao_paralelo" "$valor_paralelo" || {
     dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
@@ -1877,7 +1875,8 @@ _dbx_cmd_sync_cursor_preparar() {
 # mesmo resultado e o mesmo codigo (RF-111(g)).
 _dbx_cmd_sync_cursor_gravar() {
   local completa incrementais agora
-  [[ $DBX_SYNC_TAB_PERSISTIVEL == 'sim' && $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]] || return 0
+  [[ $DBX_SYNC_TAB_PERSISTIVEL == 'sim' && ${#DBX_SYNC_CURSOR_NOVO} -le 8192 &&
+    $DBX_SYNC_CURSOR_NOVO =~ $DBX_STATE_CURSOR_RE_CURSOR ]] || return 0
   dbx_sync_tabela_contar
   [[ $DBX_SYNC_LIDO -le $DBX_STATE_CURSOR_ENTRADAS ]] || return 0
   printf -v agora '%(%s)T' -1

@@ -28,7 +28,7 @@ _sem() {
   mkdir -p "$dir"
   # `timeout` e os utilitarios usados pela propria sonda precisam existir no
   # PATH reduzido, senao a sonda mede a si mesma em vez do componente.
-  for alvo in bash curl sha256sum shasum openssl timeout env head wc mktemp stat \
+  for alvo in bash curl sha256sum shasum sha256 openssl timeout env head dd wc mktemp stat \
     readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od tail df sleep ln rmdir; do
     for faltante in "${ausentes[@]}"; do
       [[ $alvo == "$faltante" ]] && continue 2
@@ -76,7 +76,7 @@ teste_utilitario_de_resumo_ausente_e_recusado() {
   local caminho saida
   # Precisa remover TODOS: lib/hash aceita mais de um utilitario de resumo, e
   # deixar um deles no PATH faria a sonda medir outra coisa.
-  caminho=$(_sem sha256sum shasum openssl)
+  caminho=$(_sem sha256sum shasum sha256 openssl)
   saida=$(PATH="$caminho" timeout 30 bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_verificar 2>&1
@@ -94,13 +94,38 @@ teste_jq_nao_e_exigido() {
   assert_igual '' "$achados" "preflight exige jq: $achados"
 }
 
-teste_camada_de_compatibilidade_nao_foi_reintroduzida() {
-  # DP-07 fixou Linux; a camada GNU/BSD saiu do desenho. Detectar variante de
-  # sistema aqui traria de volta o que a decisao removeu.
-  local achados
-  achados=$(grep -vE '^[[:space:]]*#' "$DBX_HARNESS_RAIZ/lib/preflight.sh" |
-    grep -nEi '(uname|darwin|bsd|freebsd|macos)' || true)
-  assert_igual '' "$achados" "deteccao de plataforma reintroduzida: $achados"
+# _deteccao_fora_do_ponto_unico <arquivo...> — `uname`, `OSTYPE`, `MACHTYPE` e `BASH_VERSINFO[5]`
+# fora de comentario e fora do corpo de `dbx_preflight_plataforma`.
+_deteccao_fora_do_ponto_unico() {
+  awk '
+    /^dbx_preflight_plataforma\(\) \{/ { dentro = 1 }
+    dentro { if ($0 ~ /^\}/) dentro = 0; next }
+    /^[[:space:]]*#/ { next }
+    /(^|[^A-Za-z0-9_])(uname|OSTYPE|MACHTYPE|BASH_VERSINFO\[5\])([^A-Za-z0-9_]|$)/ { print FILENAME ":" FNR ": " $0 }
+  ' "$@"
+}
+
+teste_deteccao_de_plataforma_so_no_ponto_unico() {
+  # DP-07 reaberta (secao 5.22, DIV-356): a deteccao e liberada, mas num ponto
+  # unico. Ramificar por sistema espalhado pelo codigo recriaria a camada de
+  # compatibilidade que a decisao original removeu.
+  local area mutacao achados
+  area=$(mktemp -d "$DBX_TESTES_TMP/ponto.XXXXXX")
+  printf '%s\n' 'sistema=$(uname -s)' >"$area/uname.sh"
+  printf '%s\n' '[[ $OSTYPE == freebsd* ]] && x=1' >"$area/ostype.sh"
+  printf '%s\n' 'arq=$MACHTYPE' >"$area/machtype.sh"
+  printf '%s\n' 'sistema=${BASH_VERSINFO[5]}' >"$area/versinfo.sh"
+  for mutacao in uname ostype machtype versinfo; do
+    [[ -n $(_deteccao_fora_do_ponto_unico "$area/$mutacao.sh") ]] ||
+      _harness_falhar "a auditoria nao acusou a forma '$mutacao'"
+  done
+  printf '%s\n' '# uname em comentario' 'dbx_preflight_plataforma() {' \
+    '  sistema=$(uname -s)' '}' 'x=1' >"$area/permitido.sh"
+  assert_igual '' "$(_deteccao_fora_do_ponto_unico "$area/permitido.sh")" \
+    'comentario e corpo do ponto unico nao sao acusados'
+  achados=$(_deteccao_fora_do_ponto_unico "$DBX_HARNESS_RAIZ"/lib/*.sh "$DBX_HARNESS_RAIZ"/commands/*.sh \
+    "$DBX_HARNESS_RAIZ/bin/dbx" "$DBX_HARNESS_RAIZ/install.sh" "$DBX_HARNESS_RAIZ/uninstall.sh")
+  assert_igual '' "$achados" "deteccao de plataforma fora de dbx_preflight_plataforma: $achados"
 }
 
 # ---------------------------------------------------------------------------
@@ -215,7 +240,7 @@ teste_diagnostico_do_preflight_nao_ecoa_conteudo_da_credencial() {
 
 teste_todo_utilitario_ausente_reprova_e_e_nomeado() {
   local utilitario caminho saida
-  for utilitario in mktemp mv rm chmod mkdir stat head wc readlink dirname ln; do
+  for utilitario in mktemp mv rm chmod mkdir stat head dd wc readlink dirname ln; do
     caminho=$(_sem "$utilitario")
     saida=$(PATH="$caminho" timeout 30 bash -c '
       . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
@@ -252,7 +277,7 @@ teste_inspecao_sem_parada_nomeia_cada_ausente() {
 
 teste_inspecao_sem_parada_inclui_o_resumo_sha256() {
   local caminho saida
-  caminho=$(_sem sha256sum shasum openssl)
+  caminho=$(_sem sha256sum shasum sha256 openssl)
   saida=$(PATH="$caminho" timeout 30 bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_ausentes
@@ -390,7 +415,7 @@ _nao_e_comando_externo() {
   # presenca e
   # verificada em conjunto por `dbx_hash_verificar_dependencias`, e nao
   # individualmente: exigir os tres reprovaria ambiente que tem apenas um.
-  local excecoes=' sudo env sha256sum openssl shasum '
+  local excecoes=' sudo env sha256sum openssl shasum sha256 '
   [[ $excecoes == *" $palavra "* ]] && return 0
   return 1
 }
@@ -722,7 +747,7 @@ teste_lista_de_utilitarios_do_readme_e_a_do_preflight() {
   local esperado obtido
   esperado=$({
     tr ' ' '\n' <<<"$DBX_PREFLIGHT_UTILITARIOS"
-    printf '%s\n' sha256sum shasum openssl
+    printf '%s\n' sha256sum shasum sha256 openssl
   } | grep -vx -e curl -e '' | sort -u)
   obtido=$(_utilitarios_do_readme)
   assert_diferente '' "$obtido" 'o README precisa trazer a linha de utilitarios'

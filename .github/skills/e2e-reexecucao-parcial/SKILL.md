@@ -17,9 +17,9 @@ O diagnostico do E2E sobe como artefato da pipeline: log da cadeia, screenshots 
 
 ## Scope Boundary
 
-- [`protocolo-tdd`](../protocolo-tdd/SKILL.md) e a fonte da Regra 9 (parar no primeiro erro e reporta-lo) e da Regra 8 (suite completa na pipeline, antes dos demais steps); esta skill cuida do que acontece **depois** da parada: dizer o que nao rodou e reexecutar so isso.
+- `ai-team:protocolo-tdd` e a fonte da Regra 9 (parar no primeiro erro e reporta-lo) e da Regra 8 (suite completa na pipeline, antes dos demais steps); esta skill cuida do que acontece **depois** da parada: dizer o que nao rodou e reexecutar so isso.
 - A mecanica da parada por ferramenta vive na referencia `interrupcao-no-primeiro-erro` de `protocolo-tdd`; nao e repetida aqui.
-- [`governanca-por-hooks`](../governanca-por-hooks/SKILL.md) e quem impede a suite inteira **local**; esta skill so trata da pipeline.
+- `ai-team:governanca-por-hooks` e quem impede a suite inteira **local**; esta skill so trata da pipeline.
 
 ## Origem
 

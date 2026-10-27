@@ -103,6 +103,8 @@ _dbx_transfer_diretorio=$(cd -P -- "$_dbx_transfer_diretorio" && pwd -P)
 . "$_dbx_transfer_diretorio/progress.sh"
 # shellcheck source=lib/tmp.sh
 . "$_dbx_transfer_diretorio/tmp.sh"
+# shellcheck source=lib/transfer_paralelo.sh
+. "$_dbx_transfer_diretorio/transfer_paralelo.sh"
 unset _dbx_transfer_diretorio
 
 # Parte de 4 MiB — a MESMA grandeza do bloco do `content_hash`. A igualdade e
@@ -442,7 +444,7 @@ _dbx_transfer_reposicionar() {
     fatia=$DBX_TRANSFER_TAMANHO_PARTE
     [[ $restante -lt $fatia ]] && fatia=$restante
     lido=''
-    head -c "$fatia" <&"$nova" >"$bloco" && lido=$(wc -c <"$bloco")
+    dbx_ler_exato "$fatia" "$nova" "$bloco" && lido=$(wc -c <"$bloco")
     lido=${lido//[^0-9]/}
     if [[ -z $lido || $lido -ne $fatia ]]; then
       exec {nova}<&-
@@ -671,7 +673,7 @@ _dbx_transfer_percurso() {
   while :; do
     # Sem cano: o status abaixo e o do proprio leitor. Falha de leitura aborta a
     # sessao ANTES de qualquer `finish`, e portanto nada e publicado.
-    head -c "$DBX_TRANSFER_TAMANHO_PARTE" <&"$_DBX_TRANSFER_FONTE" >"$bloco" || {
+    dbx_ler_exato "$DBX_TRANSFER_TAMANHO_PARTE" "$_DBX_TRANSFER_FONTE" "$bloco" || {
       _dbx_transfer_falhar nao_concluida \
         "falha ao ler a origem no deslocamento $deslocamento; nada foi publicado no destino"
       return $?
@@ -984,7 +986,17 @@ _dbx_transfer_ret_abrir() {
     return 0
   dbx_state_retomada_carregar
   case $? in
-    0) ;;
+    0)
+      if [[ $DBX_STATE_RETOMADA_VERSAO_LIDA -eq 2 ]]; then
+        # Registro de sessao concorrente (v2): so as partes simultaneas o usam.
+        dbx_state_retomada_remover
+        dbx_debug_linha upload retomada=descartada motivo=sessao-concorrente
+        # shellcheck disable=SC2034  # canal publico, lido por commands/upload
+        DBX_TRANSFER_RETOMADA='recomecada'
+        _dbx_transfer_avisar 'registro de envio em partes simultaneas; o envio sequencial recomeca do zero'
+        return 0
+      fi
+      ;;
     2)
       _dbx_transfer_avisar "estado de retomada descartado: $DBX_STATE_MOTIVO"
       dbx_debug_linha upload retomada=descartada motivo=estado-invalido
@@ -1028,7 +1040,7 @@ _dbx_transfer_ret_abrir() {
   restante=$confirmado
   while [[ $restante -gt 0 ]]; do
     lido=''
-    head -c "$DBX_TRANSFER_TAMANHO_PARTE" <&"$_DBX_TRANSFER_FONTE" >"$bloco" && lido=$(wc -c <"$bloco")
+    dbx_ler_exato "$DBX_TRANSFER_TAMANHO_PARTE" "$_DBX_TRANSFER_FONTE" "$bloco" && lido=$(wc -c <"$bloco")
     lido=${lido//[^0-9]/}
     if [[ -z $lido || $lido -ne $DBX_TRANSFER_TAMANHO_PARTE ]] || ! dbx_hash_acumular_bloco "$bloco"; then
       falhou='sim'
@@ -1146,7 +1158,7 @@ dbx_transfer_objeto_de_publicacao() {
   # local a funcao: capturar `date` seria captura fora do alfabeto fechado
   # (RNF-24). `TZ` precisa ser EXPORTADA: o shell so reaplica o fuso quando a
   # variavel esta no ambiente, e sem `-x` o carimbo sairia na hora local.
-  if [[ $origem != '-' ]] && mtime=$(stat -c %Y -- "$origem" 2>/dev/null) &&
+  if [[ $origem != '-' ]] && dbx_atributo mtime "$origem" && mtime=$DBX_ATRIBUTO &&
     [[ $mtime =~ ^[0-9]+$ ]]; then
     local -x TZ=UTC
     printf -v carimbo '%(%Y-%m-%dT%H:%M:%SZ)T' "$mtime"
@@ -1208,6 +1220,15 @@ dbx_transfer_enviar_arquivo() {
     dbx_debug_linha upload modalidade=sessao arquivo="${DBX_TRANSFER_DEBUG_ITEM:-$origem}" bytes="$DBX_TRANSFER_TAMANHO" bloco_tamanho="$DBX_TRANSFER_TAMANHO_PARTE"
     [[ $DBX_TRANSFER_DEBUG_SEM_RETOMADA == 'sim' ]] &&
       dbx_debug_linha upload retomada=descartada motivo=sem-retomada
+    # RF-177: partes simultaneas so com N>1; N=1 e o caminho de sempre.
+    if ((${DBX_TRANSFER_PARALELO:-1} > 1)); then
+      dbx_transfer_sessao_paralela "$commit" "$origem"
+      local estado_paralelo=$?
+      if ((estado_paralelo != _DBX_TRANSFER_SEQUENCIAL)); then
+        _dbx_transfer_debug_resultado "$estado_paralelo"
+        return $?
+      fi
+    fi
     # shellcheck disable=SC2094  # `origem` e so lida: o nome viaja para a retomada
     dbx_transfer_sessao "$commit" "$origem" <"$origem"
     _dbx_transfer_debug_resultado $?

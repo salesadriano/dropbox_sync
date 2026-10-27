@@ -91,8 +91,8 @@ _dbx_cmd_config_diagnosticar() {
   if [[ -e $dir ]]; then
     if [[ -d $dir ]]; then
       local modo dono gravavel
-      modo=$(stat -c '%a (%A)' "$dir" 2>/dev/null || stat -f '%Lp (%Sp)' "$dir" 2>/dev/null || echo 'indisponivel')
-      dono=$(stat -c '%u:%g' "$dir" 2>/dev/null || stat -f '%u:%g' "$dir" 2>/dev/null || echo 'indisponivel')
+      dbx_atributo modo_exibicao "$dir" && modo=$DBX_ATRIBUTO || modo=indisponivel
+      dbx_atributo dono_grupo "$dir" && dono=$DBX_ATRIBUTO || dono=indisponivel
       if [[ -w $dir ]]; then gravavel='sim'; else gravavel='nao'; fi
       printf '[debug] Diretorio existe: sim (tipo: dir, perm: %s, dono: %s, gravavel: %s)\n' \
         "$modo" "$dono" "$gravavel" >&2
@@ -105,8 +105,8 @@ _dbx_cmd_config_diagnosticar() {
 
   if [[ -e $arq ]]; then
     local modo_arq dono_arq
-    modo_arq=$(stat -c '%a (%A)' "$arq" 2>/dev/null || stat -f '%Lp (%Sp)' "$arq" 2>/dev/null || echo 'indisponivel')
-    dono_arq=$(stat -c '%u:%g' "$arq" 2>/dev/null || stat -f '%u:%g' "$arq" 2>/dev/null || echo 'indisponivel')
+    dbx_atributo modo_exibicao "$arq" && modo_arq=$DBX_ATRIBUTO || modo_arq=indisponivel
+    dbx_atributo dono_grupo "$arq" && dono_arq=$DBX_ATRIBUTO || dono_arq=indisponivel
     printf '[debug] Arquivo existe: sim (perm: %s, dono: %s)\n' "$modo_arq" "$dono_arq" >&2
   else
     printf '[debug] Arquivo existe: nao\n' >&2

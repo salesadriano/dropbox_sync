@@ -667,7 +667,9 @@ teste_qa_skip_cache_envenenado_nao_leva_a_dispensa_indevida() {
 }
 
 teste_qa_skip_forcar_rev_e_entrada_padrao_ignoram_cache_valido() {
-  # RF-60(g), (h), (i) COM cache valido e remoto igual: nenhuma consulta.
+  # RF-60(g), (h), (i) COM cache valido e remoto igual. Emenda RF-60(g)(h)/RF-174(b):
+  # --forcar e entrada padrao fazem UMA consulta so de tipo (destino e pasta?), sem
+  # comparar content_hash nem dispensar; --rev continua sem consulta.
   _qa_cenario
   local origem="$BASE/local/a.txt"
   _qa_antigo "$origem" 'conteudo'
@@ -676,18 +678,19 @@ teste_qa_skip_forcar_rev_e_entrada_padrao_ignoram_cache_valido() {
   assert_igual 1 "$(_qa_registros_upload)" 'semeadura: cache valido'
   : >"$BASE/chamadas"
   _qa_rodar upload --forcar "$origem" /r/a.txt
-  assert_igual 0 "$(_qa_consultas)" '--forcar: sem consulta'
-  assert_igual 1 "$(_qa_envios)" '--forcar: envia'
+  assert_igual 1 "$(_qa_consultas)" '--forcar: uma consulta, so de tipo (RF-174(b))'
+  assert_igual 1 "$(_qa_envios)" '--forcar: envia apesar do cache valido e do remoto igual (sem dispensa)'
+  : >"$BASE/chamadas"
   _qa_rodar upload --rev 0a1 "$origem" /r/a.txt
   assert_igual 0 "$(_qa_consultas)" '--rev: sem consulta'
-  assert_igual 2 "$(_qa_envios)" '--rev: envia'
+  assert_igual 1 "$(_qa_envios)" '--rev: envia (contagem desde o zeramento das chamadas)'
   assert_contem 'update' "$(cat "$BASE/opcoes")" '--rev: em modo update'
   : >"$BASE/chamadas"
   SAIDA=''
   env -i PATH="$BASE/bin:$PATH" HOME="$BASE" XDG_CONFIG_HOME="$BASE/config" \
     XDG_STATE_HOME="$BASE/estado" TMPDIR="$DBX_TESTES_TMP" \
     bash "$DBX_EXEC" upload - /r/a.txt <"$origem" >"$BASE/out" 2>"$BASE/err"
-  assert_igual 0 "$(_qa_consultas)" 'entrada padrao: sem consulta'
+  assert_igual 1 "$(_qa_consultas)" 'entrada padrao: uma consulta, so de tipo (RF-174(b))'
   assert_igual 1 "$(_qa_registros_upload)" 'entrada padrao: nenhum registro novo'
 }
 

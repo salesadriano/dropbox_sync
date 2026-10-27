@@ -458,6 +458,15 @@ dbx_auth_conteudo_receber() {
   _dbx_auth_com_renovacao dbx_http_conteudo_receber "$1" "$2" "$3" "$4" ${5:+"$5"}
 }
 
+# dbx_auth_conteudo_receber_faixa <metodo> <url> <arg_json> <arquivo> <inicio> <fim>
+#
+# F-100 (RF-180): faixa fechada gravada em arquivo proprio; ver
+# `dbx_http_conteudo_receber_faixa`. Mesma renovacao de token.
+dbx_auth_conteudo_receber_faixa() {
+  [[ $# -ge 6 ]] || return "$DBX_AUTH_ERRO_USO"
+  _dbx_auth_com_renovacao dbx_http_conteudo_receber_faixa "$1" "$2" "$3" "$4" "$5" "$6"
+}
+
 # ---------------------------------------------------------------------------
 # Vinculo e desvinculo (RF-01, RF-04, RF-06a)
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@
 [![Testes Automatizados](https://img.shields.io/badge/testes-TAP%2013-brightgreen.svg)](#testes-e-qualidade)
 [![Piso de Shell](https://img.shields.io/badge/bash-4.4%2B-informational.svg)](#requisitos)
 
-**`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em ambientes Linux/POSIX.
+**`dbx`** é uma ferramenta de linha de comando (CLI) determinística, segura e de alto desempenho para interação com a **Dropbox API v2** em Linux e FreeBSD.
 
 Projetada com arquitetura modular e aderência estrita a contratos de rede e integridade, a ferramenta tem o `cURL` como **única dependência externa**, além do `bash` 4.4+ e dos utilitários da instalação base listados em [Requisitos do Sistema](#requisitos-do-sistema) — dispensando interpretadores de linguagens de alto nível e analisadores de JSON externos (`jq`).
 
@@ -46,10 +46,12 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 
 ## Requisitos do Sistema
 
-- **Sistema Operacional:** Linux (POSIX compatível).
-- **Interpretador:** GNU Bash 4.4 ou superior.
+- **Sistema Operacional:** Linux (POSIX compatível) ou FreeBSD 13/14 (UFS ou ZFS).
+- **Interpretador:** GNU Bash 4.4 ou superior. No FreeBSD, o `bash` e o `curl` vêm do `pkg`: `pkg install bash curl`.
+- **FreeBSD — sem `fdescfs`:** o `dbx` confere arquivos abertos (o `.part` da retomada, o cursor, o estado) pelo próprio descritor, e não por `/dev/fd/<n>`; o `fdescfs` não é necessário, montado ou não.
+- **FreeBSD — identificador do host nas travas:** sem `/proc`, as partes de boot e de namespace do identificador valem `x`; a trava continua valendo no mesmo host.
 - **Rede:** `cURL` com suporte a HTTPS e TLS 1.2+ (única dependência externa).
-- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum` ou `openssl`.
+- **Utilitários da instalação base** (a verificação prévia nomeia o que faltar): `mktemp`, `mv`, `rm`, `chmod`, `mkdir`, `stat`, `head`, `dd`, `tail`, `wc`, `readlink`, `dirname`, `find`, `cat`, `sleep`, `df`, `ln`, `rmdir` e um utilitário de resumo SHA-256: `sha256sum`, `shasum`, `sha256` ou `openssl`.
 - **Opcionais, só no diagnóstico de `dbx config --debug`:** `mount`, `grep`, `getenforce` e `lsattr`; na falta deles, a linha correspondente do relatório é omitida.
 
 ---
@@ -74,9 +76,9 @@ sudo ./install.sh --system   # Instalação global (/usr/local/bin)
 ```
 
 #### Opção C: Instalação a partir do Tarball de Release
-Baixe o arquivo `dropbox_sync-2.0.0-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
+Baixe o arquivo `dropbox_sync-2.1.0-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
 ```bash
-tar -xzf dropbox_sync-2.0.0-linux.tar.gz
+tar -xzf dropbox_sync-2.1.0-linux.tar.gz
 ./install.sh
 ```
 
@@ -186,6 +188,11 @@ dbx upload -p /mnt/h/Bkps/PeOuro /PeOuro
 
 # Upload dispensado automaticamente se o arquivo local estiver inalterado
 dbx upload ./relatorio.pdf /documentos/relatorio.pdf
+
+# Destino que é uma pasta (já existente, ou terminado em "/"): o arquivo é gravado em
+# <pasta>/<nome do arquivo>, aqui /backups/relatorio.pdf. A entrada padrão (-) exige o nome no destino.
+dbx upload ./relatorio.pdf /backups/
+dbx upload ./relatorio.pdf /backups
 
 # Forçar envio mesmo se inalterado (pula também a checagem de espaço livre)
 dbx upload --forcar ./relatorio.pdf /documentos/relatorio.pdf
@@ -446,7 +453,14 @@ O piso é **2 × `DBX_HTTP_VELOCIDADE_MINIMA_BPS`** (2048 bytes/s no padrão): a
 
 ## Paralelismo no sync
 
-`--paralelo N` (alias `--parallel`) no `sync`, ou `DBX_PARALELO=N`, roda até **N transferências de arquivo ao mesmo tempo**, no envio e no recebimento. `N` é um inteiro de **1 a 8**; o padrão é **1** (o comportamento de sempre, sem processo auxiliar); a opção vence a variável; valor inválido (`0`, negativo, acima de 8, vazio, com sinal ou zero à esquerda) sai com `2` antes de qualquer rede. `upload` e `download` de pasta, e o `--dry-run`, nunca usam paralelismo.
+`--paralelo N` (alias `--parallel`) no `sync`, ou `DBX_PARALELO=N`, roda até **N transferências de arquivo ao mesmo tempo**, no envio e no recebimento. `N` é um inteiro de **1 a 8**; o padrão é **1** (o comportamento de sempre, sem processo auxiliar); a opção vence a variável; valor inválido (`0`, negativo, acima de 8, vazio, com sinal ou zero à esquerda) sai com `2` antes de qualquer rede. O `--dry-run` nunca usa paralelismo (aceita a opção, valida o `N` e ignora).
+
+**`upload` e `download` (RF-175, RF-176):** aceitam a mesma opção e a mesma variável, com a mesma validação e precedência. Em **pasta**, o `N` vai ao `sync` interno e as transferências rodam em até `N` ao mesmo tempo, com o mesmo resultado de `N=1`. Em **arquivo único** a opção é aceita e validada, mas nesta versão a transferência segue sequencial. Com entrada ou saída padrão (`-`), a opção explícita sai com `2` e a variável é ignorada. Os demais comandos continuam recusando a opção (`2`) e ignorando a variável.
+
+```bash
+dbx upload --paralelo 4 ./fotos /fotos
+dbx download --paralelo 4 /fotos ./fotos
+```
 
 ```bash
 dbx sync --enviar --origem ./fotos --destino /fotos --paralelo 4

@@ -1573,8 +1573,11 @@ teste_upload_forcar_e_entrada_padrao_nao_consultam_o_metadado() {
   assert_igual 0 "$DBX_ESTADO" "--forcar envia; diagnostico: $DBX_ERRO"
   assert_igual 1 "$(_harness_contar 'files/upload$' "$base/argv")" '--forcar envia mesmo com hash igual'
   _rodar "$base" upload - /r/b.txt
-  assert_igual 0 "$(_harness_contar 'files/get_metadata' "$base/argv")" \
-    'nem --forcar nem a entrada padrao emitem consulta de comparacao'
+  # Destino que pode ser pasta (upload-arquivo-para-pasta): --forcar e a entrada
+  # padrao fazem UMA consulta so de tipo (leitura), sem comparar content_hash:
+  # duas no total, e o envio de --forcar segue mesmo com hash igual (acima).
+  assert_igual 2 "$(_harness_contar 'files/get_metadata' "$base/argv")" \
+    '--forcar e a entrada padrao consultam so o tipo do destino, uma vez cada'
   assert_igual 0 "$(_registros_de_upload "$base")" 'entrada padrao nao tem cache; --forcar grava so arquivo antigo'
 }
 

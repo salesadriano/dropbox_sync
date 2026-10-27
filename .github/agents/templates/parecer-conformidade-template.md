@@ -1,6 +1,6 @@
 # Template - Parecer de Conformidade Arquitetural e de Boas Praticas
 
-Preenchido pelo agent que produziu a alteracao, conforme `../skills/protocolo-conformidade/`, antes de qualquer handoff.
+Preenchido pelo agent que produziu a alteracao, conforme a skill `ai-team:protocolo-conformidade`, antes de qualquer handoff.
 
 > **Modo do parecer (regra 40 e `Protocolo por porte` do `AGENTS.md`):** em porte **P** e **M**, preencher apenas Identificacao, Escopo, Stack detectada e skills aplicadas, Achados, Veredito e, se reprovado, Devolucao; substituir as tabelas de verificacao pela linha `Checklist clean-architecture + <skill de stack> aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados`. Em porte **G**, preencher todas as secoes. Secao sem conteudo e omitida com `Nao aplicavel: <motivo>`, nunca preenchida com placeholders.
 
@@ -137,4 +137,4 @@ Preencher a partir do ciclo 2.
 ## Registro
 
 - Quando houver decisao duravel ou justificativa aceita, gravar uma entrada em `../memoria/entradas/` (`escopo: projeto`, ou `pacote` se mudar regra transversal) com `ref:` para este parecer (regra 35).
-- Referenciar este parecer no registro tecnico produzido por `../skills/review-documentation/`.
+- Referenciar este parecer no registro tecnico produzido pela skill `ai-team:review-documentation`.

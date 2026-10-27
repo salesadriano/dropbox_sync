@@ -112,6 +112,7 @@ _DBX_HTTP_LIMITE_BANDA=''
 # Fase 7a (RF-104(c)(d)): deslocamento do recebimento retomado (`continue-at`
 # do cliente, que pede `Range: bytes=N-` e anexa ao destino). Vazio fora dele.
 _DBX_HTTP_FAIXA_INICIO=''
+_DBX_HTTP_FAIXA_FIM=''
 # `sim` quando o cliente recusou a resposta a um pedido de faixa (status 33:
 # `200` no lugar de `206`, ou `206` com inicio diferente) SEM escrever o corpo.
 # shellcheck disable=SC2034  # canal publico, lido por lib/cmd
@@ -467,7 +468,13 @@ _dbx_http_opcoes() {
       fi
       # RF-104(c): o cliente pede `Range: bytes=N-`, ANEXA ao destino e recusa
       # (status 33, sem escrever) resposta sem `Content-Range` que comece em N.
-      if [[ -n $_DBX_HTTP_FAIXA_INICIO && $_DBX_HTTP_CANAL == 'fluxo' ]]; then
+      if [[ -n $_DBX_HTTP_FAIXA_FIM && $_DBX_HTTP_CANAL == 'fluxo' ]]; then
+        # F-100 (RF-180): faixa FECHADA para um arquivo proprio de quem pede. O
+        # teto de tamanho faz o cliente recusar (status 63, nada escrito) um
+        # `200` com o arquivo inteiro, que de outro modo encheria o destino.
+        printf 'range = "%s-%s"\n' "$_DBX_HTTP_FAIXA_INICIO" "$_DBX_HTTP_FAIXA_FIM"
+        printf 'max-filesize = %s\n' $((_DBX_HTTP_FAIXA_FIM - _DBX_HTTP_FAIXA_INICIO + 1))
+      elif [[ -n $_DBX_HTTP_FAIXA_INICIO && $_DBX_HTTP_CANAL == 'fluxo' ]]; then
         printf 'continue-at = %s\n' "$_DBX_HTTP_FAIXA_INICIO"
       fi
       ;;
@@ -557,6 +564,7 @@ dbx_http_conteudo() {
   _DBX_HTTP_ARQUIVO_CORPO=$arquivo
   _DBX_HTTP_DESTINO=''
   _DBX_HTTP_FAIXA_INICIO=''
+  _DBX_HTTP_FAIXA_FIM=''
   _dbx_http_executar "$metodo" "$url" '' "$idempotente"
 }
 
@@ -590,6 +598,38 @@ dbx_http_conteudo_receber() {
   _dbx_http_executar "$metodo" "$url" '' sim
   local estado=$?
   _DBX_HTTP_FAIXA_INICIO=''
+  _DBX_HTTP_FAIXA_FIM=''
+  return "$estado"
+}
+
+# dbx_http_conteudo_receber_faixa <metodo> <url> <token> <arg_json> <arquivo> <inicio> <fim>
+#
+# F-100 (RF-180): UMA faixa fechada `Range: bytes=<inicio>-<fim>` gravada em
+# <arquivo> (caminho, nunca descritor; truncado a cada tentativa). Resposta que
+# nao seja a faixa (um `200` com o corpo inteiro) e recusada pelo teto de tamanho
+# do cliente: DBX_HTTP_FAIXA_IGNORADA=sim, sem repeticao. Quem pediu confere o
+# `206`, o `Content-Range` e a revisao.
+dbx_http_conteudo_receber_faixa() {
+  [[ $# -ge 7 ]] || return "$DBX_HTTP_ERRO_USO"
+  local metodo=$1 url=$2 token=$3 arg=$4 destino=$5 inicio=$6 fim=$7
+  [[ -n $metodo && -n $url && -n $token && -n $destino ]] || return "$DBX_HTTP_ERRO_USO"
+  [[ $inicio =~ ^(0|[1-9][0-9]{0,17})$ && $fim =~ ^[1-9][0-9]{0,17}$ ]] || return "$DBX_HTTP_ERRO_USO"
+  ((10#$fim >= 10#$inicio)) || return "$DBX_HTTP_ERRO_USO"
+
+  dbx_http_cabecalho_valido "$arg" || return "$DBX_HTTP_ERRO_USO"
+
+  _DBX_HTTP_FAIXA_INICIO=$inicio
+  _DBX_HTTP_FAIXA_FIM=$fim
+  _DBX_HTTP_MODO=conteudo
+  _DBX_HTTP_CANAL=fluxo
+  _DBX_HTTP_TOKEN=$token
+  _DBX_HTTP_ARG=$arg
+  _DBX_HTTP_ARQUIVO_CORPO=''
+  _DBX_HTTP_DESTINO=$destino
+  _dbx_http_executar "$metodo" "$url" '' sim
+  local estado=$?
+  _DBX_HTTP_FAIXA_INICIO=''
+  _DBX_HTTP_FAIXA_FIM=''
   return "$estado"
 }
 
@@ -605,6 +645,7 @@ dbx_http_requisitar() {
   _DBX_HTTP_ARQUIVO_CORPO=''
   _DBX_HTTP_DESTINO=''
   _DBX_HTTP_FAIXA_INICIO=''
+  _DBX_HTTP_FAIXA_FIM=''
   _dbx_http_executar "$1" "$2" "$4" "$5"
 }
 
@@ -624,6 +665,7 @@ dbx_http_formulario() {
   _DBX_HTTP_ARQUIVO_CORPO=''
   _DBX_HTTP_DESTINO=''
   _DBX_HTTP_FAIXA_INICIO=''
+  _DBX_HTTP_FAIXA_FIM=''
   # Sem corpo em arquivo: os campos vao pela entrada padrao.
   # Nao idempotente: uma troca de token repetida as cegas nao e desejavel.
   _dbx_http_executar POST "$1" '' nao
@@ -737,25 +779,40 @@ _dbx_http_conduzir() {
   # misturaria ao codigo. A saida padrao do processo e duplicada antes e o
   # cliente escreve nela pelo descritor.
   #
-  # LIMITE DECLARADO: o cliente REABRE o descritor. Cano e terminal se
+  # O destino `fd:<n>` (RF-171(a), DIV-352) e um descritor JA ABERTO do
+  # processo. Nunca se monta `/dev/fd/<n>`: no FreeBSD, sem `fdescfs`, nao
+  # existe para n>2 e, com ele, nao e o arquivo. O cliente escreve em
+  # `/dev/stderr` (sempre presente no devfs), e a saida de erro do COMANDO e
+  # redirecionada para o descritor (`2>&<n>`); o `-w` segue na saida padrao
+  # capturada.
+  #
+  # NUNCA `--stderr <arquivo>` neste modo: o cliente REABRE o stderr do processo
+  # antes de abrir a saida, e `-o /dev/stderr` passaria a ser o arquivo de erros;
+  # o conteudo baixado iria para la e o `.part` ficaria com 0 bytes. Por isso o
+  # cliente roda com `--no-show-error`: nenhuma mensagem sua pode cair no
+  # descritor do conteudo. A mensagem textual do cliente NAO e capturada neste
+  # modo; a classificacao segue pelo status do cliente e pelo `--fail`.
+  #
+  # LIMITE DECLARADO: o cliente REABRE `/dev/stderr`. Cano e terminal se
   # comportam como a saida padrao; arquivo regular e reaberto do inicio e
-  # truncado, e socket nao reabre. Por isso `download` recusa saida padrao em
-  # arquivo nao vazio (o `>>` sobre conteudo existente).
+  # truncado (com faixa, `continue-at` anexa), e socket nao reabre. Por isso
+  # `download` recusa saida padrao em arquivo nao vazio (o `>>` sobre conteudo
+  # existente).
   local rele='' pid_rele='' estado_rele=0
   if [[ $_DBX_HTTP_CANAL == 'fluxo' && ($destino == '-' || $destino == '/dev/stdout') ]]; then
     exec {saida_padrao}>&1
-    destino="/dev/fd/$saida_padrao"
+    destino="fd:$saida_padrao"
     # Teste de tipo, sem captura: e o que distingue consumidor de disco.
     [[ -p /dev/stdout ]] && saida_e_cano='sim'
-    # SOCKET (DIV-51, OBS-04): o cliente nao reabre socket por `/dev/fd`. Ele
-    # escreve num cano, que reabre, e um `cat` repassa ao socket. Socket vivo
+    # SOCKET (DIV-51, OBS-04): o cliente nao escreve direto em socket. Ele
+    # escreve num cano e um `cat` repassa ao socket. Socket vivo
     # recebe tudo e o comando sai 0; so a falha de escrita do repasse (EPIPE ou
     # SIGPIPE: o consumidor encerrou de fato) vira `consumidor_encerrou`.
     if [[ -S /dev/stdout ]]; then
       saida_e_cano='sim'
       exec {rele}> >(exec cat >&"$saida_padrao")
       pid_rele=$!
-      destino="/dev/fd/$rele"
+      destino="fd:$rele"
     fi
   fi
 
@@ -766,14 +823,26 @@ _dbx_http_conduzir() {
     # A redirecao do stderr fica DENTRO da substituicao: aplicada do lado de
     # fora, a substituicao ja teria sido expandida com o stderr original e a
     # mensagem do cliente se perderia.
+    # shellcheck disable=SC2094  # `--stderr` e o grupo apontam o mesmo arquivo de proposito: so o cliente escreve nele
     codigo=$(
       {
         _dbx_http_opcoes | if [[ $_DBX_HTTP_CANAL == 'fluxo' ]]; then
           # `--fail` impede a resposta de ERRO de sair como se fosse o conteudo
           # do arquivo (um 409 sairia com status zero e um JSON dentro): com
           # ele, zero bytes emitidos e status 22.
-          curl -K - --fail -X "$metodo" \
-            -o "$destino" -D "$area/cabecalhos" -w "$formato_w" "$url"
+          if [[ $destino == fd:* ]]; then
+            # O descritor do destino e a SAIDA DE ERRO deste comando (`2>&<n>`) e
+            # o cliente escreve em `/dev/stderr`, que existe sempre (devfs), ao
+            # contrario de `/dev/fd/<n>`. Sem `--stderr` (reabriria o stderr e
+            # desviaria o conteudo) e com `--no-show-error` depois do `-K -`, que
+            # vence o `show-error` de `_dbx_http_opcoes`. O `-w` segue na saida
+            # padrao capturada.
+            curl -K - --no-show-error --fail -X "$metodo" \
+              -o /dev/stderr -D "$area/cabecalhos" -w "$formato_w" "$url" 2>&"${destino#fd:}"
+          else
+            curl -K - --fail -X "$metodo" \
+              -o "$destino" -D "$area/cabecalhos" -w "$formato_w" "$url"
+          fi
         elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
           curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
             -o "$area/resposta" -D "$area/cabecalhos" -w "$formato_w" "$url"
@@ -805,7 +874,7 @@ _dbx_http_conduzir() {
     # O stderr do cliente e guardado, redigido, para o diagnostico.
     DBX_HTTP_DEFEITO_CLIENTE=''
     DBX_HTTP_FAIXA_IGNORADA='nao'
-    if [[ $estado -eq 33 && -n $_DBX_HTTP_FAIXA_INICIO ]]; then
+    if [[ -n $_DBX_HTTP_FAIXA_INICIO && ($estado -eq 33 || ($estado -eq 63 && -n $_DBX_HTTP_FAIXA_FIM)) ]]; then
       # Fase 7a (RF-104(d), DIV-176): HOUVE resposta, e o cliente se recusou a
       # anexa-la — `200` a um pedido de faixa, ou `206` que nao comeca no
       # deslocamento pedido. Nada foi escrito; o codigo observado fica.
@@ -825,6 +894,10 @@ _dbx_http_conduzir() {
     fi
     [[ $codigo =~ ^[0-9]+$ ]] || codigo=0
     [[ $codigo == 429 ]] && DBX_HTTP_LIMITES_429=$((DBX_HTTP_LIMITES_429 + 1))
+    # Marca de pausa (DIV-365 A) no PRIMEIRO ponto que sabe do 429, antes de ler
+    # cabecalhos ou decidir repeticao: fecha a janela em que o coordenador ainda
+    # despacharia parte nova.
+    [[ $codigo == 429 && -n ${DBX_HTTP_MARCA_PAUSA:-} ]] && : >"$DBX_HTTP_MARCA_PAUSA"
 
     DBX_HTTP_DIAGNOSTICO=''
     if [[ -s $area/erro_cliente ]]; then
@@ -835,6 +908,10 @@ _dbx_http_conduzir() {
       dbx_errors_redigir "$bruto" >/dev/null
       # shellcheck disable=SC2034  # canal publico, ver nota no topo
       DBX_HTTP_DIAGNOSTICO=$DBX_ERRORS_REDIGIDO
+    elif [[ $_DBX_HTTP_CANAL == 'fluxo' && $destino == fd:* && $estado -ne 0 && $estado -ne 22 ]]; then
+      # Modo `fd:` roda sem mensagem textual do cliente (`--no-show-error`):
+      # a falha continua com motivo legivel, pelo status.
+      DBX_HTTP_DIAGNOSTICO="cliente HTTP falhou com codigo $estado"
     fi
 
     # shellcheck disable=SC2034  # canal publico, ver nota no topo
@@ -921,6 +998,10 @@ _dbx_http_conduzir() {
         if [[ $_DBX_HTTP_CANAL == 'fluxo' && $estado -ne 22 && $estado -ne 7 ]]; then
           break
         fi
+        # Marca opcional de pausa (DIV-365 A): quem chamou em paralelo define o
+        # arquivo, e o 429 o cria ANTES da espera, para o coordenador nao
+        # despachar faixa nova durante o `Retry-After`. Sem a variavel, sem custo.
+        [[ $codigo == 429 && -n ${DBX_HTTP_MARCA_PAUSA:-} ]] && : >"$DBX_HTTP_MARCA_PAUSA"
         if [[ ${#_DBX_HTTP_LINHA_DEBUG[@]} -gt 0 ]]; then
           # RF-157(a): a linha sai antes da espera e a leva em `espera_ms`.
           _dbx_http_espera_calcular "$tentativa"
@@ -972,12 +1053,13 @@ _dbx_http_conduzir() {
   # Fase 7a: a faixa recusada (33) e o `416` sao respostas que quem pediu a
   # faixa interpreta; nao ha corpo de erro a buscar.
   if [[ $_DBX_HTTP_CANAL == 'fluxo' && $DBX_HTTP_CLASSE != 'sucesso' && -n $DBX_HTTP_CODIGO && $DBX_HTTP_CODIGO != '0' &&
-    $DBX_HTTP_FAIXA_IGNORADA != 'sim' && ! (-n $_DBX_HTTP_FAIXA_INICIO && $DBX_HTTP_CODIGO == '416') ]]; then
+    $DBX_HTTP_FAIXA_IGNORADA != 'sim' && ! (-n $_DBX_HTTP_FAIXA_INICIO && $DBX_HTTP_CODIGO == '416') && -z $_DBX_HTTP_FAIXA_FIM ]]; then
     local _canal_original=$_DBX_HTTP_CANAL _destino_original=$_DBX_HTTP_DESTINO _faixa_original=$_DBX_HTTP_FAIXA_INICIO
     local _codigo_observado=$DBX_HTTP_CODIGO
     _DBX_HTTP_CANAL=padrao
     _DBX_HTTP_DESTINO=''
     _DBX_HTTP_FAIXA_INICIO=''
+    _DBX_HTTP_FAIXA_FIM=''
     # Nao idempotente: a reemissao existe para diagnosticar, nunca para repetir a
     # operacao. Uma retentativa aqui seria uma segunda tentativa disfarcada.
     _dbx_http_executar "$metodo" "$url" '' nao >/dev/null 2>&1 || true

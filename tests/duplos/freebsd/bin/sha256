@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Duble do sha256 da base do FreeBSD (RF-169): `-q` imprime so o resumo; sem
+# arquivo le a entrada padrao. Sem `-q`, imprime o formato BSD
+# "SHA256 (<arquivo>) = <hex>". Delega o calculo ao sha256sum do sistema.
+quieto=nao
+while [[ ${1:-} == -* ]]; do
+  case $1 in
+    -q) quieto=sim ;;
+    --) shift; break ;;
+    *) printf 'sha256: illegal option -- %s\n' "${1#-}" >&2; exit 1 ;;
+  esac
+  shift
+done
+real=/usr/bin/sha256sum
+[[ -x $real ]] || real=/bin/sha256sum
+if [[ $# -eq 0 ]]; then
+  saida=$("$real") || exit 1
+  nome=''
+else
+  saida=$("$real" -- "$1") || exit 1
+  nome=$1
+fi
+hex=${saida%% *}
+if [[ $quieto == sim ]]; then
+  printf '%s\n' "$hex"
+else
+  printf 'SHA256 (%s) = %s\n' "$nome" "$hex"
+fi

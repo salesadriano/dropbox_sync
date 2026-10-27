@@ -20,7 +20,7 @@ This skill does not replace security hardening.
 Use this skill to lint and review shell scripts statically.
 
 - [`bats-testing-patterns`](../bats-testing-patterns/SKILL.md) proves behavior with tests. Lint does not prove behavior, and tests do not replace lint; changes to a script need both.
-- [`protocolo-conformidade`](../protocolo-conformidade/SKILL.md) is the gate procedure that applies this skill to the diff and classifies findings by severity. This skill supplies the rules and the tool; the verdict belongs to the gate.
+- `ai-team:protocolo-conformidade` is the gate procedure that applies this skill to the diff and classifies findings by severity. This skill supplies the rules and the tool; the verdict belongs to the gate.
 - `best-practices` (nao incluida neste repositorio; fonte: `ai_team`) would cover generic web code quality, not shell.
 
 ## Package precedence

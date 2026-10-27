@@ -319,7 +319,7 @@ Com DP-01 resolvida como reimplementacao independente, o projeto tem liberdade d
 **Observacao:** esta decisao trata dos comandos **ja existentes no modelo**. As funcionalidades **novas** sao tratadas em DP-02.
 **Bloqueia:** dimensionamento do MVP e priorizacao dos RF da secao 5 do documento de requisitos.
 
-### DP-07 — Plataformas e shells suportados ✅ *(registro corrigido na v0.5)*
+### DP-07 — Plataformas e shells suportados ✅ *(registro corrigido na v0.5; REABERTA e RESOLVIDA em 2026-10-24: Linux e FreeBSD)*
 
 **Decisao do solicitante: plataforma Linux, shell `bash` 4+.** Respondida a pergunta rotulada "Dependencias e plataforma (DP-07 e DP-08)" com **"So cURL, bash 4+, Linux"**. A decisao existia desde entao; o que faltou foi propaga-la a este documento.
 
@@ -337,6 +337,8 @@ Com DP-01 resolvida como reimplementacao independente, o projeto tem liberdade d
 **Fora de escopo por decorrencia:** macOS, *BSD, BusyBox `ash` e `sh` POSIX. A camada de compatibilidade entre utilitarios GNU e BSD **deixa de ser necessaria** — simplificacao relevante de `lib/preflight` e de toda chamada a `stat`, `sed`, `date` e `base64`.
 
 **Desbloqueia:** `RNF-01` (descongelado, piso 4.4), `lib/preflight`, e a reavaliacao de `RSK-24` — com Linux confirmado, `/proc/self/fd` deixa de ser inadmissivel por portabilidade.
+
+**REABERTA e RESOLVIDA em 2026-10-24 (v1.30 do escopo).** Pergunta do Tech Lead ao solicitante, depois de `dbx config` falhar no FreeBSD com `chmod: --: No such file or directory`: suportar FreeBSD? **Decisao do solicitante: "Suportar FreeBSD".** Nova redacao: **plataformas Linux e FreeBSD 13+/14, com `bash` 4.4 ou superior instalado por `pkg` e `cURL` como unica dependencia externa.** Supera "so Linux" e a exclusao de *BSD acima; **mantidos** o piso 4.4, `jq` fora (DP-08) e a ausencia de deteccao de plataforma (`uname`, `$OSTYPE`): a portabilidade e por forma POSIX unica ou por capacidade do utilitario. macOS, OpenBSD, NetBSD, BusyBox e `sh` POSIX seguem fora (`DIV-356`). **A frase "a camada de compatibilidade GNU/BSD deixa de ser necessaria" fica superada**: `stat`, `chmod`, `find` e o resumo SHA-256 passam a ter forma portavel. Especificacao: secao 5.22 do escopo (`RF-166` a `RF-172`, `RNF-39`, `TC-FBSD-01..24`, `DIV-352` a `DIV-357`); inventario: `inventario-freebsd.md`. Emenda `RNF-01` e muda `tests/unit/preflight_test.sh` (`DIV-356`).
 
 ---
 

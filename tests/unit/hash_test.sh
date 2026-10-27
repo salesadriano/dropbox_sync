@@ -326,7 +326,7 @@ teste_comparacao_recusa_valor_malformado() {
 # ---------------------------------------------------------------------------
 
 _leitor_que_falha() {
-  # Cria um `head` substituto que entrega dados parciais e sai com erro,
+  # Cria um `dd` (o leitor, dbx_ler_exato) substituto que entrega dados parciais e sai com erro,
   # simulando EIO, truncamento sob leitura ou produtor morto no meio.
   local dir="$DBX_TESTES_TMP/leitor-falho.$$"
   mkdir -p "$dir"
@@ -334,8 +334,8 @@ _leitor_que_falha() {
     printf '#!/usr/bin/env bash\n'
     printf "printf 'CONTEUDO-PARCIAL'\n"
     printf 'exit 1\n'
-  } >"$dir/head"
-  chmod +x "$dir/head"
+  } >"$dir/dd"
+  chmod +x "$dir/dd"
   printf '%s' "$dir"
 }
 

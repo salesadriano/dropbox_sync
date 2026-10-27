@@ -150,7 +150,7 @@ _dbx_state_preparar_diretorio() {
     DBX_STATE_MOTIVO='diretorio de estado pertence a outro usuario: memoria nao gravada'
     return "$DBX_STATE_ERRO_PERMISSAO"
   fi
-  chmod 700 -- "$diretorio" 2>/dev/null || return 1
+  chmod -- 700 "$diretorio" 2>/dev/null || return 1
   # RNF-25(c): `-mtime +0` e "mais de 24 h". Os recentes podem ser gravacao
   # concorrente de outro processo e ficam.
   # RF-69(o): `.trava.*` entra na mesma regra; `trava-*` nunca e varrido.
@@ -247,7 +247,7 @@ _dbx_state_ler_limitado() {
   # para sempre; a conferencia pelo descritor, abaixo, vem tarde demais.
   [[ -f $arquivo ]] || return 1  # nao regular
   { exec {fd}<"$arquivo"; } 2>/dev/null || return 1
-  if [[ ! -f /dev/fd/$fd || ! -O /dev/fd/$fd ]]; then
+  if ! dbx_fd_regular_proprio "$fd"; then
     exec {fd}<&-
     return 1
   fi
@@ -665,7 +665,7 @@ dbx_state_host_id() {
     IFS= read -r boot </proc/sys/kernel/random/boot_id || :
   fi
   [[ $boot =~ ^[A-Za-z0-9-]{1,64}$ ]] || boot=x
-  [[ -e /proc/self/ns/pid ]] && ns=$(stat -L -c %i -- /proc/self/ns/pid 2>/dev/null)
+  [[ -e /proc/self/ns/pid ]] && dbx_atributo -L ino /proc/self/ns/pid && ns=$DBX_ATRIBUTO
   [[ $ns =~ ^[0-9]{1,20}$ ]] || ns=x
   DBX_STATE_HOST_NOME=$nome
   DBX_STATE_HOST_BOOT=$boot
@@ -725,7 +725,7 @@ _dbx_state_trava_ler() {
     [[ -e $arquivo || -L $arquivo ]] && return 1
     return 2
   }
-  if [[ -f /dev/fd/$fd && -O /dev/fd/$fd ]]; then
+  if dbx_fd_regular_proprio "$fd"; then
     # A leitura tem de chegar ao FIM DO ARQUIVO (status diferente de zero) em
     # ate 513 bytes: se ela para antes, achou um nulo (o delimitador) ou o
     # limite, e ha bytes que a linha nao contem (QA-B2-01). Depois disso, a
@@ -1111,7 +1111,7 @@ dbx_state_trava_raiz_caminho() {
   _dbx_state_base || return $?
   base=$DBX_STATE_RESULTADO
   DBX_STATE_RESULTADO=''
-  devino=$(stat -L -c '%d:%i' -- "$1" 2>/dev/null) || return 1
+  dbx_atributo -L dev_ino "$1" || return 1; devino=${DBX_ATRIBUTO/|/:}
   [[ $devino =~ ^[0-9]+:[0-9]+$ ]] || return 1
   resumo=$(printf 'trava-raiz\n%s' "$devino" | dbx_hash_conteudo_fluxo) || return $?
   DBX_STATE_RESULTADO="$base/trava-${resumo:0:32}"
@@ -1337,6 +1337,13 @@ readonly DBX_STATE_RETOMADA_TETO=1000
 readonly DBX_STATE_RETOMADA_DIAS=8
 readonly DBX_STATE_RETOMADA_PARTE=4194304
 readonly DBX_STATE_RETOMADA_CAMPOS_UPLOAD=15
+# Versao 2 (RF-181, DIV-366 A): upload em sessao concorrente, com o conjunto de
+# partes confirmadas. magia, versao, sentido, conta, host, remoto, session_id,
+# tipo_sessao, tamanho_da_parte, total, identidade, criado_em, partes, local.
+readonly DBX_STATE_RETOMADA_VERSAO_PARTES=2
+readonly DBX_STATE_RETOMADA_CAMPOS_PARTES=14
+# Versao do ultimo registro valido carregado (1 ou 2).
+DBX_STATE_RETOMADA_VERSAO_LIDA=1
 readonly DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD=13
 
 # Contexto da transferencia corrente (`dbx_state_retomada_contexto`).
@@ -1428,6 +1435,22 @@ dbx_state_retomada_diretorio_utilizavel() {
   return 0
 }
 
+# _dbx_state_intervalos_validos <a-b,c-d|-> <partes> — forma canonica do campo de
+# partes confirmadas (RF-181(a)): inicio <= fim, estritamente crescentes, sem
+# sobreposicao nem adjacencia (adjacentes saem fundidos do gravador) e o ultimo
+# fim abaixo do numero de partes. Sem expressao regular com repeticao.
+_dbx_state_intervalos_validos() {
+  local item ini fim anterior=-2 itens
+  [[ $1 == '-' ]] && return 0
+  IFS=, read -r -a itens <<<"$1"
+  for item in "${itens[@]}"; do
+    ini=$((10#${item%-*})) fim=$((10#${item#*-}))
+    ((ini <= fim && ini > anterior + 1 && fim < $2)) || return 1
+    anterior=$fim
+  done
+  return 0
+}
+
 # _dbx_state_retomada_formato <campos...> — 0 quando os campos formam um
 # registro v1 bem formado de algum sentido (sem comparar com o processo).
 # Publica o sentido em DBX_STATE_RESULTADO; o motivo do descarte em
@@ -1437,13 +1460,19 @@ _dbx_state_retomada_formato() {
   local -a c=("$@")
   local n=${#c[@]}
   DBX_STATE_RESULTADO=''
-  if [[ $n -lt 3 || ${c[0]} != "$DBX_STATE_RETOMADA_MAGIA" || ${c[1]} != "$DBX_STATE_RETOMADA_VERSAO" ]]; then
+  if [[ $n -lt 3 || ${c[0]} != "$DBX_STATE_RETOMADA_MAGIA" || ${c[1]} != "$DBX_STATE_RETOMADA_VERSAO" && ${c[1]} != "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
     DBX_STATE_MOTIVO='registro de formato ou versao desconhecidos'
     return 1
   fi
   case ${c[2]} in
-    upload) [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_UPLOAD ]] ;;
-    download) [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD ]] ;;
+    upload)
+      if [[ ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
+        [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_PARTES ]]
+      else
+        [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_UPLOAD ]]
+      fi
+      ;;
+    download) [[ ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO" && $n -eq $DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD ]] ;;
     *) false ;;
   esac || {
     DBX_STATE_MOTIVO='registro com contagem de campos errada'
@@ -1452,8 +1481,19 @@ _dbx_state_retomada_formato() {
   DBX_STATE_MOTIVO='registro com campo invalido'
   [[ ${c[3]} =~ ^cred-[0-9a-f]{32}$ && ${c[4]} =~ ^[A-Za-z0-9._-]{1,64}$ && -n ${c[5]} && -n ${c[n - 1]} ]] ||
     return 1
-  if [[ ${c[2]} == 'upload' ]]; then
-    [[ ${c[6]} =~ ^[A-Za-z0-9:_-]{1,256}$ && ${c[7]} =~ ^[0-9]{1,18}$ && ${c[8]} =~ ^[0-9]{1,18}$ &&
+  if [[ ${c[2]} == 'upload' && ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
+    # RF-181(a): intervalos canonicos `inicio-fim` de indices de parte, em ordem
+    # crescente, separados por virgula; `-` quando nenhuma parte foi confirmada.
+    # RF-173(e): ate 256 intervalos contados a parte (RE_DUP_MAX 255 no FreeBSD).
+    local virgulas=${c[12]//[^,]/}
+    [[ ${c[6]} =~ ^[A-Za-z0-9:_-]+$ && ${#c[6]} -le 256 && ${c[7]} == 'concurrent' && ${c[8]} =~ ^[0-9]{1,18}$ &&
+      ${c[9]} =~ ^[0-9]{1,18}$ && ${c[11]} =~ ^[0-9]{1,18}$ &&
+      ( ${c[12]} == '-' || ( ${#virgulas} -le 255 && ${c[12]} =~ ^[0-9]{1,6}-[0-9]{1,6}(,[0-9]{1,6}-[0-9]{1,6})*$ ) ) ]] || return 1
+    _dbx_state_identidade_valida "${c[10]}" || return 1
+    ((10#${c[8]} > 0 && 10#${c[8]} % DBX_STATE_RETOMADA_PARTE == 0 && 10#${c[9]} > 0)) || return 1
+    _dbx_state_intervalos_validos "${c[12]}" $(((10#${c[9]} + 10#${c[8]} - 1) / 10#${c[8]})) || return 1
+  elif [[ ${c[2]} == 'upload' ]]; then
+    [[ ${c[6]} =~ ^[A-Za-z0-9:_-]+$ && ${#c[6]} -le 256 && ${c[7]} =~ ^[0-9]{1,18}$ && ${c[8]} =~ ^[0-9]{1,18}$ &&
       ${c[10]} =~ ^[0-9]{1,18}$ && ${c[12]} =~ ^[0-9]{1,18}$ && ${c[13]} =~ ^[0-9a-f]{64}$ ]] || return 1
     _dbx_state_identidade_valida "${c[11]}" || return 1
     local confirmado=$((10#${c[7]})) voo=$((10#${c[8]})) total=$((10#${c[10]}))
@@ -1519,6 +1559,7 @@ dbx_state_retomada_carregar() {
   [[ -f $arquivo && -O $arquivo ]] || return 3
   esperado=$DBX_STATE_RETOMADA_CAMPOS_UPLOAD
   [[ $DBX_STATE_RETOMADA_SENTIDO == 'download' ]] && esperado=$DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD
+  DBX_STATE_RETOMADA_VERSAO_LIDA=1
   _dbx_state_ler_limitado "$arquivo" "$DBX_STATE_RETOMADA_CAMPOS_UPLOAD"
   case $? in
     0) ;;
@@ -1532,6 +1573,11 @@ dbx_state_retomada_carregar() {
   if ! _dbx_state_retomada_formato ${c[@]+"${c[@]}"}; then
     _dbx_state_retomada_descartar "$DBX_STATE_MOTIVO"
     return $?
+  fi
+  if [[ ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
+    esperado=$DBX_STATE_RETOMADA_CAMPOS_PARTES
+    # shellcheck disable=SC2034  # canal publico, lido por lib/transfer
+    DBX_STATE_RETOMADA_VERSAO_LIDA=2
   fi
   # Reconferencia byte a byte (C4): o resumo do nome so localiza.
   if [[ ${#c[@]} -ne $esperado || ${c[2]} != "$DBX_STATE_RETOMADA_SENTIDO" ||
@@ -1560,7 +1606,7 @@ _dbx_state_conteudo_retomada() {
 dbx_state_retomada_gravar() {
   local arquivo=$DBX_STATE_RETOMADA_ARQUIVO diretorio estado primeira='nao'
   [[ -n $arquivo ]] || return "$DBX_STATE_ERRO_USO"
-  local -a registro=("$DBX_STATE_RETOMADA_MAGIA" "$DBX_STATE_RETOMADA_VERSAO" "$DBX_STATE_RETOMADA_SENTIDO"
+  local -a registro=("$DBX_STATE_RETOMADA_MAGIA" "${DBX_STATE_RETOMADA_VERSAO_GRAVAR:-$DBX_STATE_RETOMADA_VERSAO}" "$DBX_STATE_RETOMADA_SENTIDO"
     "$DBX_STATE_RETOMADA_CONTA" "$DBX_STATE_RETOMADA_HOST" "$DBX_STATE_RETOMADA_REMOTO" "$@"
     "$DBX_STATE_RETOMADA_LOCAL")
   _dbx_state_retomada_formato "${registro[@]}" || return "$DBX_STATE_ERRO_USO"
@@ -1586,6 +1632,13 @@ dbx_state_retomada_gravar() {
   return 0
 }
 
+# dbx_state_retomada_gravar_partes <campos da versao 2...> — grava o registro de
+# upload em sessao concorrente (RF-181). Mesma gravacao atomica da versao 1.
+dbx_state_retomada_gravar_partes() {
+  local DBX_STATE_RETOMADA_VERSAO_GRAVAR=$DBX_STATE_RETOMADA_VERSAO_PARTES
+  dbx_state_retomada_gravar "$@"
+}
+
 # dbx_state_retomada_remover — apaga o registro do contexto (so o do usuario).
 dbx_state_retomada_remover() {
   local arquivo=$DBX_STATE_RETOMADA_ARQUIVO
@@ -1608,7 +1661,7 @@ dbx_state_retomada_part_barreira() {
   caminho="$diretorio/$nome"
   [[ -L $caminho ]] && return 1
   [[ -f $caminho && -O $caminho ]] || return 1
-  atual=$(stat -c '%d|%i' -- "$caminho" 2>/dev/null) || return 1
+  dbx_atributo dev_ino "$caminho" || return 1; atual=$DBX_ATRIBUTO
   [[ $atual == "$devino" ]]
 }
 
@@ -1658,7 +1711,7 @@ _dbx_state_retomada_podar_um() {
 # `upload-*` nem `trava-*`; o registro do contexto nunca sai por aqui. O relogio
 # decide so o que TENTAR limpar, nunca a validade de um registro em uso.
 _dbx_state_retomada_podar() {
-  local diretorio=$1 arquivo linha carimbo antigo antigo_carimbo tinha_nullglob='nao'
+  local diretorio=$1 arquivo antigo tinha_nullglob='nao'
   local -a registros=()
   while IFS= read -r -d '' arquivo; do
     [[ $arquivo == "$DBX_STATE_RETOMADA_ARQUIVO" ]] && continue
@@ -1673,18 +1726,16 @@ _dbx_state_retomada_podar() {
   local -A mantidos=()
   while [[ $excesso -gt 0 && $voltas -lt $((excesso + 50)) ]]; do
     voltas=$((voltas + 1))
-    antigo='' antigo_carimbo=''
-    while IFS= read -r -d '' linha; do
-      carimbo=${linha%% *}
-      carimbo=${carimbo%%.*}
-      arquivo=${linha#* }
+    # O mais antigo sai do teste `-ot` do bash sobre a lista do glob, sem `find
+    # -printf` (RF-168): o utilitario do FreeBSD nao o conhece.
+    antigo=''
+    for arquivo in "${registros[@]}"; do
       [[ $arquivo == "$DBX_STATE_RETOMADA_ARQUIVO" || -n ${mantidos[$arquivo]:-} ]] && continue
-      [[ $carimbo =~ ^[0-9]+$ ]] || continue
-      if [[ -z $antigo || $carimbo -lt $antigo_carimbo ]]; then
+      [[ -f $arquivo && ! -L $arquivo ]] || continue
+      if [[ -z $antigo || $arquivo -ot $antigo ]]; then
         antigo=$arquivo
-        antigo_carimbo=$carimbo
       fi
-    done < <(find "$diretorio" -maxdepth 1 -type f -name 'retomada-*' -printf '%T@ %p\0' 2>/dev/null)
+    done
     [[ -n $antigo ]] || break
     if _dbx_state_retomada_podar_um "$antigo"; then
       excesso=$((excesso - 1))
@@ -1792,7 +1843,7 @@ dbx_state_retomada_listar() {
   printf -v agora '%(%s)T' -1
   for arquivo in ${arquivos[@]+"${arquivos[@]}"}; do
     [[ -e $arquivo || -L $arquivo ]] || continue
-    mtime=$(stat -c %Y -- "$arquivo" 2>/dev/null) || mtime=$agora
+    dbx_atributo mtime "$arquivo" && mtime=$DBX_ATRIBUTO || mtime=$agora
     [[ $mtime =~ ^[0-9]+$ ]] || mtime=$agora
     idade=$(((agora - mtime) / 86400))
     DBX_STATE_RETOMADAS_ARQUIVO+=("$arquivo")
@@ -1801,7 +1852,18 @@ dbx_state_retomada_listar() {
       _dbx_state_retomada_formato "${_DBX_STATE_CAMPOS[@]}"; then
       c=("${_DBX_STATE_CAMPOS[@]}")
       part='' devino='' bytes=0
-      if [[ ${c[2]} == 'upload' ]]; then
+      if [[ ${c[2]} == 'upload' && ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
+        # Versao 2: bytes confirmados = partes confirmadas x tamanho da parte
+        # (limitado ao total; so informativo).
+        local _p _n=0
+        for _p in ${c[12]//,/ }; do
+          [[ $_p == '-' ]] && continue
+          _n=$((_n + 10#${_p#*-} - 10#${_p%-*} + 1))
+        done
+        bytes=$((_n * 10#${c[8]}))
+        ((bytes > 10#${c[9]})) && bytes=$((10#${c[9]}))
+        DBX_STATE_RETOMADAS_LOCAL+=("${c[13]}")
+      elif [[ ${c[2]} == 'upload' ]]; then
         bytes=$((10#${c[7]}))
         DBX_STATE_RETOMADAS_LOCAL+=("${c[14]}")
       else
@@ -1809,7 +1871,7 @@ dbx_state_retomada_listar() {
         part="$DBX_STATE_RESULTADO/${c[9]}"
         devino=${c[10]}
         if dbx_state_retomada_part_barreira "$DBX_STATE_RESULTADO" "${c[9]}" "$devino"; then
-          bytes=$(stat -c %s -- "$part" 2>/dev/null) || bytes=0
+          dbx_atributo tamanho "$part" && bytes=$DBX_ATRIBUTO || bytes=0
         fi
         DBX_STATE_RETOMADAS_LOCAL+=("${c[12]}")
       fi
@@ -1892,9 +1954,12 @@ readonly DBX_STATE_CURSOR_DIAS=8
 readonly DBX_STATE_CURSOR_VALIDADE_S=604800
 readonly DBX_STATE_CURSOR_INCREMENTAIS=100
 readonly DBX_STATE_CURSOR_FOLGA_S=300
-readonly DBX_STATE_CURSOR_RE_CURSOR='^[A-Za-z0-9_=+/.-]{1,8192}$'
+# FreeBSD: RE_DUP_MAX = 255, e `{n,m}` com m > 255 e regex invalida no regcomp.
+# Por isso o comprimento (8192 e 256) e testado a parte, nos pontos de uso
+# (`${#valor} -le N`); as regex so conferem o alfabeto.
+readonly DBX_STATE_CURSOR_RE_CURSOR='^[A-Za-z0-9_=+/.-]+$'
 readonly DBX_STATE_CURSOR_RE_CONTA='^dbid:[A-Za-z0-9_-]{1,128}$'
-readonly DBX_STATE_CURSOR_RE_ASSINATURA='^[A-Za-z0-9_;=.-]{1,256}$'
+readonly DBX_STATE_CURSOR_RE_ASSINATURA='^[A-Za-z0-9_;=.-]+$'
 readonly DBX_STATE_CURSOR_RE_ENTRADA=$'^(f|d)\t(id:[A-Za-z0-9_-]{1,64})\t([0-9a-f]{9,64}|-)\t([0-9a-f]{64}|-)\t([0-9]{1,18})\t([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z|-)\t(.+)$'
 
 # Contexto (`dbx_state_cursor_contexto`).
@@ -1938,7 +2003,7 @@ dbx_state_cursor_contexto() {
   local LC_ALL=C
   DBX_STATE_CURSOR_ARQUIVO=''
   [[ $# -eq 5 && $1 =~ ^cred-[0-9a-f]{32}$ && $2 =~ $DBX_STATE_CURSOR_RE_CONTA && -n $3 &&
-    $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ]] || return "$DBX_STATE_ERRO_USO"
+    ${#5} -le 256 && $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ]] || return "$DBX_STATE_ERRO_USO"
   local conta=$1 account=$2 local_=$3 remoto=$4 assinatura=$5 base dobrado resumo
   _dbx_state_base || return $?
   base=$DBX_STATE_RESULTADO
@@ -1967,8 +2032,8 @@ _dbx_state_cursor_cabecalho_formato() {
     return 1
   fi
   # O remoto ($6) vazio e a raiz `/` (QA-B7B-01); o local ($7) nunca e vazio.
-  if [[ ! $3 =~ ^cred-[0-9a-f]{32}$ || ! $4 =~ $DBX_STATE_CURSOR_RE_CONTA || ! $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ||
-    -z $7 || ! $8 =~ $DBX_STATE_CURSOR_RE_CURSOR || ! $9 =~ ^[0-9]{1,12}$ || ! ${10} =~ ^[0-9]{1,7}$ ||
+  if [[ ! $3 =~ ^cred-[0-9a-f]{32}$ || ! $4 =~ $DBX_STATE_CURSOR_RE_CONTA || ${#5} -gt 256 || ! $5 =~ $DBX_STATE_CURSOR_RE_ASSINATURA ||
+    -z $7 || ${#8} -gt 8192 || ! $8 =~ $DBX_STATE_CURSOR_RE_CURSOR || ! $9 =~ ^[0-9]{1,12}$ || ! ${10} =~ ^[0-9]{1,7}$ ||
     ! ${11} =~ ^[0-9]{1,12}$ || ! ${12} =~ ^[0-9]{1,7}$ ]] || ((10#${12} > DBX_STATE_CURSOR_ENTRADAS)); then
     DBX_STATE_MOTIVO='registro de listagem com campo invalido'
     return 1
@@ -2013,7 +2078,7 @@ _dbx_state_cursor_abrir() {
   # Como no leitor da 7a (QA-B7A-01): FIFO nunca e aberta, pois bloquearia.
   [[ -f $arquivo && -O $arquivo ]] || return 1
   { exec {fd}<"$arquivo"; } 2>/dev/null || return 1
-  if [[ ! -f /dev/fd/$fd || ! -O /dev/fd/$fd ]]; then
+  if ! dbx_fd_regular_proprio "$fd"; then
     exec {fd}<&-
     return 1
   fi
@@ -2034,11 +2099,14 @@ _dbx_state_cursor_entrada_valida() {
   fi
 }
 
-# _dbx_state_cursor_rodape_confere <fd> <bytes_do_prefixo> — 0 quando os dois
-# campos seguintes sao `fim` e o SHA-256 dos <bytes_do_prefixo> primeiros bytes
-# do MESMO arquivo, e nada vem depois. 1 truncado ou ausente; 2 divergente.
+# _dbx_state_cursor_rodape_confere <fd> <bytes_do_prefixo> <arquivo> — 0 quando
+# os dois campos seguintes sao `fim` e o SHA-256 dos <bytes_do_prefixo>
+# primeiros bytes do MESMO arquivo, e nada vem depois. 1 truncado ou ausente; 2
+# divergente. O arquivo e reaberto pelo CAMINHO (nao por `/dev/fd/<n>`, que no
+# FreeBSD nao e o arquivo) e so e lido se o novo descritor tiver o dev|ino do
+# original: nome trocado desde a abertura reprova.
 _dbx_state_cursor_rodape_confere() {
-  local fd=$1 prefixo=$2 resumo conferido resto='' LC_ALL=C
+  local fd=$1 prefixo=$2 arquivo=$3 resumo conferido resto='' novo identidade LC_ALL=C
   _dbx_state_cursor_campo "$fd" && [[ $_DBX_STATE_CURSOR_LIDO == 'fim' ]] || return 1
   _dbx_state_cursor_campo "$fd" && [[ $_DBX_STATE_CURSOR_LIDO =~ ^[0-9a-f]{64}$ ]] || return 1
   resumo=$_DBX_STATE_CURSOR_LIDO
@@ -2047,9 +2115,17 @@ _dbx_state_cursor_rodape_confere() {
     return 1
   fi
   dbx_hash_verificar_dependencias || return 1
-  # `/dev/fd/N` aberto pelo `head` reabre o inode DO DESCRITOR, e nao o nome,
-  # que poderia ter sido trocado desde a abertura.
-  conferido=$(_dbx_hash_sha256_hex < <(head -c "$prefixo" -- "/dev/fd/$fd" 2>/dev/null)) || return 2
+  dbx_atributo_fd dev_ino "$fd" || return 2
+  identidade=$DBX_ATRIBUTO
+  { exec {novo}<"$arquivo"; } 2>/dev/null || return 2
+  if ! dbx_atributo_fd dev_ino "$novo" || [[ $DBX_ATRIBUTO != "$identidade" ]]; then
+    exec {novo}<&-
+    return 2
+  fi
+  conferido=$(_dbx_hash_sha256_hex < <(head -c "$prefixo" <&"$novo" 2>/dev/null))
+  resto=$?
+  exec {novo}<&-
+  [[ $resto -eq 0 ]] || return 2
   [[ $conferido == "$resumo" ]] || return 2
   return 0
 }
@@ -2086,7 +2162,11 @@ dbx_state_cursor_carregar() {
     2) return 1 ;;
     *) return 3 ;;
   esac
-  tamanho=$(stat -L -c %s -- "/dev/fd/$fd" 2>/dev/null) || tamanho=-1
+  if dbx_atributo_fd tamanho "$fd"; then
+    tamanho=$DBX_ATRIBUTO
+  else
+    tamanho=-1
+  fi
   _dbx_state_cursor_consumido=0
   if [[ ! $tamanho =~ ^[0-9]+$ || $tamanho -gt $DBX_STATE_CURSOR_BYTES ]]; then
     exec {fd}<&-
@@ -2140,7 +2220,7 @@ dbx_state_cursor_carregar() {
     fi
   done
   if [[ $estado -eq 0 ]]; then
-    _dbx_state_cursor_rodape_confere "$fd" "$_dbx_state_cursor_consumido"
+    _dbx_state_cursor_rodape_confere "$fd" "$_dbx_state_cursor_consumido" "$arquivo"
     case $? in
       0) ;;
       1) estado=1 ;;
@@ -2201,7 +2281,7 @@ _dbx_state_conteudo_cursor() {
 # ja escritos; recusa o que passaria do teto de 512 MiB (nao persiste).
 _dbx_state_rodape_cursor() {
   local temporario=$1 tamanho resumo
-  tamanho=$(stat -c %s -- "$temporario" 2>/dev/null) || return 1
+  dbx_atributo tamanho "$temporario" || return 1; tamanho=$DBX_ATRIBUTO
   [[ $tamanho =~ ^[0-9]+$ && $tamanho -le $((DBX_STATE_CURSOR_BYTES - 80)) ]] || return 1
   resumo=$(_dbx_hash_sha256_hex <"$temporario") || return 1
   [[ $resumo =~ ^[0-9a-f]{64}$ ]] || return 1
@@ -2259,7 +2339,7 @@ dbx_state_cursor_remover() {
 # de 8 dias e, acima de 100, os mais antigos por modificacao. So arquivo
 # regular do usuario; nunca o registro do contexto; nunca outro namespace.
 _dbx_state_cursor_podar() {
-  local diretorio=$1 arquivo linha carimbo antigo antigo_carimbo tinha_nullglob='nao'
+  local diretorio=$1 arquivo antigo tinha_nullglob='nao'
   local -a registros=()
   while IFS= read -r -d '' arquivo; do
     [[ $arquivo == "$DBX_STATE_CURSOR_ARQUIVO" ]] && continue
@@ -2274,18 +2354,15 @@ _dbx_state_cursor_podar() {
   local -A mantidos=()
   while [[ $excesso -gt 0 && $voltas -lt $((excesso + 50)) ]]; do
     voltas=$((voltas + 1))
-    antigo='' antigo_carimbo=''
-    while IFS= read -r -d '' linha; do
-      carimbo=${linha%% *}
-      carimbo=${carimbo%%.*}
-      arquivo=${linha#* }
+    # Mesmo criterio da poda de `retomada-*`: `-ot` sobre o glob (RF-168).
+    antigo=''
+    for arquivo in "${registros[@]}"; do
       [[ $arquivo == "$DBX_STATE_CURSOR_ARQUIVO" || -n ${mantidos[$arquivo]:-} ]] && continue
-      [[ $carimbo =~ ^[0-9]+$ ]] || continue
-      if [[ -z $antigo || $carimbo -lt $antigo_carimbo ]]; then
+      [[ -f $arquivo && ! -L $arquivo ]] || continue
+      if [[ -z $antigo || $arquivo -ot $antigo ]]; then
         antigo=$arquivo
-        antigo_carimbo=$carimbo
       fi
-    done < <(find "$diretorio" -maxdepth 1 -type f -name 'cursor-*' -printf '%T@ %p\0' 2>/dev/null)
+    done
     [[ -n $antigo ]] || break
     if [[ -f $antigo && ! -L $antigo && -O $antigo ]] && rm -f -- "$antigo" 2>/dev/null; then
       excesso=$((excesso - 1))

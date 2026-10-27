@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Duble do find da base do FreeBSD (RF-168): nao conhece `-printf`. Registra a
+# recusa em DBX_FREEBSD_REGISTRO e delega o resto ao find do sistema.
+for arg in "$@"; do
+  if [[ $arg == -printf ]]; then
+    printf 'find: -printf: unknown primary or operator\n' >&2
+    [[ -n ${DBX_FREEBSD_REGISTRO:-} ]] && printf 'find: -printf: unknown primary or operator\n' >>"$DBX_FREEBSD_REGISTRO"
+    exit 1
+  fi
+done
+real=/usr/bin/find
+[[ -x $real ]] || real=/bin/find
+exec "$real" "$@"

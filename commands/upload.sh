@@ -52,6 +52,7 @@ dbx_cmd_upload_requisitos() { printf 'credencial'; }
 dbx_cmd_upload_executar() {
   local origem='' destino='' modo='add' rev='' forcar='nao' sem_retomada='nao'
   local tem_limite='nao' opcao_limite='' valor_limite=''
+  local tem_paralelo='nao' opcao_paralelo='' valor_paralelo=''
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
@@ -61,6 +62,13 @@ dbx_cmd_upload_executar() {
         shift
         valor_limite=${1-}
         tem_limite='sim'
+        ;;
+      # RF-175: transferencias simultaneas; o ultimo vence, validado depois do laco.
+      --paralelo | --parallel)
+        opcao_paralelo=$1
+        shift
+        valor_paralelo=${1-}
+        tem_paralelo='sim'
         ;;
       --modo | --mode)
         shift
@@ -125,6 +133,24 @@ dbx_cmd_upload_executar() {
     return $?
   }
 
+  # RF-175: ponto unico de validacao, antes de qualquer rede ou estado. Entrada
+  # padrao nao se divide em partes: opcao explicita recusa, variavel e ignorada
+  # (DIV-374 A).
+  DBX_CMD_PARALELO=1
+  if [[ $origem == '-' ]]; then
+    [[ $tem_paralelo == 'sim' ]] && {
+      dbx_cmd_falhar uso_invalido "$opcao_paralelo nao se aplica a entrada padrao (-)"
+      return $?
+    }
+  else
+    dbx_cmd_paralelo "$tem_paralelo" "$opcao_paralelo" "$valor_paralelo" || {
+      dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+      return $?
+    }
+    # RF-175(c): N efetivo no resumo de --debug.
+    ((DBX_CMD_PARALELO > 1)) && dbx_debug_resumo_campo paralelo "$DBX_CMD_PARALELO"
+  fi
+
   local eh_diretorio='nao'
   if [[ $origem != '-' ]]; then
     if [[ -d $origem ]]; then
@@ -138,6 +164,24 @@ dbx_cmd_upload_executar() {
     else
       dbx_cmd_falhar nao_encontrado "arquivo local inexistente ou ilegivel: $origem"
       return $?
+    fi
+  fi
+
+  # Destino de ARQUIVO que e pasta: com `/` final o alvo e `<destino>/<nome>` sem
+  # consulta; sem `/`, so uma consulta de tipo decide (mais abaixo), reaproveitando
+  # a da pre-checagem RF-60. O alvo final passa pelo ponto unico do caminho
+  # remoto, como qualquer argumento. A entrada padrao nao tem nome: ver
+  # `_dbx_cmd_upload_alvo_em_pasta`.
+  local resolver_pasta='nao'
+  if [[ $eh_diretorio == 'nao' ]]; then
+    if [[ $destino == */ ]]; then
+      # O confinamento da PASTA vem antes do uso invalido da entrada padrao:
+      # pasta fora da `raiz_remota` e recusada como tal (13), nunca como uso (2).
+      _dbx_cmd_caminho_remoto "$destino" || return $?
+      _dbx_cmd_upload_alvo_em_pasta "$destino" "$origem" || return $?
+      destino=$DBX_CMD_UPLOAD_ALVO
+    else
+      resolver_pasta='sim'
     fi
   fi
 
@@ -179,8 +223,9 @@ dbx_cmd_upload_executar() {
     [[ $forcar == 'sim' ]] && forcar_sync=(--forcar)
     # RF-82: o limite vai ja convertido, para a variavel nao ser relida no sync.
     [[ -n $DBX_CMD_LIMITE_BANDA ]] && forcar_sync+=(--limite-banda "$DBX_CMD_LIMITE_BANDA")
-    # RF-133: o upload de pasta nunca usa --paralelo nem DBX_PARALELO (fora do
-    # escopo da fase 9).
+    # RF-176: o N ja validado segue ao `sync` como opcao (a variavel nao e
+    # relida la); em simulacao o `sync` aceita e ignora (DIV-372 A).
+    ((DBX_CMD_PARALELO > 1)) && forcar_sync+=(--paralelo "$DBX_CMD_PARALELO")
     # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico
     local DBX_CMD_SYNC_CHAMADOR='upload'
     dbx_cmd_sync_executar --enviar ${forcar_sync[@]+"${forcar_sync[@]}"} \
@@ -204,6 +249,7 @@ dbx_cmd_upload_executar() {
     # leitura do `content_hash` remoto (RF-60), e so sem dispensa a checagem
     # de espaco. Leitura e permitida em simulacao; o cache nao e gravado.
     local recusaria='' dispensado='nao'
+    DBX_CMD_UPLOAD_TIPO_REMOTO=''
     if [[ $forcar != 'sim' && $origem != '-' && -z $rev ]] &&
       _dbx_cmd_upload_hash_remoto "$remoto" &&
       dbx_hash_publicar_arquivo "$origem" 2>/dev/null &&
@@ -211,6 +257,11 @@ dbx_cmd_upload_executar() {
       dispensado='sim'
     else
       _dbx_cmd_upload_checar_espaco "$origem" "$forcar" || recusaria=$DBX_CMD_ESPACO_MOTIVO
+    fi
+    # Destino que e pasta, visto pela mesma consulta (nenhuma chamada a mais):
+    # o plano reporta o caminho final.
+    if [[ $resolver_pasta == 'sim' && $DBX_CMD_UPLOAD_TIPO_REMOTO == 'folder' ]]; then
+      _dbx_cmd_upload_trocar_para_pasta || return $?
     fi
     dbx_cmd_iniciar_saida
     dbx_output_campo operacao upload
@@ -248,10 +299,29 @@ dbx_cmd_upload_executar() {
     dbx_hash_identidade "$origem" && identidade_antes=$DBX_HASH_IDENTIDADE
   fi
 
+  # Sem a pre-checagem (abaixo), so a consulta de tipo decide se o destino e uma
+  # pasta existente (leitura; falha da consulta mantem o caminho informado).
+  # `--rev` nao consulta: a revisao e de um arquivo e o envio sem consulta e
+  # contrato (RF-60(i)).
+  if [[ $resolver_pasta == 'sim' && -z $rev && ($forcar == 'sim' || $origem == '-') ]]; then
+    _dbx_cmd_upload_hash_remoto "$remoto" || :
+    if [[ $DBX_CMD_UPLOAD_TIPO_REMOTO == 'folder' ]]; then
+      _dbx_cmd_upload_trocar_para_pasta || return $?
+    fi
+  fi
+
   # RF-60(g), (h), (i): `--forcar`, entrada padrao e `--rev` nao comparam.
   if [[ $forcar != 'sim' && $origem != '-' && -z $rev ]]; then
     dbx_progress_mensagem "[upload] analisando arquivo local: $origem (consultando o destino remoto)"
-    if ! _dbx_cmd_upload_hash_remoto "$remoto"; then
+    local consulta_falhou=0
+    _dbx_cmd_upload_hash_remoto "$remoto" || consulta_falhou=1
+    # Pasta existente: o alvo e `<pasta>/<nome>` e a comparacao e com ele.
+    if [[ $resolver_pasta == 'sim' && $DBX_CMD_UPLOAD_TIPO_REMOTO == 'folder' ]]; then
+      _dbx_cmd_upload_trocar_para_pasta || return $?
+      consulta_falhou=0
+      _dbx_cmd_upload_hash_remoto "$remoto" || consulta_falhou=1
+    fi
+    if [[ $consulta_falhou -ne 0 ]]; then
       dbx_errors_redigir "${DBX_CMD_FALHA_MOTIVO:-sem detalhe}" >/dev/null
       dbx_progress_mensagem "[upload] resultado da analise: $origem -> sem arquivo comparavel no destino (necessita envio; classe=${DBX_CMD_FALHA_CLASSE:-desconhecido}; motivo=$DBX_ERRORS_REDIGIDO)"
     else
@@ -337,8 +407,10 @@ dbx_cmd_upload_executar() {
     dbx_debug_linha upload resultado=ok
   else
     DBX_TRANSFER_DEBUG_SEM_RETOMADA=$sem_retomada
+    DBX_TRANSFER_PARALELO=$DBX_CMD_PARALELO
     dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" upload
     local estado_envio=$?
+    DBX_TRANSFER_PARALELO=1
     DBX_TRANSFER_DEBUG_SEM_RETOMADA='nao'
     por_sessao=$DBX_TRANSFER_POR_SESSAO
     [[ $estado_envio -eq 0 ]] || {
@@ -408,9 +480,12 @@ dbx_cmd_upload_executar() {
 # e DBX_CMD_FALHA_MOTIVO (O-5) e o chamador o inclui no progresso. A leitura do
 # JSON e de `dbx_cmd_ler_corpo_silencioso`, em `lib/cmd`.
 DBX_CMD_UPLOAD_HASH_REMOTO=''
+# Tipo do destino da ultima consulta (`file`, `folder`...); vazio sem resposta lida.
+DBX_CMD_UPLOAD_TIPO_REMOTO=''
 _dbx_cmd_upload_hash_remoto() {
   local remoto=$1
   DBX_CMD_UPLOAD_HASH_REMOTO=''
+  DBX_CMD_UPLOAD_TIPO_REMOTO=''
   DBX_CMD_FALHA_CLASSE=''
   DBX_CMD_FALHA_MOTIVO=''
   dbx_json_escapar_cadeia "$remoto"
@@ -421,6 +496,7 @@ _dbx_cmd_upload_hash_remoto() {
     return 1
   }
   dbx_cmd_ler_corpo_silencioso .tag content_hash || return 1
+  DBX_CMD_UPLOAD_TIPO_REMOTO=${DBX_CMD_CAMPOS[0]}
   if [[ ${DBX_CMD_CAMPOS[0]} != 'file' ]]; then
     DBX_CMD_FALHA_CLASSE='erro_remoto'
     DBX_CMD_FALHA_MOTIVO='o destino nao e um arquivo comparavel'
@@ -433,6 +509,36 @@ _dbx_cmd_upload_hash_remoto() {
   fi
   DBX_CMD_UPLOAD_HASH_REMOTO=${DBX_CMD_CAMPOS[1]}
   return 0
+}
+
+# _dbx_cmd_upload_alvo_em_pasta <destino> <origem> — publica em
+# DBX_CMD_UPLOAD_ALVO o argumento `<destino sem / final>/<nome da origem>`, ainda
+# como o operador o escreveria: quem chama o passa por `_dbx_cmd_caminho_remoto`,
+# ponto unico de normalizacao e confinamento, entao o nome (um componente so, sem
+# `/`) nao escapa da pasta nem da raiz. A entrada padrao nao tem nome: uso invalido.
+DBX_CMD_UPLOAD_ALVO=''
+_dbx_cmd_upload_alvo_em_pasta() {
+  local destino=$1 origem=$2
+  DBX_CMD_UPLOAD_ALVO=''
+  if [[ $origem == '-' ]]; then
+    dbx_cmd_falhar uso_invalido \
+      'a entrada padrao precisa do nome do arquivo no destino (o destino e uma pasta): use <pasta>/<nome>'
+    return $?
+  fi
+  DBX_CMD_UPLOAD_ALVO="${destino%/}/${origem##*/}"
+}
+
+# _dbx_cmd_upload_trocar_para_pasta — o destino e uma pasta existente: refaz
+# `destino`, `remoto` e o objeto de publicacao com o caminho final. Usa as locais
+# de `dbx_cmd_upload_executar` (escopo dinamico), como `DBX_CMD_SYNC_CHAMADOR`.
+_dbx_cmd_upload_trocar_para_pasta() {
+  # shellcheck disable=SC2154  # locais do chamador
+  _dbx_cmd_upload_alvo_em_pasta "$destino" "$origem" || return $?
+  destino=$DBX_CMD_UPLOAD_ALVO
+  _dbx_cmd_caminho_remoto "$destino" || return $?
+  remoto=$DBX_CMD_LIDO
+  resolver_pasta='nao'
+  dbx_transfer_objeto_de_publicacao "$remoto" "$modo" "$rev" "$origem"
 }
 
 # _dbx_cmd_upload_retomavel <origem> <chave> — 0 quando o envio e retomavel
