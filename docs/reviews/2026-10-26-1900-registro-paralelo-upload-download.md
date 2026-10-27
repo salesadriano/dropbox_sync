@@ -106,7 +106,7 @@ Este registro nao executou comandos (sem acesso a shell nesta rodada). As contag
 | `tests/integracao/qa_paralelo_pastas_b18_test.sh` | 10 | Aprovada pelo solicitante; mutacoes M1/M2 pegas | `94f2b18c884f014b162632451ac28c2c1f0a2b372be37bcadf3d7e4e02071c44` |
 | `tests/integracao/qa_paralelo_upload_b19_test.sh` | 35 | Reaprovada pelo solicitante em 2026-10-27 (ciclo 3: contagens pelo harness e 429 sincronizado com a primeira leva; 5 execucoes verdes); mutacoes de N+1 em voo e de parte em voo confirmada pegas | `e1dc693fe4e65bb82d5d278bbe64e51c12459b0726dfce32bdeb9e6ab7bd5526` |
 | `tests/integracao/qa_paralelo_download_b20_test.sh` | 27 | Reaprovada pelo solicitante em 2026-10-27 (ciclo 3: 429 sincronizado com a primeira leva; 5 execucoes verdes; mutacao sem marca de pausa reprova); mutacoes de gravacao fora de ordem e de prefixo falso pegas | `86fc839a8d914d1c44b834f726e995fd63560ac79490dd116876c1d85d668d3e` |
-| `sh scripts/suite-completa.sh` (commit final) | - | **Pendente: suite do commit final.** Tech Lead completa apos este registro | - |
+| `sh scripts/suite-completa.sh` (commit final) | - | **Suite do commit final: duas execucoes reprovaram em `qa_retomada_b7a::qa_d16` (intermitente sob carga externa; passa isolado 6/6 e na sequencia curta); o solicitante decidiu ignorar a falha em 2026-10-27 (log de prompt).** Tech Lead completa apos este registro | - |
 
 Ciclo do QA-B20-01: o ciclo 1 de `qa_paralelo_download_b20` teve 27 casos, 26 verdes (conforme log de prompt). O ciclo 2 foi aprovado pelo solicitante com os 27 casos.
 
@@ -138,7 +138,7 @@ Medido pelo Tech Lead; detalhes no [parecer de evidencias](2026-10-26-1900-evide
 
 ## Proximos passos
 
-1. Rodar `sh scripts/suite-completa.sh` no commit final e registrar o resultado. **Pendente.**
+1. Rodar `sh scripts/suite-completa.sh` no commit final e registrar o resultado. **Feito: vermelha por intermitencia ignorada pelo solicitante.**
 2. Validacao no FreeBSD do solicitante: upload e download paralelos de arquivo grande. **Pendente.**
 3. Nota de refinamento na DIV-365 (`Retry-After` por auxiliar, pausa por marca) e atualizacao do status da secao 5.23 (hoje "especificada, aguardando as decisoes" e "nada implementado"; desatualizado). **Pendente; documentation-sync.**
 4. DBA para o formato v2 do registro (DIV-366, regra 26), se ainda nao acionado. **Pendente de confirmacao.**

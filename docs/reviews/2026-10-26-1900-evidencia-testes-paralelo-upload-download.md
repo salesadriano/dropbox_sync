@@ -30,7 +30,7 @@
 | `lib/http.sh` | Alterado | HTTP / `DBX_HTTP_MARCA_PAUSA`, `dbx_http_conteudo_receber_faixa` | Sim (`qa_paralelo_download_b20`) |
 | `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` | Alterado | Especificacao (5.23, DIV-358..376) | Nao aplicavel (documental) |
 
-- Comportamento alterado e nao verificado, com motivo: upload e download paralelos de arquivo grande no FreeBSD do solicitante (sem execucao registrada); suite do commit final (pendente).
+- Comportamento alterado e nao verificado, com motivo: upload e download paralelos de arquivo grande no FreeBSD do solicitante (sem execucao registrada); suite do commit final com a falha intermitente `qa_d16` ignorada por decisao do solicitante.
 
 ## Criterios e seams acordadas
 
@@ -72,7 +72,7 @@ Contagens transcritas da fonte. A coluna de aprovados e falhos e a duracao nao c
 
 ## Suite completa no push para a PR e na pipeline de main/master (Regra 8)
 
-- Execucao local no push para a PR: `sh scripts/suite-completa.sh` no commit final. **Pendente: suite do commit final.** Tech Lead completa.
+- Execucao local no push para a PR: `sh scripts/suite-completa.sh` no commit final. **Suite do commit final: duas execucoes reprovaram em `qa_retomada_b7a::qa_d16` (intermitente sob carga externa; passa isolado 6/6 e na sequencia curta); o solicitante decidiu ignorar a falha em 2026-10-27 (log de prompt).** Tech Lead completa.
 - Branch de integracao do projeto: `master` (a confirmar; o briefing cita `develop` como principal)
 - Workflow e job que rodam a suite completa: nao informado na fonte
 - Estado no momento do parecer: Ainda nao executada
@@ -90,7 +90,7 @@ Contagens transcritas da fonte. A coluna de aprovados e falhos e a duracao nao c
 | Integracao (QA da demanda) | suites `qa_paralelo_*_b18/b19/b20` | 10 + 35 + 27 = 72 | Aprovadas pelo solicitante por sha256 | Nao informado na fonte | - | - | - |
 | E2E | Nao aplicavel (CLI) | - | - | - | - | - | - |
 
-- Falhas em aberto: suite do commit final (pendente); FreeBSD do solicitante (pendente).
+- Falhas em aberto: suite do commit final com a falha intermitente `qa_d16` ignorada por decisao do solicitante; FreeBSD do solicitante (pendente).
 
 ## Interrupcao no primeiro erro (Regra 9)
 
