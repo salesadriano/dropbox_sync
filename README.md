@@ -189,6 +189,11 @@ dbx upload -p /mnt/h/Bkps/PeOuro /PeOuro
 # Upload dispensado automaticamente se o arquivo local estiver inalterado
 dbx upload ./relatorio.pdf /documentos/relatorio.pdf
 
+# Destino que é uma pasta (já existente, ou terminado em "/"): o arquivo é gravado em
+# <pasta>/<nome do arquivo>, aqui /backups/relatorio.pdf. A entrada padrão (-) exige o nome no destino.
+dbx upload ./relatorio.pdf /backups/
+dbx upload ./relatorio.pdf /backups
+
 # Forçar envio mesmo se inalterado (pula também a checagem de espaço livre)
 dbx upload --forcar ./relatorio.pdf /documentos/relatorio.pdf
 
