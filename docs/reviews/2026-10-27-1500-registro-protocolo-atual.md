@@ -26,7 +26,7 @@
 - Descoberta conferida por outro caminho: `--listar` = 2757 linhas = `grep -c '^teste_...()'` sobre `tests/unit/*_test.sh tests/integracao/*_test.sh`.
 - `sh scripts/verificar-instrucoes-do-projeto.sh`: sem drift (51 regras, branch `develop`, caminhos citados existem).
 - `shellcheck` dos cinco scripts sincronizados: limpo. `sh scripts/memoria-index.sh --check`: 44 entradas validas.
-- Nenhum teste do produto audita `AGENTS.md`, `CLAUDE.md` ou os scripts tocados (`grep` em `tests/`); a suite completa roda antes do push.
+- Nenhum teste do produto audita `AGENTS.md`, `CLAUDE.md` ou os scripts tocados (`grep` em `tests/`). Suite completa: reprovou so em `qa_retomada_b7a::qa_d15`, o problema conhecido da retomada do download sob carga (notas da v2.1.0; falha que o solicitante decidiu ignorar); esta demanda nao altera codigo do produto.
 
 ## Gates
 
