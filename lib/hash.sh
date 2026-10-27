@@ -26,7 +26,7 @@
 # Cada bloco e lido para UM arquivo de buffer reaproveitado, e nao por um cano.
 # A escolha nao e estetica:
 #
-#   a) `head -c N > buffer` expoe o status do leitor diretamente em `$?`. Na
+#   a) `dbx_ler_exato N 0 buffer` expoe o status do leitor diretamente em `$?`. Na
 #      versao anterior a leitura passava por um cano e apenas o status do
 #      ultimo comando era observado, de modo que EIO, truncamento sob leitura
 #      ou produtor morto no meio produziam um `content_hash` bem formado de
@@ -68,6 +68,8 @@ _dbx_hash_diretorio=$(cd -P -- "$_dbx_hash_diretorio" && pwd -P)
 . "$_dbx_hash_diretorio/errors.sh"
 # shellcheck source=lib/tmp.sh
 . "$_dbx_hash_diretorio/tmp.sh"
+# shellcheck source=lib/atributos.sh
+. "$_dbx_hash_diretorio/atributos.sh"
 unset _dbx_hash_diretorio
 
 readonly DBX_HASH_TAMANHO_BLOCO=4194304
@@ -83,7 +85,7 @@ readonly DBX_HASH_ERRO_DEPENDENCIA DBX_HASH_ERRO_ORIGEM
 # Utilitarios de resumo aceitos. A lista e fechada de proposito: DBX_HASH_BACKEND
 # vem do ambiente, e aceitar um valor arbitrario transformaria uma variavel de
 # ambiente em escolha de programa a executar.
-readonly DBX_HASH_BACKENDS_ACEITOS='sha256sum shasum openssl'
+readonly DBX_HASH_BACKENDS_ACEITOS='sha256sum shasum sha256 openssl'
 
 DBX_HASH_BACKEND=${DBX_HASH_BACKEND:-}
 DBX_HASH_FORMATO=''
@@ -137,6 +139,11 @@ _dbx_hash_sha256_hex() {
       ;;
     shasum)
       saida=$(shasum -a 256) || return "$DBX_HASH_ERRO_RESUMO"
+      saida=${saida%% *}
+      ;;
+    sha256)
+      # Base do FreeBSD (RF-169): `-q` imprime so o resumo; sem arquivo le a stdin.
+      saida=$(sha256 -q) || return "$DBX_HASH_ERRO_RESUMO"
       saida=${saida%% *}
       ;;
     openssl)
@@ -292,7 +299,7 @@ _dbx_hash_calcular() {
   dbx_hash_acumular_iniciar || return $?
   while :; do
     # Sem cano: o status abaixo e o do proprio leitor.
-    head -c "$DBX_HASH_TAMANHO_BLOCO" >"$buffer" || return "$DBX_HASH_ERRO_RESUMO"
+    dbx_ler_exato "$DBX_HASH_TAMANHO_BLOCO" 0 "$buffer" || return "$DBX_HASH_ERRO_RESUMO"
     tamanho=$(wc -c <"$buffer") || return "$DBX_HASH_ERRO_RESUMO"
     tamanho=${tamanho//[^0-9]/}
     [[ -n $tamanho ]] || return "$DBX_HASH_ERRO_RESUMO"
@@ -392,6 +399,9 @@ dbx_hash_conteudo_arquivo_com_tamanho() {
 #   mesma leitura de `stat` que ja fazia por arquivo, o `upload` e o `sync` a
 #   releem depois do calculo, e `lib/state` so compara cadeias. Morar aqui, e
 #   nao num dos consumidores, mantem as dependencias apontando para o dominio.
+# A leitura mora em `lib/atributos` (forma GNU e recuo BSD); esta constante e a
+# referencia da forma GNU que identidade_gnustat_test confronta com o resultado.
+# shellcheck disable=SC2034  # lida pelos testes
 readonly DBX_HASH_FORMATO_IDENTIDADE='%Y|%y|%z|%d|%i|%s'
 DBX_HASH_IDENTIDADE=''
 DBX_HASH_TAMANHO_ARQUIVO=''
@@ -404,8 +414,8 @@ dbx_hash_identidade() {
   local leitura
   DBX_HASH_IDENTIDADE=''
   DBX_HASH_TAMANHO_ARQUIVO=''
-  leitura=$(stat -c "%s"$'\t'"$DBX_HASH_FORMATO_IDENTIDADE" -- "$1" 2>/dev/null) ||
-    return "$DBX_HASH_ERRO_ORIGEM"
+  dbx_atributo identidade "$1" || return "$DBX_HASH_ERRO_ORIGEM"
+  leitura=$DBX_ATRIBUTO
   [[ $leitura == *$'\t'* ]] || return "$DBX_HASH_ERRO_ORIGEM"
   # shellcheck disable=SC2034  # canais publicos, lidos por lib/walk e pelos comandos
   DBX_HASH_TAMANHO_ARQUIVO=${leitura%%$'\t'*}

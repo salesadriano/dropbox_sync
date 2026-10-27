@@ -446,8 +446,8 @@ teste_falha_de_leitura_no_meio_nao_publica_nada_e_nao_deixa_residuo() {
     printf '#!/usr/bin/env bash\n'
     printf 'printf %s\n' "'PARCIAL'"
     printf 'exit 1\n'
-  } >"$leitor/head"
-  chmod +x "$leitor/head"
+  } >"$leitor/dd"
+  chmod +x "$leitor/dd"
 
   antes=$(_conteudo_do_tmpdir)
   PATH="$leitor:$dir:$PATH" dbx_transfer_sessao "$COMMIT_DE_TESTE" </dev/null

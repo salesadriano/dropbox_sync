@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# O scripts/suite-completa.sh do modelo so delega ao script da skill; estes casos prendem a delegacao.
+# O scripts/suite-completa.sh e a implementacao do projeto (copia da skill ai-team:governanca-por-hooks, que o despachante do plugin prefere); estes casos prendem a interface.
 
 setup() { RAIZ="$BATS_TEST_DIRNAME/../.."; }
 

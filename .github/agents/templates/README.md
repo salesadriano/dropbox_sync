@@ -4,8 +4,8 @@ Consultar apenas quando o fluxo correspondente for acionado. A obrigatoriedade d
 
 | Template | Uso | Quem preenche |
 |---|---|---|
-| `evidencia-testes-template.md` | Gate local de testes exigido por `../../skills/protocolo-tdd/`: criterios BDD e seams acordadas, evidencia do ciclo red-green-refactor, execucao por camada, distribuicao real da piramide, governanca de dados, tratamento de flaky, achados por severidade, veredito e devolucao acionavel quando reprovado | Agent que produziu a alteracao |
-| `parecer-conformidade-template.md` | Gate local de conformidade arquitetural e de boas praticas exigido por `../../skills/protocolo-conformidade/`: escopo do diff, skills aplicadas, achados por severidade, veredito e devolucao acionavel quando reprovado | Agent que produziu a alteracao |
+| `evidencia-testes-template.md` | Gate local de testes exigido pela skill `ai-team:protocolo-tdd`: criterios BDD e seams acordadas, evidencia do ciclo red-green-refactor, execucao por camada, distribuicao real da piramide, governanca de dados, tratamento de flaky, achados por severidade, veredito e devolucao acionavel quando reprovado | Agent que produziu a alteracao |
+| `parecer-conformidade-template.md` | Gate local de conformidade arquitetural e de boas praticas exigido pela skill `ai-team:protocolo-conformidade`: escopo do diff, skills aplicadas, achados por severidade, veredito e devolucao acionavel quando reprovado | Agent que produziu a alteracao |
 | `qa-reprovacao-e-ciclos-template.md` | Falhas de QA, ciclos QA -> Developer, refatoracoes e eventual escalonamento ao solicitante | QA Expert |
 | `qa-validacao-frontend-template.md` | Validacao QA de fluxos frontend: template padrao, vinculo System Design -> Design System, referencias de Figma e Storybook.js, evidencias e bloqueios | QA Expert |
 | `aprovacao-e-reaprovacao-solicitante-template.md` | Aprovacao explicita e reaprovacao do solicitante sobre testes do QA ou iteracoes posteriores | QA Expert |
@@ -16,6 +16,6 @@ Consultar apenas quando o fluxo correspondente for acionado. A obrigatoriedade d
 | `system-design-exemplo-preenchido.md` | Exemplo preenchido do System Design, como referencia pratica | Leitura apenas |
 | `revisao-consolidada-tech-lead-template.md` | Revisao consolidada por referencia aos artefatos dos agents: decisoes, divergencias tratadas, riscos residuais e impacto global | Tech Lead |
 | `aprovacao-final-tech-lead-template.md` | Aprovacao final: referencias ao System Design, validacao QA frontend, gates aplicados, riscos residuais e decisao de fechamento | Tech Lead |
-| `registro-de-entrega-curto-template.md` | Registro de entrega de porte P e M num unico arquivo, com os dois pareceres de gate e a validacao do QA como secoes (skill `../../skills/entrega-por-porte/`); em G continuam os arquivos proprios | Agent que produziu a alteracao (em P, o Tech Lead) |
+| `registro-de-entrega-curto-template.md` | Registro de entrega de porte P e M num unico arquivo, com os dois pareceres de gate e a validacao do QA como secoes (skill `ai-team:entrega-por-porte`); em G continuam os arquivos proprios | Agent que produziu a alteracao (em P, o Tech Lead) |
 
 Regra de preenchimento comum a todos: secao ou tabela sem conteudo nao recebe placeholder; e omitida com a linha `Nao aplicavel: <motivo>` (regra 41). Fato ja registrado em outro artefato e referenciado por link, nunca copiado.

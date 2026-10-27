@@ -1,5 +1,15 @@
 # CLAUDE.md — Instrucoes para o Claude Code no projeto dropbox_sync
 
+<!-- ai-team:roteamento inicio -->
+## Entrada das solicitacoes (plugin ai-team)
+
+Toda solicitacao que nao comeca por `/` e lida como `/ai-team <solicitacao>`: antes de qualquer outra acao, invoque a skill `ai-team:tech-lead` com o texto literal da solicitacao como argumento; ela assume a persona do Tech Lead nesta sessao e abre a demanda (regras 44 e 49 do protocolo `.github/agents/AGENTS.md`).
+
+- Com a demanda ja aberta pelo Tech Lead, resposta a pergunta dele ou ajuste da mesma demanda segue nela; pedido novo abre outra demanda pelo mesmo caminho.
+- Pedido que comeca por `/` segue como digitado; invocacao direta e admitida so para QA Expert, UX Expert e Business Analyst (regra 44).
+- Bloco mantido pelo plugin ai-team (`alinhar-instrucoes.sh`, no inicio da sessao): editar fora dos marcadores.
+<!-- ai-team:roteamento fim -->
+
 > Este arquivo orienta o Claude Code (e qualquer agent) ao operar neste repositorio.
 > A fonte autoritativa do protocolo e o pacote de agents em [.github/agents/AGENTS.md](.github/agents/AGENTS.md), composto por **48 regras**.
 > O repositorio canonico e `salesadriano/dropbox_sync` e a branch principal declarada e `develop`.
@@ -27,7 +37,7 @@ Toda solicitacao entra pelo **Tech Lead** (regra 44): a sessao principal assume 
    - **Demais agents:** apenas `sh scripts/memoria-index.sh --agente <papel>`. O que faltar chega pelo Tech Lead na delegacao (`--agente <papel> --corpo`).
 3. Garantir a estrutura documental com `sh scripts/ensure-docs.sh` (regra 45).
 4. Confirmar a stack pela entrada `tipo: stack` (`sh scripts/memoria-index.sh --tipo stack`). Gravar outra so se a stack mudar.
-5. Acionar [.github/skills/prompt-logger/](.github/skills/prompt-logger/): um arquivo por demanda em `docs/prompts/<data>_<hora>_<slug>.md`, com cada prompt da mesma demanda anexado integralmente. **Sanitizar antes de persistir**: remover ou mascarar segredos, credenciais, tokens e dados sensiveis.
+5. Acionar skill `ai-team:prompt-logger`: um arquivo por demanda em `docs/prompts/<data>_<hora>_<slug>.md`, com cada prompt da mesma demanda anexado integralmente. **Sanitizar antes de persistir**: remover ou mascarar segredos, credenciais, tokens e dados sensiveis.
 6. Classificar o **porte** da demanda (regra 40) e registra-lo no log de prompt e no registro de entrega.
 7. **Branch e worktree da demanda** (regra 46): a branch principal declarada e `develop` (entrada `branch-principal`); sincronizar com o remoto, cruzar os PRs abertos com o escopo, criar branch `feature/<slug>` ou `chore/<slug>` a partir de `develop` e entregar via PR.
 8. **Intervencao humana** (regra 48): `sh scripts/alteracoes-externas.sh --inicial` ao iniciar; `--detectar` antes de editar e antes de cada gate, handoff, commit e push; `--registrar <arquivos>` ao fim de cada passo e `--registrar` apos cada commit proprio.

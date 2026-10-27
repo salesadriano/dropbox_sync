@@ -126,7 +126,7 @@ FIM
   printf '#!%s\nbase=%q\n%s\n' "$BASH_ABSOLUTO" "$base" "$script" >"$base/bin/curl"
   chmod +x "$base/bin/curl"
   local alvo origem
-  for alvo in mktemp mv rm chmod mkdir stat head wc readlink dirname find cat sleep tail df ln rmdir sha256sum cp; do
+  for alvo in mktemp mv rm chmod mkdir stat head dd wc readlink dirname find cat sleep tail df ln rmdir sha256sum cp; do
     origem=$(command -v "$alvo" 2>/dev/null) || continue
     ln -s "$origem" "$base/bin/$alvo"
   done

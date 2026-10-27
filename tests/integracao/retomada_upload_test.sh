@@ -337,19 +337,19 @@ teste_rmu01_rmu02_interrompido_na_parte_4_retoma_do_confirmado_sem_reenviar() {
   assert_igual 0 "$(_conta "$base" '^files/upload_session/[af].*content_hash')" 'sem content_hash no append_v2 nem no finish'
 }
 
-teste_rmu15_na_retomada_o_arquivo_e_lido_uma_vez() {
+teste_rmu15_na_retomada_o_arquivo_e_lido_uma_vez() { # o leitor em partes e dd (dbx_ler_exato)
   local base real
   base=$(_ambiente)
   _interrompida_na_parte "$base" 4
-  real=$(command -v head)
+  real=$(command -v dd)
   mkdir -p "$base/conta"
   {
     printf '#!%s\n' "$BASH"
     printf 'real=%q\nlog=%q\n' "$real" "$base/conta/lidos"
     printf '%s\n' '[[ $(readlink /proc/$$/fd/0) == */grande.iso ]] || exec "$real" "$@"'
     printf '%s\n' 't=$(mktemp)' '"$real" "$@" >"$t"; e=$?' 'wc -c <"$t" >>"$log"' 'cat "$t"; rm -f "$t"; exit $e'
-  } >"$base/conta/head"
-  chmod +x "$base/conta/head"
+  } >"$base/conta/dd"
+  chmod +x "$base/conta/dd"
   DBX_T_PATH="$base/conta" _up "$base"
   assert_igual 0 "$DBX_ESTADO" "retomado: $DBX_ERRO"
   local total=0 v

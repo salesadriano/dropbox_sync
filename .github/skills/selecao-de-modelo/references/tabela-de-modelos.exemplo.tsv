@@ -1,9 +1,0 @@
-# Tabela de modelos por faixa: exemplo que cada projeto copia para scripts/tabela-de-modelos.tsv e mantem.
-# Colunas separadas por TAB: faixa, alias do cliente de IA, id do modelo, preco de entrada, preco de saida,
-# preco de leitura de cache (USD por milhao de tokens). A primeira linha de cada faixa e a usada quando se
-# pede a faixa; as demais sao alcancadas pelo alias. Precos conferidos em 2026-10-06 na referencia da API
-# da Anthropic e envelhecem: reconferir na adocao e a cada mudanca de modelo. Cache do economico: conferir.
-economico	haiku	claude-haiku-5-5	0.10	0.50	0.01
-padrao	sonnet	claude-sonnet-5-5	2.00	10.00	0.20
-maximo	opus	claude-opus-5-5	4.00	20.00	0.20
-maximo	fable	claude-fable-5-1	10.00	50.00	0.25

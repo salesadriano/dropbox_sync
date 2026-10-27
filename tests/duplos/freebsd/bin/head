@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Duble do head do FreeBSD (leitura em partes sobre o mesmo descritor).
+#
+# O head da base BSD le por stdio, com leitura antecipada, e ao sair deixa o
+# deslocamento do descritor de entrada ALEM de N. Para `head -c N` sobre a
+# entrada padrao (sem operando de arquivo) este duble consome N + 4096 bytes da
+# entrada e imprime so os N primeiros: quem le em partes do MESMO descritor
+# perde os bytes entre uma parte e outra. O head do GNU nunca le alem de N, por
+# isso a suite no Linux nao via o defeito. Demais formas delegam ao head real.
+
+real=''
+for candidato in /usr/bin/head /bin/head; do
+  if [[ -x $candidato ]]; then
+    real=$candidato
+    break
+  fi
+done
+if [[ -z $real ]]; then
+  printf 'head: duble sem head do sistema para delegar\n' >&2
+  exit 2
+fi
+
+if [[ $# -eq 2 && $1 == -c && $2 =~ ^[0-9]+$ ]]; then
+  "$real" -c "$(($2 + 4096))" | "$real" -c "$2"
+  exit "${PIPESTATUS[0]}"
+fi
+exec "$real" "$@"

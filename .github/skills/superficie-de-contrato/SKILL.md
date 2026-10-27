@@ -17,9 +17,9 @@ A superficie de contrato de uma API inclui quem alcanca cada rota. Mudanca de al
 
 ## Scope Boundary
 
-- A **medicao** da superficie (contar por HTTP, por introspeccao do roteador, por leitura do contrato publicado) e parte dos testes de contrato de [`protocolo-tdd`](../protocolo-tdd/SKILL.md); esta skill diz **quando** ela e exigida e confere as **copias** do resultado.
-- [`instrucoes-do-projeto`](../instrucoes-do-projeto/SKILL.md) prende frases e caminhos do arquivo de instrucoes; o `conferir-copias.sh` prende um **numero** em N arquivos e nao repete aquilo.
-- [`gitflow`](../gitflow/SKILL.md), regra 47, manda avaliar a branch principal antes de cada push; a recontagem na juncao de duas frentes e um caso desta skill.
+- A **medicao** da superficie (contar por HTTP, por introspeccao do roteador, por leitura do contrato publicado) e parte dos testes de contrato de `ai-team:protocolo-tdd`; esta skill diz **quando** ela e exigida e confere as **copias** do resultado.
+- `ai-team:instrucoes-do-projeto` prende frases e caminhos do arquivo de instrucoes; o `conferir-copias.sh` prende um **numero** em N arquivos e nao repete aquilo.
+- `ai-team:gitflow`, regra 47, manda avaliar a branch principal antes de cada push; a recontagem na juncao de duas frentes e um caso desta skill.
 
 ## Origem
 
@@ -57,7 +57,7 @@ No registro de entrega, uma de duas linhas, sempre:
 - `Superficie inalterada: o diff nao toca <caminhos listados na adocao>; pinos existentes bastam; conferir-copias ✔.`
 - `Superficie remedida: <parcelas> por <via 1> e <via 2>, concordantes parcela a parcela; constante, bloco de estado, pino e historico atualizados neste diff.`
 
-A ultima medicao fica linkada no bloco de estado do arquivo de instrucoes ([`instrucoes-do-projeto`](../instrucoes-do-projeto/SKILL.md)); a errata vai ao historico.
+A ultima medicao fica linkada no bloco de estado do arquivo de instrucoes (`ai-team:instrucoes-do-projeto`); a errata vai ao historico.
 
 ## Testes
 
@@ -65,7 +65,7 @@ A ultima medicao fica linkada no bloco de estado do arquivo de instrucoes ([`ins
 npx --yes bats@1.13.0 --abort --print-output-on-failure .github/skills/superficie-de-contrato/scripts/tests/
 ```
 
-`--abort` para no primeiro teste falho (Regra 9 de `protocolo-tdd`; mecanica por ferramenta na referencia `interrupcao-no-primeiro-erro` de [`protocolo-tdd`](../protocolo-tdd/SKILL.md)). O script e POSIX `sh`; `shellcheck -s sh` e item do gate de conformidade.
+`--abort` para no primeiro teste falho (Regra 9 de `protocolo-tdd`; mecanica por ferramenta na referencia `interrupcao-no-primeiro-erro` de `ai-team:protocolo-tdd`). O script e POSIX `sh`; `shellcheck -s sh` e item do gate de conformidade.
 
 ## Adocao num projeto
 
