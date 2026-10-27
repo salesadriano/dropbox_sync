@@ -1,6 +1,6 @@
 # Template - Parecer de Evidencias de Testes (TDD)
 
-Preenchido pelo agent que produziu a alteracao, conforme a skill `ai-team:protocolo-tdd`, antes de qualquer handoff.
+Preenchido pelo agent que produziu a alteracao, conforme `ai-team:protocolo-tdd`, antes de qualquer handoff.
 
 > **Modo do parecer (regra 40 e `Protocolo por porte` do `AGENTS.md`):** em porte **P** e **M**, preencher apenas Identificacao, Escopo, Criterios e seams acordadas, Execucao por camada, Interrupcao no primeiro erro, Achados, Veredito e, se reprovado, Devolucao; substituir as tabelas de verificacao pela linha `Checklist protocolo-tdd aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados`. As secoes `Testes de seguranca e acesso` e `Validacao de formularios em E2E` nunca sao compactadas: com gatilho ou formulario tocado, um cenario por linha em qualquer porte. Em porte **G**, preencher todas as secoes. Secao sem conteudo e omitida com `Nao aplicavel: <motivo>`, nunca preenchida com placeholders.
 
@@ -244,4 +244,4 @@ Preencher a partir do ciclo 2.
 ## Registro
 
 - Quando houver decisao duravel ou justificativa aceita, gravar uma entrada em `../memoria/entradas/` (`escopo: projeto`, ou `pacote` se mudar regra transversal) com `ref:` para este parecer (regra 35).
-- Referenciar este parecer no registro tecnico produzido pela skill `ai-team:review-documentation` e no parecer de `ai-team:protocolo-conformidade`.
+- Referenciar este parecer no registro tecnico produzido por `ai-team:review-documentation` e no parecer de `ai-team:protocolo-conformidade`.

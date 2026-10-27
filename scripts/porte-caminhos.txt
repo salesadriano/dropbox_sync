@@ -1,0 +1,11 @@
+# Gatilhos de porte do projeto (scripts/porte.sh): `porte<TAB>padrao de case<TAB>motivo`, porte M ou G.
+# Os gatilhos embutidos do script valem sempre; aqui entra o que e deste repositorio (regra 40).
+G	.github/agents/AGENTS.md	protocolo comum do projeto
+G	.github/agents/templates/*	template operacional
+M	bin/dbx	entrypoint e ajuda da CLI (contrato publico)
+M	commands/*.sh	comando da CLI (contrato publico)
+M	lib/config.sh	credencial e configuracao
+M	lib/auth.sh	autenticacao
+M	install.sh	instalador
+M	uninstall.sh	desinstalador
+M	scripts/*.sh	script invocado pelo protocolo

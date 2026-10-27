@@ -1,0 +1,6 @@
+# Padroes de descoberta de testes para scripts/inventario-de-testes.sh.
+# Formato: <glob><TAB><ERE da linha que declara o teste>. Comentarios com #. O glob casa o caminho versionado
+# inteiro (o `*` cobre `/`). O nome do caso e a primeira string entre aspas duplas da linha; sem ela, a primeira
+# entre aspas simples; sem nenhuma, o identificador apos `def ` ou `func `; sem nenhum, o nome da funcao shell.
+# Harness proprio do projeto (tests/run.sh, TAP 13): cada caso e uma funcao `teste_<nome>()` em `*_test.sh`.
+tests/*_test.sh	^teste_[A-Za-z0-9_]+[ ]*\(\)

@@ -11,7 +11,7 @@ Toda solicitacao que nao comeca por `/` e lida como `/ai-team <solicitacao>`: an
 <!-- ai-team:roteamento fim -->
 
 > Este arquivo orienta o Claude Code (e qualquer agent) ao operar neste repositorio.
-> A fonte autoritativa do protocolo e o pacote de agents em [.github/agents/AGENTS.md](.github/agents/AGENTS.md), composto por **48 regras**.
+> A fonte autoritativa do protocolo e o pacote de agents em [.github/agents/AGENTS.md](.github/agents/AGENTS.md), composto por **51 regras**.
 > O repositorio canonico e `salesadriano/dropbox_sync` e a branch principal declarada e `develop`.
 > Em caso de conflito, `AGENTS.md` prevalece; este arquivo e o ponto de entrada e o resumo operacional.
 
@@ -62,6 +62,9 @@ Toda solicitacao entra pelo **Tech Lead** (regra 44): a sessao principal assume 
 | Linter estatico | `sh scripts/lint.sh` (um `shellcheck` por arquivo, teto de 12 GB; nunca `shellcheck` sobre todos os arquivos num processo so) |
 | Guarda de remocao de testes | `bash scripts/verificar-remocao-de-casos.sh` |
 | Validacao de memoria | `sh scripts/memoria-index.sh --check` |
+| Medicao de porte da demanda | `sh scripts/porte.sh` |
+| Inventario de testes (regra 51) | `sh scripts/inventario-de-testes.sh --check` (conferencia), `--faltantes` (esqueleto do que falta), `--listar` (testes descobertos) |
+| Extrato de memoria por papel | `sh scripts/memoria-extrato.sh --papel <papel> --termos "<termos>"` |
 | Geracao do indice de memoria | `sh scripts/memoria-index.sh --write` |
 | Validacao de links de skills | `sh scripts/validate-skill-links.sh` |
 | Deteccao de alteracoes externas | `sh scripts/alteracoes-externas.sh --detectar` |
@@ -79,7 +82,7 @@ Descricao unica em `AGENTS.md`, secao `Ciclo do developer`:
 2. Em M/G, `senior-developer` implementa sob `protocolo-tdd` e emite parecer de evidencias.
 3. Executa `protocolo-conformidade` sobre o diff. Reprovacao volta ao developer.
 4. Registro de entrega produzido em `docs/reviews/` (`documentation-writer` em M/G; em P e M pelo registro curto).
-5. `qa-expert` valida no modo do porte (amostragem em P; independente em M/G).
+5. `qa-expert` valida no modo do porte (amostragem em P; independente em M/G) e atualiza o inventario de testes `docs/testes/inventario-de-testes.md` com os testes criados, alterados ou removidos, fechando com `sh scripts/inventario-de-testes.sh --check` sem divergencia (regra 51; em P, o Tech Lead atualiza as linhas que tocou).
 6. `commit-writer` redige mensagem semantica apontando para o registro e prompt.
 7. Antes do push para PR de `develop` ou `master`, roda localmente a suite completa (`sh scripts/suite-completa.sh`) e registra resultado.
 8. Push da branch e Pull Request para `develop`.

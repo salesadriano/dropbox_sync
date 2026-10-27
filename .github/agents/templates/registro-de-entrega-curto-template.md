@@ -2,7 +2,7 @@
 
 Um unico arquivo em `docs/reviews/`, nomeado `YYYY-MM-DD-HHMM-<slug>.md`, que e o registro de entrega da demanda (regra 41 do `AGENTS.md`) **e** carrega, como secoes, o parecer de evidencias de testes (`protocolo-tdd`), o parecer de conformidade (`protocolo-conformidade`) e a validacao do QA. Em P e M nao se cria arquivo separado para nenhum desses tres; em G continuam os arquivos proprios (`evidencia-testes-template.md`, `parecer-conformidade-template.md`, validacao do QA e os templates de fechamento). Skill: `ai-team:entrega-por-porte`.
 
-Preenchimento por porte: em **P**, cada secao tem o minimo que o fluxo P exige (skill `ai-team:entrega-por-porte`, referencia `fluxo-p.md`): gates num parecer combinado, QA por amostragem, abordagens dispensadas em uma linha. Em **M**, a secao *QA* traz a validacao independente como secao e a secao *Causa ou decisao* traz as abordagens com trade-offs quando exigidas. As oito secoes abaixo sao fixas e aparecem nesta ordem; secao sem conteudo recebe uma linha `Nao aplicavel: <motivo>`, nunca placeholder; contagens de testes sao **literais** copiadas da saida do runner (total, aprovados, falhos, duracao), nunca arredondadas; fato ja escrito aqui nao e repetido em memoria, commit ou PR, que apontam para este arquivo por link. Em reprovacao de gate ou do QA, o ciclo seguinte **atualiza este mesmo arquivo** (as secoes *Gates* e *QA* ganham a linha do ciclo), nunca abre outro.
+Preenchimento por porte: em **P**, cada secao tem o minimo que o fluxo P exige (`ai-team:entrega-por-porte`): gates num parecer combinado, QA por amostragem, abordagens dispensadas em uma linha. Em **M**, a secao *QA* traz a validacao independente como secao e a secao *Causa ou decisao* traz as abordagens com trade-offs quando exigidas. As oito secoes abaixo sao fixas e aparecem nesta ordem; secao sem conteudo recebe uma linha `Nao aplicavel: <motivo>`, nunca placeholder; contagens de testes sao **literais** copiadas da saida do runner (total, aprovados, falhos, duracao), nunca arredondadas; fato ja escrito aqui nao e repetido em memoria, commit ou PR, que apontam para este arquivo por link. Em reprovacao de gate ou do QA, o ciclo seguinte **atualiza este mesmo arquivo** (as secoes *Gates* e *QA* ganham a linha do ciclo), nunca abre outro.
 
 ---
 
@@ -15,6 +15,7 @@ Preenchimento por porte: em **P**, cada secao tem o minimo que o fluxo P exige (
 | Pedido | <uma linha: o que foi pedido, com o literal do solicitante quando houver> |
 | Porte | P \| M - <criterios que o sustentam; em P, confirmar um a um os de `fluxo-p.md`: ate 50 linhas de codigo, sem contrato, schema, auth, segredo, dado sensivel, fronteira, pipeline, dependencia, sem criticidade alta> |
 | Log de prompt | `docs/prompts/<arquivo>.md` |
+| Issues | <`#n` ou `owner/repo#n` do campo `issues:` do log, ou `nenhuma`> |
 | Branch / base | `<branch>` sobre `origin/<base>` @ `<sha>` |
 | Agents | <quem implementou (em P, o Tech Lead), quem validou> |
 | Data | <AAAA-MM-DD> |
@@ -62,6 +63,7 @@ Parecer combinado dos dois gates locais, executados pelo agent que produziu a al
 
 - Porte P: `QA: amostragem <n> de <N> - validada em <data> | nao validada` (`fluxo-p.md`, secao 3). Quando validada: o que o QA auditou, o que reexecutou e os cenarios de risco que acrescentou, sem mutantes nem arquivo `qa-*`.
 - Porte M: validacao independente sobre os itens afetados, aqui como secao: cenarios proprios (risco, borda, contrato, acesso indevido), arquivos `qa-*` criados com o sha256 de cada um para o aceite do solicitante, comando e contagem literais, achados com severidade, ciclo e veredito. Em reprovacao, a devolucao ao agent originador fica aqui e o ciclo seguinte acrescenta a linha nova abaixo desta.
+- Inventario de testes (regra 51): <linhas acrescentadas, alteradas ou removidas em `docs/testes/inventario-de-testes.md` e a saida literal de `sh scripts/inventario-de-testes.sh --check`; ou `Nao aplicavel: a demanda nao toca teste`>
 - Veredito do QA: <Aprovado \| Aprovado com ressalvas \| Reprovado>, <data>.
 
 ## 7. Riscos e rollback
