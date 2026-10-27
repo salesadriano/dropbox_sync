@@ -389,10 +389,16 @@ _dbx_transfer_par_conduzir() {
       if [[ $falhou == 'nao' && $pausa == 'nao' && $marcada == 'nao' ]]; then
         for ((i = 0; i < partes && vivos < n; i++)); do
           [[ -z ${_DBX_TRANSFER_PAR_CONF[i]:-} ]] || continue
+          # Relê as marcas imediatamente antes de lancar: um 429 que chegou durante
+          # este laço segura o resto do lote.
+          compgen -G "$pasta/p.*" >/dev/null && break
           local destino_dbg='' fechar=false
           ((i == partes - 1)) && fechar=true
           [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] && destino_dbg="$pasta/dbg.$i"
-          DBX_DEBUG_DESTINO=$destino_dbg _dbx_transfer_par_aux "$i" "$fechar" </dev/null >/dev/null 2>&1 &
+          # Subarea propria do auxiliar DENTRO da area do coordenador: a limpeza do
+          # coordenador remove tudo mesmo se o auxiliar morrer por SIGKILL.
+          mkdir -m 700 -- "$pasta/t.$i" 2>/dev/null || :
+          TMPDIR="$pasta/t.$i" DBX_DEBUG_DESTINO=$destino_dbg _dbx_transfer_par_aux "$i" "$fechar" </dev/null >/dev/null 2>&1 &
           _DBX_TRANSFER_PAR_PIDS[i]=$!
           _DBX_TRANSFER_PAR_CONF[i]=v
           vivos=$((vivos + 1))

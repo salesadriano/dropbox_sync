@@ -112,11 +112,11 @@ case $ep in
       conc_s=$(<"$base/sess/$sid/conc")
       if [[ -e $base/ctl/sinal_em && $off == "$(<"$base/ctl/sinal_em")" ]]; then
         k=0
-        until [[ $(ls "$base/sess/$sid" | grep -c '^d\.') -ge $((off / 16777216)) || $k -ge 100 ]]; do
+        until { partes=("$base/sess/$sid"/d.*); [[ -e ${partes[0]} ]] || partes=(); [[ ${#partes[@]} -ge $((off / 16777216)) ]]; } || [[ $k -ge 100 ]]; do
           command -p sleep 0.1; k=$((k + 1))
         done
         command -p sleep 1
-        kill -s TERM "$pid"; command -p sleep 5; exit 7
+        kill -s TERM "$pid"; command -p sleep "$([[ -e $base/ctl/term_dorme ]] && cat "$base/ctl/term_dorme" || echo 5)"; exit 7
       fi
       if [[ -e $base/ctl/seq_sinal_em && $conc_s == nao && $off == "$(<"$base/ctl/seq_sinal_em")" ]]; then
         kill -s TERM "$pid"; command -p sleep 5; exit 7
@@ -197,7 +197,7 @@ _rodar() {
 }
 
 _up() { _rodar "$1" upload "${@:2}" grande.iso /Grande.iso; } # <base> [opcoes...]
-_conta() { grep -c -F -- "$2" "$1/chamadas" || true; }         # <base> <trecho>
+_conta() { _harness_contar "$2" "$1/chamadas"; }               # <base> <trecho> (BRE; os trechos nao tem metacaractere)
 _pico() { sort -n "$1/picos" 2>/dev/null | tail -n 1; }
 _registro_campo() { # <base> <indice> — campo do (unico) registro de retomada
   local r f c=()
@@ -309,6 +309,19 @@ teste_tc_pud_retomada_v2_reenvia_so_as_nao_confirmadas() {
   assert_igual 0 "$(_registros "$base")"
 }
 
+# Auxiliar que nao morre no TERM (o filho em voo dorme alem dos 5 s): o
+# coordenador escalona a SIGKILL e, mesmo assim, nada pode sobrar no TMPDIR,
+# porque a area do auxiliar fica DENTRO da do coordenador.
+teste_tc_pud_auxiliar_que_ignora_term_e_morto_a_forca_sem_residuo_no_tmpdir() {
+  local base
+  base=$(_ambiente)
+  printf '%s' "$((3 * PARTE))" >"$base/ctl/sinal_em"
+  echo 12 >"$base/ctl/term_dorme"
+  _up "$base" --paralelo 2
+  [[ $DBX_ESTADO -ne 0 ]] || _harness_falhar 'interrompido por SIGTERM deveria sair com erro'
+  assert_igual '' "$(_residuo "$base")" 'sem residuo no TMPDIR apos SIGKILL do auxiliar'
+}
+
 teste_tc_pud_registro_v1_com_n_maior_que_1_retoma_em_sequencia() {
   local base
   base=$(_ambiente)
@@ -358,7 +371,7 @@ teste_429_pausa_o_despacho_durante_o_retry_after() {
   : >"$base/ctl/sleep_real"
   _rodar "$base" upload --paralelo 4 grande.iso /Grande.iso
   assert_igual 0 "$DBX_ESTADO" "erro: $DBX_ERRO"
-  assert_igual 1 "$(grep -c '^429 ' "$base/ev")" 'o cenario precisa ter produzido o 429'
+  assert_igual 1 "$(_harness_contar '^429 ' "$base/ev")" 'o cenario precisa ter produzido o 429'
   viol=$(awk -v q="$PARTE" -v lim="$((4 * PARTE))" '
     $1 == "429" { pausa = 1; next }
     $1 == "ini" { if (pausa && $2 == q) pausa = 0; else if (pausa && $2 >= lim) print "ini " $2 " durante a espera" }' "$base/ev")

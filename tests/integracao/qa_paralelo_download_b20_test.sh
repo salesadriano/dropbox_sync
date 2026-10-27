@@ -173,6 +173,13 @@ case $ep in
       esac
       r=$(ctl "r429.$a")
       if [[ -n $r ]] && ((r > 0)); then
+        # r429espera.<a>: so responde o 429 depois do ini de N faixas (primeira leva inteira no duble).
+        if [[ -r $base/ctl/r429espera.$a ]]; then
+          k=0
+          until [[ $(grep '^ini [0-9]' "$base/ev" | wc -l) -ge $(<"$base/ctl/r429espera.$a") || $k -ge 200 ]]; do
+            /bin/sleep 0.1; k=$((k + 1))
+          done
+        fi
         printf '%s' $((r - 1)) >"$base/ctl/r429.$a"
         codigo=429; extra='Retry-After: 1'; resposta='{"error_summary":"too_many_requests/"}'; cabecalho
         printf '%s' "$resposta" >"$saida"
@@ -465,6 +472,7 @@ teste_z_429_sem_faixa_nova_durante_a_pausa_compartilhada() {
   local base viol
   base=$(_ambiente "$T_FINAL_CURTA")
   printf '1' >"$base/ctl/r429.$Q"
+  printf '4' >"$base/ctl/r429espera.$Q"
   printf '1.5' >"$base/ctl/atraso.$Q"
   _down "$base" --paralelo 4
   assert_igual 0 "$DBX_ESTADO" "download: $DBX_ERRO"

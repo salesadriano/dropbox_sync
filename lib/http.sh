@@ -894,6 +894,10 @@ _dbx_http_conduzir() {
     fi
     [[ $codigo =~ ^[0-9]+$ ]] || codigo=0
     [[ $codigo == 429 ]] && DBX_HTTP_LIMITES_429=$((DBX_HTTP_LIMITES_429 + 1))
+    # Marca de pausa (DIV-365 A) no PRIMEIRO ponto que sabe do 429, antes de ler
+    # cabecalhos ou decidir repeticao: fecha a janela em que o coordenador ainda
+    # despacharia parte nova.
+    [[ $codigo == 429 && -n ${DBX_HTTP_MARCA_PAUSA:-} ]] && : >"$DBX_HTTP_MARCA_PAUSA"
 
     DBX_HTTP_DIAGNOSTICO=''
     if [[ -s $area/erro_cliente ]]; then

@@ -165,6 +165,14 @@ case $ep in
       elif ctl "falha.$off"; then
         erro 'other/'
       elif ctl "r429.$off" && mv "$base/ctl/r429.$off" "$base/ctl/r429.$off.usado" 2>/dev/null; then
+        # r429espera.<off>: so responde o 429 depois do ini de N partes (a primeira leva inteira
+        # ja chegou ao duble), para o caso medir despacho e nao a ordem de chegada sob carga.
+        if [[ -r $base/ctl/r429espera.$off ]]; then
+          k=0
+          until [[ $(grep '^ini append' "$base/ev" | wc -l) -ge $(<"$base/ctl/r429espera.$off") || $k -ge 200 ]]; do
+            command -p sleep 0.1; k=$((k + 1))
+          done
+        fi
         codigo=429; resposta='{"error_summary":"too_many_requests/"}'; extra='Retry-After: 1'
       elif [[ $conc_s == nao && $off != "$(<"$base/sess/$sid/offset")" ]]; then
         codigo=409; resposta="{\"error_summary\":\"incorrect_offset/\",\"error\":{\".tag\":\"incorrect_offset\",\"correct_offset\":$(<"$base/sess/$sid/offset")}}"
@@ -242,7 +250,13 @@ _rodar() {
 _up() { _rodar "$1" "${@:2}" upload grande.iso /Grande.iso; } # <base> [opcoes globais] — upload vem depois
 _upp() { _rodar "$1" upload "${@:2}" grande.iso /Grande.iso; } # <base> [opcoes do upload...]
 
-_conta() { grep -c -E -- "$2" "$1/ev" || true; } # <base> <regex em ev>
+# <base> <regex em ev>: BRE por _harness_contar; alternativas separadas por '|' somam as contagens.
+_conta() {
+  local alt total=0 alts
+  IFS='|' read -ra alts <<<"$2"
+  for alt in "${alts[@]}"; do total=$((total + $(_harness_contar "$alt" "$1/ev"))); done
+  printf '%s' "$total"
+}
 # _ini_offsets <base> — deslocamentos dos appends iniciados, ordenados.
 _ini_offsets() {
   local e ep o r
@@ -342,7 +356,7 @@ _caso_bytes() { # <tamanho> <rotulo>
   _partes_gravadas "$base" "$tam"
   assert_igual 1 "$(_conta "$base" '^ini start - - sim')" 'start concurrent'
   assert_igual 1 "$(_conta "$base" "^ini finish $tam - sim")" 'finish com offset = total, em sessao concorrente'
-  assert_igual 1 "$(_conta "$base" '^ini append [0-9]+ true')" 'um unico close'
+  assert_igual 1 "$(_conta "$base" '^ini append [0-9][0-9]* true')" 'um unico close'
   assert_igual 1 "$(_conta "$base" "^ini append $((((tam + PARTE - 1) / PARTE - 1) * PARTE)) true")" 'o close e da ultima parte'
 }
 teste_b19_bytes_e_hash_limiar_mais_1() { _caso_bytes "$T_LIMIAR_MAIS_1"; }
@@ -664,6 +678,7 @@ teste_b19_429_nao_despacha_parte_nova_durante_a_pausa() {
   echo 1.5 >"$base/ctl/atraso.0"
   echo 1.5 >"$base/ctl/atraso.$((2 * PARTE))"
   : >"$base/ctl/r429.$PARTE"
+  printf 3 >"$base/ctl/r429espera.$PARTE"
   _upp "$base" --paralelo 3
   assert_igual 0 "$DBX_ESTADO" "erro: $DBX_ERRO"
   [[ -e $base/ctl/r429.$PARTE.usado ]] || _harness_falhar 'o 429 nao ocorreu'

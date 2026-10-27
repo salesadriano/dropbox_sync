@@ -340,7 +340,7 @@ teste_429_pausa_o_despacho_durante_o_retry_after() {
   : >"$base/ctl/sleep_real"
   _rodar "$base" download --paralelo 4 /Grande.iso grande.iso
   assert_igual 0 "$DBX_ESTADO" "download: $DBX_ERRO"
-  assert_igual 1 "$(grep -c '^429 ' "$base/ev")" 'o cenario precisa ter produzido o 429'
+  assert_igual 1 "$(_harness_contar '^429 ' "$base/ev")" 'o cenario precisa ter produzido o 429'
   viol=$(awk -v q="$Q" -v lim="$((4 * Q))" '
     $1 == "429" { pausa = 1; next }
     $1 == "ini" { if (pausa && $2 == q) pausa = 0; else if (pausa && $2 >= lim) print "ini " $2 " durante a espera" }' "$base/ev")

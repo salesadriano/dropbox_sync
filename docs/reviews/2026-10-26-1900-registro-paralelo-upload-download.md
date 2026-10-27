@@ -104,8 +104,8 @@ Este registro nao executou comandos (sem acesso a shell nesta rodada). As contag
 | Suite | Casos | Situacao | sha256 (completo, fonte: log de prompt) |
 |---|---|---|---|
 | `tests/integracao/qa_paralelo_pastas_b18_test.sh` | 10 | Aprovada pelo solicitante; mutacoes M1/M2 pegas | `94f2b18c884f014b162632451ac28c2c1f0a2b372be37bcadf3d7e4e02071c44` |
-| `tests/integracao/qa_paralelo_upload_b19_test.sh` | 35 | Aprovada pelo solicitante (ciclo 2, apos QA-B19-01); mutacoes de N+1 em voo e de parte em voo confirmada pegas | `96fe8d653118cbe6f0c57aeee13f4ee80f9a795ec83d6edc527a68ad5ee06561` |
-| `tests/integracao/qa_paralelo_download_b20_test.sh` | 27 | Aprovada pelo solicitante (ciclo 2, apos QA-B20-01); mutacoes de gravacao fora de ordem e de prefixo falso pegas | `efbdda6334fa9111bdc0fd28d26dcd0b77653ca81a3b31cba2f3cc0891f84f0e` |
+| `tests/integracao/qa_paralelo_upload_b19_test.sh` | 35 | Reaprovada pelo solicitante em 2026-10-27 (ciclo 3: contagens pelo harness e 429 sincronizado com a primeira leva; 5 execucoes verdes); mutacoes de N+1 em voo e de parte em voo confirmada pegas | `e1dc693fe4e65bb82d5d278bbe64e51c12459b0726dfce32bdeb9e6ab7bd5526` |
+| `tests/integracao/qa_paralelo_download_b20_test.sh` | 27 | Reaprovada pelo solicitante em 2026-10-27 (ciclo 3: 429 sincronizado com a primeira leva; 5 execucoes verdes; mutacao sem marca de pausa reprova); mutacoes de gravacao fora de ordem e de prefixo falso pegas | `86fc839a8d914d1c44b834f726e995fd63560ac79490dd116876c1d85d668d3e` |
 | `sh scripts/suite-completa.sh` (commit final) | - | **Pendente: suite do commit final.** Tech Lead completa apos este registro | - |
 
 Ciclo do QA-B20-01: o ciclo 1 de `qa_paralelo_download_b20` teve 27 casos, 26 verdes (conforme log de prompt). O ciclo 2 foi aprovado pelo solicitante com os 27 casos.

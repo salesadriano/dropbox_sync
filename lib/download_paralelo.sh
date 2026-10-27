@@ -125,7 +125,9 @@ dbx_cmd_baixar_faixas() {
         ((b >= total)) && b=$((total - 1))
         dbg=''
         [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] && dbg="$_DBX_FAIXAS_PASTA/dbg.$proximo"
-        DBX_DEBUG_DESTINO=$dbg _dbx_faixas_aux "$proximo" "$a" "$b" </dev/null >/dev/null 2>&1 &
+        compgen -G "$_DBX_FAIXAS_PASTA/p.*" >/dev/null && break
+        mkdir -m 700 -- "$_DBX_FAIXAS_PASTA/t.$proximo" 2>/dev/null || :
+        TMPDIR="$_DBX_FAIXAS_PASTA/t.$proximo" DBX_DEBUG_DESTINO=$dbg _dbx_faixas_aux "$proximo" "$a" "$b" </dev/null >/dev/null 2>&1 &
         _DBX_TRANSFER_PAR_PIDS[proximo]=$!
         est[proximo]=v
         proximo=$((proximo + 1))
