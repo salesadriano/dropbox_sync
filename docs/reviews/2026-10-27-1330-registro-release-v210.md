@@ -39,7 +39,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **2**.
 - Barreiras estaticas do modulo tocado: nenhuma string `2.0.0` restante em `lib/`, `commands/`, `bin/`, `install.sh`, `uninstall.sh`, `scripts/`.
 - Testes de seguranca e acesso (Regra 6): Nao aplicavel: sem rota, segredo ou entrada nova.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: CLI.
-- Suite completa local no push para a PR (Regra 8): ver a linha registrada por `sh scripts/suite-completa.sh` antes do push.
+- Suite completa local no push para a PR (Regra 8): reprovou em `qa_retomada_b7a::qa_d15` (intermitente sob carga, passa isolado); o solicitante decidiu publicar assim mesmo (log de prompt); risco nas notas da release.
 
 ## 5. Gates
 
