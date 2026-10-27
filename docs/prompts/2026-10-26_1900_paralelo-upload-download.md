@@ -46,3 +46,9 @@
 > (colagem: `dbx --debug download -p --paralelo 4 ".../nossoerp.bak.zip" /tmp/test/n2.zip` no FreeBSD; sem segredo) `download paralelo=4 partes=25 parte_tamanho=16777216`; as 25 faixas 206 chegam fora de ordem; o progresso para em 99% e o comando nao termina (Ctrl+C, saida 14); a reexecucao encontra o `.part` completo (`part_bytes=414468466`), recebe 416, `hash=ok`, `integridade: conferida`, `retomada: sim`, saida 0.
 
 **Leitura do Tech Lead:** defeito da etapa 2b, em qualquer plataforma: com `-p`, o observador de progresso do `.part` roda em segundo plano no principal e o `wait` sem argumento do coordenador (`lib/download_paralelo.sh`) esperava por ele: o download pendurava depois da ultima faixa. Os testes nao usavam `-p`. Correcao: esperar so os PIDs dos auxiliares (download e, por precaucao, upload). Red: `paralelo_download_test::progresso_ativo_nao_pendura_o_fim_das_faixas` pendurou (124) antes e passou depois; filtro `paralelo` 121 aprovados (inclui b18, b19, b20 sem alteracao), `composicao` e `json` verdes. Retomada do download com `.part` completo (416) validada no FreeBSD real.
+
+## Prompt 4 — 2026-10-27
+
+> (colagem: `dbx download -p --paralelo 4 ".../nossoerp.bak.zip" /tmp/test/n2.zip` no FreeBSD com a correcao do `wait`; sem segredo) progresso ate 100%, `integridade: conferida`, `retomada: sim`, `retomado_de: 251658240`.
+
+**Leitura do Tech Lead:** download paralelo com `-p` conclui no FreeBSD real; a execucao retomou de um `.part` de tentativa anterior (prefixo contiguo de 15 faixas) e terminou em faixas (DIV-370 B). Validacao no FreeBSD do solicitante concluida para upload e download paralelos.
