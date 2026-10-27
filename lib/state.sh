@@ -1435,6 +1435,22 @@ dbx_state_retomada_diretorio_utilizavel() {
   return 0
 }
 
+# _dbx_state_intervalos_validos <a-b,c-d|-> <partes> — forma canonica do campo de
+# partes confirmadas (RF-181(a)): inicio <= fim, estritamente crescentes, sem
+# sobreposicao nem adjacencia (adjacentes saem fundidos do gravador) e o ultimo
+# fim abaixo do numero de partes. Sem expressao regular com repeticao.
+_dbx_state_intervalos_validos() {
+  local item ini fim anterior=-2 itens
+  [[ $1 == '-' ]] && return 0
+  IFS=, read -r -a itens <<<"$1"
+  for item in "${itens[@]}"; do
+    ini=$((10#${item%-*})) fim=$((10#${item#*-}))
+    ((ini <= fim && ini > anterior + 1 && fim < $2)) || return 1
+    anterior=$fim
+  done
+  return 0
+}
+
 # _dbx_state_retomada_formato <campos...> — 0 quando os campos formam um
 # registro v1 bem formado de algum sentido (sem comparar com o processo).
 # Publica o sentido em DBX_STATE_RESULTADO; o motivo do descarte em
@@ -1475,6 +1491,7 @@ _dbx_state_retomada_formato() {
       ( ${c[12]} == '-' || ( ${#virgulas} -le 255 && ${c[12]} =~ ^[0-9]{1,6}-[0-9]{1,6}(,[0-9]{1,6}-[0-9]{1,6})*$ ) ) ]] || return 1
     _dbx_state_identidade_valida "${c[10]}" || return 1
     ((10#${c[8]} > 0 && 10#${c[8]} % DBX_STATE_RETOMADA_PARTE == 0 && 10#${c[9]} > 0)) || return 1
+    _dbx_state_intervalos_validos "${c[12]}" $(((10#${c[9]} + 10#${c[8]} - 1) / 10#${c[8]})) || return 1
   elif [[ ${c[2]} == 'upload' ]]; then
     [[ ${c[6]} =~ ^[A-Za-z0-9:_-]+$ && ${#c[6]} -le 256 && ${c[7]} =~ ^[0-9]{1,18}$ && ${c[8]} =~ ^[0-9]{1,18}$ &&
       ${c[10]} =~ ^[0-9]{1,18}$ && ${c[12]} =~ ^[0-9]{1,18}$ && ${c[13]} =~ ^[0-9a-f]{64}$ ]] || return 1

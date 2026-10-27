@@ -359,4 +359,27 @@ teste_tc_pud_debug_traz_paralelo_no_resumo_e_uma_linha_por_parte() {
   assert_nao_contem 'paralelo=' "$DBX_ERRO"
 }
 
+# QA-B19-01 / RF-181(a): intervalos fora de ordem, sobrepostos, adjacentes nao
+# fundidos ou alem do total invalidam o registro; o envio recomeca do zero.
+teste_tc_pud_registro_v2_com_intervalos_nao_canonicos_e_descartado_com_aviso() {
+  local base arquivo campos f ruim i
+  for ruim in '5-6,1-2' '1-4,3-5' '1-2,3-4' '4-3' '0-10'; do
+    base=$(_ambiente)
+    printf '%s' "$((3 * PARTE))" >"$base/ctl/sinal_em"
+    _up "$base" --paralelo 2
+    for arquivo in "$base"/estado/dbx/retomada-*; do :; done
+    campos=()
+    while IFS= read -r -d '' f; do campos+=("$f"); done <"$arquivo"
+    campos[12]=$ruim
+    printf '%s\0' "${campos[@]}" >"$arquivo"
+    rm -f "$base/ctl/sinal_em"
+    : >"$base/chamadas"
+    _up "$base" --paralelo 2
+    assert_igual 0 "$DBX_ESTADO" "[$ruim] erro: $DBX_ERRO"
+    assert_contem 'estado de retomada descartado' "$DBX_ERRO"
+    assert_igual "$(_todos_offsets)" "$(_offsets_append "$base")" "[$ruim] todas as partes enviadas"
+    cmp -s "$base/montado" "$base/trabalho/grande.iso" || _harness_falhar "[$ruim] bytes diferem"
+  done
+}
+
 harness_executar "$@"
