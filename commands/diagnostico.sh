@@ -411,7 +411,7 @@ dbx_cmd_diagnostico_executar() {
     if dbx_cli_validar_paralelo DBX_PARALELO "$DBX_PARALELO" variavel; then
       _dbx_cmd_diag paralelo ok "$DBX_CLI_PARALELO (origem: ambiente, DBX_PARALELO); --paralelo vence a variavel"
     else
-      _dbx_cmd_diag paralelo aviso "$DBX_CLI_MOTIVO; o sync sai com 2 enquanto ela estiver assim" 'unset DBX_PARALELO'
+      _dbx_cmd_diag paralelo aviso "$DBX_CLI_MOTIVO; sync, upload e download saem com 2 enquanto ela estiver assim" 'unset DBX_PARALELO'
     fi
   fi
 

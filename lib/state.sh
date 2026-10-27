@@ -1337,6 +1337,13 @@ readonly DBX_STATE_RETOMADA_TETO=1000
 readonly DBX_STATE_RETOMADA_DIAS=8
 readonly DBX_STATE_RETOMADA_PARTE=4194304
 readonly DBX_STATE_RETOMADA_CAMPOS_UPLOAD=15
+# Versao 2 (RF-181, DIV-366 A): upload em sessao concorrente, com o conjunto de
+# partes confirmadas. magia, versao, sentido, conta, host, remoto, session_id,
+# tipo_sessao, tamanho_da_parte, total, identidade, criado_em, partes, local.
+readonly DBX_STATE_RETOMADA_VERSAO_PARTES=2
+readonly DBX_STATE_RETOMADA_CAMPOS_PARTES=14
+# Versao do ultimo registro valido carregado (1 ou 2).
+DBX_STATE_RETOMADA_VERSAO_LIDA=1
 readonly DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD=13
 
 # Contexto da transferencia corrente (`dbx_state_retomada_contexto`).
@@ -1428,6 +1435,22 @@ dbx_state_retomada_diretorio_utilizavel() {
   return 0
 }
 
+# _dbx_state_intervalos_validos <a-b,c-d|-> <partes> — forma canonica do campo de
+# partes confirmadas (RF-181(a)): inicio <= fim, estritamente crescentes, sem
+# sobreposicao nem adjacencia (adjacentes saem fundidos do gravador) e o ultimo
+# fim abaixo do numero de partes. Sem expressao regular com repeticao.
+_dbx_state_intervalos_validos() {
+  local item ini fim anterior=-2 itens
+  [[ $1 == '-' ]] && return 0
+  IFS=, read -r -a itens <<<"$1"
+  for item in "${itens[@]}"; do
+    ini=$((10#${item%-*})) fim=$((10#${item#*-}))
+    ((ini <= fim && ini > anterior + 1 && fim < $2)) || return 1
+    anterior=$fim
+  done
+  return 0
+}
+
 # _dbx_state_retomada_formato <campos...> — 0 quando os campos formam um
 # registro v1 bem formado de algum sentido (sem comparar com o processo).
 # Publica o sentido em DBX_STATE_RESULTADO; o motivo do descarte em
@@ -1437,13 +1460,19 @@ _dbx_state_retomada_formato() {
   local -a c=("$@")
   local n=${#c[@]}
   DBX_STATE_RESULTADO=''
-  if [[ $n -lt 3 || ${c[0]} != "$DBX_STATE_RETOMADA_MAGIA" || ${c[1]} != "$DBX_STATE_RETOMADA_VERSAO" ]]; then
+  if [[ $n -lt 3 || ${c[0]} != "$DBX_STATE_RETOMADA_MAGIA" || ${c[1]} != "$DBX_STATE_RETOMADA_VERSAO" && ${c[1]} != "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
     DBX_STATE_MOTIVO='registro de formato ou versao desconhecidos'
     return 1
   fi
   case ${c[2]} in
-    upload) [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_UPLOAD ]] ;;
-    download) [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD ]] ;;
+    upload)
+      if [[ ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
+        [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_PARTES ]]
+      else
+        [[ $n -eq $DBX_STATE_RETOMADA_CAMPOS_UPLOAD ]]
+      fi
+      ;;
+    download) [[ ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO" && $n -eq $DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD ]] ;;
     *) false ;;
   esac || {
     DBX_STATE_MOTIVO='registro com contagem de campos errada'
@@ -1452,7 +1481,18 @@ _dbx_state_retomada_formato() {
   DBX_STATE_MOTIVO='registro com campo invalido'
   [[ ${c[3]} =~ ^cred-[0-9a-f]{32}$ && ${c[4]} =~ ^[A-Za-z0-9._-]{1,64}$ && -n ${c[5]} && -n ${c[n - 1]} ]] ||
     return 1
-  if [[ ${c[2]} == 'upload' ]]; then
+  if [[ ${c[2]} == 'upload' && ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
+    # RF-181(a): intervalos canonicos `inicio-fim` de indices de parte, em ordem
+    # crescente, separados por virgula; `-` quando nenhuma parte foi confirmada.
+    # RF-173(e): ate 256 intervalos contados a parte (RE_DUP_MAX 255 no FreeBSD).
+    local virgulas=${c[12]//[^,]/}
+    [[ ${c[6]} =~ ^[A-Za-z0-9:_-]+$ && ${#c[6]} -le 256 && ${c[7]} == 'concurrent' && ${c[8]} =~ ^[0-9]{1,18}$ &&
+      ${c[9]} =~ ^[0-9]{1,18}$ && ${c[11]} =~ ^[0-9]{1,18}$ &&
+      ( ${c[12]} == '-' || ( ${#virgulas} -le 255 && ${c[12]} =~ ^[0-9]{1,6}-[0-9]{1,6}(,[0-9]{1,6}-[0-9]{1,6})*$ ) ) ]] || return 1
+    _dbx_state_identidade_valida "${c[10]}" || return 1
+    ((10#${c[8]} > 0 && 10#${c[8]} % DBX_STATE_RETOMADA_PARTE == 0 && 10#${c[9]} > 0)) || return 1
+    _dbx_state_intervalos_validos "${c[12]}" $(((10#${c[9]} + 10#${c[8]} - 1) / 10#${c[8]})) || return 1
+  elif [[ ${c[2]} == 'upload' ]]; then
     [[ ${c[6]} =~ ^[A-Za-z0-9:_-]+$ && ${#c[6]} -le 256 && ${c[7]} =~ ^[0-9]{1,18}$ && ${c[8]} =~ ^[0-9]{1,18}$ &&
       ${c[10]} =~ ^[0-9]{1,18}$ && ${c[12]} =~ ^[0-9]{1,18}$ && ${c[13]} =~ ^[0-9a-f]{64}$ ]] || return 1
     _dbx_state_identidade_valida "${c[11]}" || return 1
@@ -1519,6 +1559,7 @@ dbx_state_retomada_carregar() {
   [[ -f $arquivo && -O $arquivo ]] || return 3
   esperado=$DBX_STATE_RETOMADA_CAMPOS_UPLOAD
   [[ $DBX_STATE_RETOMADA_SENTIDO == 'download' ]] && esperado=$DBX_STATE_RETOMADA_CAMPOS_DOWNLOAD
+  DBX_STATE_RETOMADA_VERSAO_LIDA=1
   _dbx_state_ler_limitado "$arquivo" "$DBX_STATE_RETOMADA_CAMPOS_UPLOAD"
   case $? in
     0) ;;
@@ -1532,6 +1573,11 @@ dbx_state_retomada_carregar() {
   if ! _dbx_state_retomada_formato ${c[@]+"${c[@]}"}; then
     _dbx_state_retomada_descartar "$DBX_STATE_MOTIVO"
     return $?
+  fi
+  if [[ ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
+    esperado=$DBX_STATE_RETOMADA_CAMPOS_PARTES
+    # shellcheck disable=SC2034  # canal publico, lido por lib/transfer
+    DBX_STATE_RETOMADA_VERSAO_LIDA=2
   fi
   # Reconferencia byte a byte (C4): o resumo do nome so localiza.
   if [[ ${#c[@]} -ne $esperado || ${c[2]} != "$DBX_STATE_RETOMADA_SENTIDO" ||
@@ -1560,7 +1606,7 @@ _dbx_state_conteudo_retomada() {
 dbx_state_retomada_gravar() {
   local arquivo=$DBX_STATE_RETOMADA_ARQUIVO diretorio estado primeira='nao'
   [[ -n $arquivo ]] || return "$DBX_STATE_ERRO_USO"
-  local -a registro=("$DBX_STATE_RETOMADA_MAGIA" "$DBX_STATE_RETOMADA_VERSAO" "$DBX_STATE_RETOMADA_SENTIDO"
+  local -a registro=("$DBX_STATE_RETOMADA_MAGIA" "${DBX_STATE_RETOMADA_VERSAO_GRAVAR:-$DBX_STATE_RETOMADA_VERSAO}" "$DBX_STATE_RETOMADA_SENTIDO"
     "$DBX_STATE_RETOMADA_CONTA" "$DBX_STATE_RETOMADA_HOST" "$DBX_STATE_RETOMADA_REMOTO" "$@"
     "$DBX_STATE_RETOMADA_LOCAL")
   _dbx_state_retomada_formato "${registro[@]}" || return "$DBX_STATE_ERRO_USO"
@@ -1584,6 +1630,13 @@ dbx_state_retomada_gravar() {
     _dbx_state_retomada_podar "$diretorio"
   fi
   return 0
+}
+
+# dbx_state_retomada_gravar_partes <campos da versao 2...> — grava o registro de
+# upload em sessao concorrente (RF-181). Mesma gravacao atomica da versao 1.
+dbx_state_retomada_gravar_partes() {
+  local DBX_STATE_RETOMADA_VERSAO_GRAVAR=$DBX_STATE_RETOMADA_VERSAO_PARTES
+  dbx_state_retomada_gravar "$@"
 }
 
 # dbx_state_retomada_remover — apaga o registro do contexto (so o do usuario).
@@ -1799,7 +1852,18 @@ dbx_state_retomada_listar() {
       _dbx_state_retomada_formato "${_DBX_STATE_CAMPOS[@]}"; then
       c=("${_DBX_STATE_CAMPOS[@]}")
       part='' devino='' bytes=0
-      if [[ ${c[2]} == 'upload' ]]; then
+      if [[ ${c[2]} == 'upload' && ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
+        # Versao 2: bytes confirmados = partes confirmadas x tamanho da parte
+        # (limitado ao total; so informativo).
+        local _p _n=0
+        for _p in ${c[12]//,/ }; do
+          [[ $_p == '-' ]] && continue
+          _n=$((_n + 10#${_p#*-} - 10#${_p%-*} + 1))
+        done
+        bytes=$((_n * 10#${c[8]}))
+        ((bytes > 10#${c[9]})) && bytes=$((10#${c[9]}))
+        DBX_STATE_RETOMADAS_LOCAL+=("${c[13]}")
+      elif [[ ${c[2]} == 'upload' ]]; then
         bytes=$((10#${c[7]}))
         DBX_STATE_RETOMADAS_LOCAL+=("${c[14]}")
       else

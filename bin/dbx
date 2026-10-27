@@ -203,7 +203,7 @@ case $DBX_CLI_COMANDO in
     _dbx_subcomando=$DBX_CLI_CANONICO
     case $_dbx_subcomando in
       upload)
-        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--limite-banda | --bwlimit <taxa>] [--sem-retomada | --no-resume] [--progresso] <origem> <destino>\n\n'
+        printf 'Uso: dbx upload [--modo add|overwrite] [--rev <rev>] [--forcar | --force] [--limite-banda | --bwlimit <taxa>] [--paralelo | --parallel <n>] [--sem-retomada | --no-resume] [--progresso] <origem> <destino>\n\n'
         printf 'Com --debug (global, ou DBX_DEBUG=1): uma linha "debug: <categoria> chave=valor" por evento,\n'
         printf 'so em stderr; categorias http, upload e resumo (no fim). Nunca mostra token, segredo, id de\n'
         printf 'sessao, cursor, URL temporaria nem query. stdout, codigos de saida e requisicoes nao mudam.\n\n'
@@ -220,6 +220,9 @@ case $DBX_CLI_COMANDO in
         printf '                                  content_hash e espaco livre da conta\n'
         printf '  --limite-banda, --bwlimit <taxa>\n'
         printf '                                  Limite de banda por transferencia, em bytes/s\n'
+        printf '  --paralelo, --parallel <n>      Pasta: ate n arquivos ao mesmo tempo (1 a 8, padrao 1;\n'
+        printf '                                  ou DBX_PARALELO; a opcao vence). Arquivo unico: aceita,\n'
+        printf '                                  sem efeito nesta versao. Com - (entrada padrao): 2\n'
         printf '  --sem-retomada, --no-resume     Comeca do zero: nao le, nao grava nem apaga o\n'
         printf '                                  estado de retomada\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
@@ -363,7 +366,7 @@ case $DBX_CLI_COMANDO in
         exit 0
         ;;
       download)
-        printf 'Uso: dbx download [--excluir <padrao>]... [--incluir <padrao>]... [--limite-banda <taxa>] [--sem-retomada | --no-resume] [--progresso] <caminho_remoto> [destino_local]\n\n'
+        printf 'Uso: dbx download [--excluir <padrao>]... [--incluir <padrao>]... [--limite-banda <taxa>] [--paralelo | --parallel <n>] [--sem-retomada | --no-resume] [--progresso] <caminho_remoto> [destino_local]\n\n'
         printf 'Com --debug (global, ou DBX_DEBUG=1): uma linha "debug: <categoria> chave=valor" por evento,\n'
         printf 'so em stderr; categorias http, download e resumo (no fim). Nunca mostra token, segredo, id de\n'
         printf 'sessao, cursor, URL temporaria nem query. stdout, codigos de saida e requisicoes nao mudam.\n\n'
@@ -380,6 +383,9 @@ case $DBX_CLI_COMANDO in
         printf '  --tamanho-max, --max-size <tam> So pasta: arquivos com no maximo <tam>\n'
         printf '  --limite-banda, --bwlimit <taxa>\n'
         printf '                                  Limite de banda por transferencia, em bytes/s\n'
+        printf '  --paralelo, --parallel <n>      Pasta: ate n arquivos ao mesmo tempo (1 a 8, padrao 1;\n'
+        printf '                                  ou DBX_PARALELO; a opcao vence). Arquivo unico: aceita,\n'
+        printf '                                  sem efeito nesta versao. Para a saida padrao: 2\n'
         printf '  --progresso, --progress, -p     Exibe progresso da operacao em stderr\n'
         printf '                                  Por arquivo: [i/N] acao: item [barra] percentual feitos / total; no terminal a linha e reescrita no lugar, sem terminal cada atualizacao e uma linha nova\n'
         printf '  --sem-progresso, --no-progress  Desativa exibicao de progresso\n'

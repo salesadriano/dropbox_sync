@@ -453,7 +453,14 @@ O piso é **2 × `DBX_HTTP_VELOCIDADE_MINIMA_BPS`** (2048 bytes/s no padrão): a
 
 ## Paralelismo no sync
 
-`--paralelo N` (alias `--parallel`) no `sync`, ou `DBX_PARALELO=N`, roda até **N transferências de arquivo ao mesmo tempo**, no envio e no recebimento. `N` é um inteiro de **1 a 8**; o padrão é **1** (o comportamento de sempre, sem processo auxiliar); a opção vence a variável; valor inválido (`0`, negativo, acima de 8, vazio, com sinal ou zero à esquerda) sai com `2` antes de qualquer rede. `upload` e `download` de pasta, e o `--dry-run`, nunca usam paralelismo.
+`--paralelo N` (alias `--parallel`) no `sync`, ou `DBX_PARALELO=N`, roda até **N transferências de arquivo ao mesmo tempo**, no envio e no recebimento. `N` é um inteiro de **1 a 8**; o padrão é **1** (o comportamento de sempre, sem processo auxiliar); a opção vence a variável; valor inválido (`0`, negativo, acima de 8, vazio, com sinal ou zero à esquerda) sai com `2` antes de qualquer rede. O `--dry-run` nunca usa paralelismo (aceita a opção, valida o `N` e ignora).
+
+**`upload` e `download` (RF-175, RF-176):** aceitam a mesma opção e a mesma variável, com a mesma validação e precedência. Em **pasta**, o `N` vai ao `sync` interno e as transferências rodam em até `N` ao mesmo tempo, com o mesmo resultado de `N=1`. Em **arquivo único** a opção é aceita e validada, mas nesta versão a transferência segue sequencial. Com entrada ou saída padrão (`-`), a opção explícita sai com `2` e a variável é ignorada. Os demais comandos continuam recusando a opção (`2`) e ignorando a variável.
+
+```bash
+dbx upload --paralelo 4 ./fotos /fotos
+dbx download --paralelo 4 /fotos ./fotos
+```
 
 ```bash
 dbx sync --enviar --origem ./fotos --destino /fotos --paralelo 4

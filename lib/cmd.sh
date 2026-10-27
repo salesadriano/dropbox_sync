@@ -976,7 +976,16 @@ dbx_cmd_receber_retomavel() {
   DBX_JSON_ESCAPADO=''
   dbx_progress_arquivo_avancar "$inicio"
   dbx_progress_arquivo_observar "$part"
-  if [[ $inicio -gt 0 ]]; then
+  local faixas='nao'
+  if [[ ${DBX_CMD_PARALELO:-1} =~ ^[0-9]+$ ]] && ((DBX_CMD_PARALELO > 1)) && ((tamanho - inicio > 16777216)); then
+    # F-100 (RF-180): faixas simultaneas; o descritor do `.part` e so deste
+    # processo. N=1 e o que falta caber numa faixa seguem o caminho de sempre.
+    # shellcheck source=lib/download_paralelo.sh
+    . "${BASH_SOURCE[0]%/*}/download_paralelo.sh"
+    faixas='sim'
+    dbx_cmd_baixar_faixas "$argumento" "$_DBX_CMD_PART_FD" "$inicio" "$tamanho" "$DBX_CMD_PARALELO" "$rev" \
+      "$diretorio" "${part##*/}" "$devino"
+  elif [[ $inicio -gt 0 ]]; then
     dbx_auth_conteudo_receber GET 'https://content.dropboxapi.com/2/files/download' \
       "$argumento" "fd:$_DBX_CMD_PART_FD" "$inicio"
   else
@@ -991,7 +1000,10 @@ dbx_cmd_receber_retomavel() {
   coerente='nao'
   # O `416` chega como recusa de `lib/http`; com a faixa no fim, e a resposta
   # esperada (RF-104(d)).
-  if [[ $estado -eq 0 || ($inicio -gt 0 && $codigo == '416') ]]; then
+  if [[ $faixas == 'sim' && $estado -eq 0 ]]; then
+    # Cada faixa ja foi conferida (`206`, `Content-Range`, revisao) antes de gravar.
+    :
+  elif [[ $estado -eq 0 || ($inicio -gt 0 && $codigo == '416') ]]; then
     _dbx_cmd_resultado_campo rev
     resultado=$DBX_CMD_LIDO
     if [[ $inicio -eq 0 ]]; then
@@ -1538,4 +1550,35 @@ dbx_cmd_limite_banda() {
   # shellcheck disable=SC2034  # canal publico, lido pelos comandos na saida
   DBX_CMD_LIMITE_BANDA=$DBX_CLI_TAXA
   dbx_http_limite_banda "$DBX_CLI_TAXA"
+}
+
+# ---------------------------------------------------------------------------
+# Paralelismo (RF-133, RF-175) — ponto unico para `sync`, `upload` e `download`
+# ---------------------------------------------------------------------------
+
+# dbx_cmd_paralelo <tem_opcao: sim|nao> <opcao_como_digitada> <valor>
+#
+# RF-133(b)(c): a opcao vence, e presente a variavel DBX_PARALELO NAO e lida;
+# sem opcao, a variavel presente e invalida (inclusive vazia) recusa nomeando-a.
+# Resultado em DBX_CMD_PARALELO (N efetivo, 1 por padrao) e DBX_CMD_PARALELO_ORIGEM
+# (padrao|opcao|ambiente); o motivo da recusa fica em DBX_CLI_MOTIVO. Quem repassa
+# o N a outro comando (`upload`/`download` de pasta ao `sync`) o passa ja validado,
+# como opcao, para a variavel nao ser relida la (RF-176(a)).
+DBX_CMD_PARALELO=1
+DBX_CMD_PARALELO_ORIGEM='padrao'
+dbx_cmd_paralelo() {
+  local tem_opcao=$1 nome_opcao=$2 valor=${3-}
+  DBX_CMD_PARALELO=1
+  DBX_CMD_PARALELO_ORIGEM='padrao'
+  if [[ $tem_opcao == 'sim' ]]; then
+    dbx_cli_validar_paralelo "$nome_opcao" "$valor" opcao || return $?
+    DBX_CMD_PARALELO=$DBX_CLI_PARALELO
+    DBX_CMD_PARALELO_ORIGEM='opcao'
+  elif [[ -n ${DBX_PARALELO+definida} ]]; then
+    dbx_cli_validar_paralelo DBX_PARALELO "$DBX_PARALELO" variavel || return $?
+    DBX_CMD_PARALELO=$DBX_CLI_PARALELO
+    # shellcheck disable=SC2034  # canal publico, lido pelos comandos
+    DBX_CMD_PARALELO_ORIGEM='ambiente'
+  fi
+  return 0
 }

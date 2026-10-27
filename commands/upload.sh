@@ -52,6 +52,7 @@ dbx_cmd_upload_requisitos() { printf 'credencial'; }
 dbx_cmd_upload_executar() {
   local origem='' destino='' modo='add' rev='' forcar='nao' sem_retomada='nao'
   local tem_limite='nao' opcao_limite='' valor_limite=''
+  local tem_paralelo='nao' opcao_paralelo='' valor_paralelo=''
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
@@ -61,6 +62,13 @@ dbx_cmd_upload_executar() {
         shift
         valor_limite=${1-}
         tem_limite='sim'
+        ;;
+      # RF-175: transferencias simultaneas; o ultimo vence, validado depois do laco.
+      --paralelo | --parallel)
+        opcao_paralelo=$1
+        shift
+        valor_paralelo=${1-}
+        tem_paralelo='sim'
         ;;
       --modo | --mode)
         shift
@@ -124,6 +132,24 @@ dbx_cmd_upload_executar() {
     dbx_cmd_falhar uso_invalido "$DBX_CMD_LIMITE_MOTIVO"
     return $?
   }
+
+  # RF-175: ponto unico de validacao, antes de qualquer rede ou estado. Entrada
+  # padrao nao se divide em partes: opcao explicita recusa, variavel e ignorada
+  # (DIV-374 A).
+  DBX_CMD_PARALELO=1
+  if [[ $origem == '-' ]]; then
+    [[ $tem_paralelo == 'sim' ]] && {
+      dbx_cmd_falhar uso_invalido "$opcao_paralelo nao se aplica a entrada padrao (-)"
+      return $?
+    }
+  else
+    dbx_cmd_paralelo "$tem_paralelo" "$opcao_paralelo" "$valor_paralelo" || {
+      dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+      return $?
+    }
+    # RF-175(c): N efetivo no resumo de --debug.
+    ((DBX_CMD_PARALELO > 1)) && dbx_debug_resumo_campo paralelo "$DBX_CMD_PARALELO"
+  fi
 
   local eh_diretorio='nao'
   if [[ $origem != '-' ]]; then
@@ -197,8 +223,9 @@ dbx_cmd_upload_executar() {
     [[ $forcar == 'sim' ]] && forcar_sync=(--forcar)
     # RF-82: o limite vai ja convertido, para a variavel nao ser relida no sync.
     [[ -n $DBX_CMD_LIMITE_BANDA ]] && forcar_sync+=(--limite-banda "$DBX_CMD_LIMITE_BANDA")
-    # RF-133: o upload de pasta nunca usa --paralelo nem DBX_PARALELO (fora do
-    # escopo da fase 9).
+    # RF-176: o N ja validado segue ao `sync` como opcao (a variavel nao e
+    # relida la); em simulacao o `sync` aceita e ignora (DIV-372 A).
+    ((DBX_CMD_PARALELO > 1)) && forcar_sync+=(--paralelo "$DBX_CMD_PARALELO")
     # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico
     local DBX_CMD_SYNC_CHAMADOR='upload'
     dbx_cmd_sync_executar --enviar ${forcar_sync[@]+"${forcar_sync[@]}"} \
@@ -380,8 +407,10 @@ dbx_cmd_upload_executar() {
     dbx_debug_linha upload resultado=ok
   else
     DBX_TRANSFER_DEBUG_SEM_RETOMADA=$sem_retomada
+    DBX_TRANSFER_PARALELO=$DBX_CMD_PARALELO
     dbx_transfer_enviar_arquivo "$origem" "$DBX_TRANSFER_COMMIT" upload
     local estado_envio=$?
+    DBX_TRANSFER_PARALELO=1
     DBX_TRANSFER_DEBUG_SEM_RETOMADA='nao'
     por_sessao=$DBX_TRANSFER_POR_SESSAO
     [[ $estado_envio -eq 0 ]] || {
