@@ -216,6 +216,42 @@ _q_servidor() { # <cursor> [entradas...] — listagem recursiva
   shift
   _q_pagina "$cursor" false "$@"
   _q_regra files/list_folder '*"recursive":true*' 200 "$Q_P"
+  _q_filhos "$cursor" "$@"
+  _q_regra files/list_folder '*"recursive":false*' 200 "$Q_P"
+  _q_regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"$cursor\"}"
+}
+
+# _q_filhos <cursor> [entradas...] — a coleta em fluxo (RF-189) lista UM diretorio
+# por vez, sem recursao: o duplo responde, por diretorio, so os filhos diretos
+# (a API real nao devolve netos num list_folder nao recursivo). Regras por
+# diretorio vem antes da generica de `_q_servidor` (a primeira que casa vence).
+_q_filhos() {
+  local cursor=$1 e caminho pai dir
+  local -A filhos=() existe=() vezes=()
+  shift
+  for e in "$@"; do
+    [[ $e =~ \"path_lower\":\"([^\"]*)\" ]] || continue
+    vezes[d${BASH_REMATCH[1]}]=$((${vezes[d${BASH_REMATCH[1]}]:-0} + 1))
+  done
+  for e in "$@"; do
+    [[ $e =~ \"path_lower\":\"([^\"]*)\" ]] || continue
+    caminho=${BASH_REMATCH[1]}
+    pai=d${caminho%/*}
+    filhos[$pai]+=${filhos[$pai]:+,}$e
+    existe[$pai]=1
+    # Servidor hostil (QA-H02): a entrada REPETIDA com o mesmo caminho tambem volta
+    # na listagem do proprio diretorio; a entrada normal nunca volta nela.
+    if ((vezes[d$caminho] > 1)); then
+      filhos[d$caminho]+=${filhos[d$caminho]:+,}$e
+      existe[d$caminho]=1
+    fi
+    [[ $e == *'".tag":"folder"'* ]] && existe[d$caminho]=1
+  done
+  for dir in "${!existe[@]}"; do
+    printf -v Q_P '{"entries":[%s],"cursor":"%s","has_more":false}' "${filhos[$dir]:-}" "$cursor"
+    _q_regra files/list_folder "*\"path\":\"${dir#d}\",\"recursive\":false*" 200 "$Q_P"
+  done
+  _q_pagina "$cursor" false "$@"
 }
 
 _q_delta() { # <de> <para> [entradas...]
@@ -1316,6 +1352,7 @@ teste_qa_g01_continue_sem_limit_no_verificar_e_no_enviar() {
     _q_arq a.txt
     _q_pagina "${Q_SENT}P1" true "$Q_E"
     _q_regra files/list_folder '*"recursive":true*' 200 "$Q_P"
+    _q_regra files/list_folder '*"recursive":false*' 200 "$Q_P"
     _q_arq b.txt
     _q_delta "${Q_SENT}P1" "${Q_SENT}P2" "$Q_E"
     _q_local a.txt
@@ -1348,6 +1385,9 @@ teste_qa_z01_raiz_remota_barra_usa_o_cursor() {
   printf -v e1 '{".tag":"file","name":"a.txt","id":"id:a","path_lower":"/a.txt","path_display":"/a.txt","rev":"%s","size":15,"server_modified":"2026-01-01T00:00:00Z","content_hash":"%s"}' "$Q_REV" "$Q_H1"
   _q_pagina "${Q_SENT}C1" false "$e1"
   _q_regra files/list_folder '*"recursive":true*' 200 "$Q_P"
+  _q_filhos "${Q_SENT}C1" "$e1"
+  _q_regra files/list_folder '*"recursive":false*' 200 "$Q_P"
+  _q_regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${Q_SENT}C1\"}"
   _q_rodar sync --receber --origem / --destino "$B/l"
   assert_igual 0 "$ESTADO" "raiz /: $ERRO"
   _q_registro
@@ -1638,6 +1678,12 @@ teste_qa_h08_registros_da_raiz_barra_e_da_subpasta_nao_se_cruzam() {
   _q_regra files/list_folder '*"path":"","recursive":true*' 200 "$Q_P"
   _q_pagina "${Q_SENT}SUB1" false "${ent[@]}"
   _q_regra files/list_folder '*"path":"/r","recursive":true*' 200 "$Q_P"
+  # RF-189: a coleta em fluxo lista um diretorio por vez (filhos diretos); o
+  # cursor de cada par vem do get_latest_cursor da propria raiz.
+  _q_filhos "${Q_SENT}RAIZ1" "${Q_BASE_RAIZ[@]}"
+  _q_filhos "${Q_SENT}SUB1" "${ent[@]}"
+  _q_regra files/list_folder/get_latest_cursor '*"path":"","recursive":true*' 200 "{\"cursor\":\"${Q_SENT}RAIZ1\"}"
+  _q_regra files/list_folder/get_latest_cursor '*"path":"/r","recursive":true*' 200 "{\"cursor\":\"${Q_SENT}SUB1\"}"
   mkdir -p "$B/l2"
   _q_rodar sync --receber --origem / --destino "$B/l"
   assert_igual 0 "$ESTADO" "raiz: $ERRO"

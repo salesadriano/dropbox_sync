@@ -502,6 +502,42 @@ _q_servidor() { # <cursor> [entradas...] — listagem recursiva
   shift
   _q_pagina "$cursor" false "$@"
   _q_regra files/list_folder '*"recursive":true*' 200 "$Q_P"
+  _q_filhos "$cursor" "$@"
+  _q_regra files/list_folder '*"recursive":false*' 200 "$Q_P"
+  _q_regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"$cursor\"}"
+}
+
+# _q_filhos <cursor> [entradas...] — a coleta em fluxo (RF-189) lista UM diretorio
+# por vez, sem recursao: o duplo responde, por diretorio, so os filhos diretos
+# (a API real nao devolve netos num list_folder nao recursivo). Regras por
+# diretorio vem antes da generica de `_q_servidor` (a primeira que casa vence).
+_q_filhos() {
+  local cursor=$1 e caminho pai dir
+  local -A filhos=() existe=() vezes=()
+  shift
+  for e in "$@"; do
+    [[ $e =~ \"path_lower\":\"([^\"]*)\" ]] || continue
+    vezes[d${BASH_REMATCH[1]}]=$((${vezes[d${BASH_REMATCH[1]}]:-0} + 1))
+  done
+  for e in "$@"; do
+    [[ $e =~ \"path_lower\":\"([^\"]*)\" ]] || continue
+    caminho=${BASH_REMATCH[1]}
+    pai=d${caminho%/*}
+    filhos[$pai]+=${filhos[$pai]:+,}$e
+    existe[$pai]=1
+    # Servidor hostil (QA-H02): a entrada REPETIDA com o mesmo caminho tambem volta
+    # na listagem do proprio diretorio; a entrada normal nunca volta nela.
+    if ((vezes[d$caminho] > 1)); then
+      filhos[d$caminho]+=${filhos[d$caminho]:+,}$e
+      existe[d$caminho]=1
+    fi
+    [[ $e == *'".tag":"folder"'* ]] && existe[d$caminho]=1
+  done
+  for dir in "${!existe[@]}"; do
+    printf -v Q_P '{"entries":[%s],"cursor":"%s","has_more":false}' "${filhos[$dir]:-}" "$cursor"
+    _q_regra files/list_folder "*\"path\":\"${dir#d}\",\"recursive\":false*" 200 "$Q_P"
+  done
+  _q_pagina "$cursor" false "$@"
 }
 
 _q_delta() { # <de> <para> [entradas...]
