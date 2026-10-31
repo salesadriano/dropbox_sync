@@ -297,7 +297,7 @@ Decisao do solicitante (memoria `2026-10-19-2141-filtros-e-banda`); requisitos `
 |---|---|---|
 | Validacao | `lib/cli` chama `lib/filtro` | Padroes, datas, tamanhos e taxa validados **antes** da trava, da memoria e da rede (`2`) |
 | Percurso local | `lib/walk` | Pergunta a `lib/filtro` antes de descer: pasta excluida nao e aberta (`RF-80(b)`); erro dentro dela nao chega a `RF-41(a)` |
-| Enumeracao remota | `lib/sync` | `list_folder` recursivo continua; entradas fora do escopo descartadas (`DIV-82`) |
+| Enumeracao remota | `lib/sync` | `list_folder` recursivo na varredura sem blocos; no `sync` em ciclos (`--bloco`, demanda `sync-em-blocos`), `list_folder` nao recursivo por diretorio do ciclo (secao "Mudanca (sync-em-blocos, etapa 3b)"); entradas fora do escopo descartadas (`DIV-82`) |
 | Plano | `lib/sync` | Escopo aplicado **aos dois lados** antes da tabela de decisao: filtrado nunca vira "apagar" (`RF-80(d)`); guarda de origem vazia sobre o escopo (`RF-80(e)`) |
 | Data e tamanho | `lib/filtro`, depois do escopo de caminho | So arquivos da origem; recusados com `--espelhar` (`RF-81(b)`) |
 | Banda | `lib/http` (`_dbx_http_opcoes`) | `limit-rate = <inteiro>` so com `_DBX_HTTP_MODO=conteudo`, por requisicao (`RF-82(d)(e)(f)`); piso de 2 x `speed-limit` (`DIV-88`) |
@@ -515,9 +515,9 @@ Decisao do solicitante (memorias `2026-10-20-2315-retomada` e `2026-10-21-0713-c
 ```mermaid
 flowchart TD
   T[trava do par + cred- + account_id] --> O{--sem-cursor?}
-  O -->|sim| F[list_folder completo, registro intocado]
+  O -->|sim| F[varredura completa em ciclos por diretorio, registro intocado]
   O -->|nao| L{registro valido, rodape confere, C2 e nao vencido?}
-  L -->|nao, ou --varredura-completa| F2[list_folder completo]
+  L -->|nao, ou --varredura-completa| F2[varredura completa em ciclos por diretorio]
   L -->|sim| D[list_folder/continue so com cursor: delta sobre o retrato]
   D -->|reset, 409, 4xx, transitorio, laco, incoerente, mapa esvaziado| X[descarta cursor-*, memoria intacta] --> F2
   D -->|401 ou 403| Z[falha com a classe de hoje]
@@ -1407,3 +1407,7 @@ flowchart TD
 8. Acionar o UX Expert para o padrao de experiencia de linha de comando, incluindo a especificacao das duas apresentacoes exigidas por RF-28, e reabrir integralmente a secao de Design System caso DP-13 aprove o shell interativo.
 9. **Vigiar a invariante de ausencia de estado local durante a implementacao** (RSK-23). O DBA so e acionado se uma funcionalidade do backlog que exija persistencia for promovida. *(v1.5)* O invariante vigente e "nenhum artefato persistente decide" (`RNF-26`); `DIV-26` a `DIV-29` resolvidas pelo Tech Lead em 2026-10-18.
 10. Atualizar este documento a cada mudanca de arquitetura, implantacao, capacidade ou integracao.
+
+### Mudanca (sync-em-blocos, etapa 3b): coleta remota em fluxo
+
+No `--receber` e no `download` de pasta a origem remota nao e mais enumerada antes do ciclo 1. `_dbx_cmd_sync_ciclo_remoto_formar` (commands/sync.sh) forma cada ciclo por descida em profundidade, filhos ordenados em minusculas (DIV-384); cada diretorio e listado uma vez com `list_folder` nao recursivo e suas entradas ficam na tabela do ciclo. O ciclo fecha quando os arquivos diretos somam N ou mais (o diretorio que cruza N entra inteiro) ou a arvore esgota; a fila guarda so caminhos. A sonda de origem vazia (DIV-378 C) resolve-se na formacao do ciclo 1, antes de qualquer exclusao. O `--enviar` mantem a pre-travessia local. Falha de transferencia vinda do servidor (autenticacao, permissao, limite_taxa, rede esgotados) para a execucao em ciclos sem exclusao (RF-193); falha de um arquivo segue.
