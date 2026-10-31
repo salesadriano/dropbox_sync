@@ -467,6 +467,18 @@ dbx sync --enviar --origem ./fotos --destino /fotos --paralelo 4
 export DBX_PARALELO=4   # padrão quando a opção não é dada
 ```
 
+### Blocos (`--bloco`)
+
+`--bloco N` (alias `--batch`) ou `DBX_BLOCO=N` divide a varredura completa do `sync`, do `upload` e do `download` de pasta em **ciclos de até N arquivos**. `N` é um inteiro de **1 a 1000000**; o padrão é **50000**; a opção vence a variável; valor inválido (`0`, acima de 1000000, vazio, com sinal ou zero à esquerda) sai com `2` antes de qualquer rede ou estado. `upload` e `download` de arquivo único aceitam a opção e a ignoram.
+
+O corte é **por diretório**: o diretório que atinge ou cruza `N` entra inteiro e fecha o ciclo (único excesso permitido), e um diretório com mais de `N` arquivos forma um ciclo sozinho. Árvore com `N` arquivos ou menos é um ciclo só, igual ao comportamento anterior. Com cursor válido, o `sync --receber` segue o incremental, sem blocos. Com `--espelhar`, só se apaga em diretório lido por inteiro nos dois lados.
+
+```sh
+dbx sync --enviar --origem ./fotos --destino /fotos --bloco 20000
+DBX_BLOCO=20000 dbx download /fotos ./fotos
+```
+
+
 O resultado não muda: com `N` maior o conjunto final de arquivos, o cache, as contagens do resumo, a ordem das linhas (a do plano) e o código de saída são os de `N=1`; uma falha continua sendo do item. Só as transferências são paralelas: a listagem remota (`list_folder`) é sempre sequencial e nunca concorre com elas, e as exclusões do `--espelhar`, o cache, a trava e o resumo ficam no processo principal. `--limite-banda` é o **teto total**: cada transferência leva a taxa dividida por `N`, nunca abaixo do piso (duas vezes a velocidade mínima, abaixo da qual a transferência seria abortada). Com `N` grande e um teto baixo, o piso pode fazer a soma das transferências passar do `--limite-banda`; para respeitar o teto, use um `N` menor. `N` maior pode provocar mais respostas `429` (limite de taxa) da Dropbox: cada processo respeita o `Retry-After`, `N` não diminui sozinho, e `--debug` informa quantas ocorreram. O `dbx diagnostico` mostra o valor efetivo e a origem.
 
 ## Compartilhamento

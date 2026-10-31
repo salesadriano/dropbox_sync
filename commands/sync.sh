@@ -231,6 +231,27 @@ _dbx_cmd_sync_paralelo_resolver() {
   return 0
 }
 
+DBX_CMD_SYNC_BLOCO=${DBX_CLI_BLOCO_PADRAO:-50000}
+DBX_CMD_SYNC_BLOCO_ORIGEM='padrao'
+
+# _dbx_cmd_sync_bloco_resolver <tem_opcao> <opcao_como_digitada> <valor>
+#
+# RF-186/RF-175: como o resolvedor de `--paralelo`. Quando outro comando chama o
+# `sync` (CHAMADOR), a variavel e ignorada: o N chega como opcao, ja resolvido
+# pelo chamador. Resultado em DBX_CMD_SYNC_BLOCO e DBX_CMD_SYNC_BLOCO_ORIGEM.
+_dbx_cmd_sync_bloco_resolver() {
+  local tem_opcao=$1 nome_opcao=$2 valor=${3-}
+  DBX_CMD_SYNC_BLOCO=${DBX_CLI_BLOCO_PADRAO:-50000}
+  DBX_CMD_SYNC_BLOCO_ORIGEM='padrao'
+  if [[ $tem_opcao == 'sim' || -z ${DBX_CMD_SYNC_CHAMADOR:-} ]]; then
+    dbx_cmd_bloco "$tem_opcao" "$nome_opcao" "$valor" || return $?
+    DBX_CMD_SYNC_BLOCO=$DBX_CMD_BLOCO
+    # shellcheck disable=SC2034  # canal publico, lido pelos testes e pelo resumo
+    DBX_CMD_SYNC_BLOCO_ORIGEM=$DBX_CMD_BLOCO_ORIGEM
+  fi
+  return 0
+}
+
 # _dbx_cmd_sync_banda_por_transferencia <taxa_total> <n> — DIV-261: a taxa
 # dada e o teto TOTAL, dividido por N, e cada transferencia leva a sua parte.
 # A parte nunca fica abaixo do piso de `dbx_cmd_limite_banda` (2 x a velocidade
@@ -716,6 +737,7 @@ dbx_cmd_sync_executar() {
   local tem_origem='nao' tem_destino='nao' forcar='nao' espera=0 opcao_espera='' valor_espera=''
   local tem_limite='nao' opcao_limite='' valor_limite='' opcao
   local tem_paralelo='nao' opcao_paralelo='' valor_paralelo=''
+  local tem_bloco='nao' opcao_bloco='' valor_bloco=''
   # RF-118 (fase 7b): cursor de listagem so no `--receber`.
   local sem_cursor='nao' varredura_forcada='nao'
   # RF-161: liga a linha de decisao dos itens filtrados em lib/sync.
@@ -756,6 +778,13 @@ dbx_cmd_sync_executar() {
         shift
         valor_paralelo=${1-}
         tem_paralelo='sim'
+        ;;
+      # RF-186: arquivos por ciclo; o ultimo valor vence, validado depois do laco.
+      --bloco | --batch)
+        opcao_bloco=$1
+        shift
+        valor_bloco=${1-}
+        tem_bloco='sim'
         ;;
       # RF-64: o alias em ingles e a MESMA opcao, com o mesmo efeito, as mesmas
       # recusas e a mesma regra de repeticao (RF-64(e)).
@@ -879,6 +908,11 @@ dbx_cmd_sync_executar() {
     return $?
   }
   paralelo=$DBX_CMD_SYNC_PARALELO
+  # RF-186: mesma regra, antes de rede e estado; o valor so e consumido pelos ciclos (etapa 2).
+  _dbx_cmd_sync_bloco_resolver "$tem_bloco" "$opcao_bloco" "$valor_bloco" || {
+    dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+    return $?
+  }
   [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && paralelo=1
   # DIV-261: o limite de banda e o TETO TOTAL; cada transferencia leva a sua
   # parte, nunca abaixo do piso que evita o corte por velocidade minima.
@@ -978,10 +1012,9 @@ dbx_cmd_sync_executar() {
   if [[ -n $conta ]]; then
     dbx_state_carregar "$conta" "$chave_origem" "$chave_destino"
   fi
-  local visto=$DBX_STATE_VISTO
 
   # RF-48: reconhecimento obrigatorio na primeira execucao COM espelhamento.
-  if [[ $espelhar == 'sim' && $visto != 'sim' && $confirmado != 'sim' &&
+  if [[ $espelhar == 'sim' && $DBX_STATE_VISTO != 'sim' && $confirmado != 'sim' &&
     ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
     dbx_cmd_falhar nao_concluida \
       'primeira execucao com --espelhar sobre este par de raizes: rode antes com --dry-run para ver o plano, ou confirme com --confirmar'
@@ -1014,16 +1047,74 @@ dbx_cmd_sync_executar() {
     lado_remoto='destino'
   fi
 
-  if [[ $sentido == 'receber' && ! -d $raiz_local ]]; then
+  # RF-110/F-14: o cursor e preparado ANTES da coleta, porque decide o modo.
+  _dbx_cmd_sync_cursor_zerar
+  if [[ $sentido == 'receber' && ${DBX_CMD_SYNC_CHAMADOR:-} != 'download' ]]; then
+    DBX_CMD_SYNC_CURSOR_CAMPOS='sim'
+    _dbx_cmd_sync_cursor_preparar "$conta" "$local_canonico" "$remoto" "$lado_remoto" "$sem_cursor" \
+      "$varredura_forcada" || return $?
+  fi
+
+  # F-101 (RF-187/188): varredura completa em ciclos cortados por diretorio.
+  # Etapa 3a (RF-192): toda execucao sem cursor valido roda em ciclos, inclusive a
+  # que grava cursor e retrato; so o delta com cursor valido segue sem ciclos.
+  local modo_ciclos='nao'
+  if [[ $DBX_CMD_SYNC_VARREDURA != 'incremental' ]]; then
+    modo_ciclos='sim'
+  fi
+  local dirs_arq="$area/dirs" vazia_global='nao' podadas_dirs=0 total_origem=0 extras_arquivos=0
+  local so_destino='nao' ciclo ci_ini ci_fim ciclo_i=0 ciclo_falho=0 codigo_parada=0
+  local enviados=0 recebidos=0 apagados=0 falhas=0 alvo rev antes
+  local omitidos_total=0 fo_total=0 fd_total=0 antes_total=0 depois_total=0 kk
+  local -a dirs_v=() cont_v=() ciclos=('0-0') fila_remota=()
+  local remoto_fim='nao' formacao_falhou=0
+  local pend_ativo='nao' pend_dir='' pend_arquivos=0
+  local -a pend_filhos=() pend_chaves=() pend_regs=()
+  local -A chaves_dirs=()
+  local estado_remoto=0 rodada
+  local -a ordem_remota=()
+  # shellcheck disable=SC2034  # preenchido e lido por referencia de nome nas funcoes de lib/sync
+  local -A mapa_remoto=() mapa_revs=() mapa_tam_remoto=()
+  DBX_CMD_SYNC_LIMITES_429=0
+  if [[ $modo_ciclos == 'sim' ]]; then
+    # RF-192: o cursor da raiz e pedido ANTES do ciclo 1; o que mudar durante a
+    # varredura chega no proximo delta.
+    _dbx_cmd_sync_retrato_iniciar "$remoto"
+    _dbx_cmd_sync_diretorios_enumerar || return $?
+  fi
+
+    while _dbx_cmd_sync_ciclo_proximo; do
+      ciclo_i=$((ciclo_i + 1))
+      [[ $modo_ciclos == 'sim' ]] &&
+        dbx_progress_mensagem "[sync] ciclo $ciclo_i: diretorios $((ci_ini + 1)) a $ci_fim${so_destino/sim/ (ramo so do destino)}"
+      caminhos_locais=() tamanhos=() identidades=() ordem_local=() ordem_remota=()
+      mapa_local=() mapa_remoto=() mapa_revs=() mapa_tam_remoto=()
+      locais_antes=0 filtrados_local=0 filtrados_remoto=0
+
+  if [[ $sentido == 'receber' && ! -d $raiz_local ]] || [[ $so_destino == 'sim' && $sentido == 'enviar' ]]; then
     # Em simulacao com destino local inexistente, nao ha itens locais
     : >"$registros_locais"
   else
     dbx_progress_mensagem "[sync] analisando arquivos locais em: $raiz_local"
-    dbx_walk_local "$raiz_local" "$registros_locais" || {
+    if [[ $modo_ciclos == 'sim' ]]; then
+      dbx_walk_ciclo "$raiz_local" "$dirs_arq" "$ci_ini" "$ci_fim" "$registros_locais" /dev/null \
+        "$([[ $sentido == 'receber' ]] && printf chaves_dirs)" || {
         dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
-      return $?
-    }
-    parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
+        return $?
+      }
+      # A poda do lado origem local ja foi contada na enumeracao dos diretorios.
+      [[ $sentido == 'enviar' ]] && DBX_WALK_PODADAS=()
+      if [[ $DBX_WALK_PARCIAL == 'sim' ]]; then
+        parcial='sim'
+        motivo_parcial="${motivo_parcial}${motivo_parcial:+; }$DBX_WALK_MOTIVO"
+      fi
+    else
+      dbx_walk_local "$raiz_local" "$registros_locais" || {
+        dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
+        return $?
+      }
+      parcial=$DBX_WALK_PARCIAL motivo_parcial=$DBX_WALK_MOTIVO
+    fi
 
     dbx_walk_ler "$registros_locais" caminhos_locais tamanhos identidades
     dbx_sync_sem_temporarios caminhos_locais tamanhos identidades
@@ -1036,11 +1127,15 @@ dbx_cmd_sync_executar() {
     # Verificada no escopo de CAMINHO, antes de data e tamanho (DIV-93).
     if ! dbx_sync_colisao_de_caixa caminhos_locais; then
         dbx_cmd_falhar conflito "$DBX_SYNC_MOTIVO"
-      return $?
+      codigo_parada=$?
+        if [[ $modo_ciclos != 'sim' || $ciclo_i -eq 1 ]]; then return "$codigo_parada"; fi
+        ciclo_falho=$ciclo_i
+        break
     fi
     # RF-81(c): data e tamanho so na origem, e so em arquivo.
     [[ $sentido == 'enviar' ]] && dbx_sync_filtrar_meta caminhos_locais tamanhos identidades
     filtrados_local=$DBX_SYNC_FILTRADOS
+    [[ $modo_ciclos == 'sim' && $ciclo_i -eq 1 && $sentido == 'enviar' ]] && filtrados_local=$((filtrados_local + podadas_dirs))
     local indice
     local total_locais=${#caminhos_locais[@]}
     for indice in "${!caminhos_locais[@]}"; do
@@ -1069,88 +1164,110 @@ dbx_cmd_sync_executar() {
     dbx_progress_mensagem "[sync] arquivos locais analisados: ${#ordem_local[@]} arquivo(s)"
   fi
 
-  dbx_progress_mensagem "[sync] consultando arquivos remotos em: $remoto"
-  # Fase 7b (F-14): no `--receber` do proprio `sync` (nunca no `download` de
-  # pasta, DIV-205, nem no `--enviar`), o cursor de listagem pode substituir a
-  # varredura remota completa pelo retrato mais o delta. Tudo daqui ate o plano
-  # e o MESMO codigo nos dois modos (RF-112(d)).
-  _dbx_cmd_sync_cursor_zerar
-  if [[ $sentido == 'receber' && ${DBX_CMD_SYNC_CHAMADOR:-} != 'download' ]]; then
-    DBX_CMD_SYNC_CURSOR_CAMPOS='sim'
-    _dbx_cmd_sync_cursor_preparar "$conta" "$local_canonico" "$remoto" "$lado_remoto" "$sem_cursor" \
-      "$varredura_forcada" || return $?
-  fi
-
+      dbx_progress_mensagem "[sync] consultando arquivos remotos em: $remoto"
+      if [[ $modo_ciclos == 'sim' ]]; then
+        dbx_sync_filtrados_zerar
+        estado_remoto=$formacao_falhou
+        if [[ $sentido == 'enviar' ]]; then
+          dbx_sync_tabela_zerar
+          for ((kk = ci_ini; kk < ci_fim; kk++)); do
+            dbx_sync_listar_diretorio "$remoto" "$remoto${dirs_v[kk]:+/${dirs_v[kk]}}" "$lado_remoto" || estado_remoto=$?
+            [[ $estado_remoto -eq 0 ]] || break
+          done
+        fi
+        if [[ $estado_remoto -eq 0 && $sentido == 'enviar' ]]; then
+          _dbx_cmd_sync_ramos_destino_remotos || estado_remoto=$?
+        fi
+        if [[ $estado_remoto -ne 0 ]]; then
+          dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
+          codigo_parada=$estado_remoto
+          if [[ $ciclo_i -eq 1 ]]; then return "$codigo_parada"; fi
+          ciclo_falho=$ciclo_i
+          break
+        fi
+        dbx_sync_tabela_emitir "$remoto" "$registros_remotos" "$revs_remotos" "$lado_remoto"
+        _dbx_cmd_sync_retrato_acumular
+        filtrados_remoto=$DBX_SYNC_FILTRADOS
+        dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
+        dbx_sync_ler_revs "$revs_remotos" mapa_revs
+        if [[ $sentido == 'receber' ]] && dbx_progress_ativo; then
+          _dbx_cmd_sync_ler_tamanhos "$registros_remotos" mapa_tam_remoto
+        fi
+        dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
+        if [[ $sentido == 'enviar' ]]; then
+          dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
+        else
+          dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
+        fi
+        _dbx_cmd_sync_sem_protegidos
+        # RF-190(b): o ramo so do destino e lido inteiro NO ciclo que o encontra.
+      else
   # QA-P3-03: o status e capturado ANTES do teste. Lido dentro de `if ! …`, ele
-  # e o da negacao (0), e uma enumeracao que falhou terminava o `sync` com sucesso.
-  # Duas rodadas no maximo: a segunda so existe quando a confirmacao de
-  # exclusao (RF-114) devolve a execucao a varredura completa.
-  local estado_remoto=0 rodada
-  local -a ordem_remota=()
-  # shellcheck disable=SC2034  # preenchido e lido por referencia de nome nas
-  # funcoes de lib/sync; a analise estatica nao segue nameref entre arquivos.
-  local -A mapa_remoto=() mapa_revs=() mapa_tam_remoto=()
-  for rodada in 1 2; do
-    [[ $rodada -eq 1 ]] || dbx_progress_mensagem '[sync] consultando arquivos remotos de novo (varredura completa)'
-    dbx_sync_filtrados_zerar
-    if [[ $DBX_CMD_SYNC_VARREDURA != 'incremental' ]]; then
-      estado_remoto=0
-      dbx_sync_listar_completo "$remoto" "$lado_remoto" || estado_remoto=$?
-      if [[ $estado_remoto -ne 0 ]]; then
-        dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
-        return "$estado_remoto"
+    # e o da negacao (0), e uma enumeracao que falhou terminava o `sync` com sucesso.
+    # Duas rodadas no maximo: a segunda so existe quando a confirmacao de
+    # exclusao (RF-114) devolve a execucao a varredura completa.
+    for rodada in 1 2; do
+      [[ $rodada -eq 1 ]] || dbx_progress_mensagem '[sync] consultando arquivos remotos de novo (varredura completa)'
+      dbx_sync_filtrados_zerar
+      if [[ $DBX_CMD_SYNC_VARREDURA != 'incremental' ]]; then
+        estado_remoto=0
+        dbx_sync_listar_completo "$remoto" "$lado_remoto" || estado_remoto=$?
+        if [[ $estado_remoto -ne 0 ]]; then
+          dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
+          return "$estado_remoto"
+        fi
       fi
-    fi
-    # DIV-g: o escopo filtrado e aplicado DEPOIS da tabela inteira.
-    dbx_sync_tabela_emitir "$remoto" "$registros_remotos" "$revs_remotos" "$lado_remoto"
-    filtrados_remoto=$DBX_SYNC_FILTRADOS
-    dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
-    dbx_sync_ler_revs "$revs_remotos" mapa_revs
-    # DIV-297: o total do recebimento vem do `size` da listagem, sem chamada nova.
-    if [[ $sentido == 'receber' ]] && dbx_progress_ativo; then
-      _dbx_cmd_sync_ler_tamanhos "$registros_remotos" mapa_tam_remoto
-    fi
-    dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
+      # DIV-g: o escopo filtrado e aplicado DEPOIS da tabela inteira.
+      dbx_sync_tabela_emitir "$remoto" "$registros_remotos" "$revs_remotos" "$lado_remoto"
+      filtrados_remoto=$DBX_SYNC_FILTRADOS
+      dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
+      dbx_sync_ler_revs "$revs_remotos" mapa_revs
+      # DIV-297: o total do recebimento vem do `size` da listagem, sem chamada nova.
+      if [[ $sentido == 'receber' ]] && dbx_progress_ativo; then
+        _dbx_cmd_sync_ler_tamanhos "$registros_remotos" mapa_tam_remoto
+      fi
+      dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
 
-    if [[ $sentido == 'enviar' ]]; then
-      dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
-    else
-      dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
-    fi
+      if [[ $sentido == 'enviar' ]]; then
+        dbx_sync_planejar ordem_local mapa_local ordem_remota mapa_remoto
+      else
+        dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
+      fi
 
-    # RF-80(d): item filtrado NUNCA e apagado. O destino ja chega ao plano so com
-    # o escopo; esta e a segunda barreira, SEM ESTADO: refaz a conta pelos
-    # padroes desta linha de comando, e nada da memoria entra nela.
-    _dbx_cmd_sync_sem_protegidos
+      # RF-80(d): item filtrado NUNCA e apagado. O destino ja chega ao plano so com
+      # o escopo; esta e a segunda barreira, SEM ESTADO: refaz a conta pelos
+      # padroes desta linha de comando, e nada da memoria entra nela.
+      _dbx_cmd_sync_sem_protegidos
 
-    # RF-114 (decisao do solicitante; C5): no modo incremental, TODA candidata a
-    # exclusao — `deleted` do delta ou ausencia no retrato — e confirmada no
-    # servidor nesta execucao, ANTES do plano, com ou sem `--espelhar` (DIV-218)
-    # e tambem na simulacao. O cursor sozinho nunca apaga nada.
-    [[ $DBX_CMD_SYNC_VARREDURA == 'incremental' && ${#DBX_SYNC_APAGAR[@]} -gt 0 ]] || break
-    dbx_sync_confirmar_exclusoes "$remoto" DBX_SYNC_APAGAR
-    case $? in
-      0)
-        DBX_CMD_SYNC_CURSOR_CONFIRMADAS=$DBX_SYNC_CONFIRMADAS
-        break
-        ;;
-      1)
-        dbx_cmd_avisar "exclusao nao confirmada pelo servidor (${DBX_SYNC_CONTRADICAO:-resposta duvidosa}): nada sera apagado por ela; varredura completa nesta execucao"
-        _dbx_cmd_sync_cursor_abandonar "${DBX_SYNC_CURSOR_MOTIVO:-contradicao}"
-        ;;
-      *)
-        # RF-114(b): falha de transporte na confirmacao e falha da fase de
-        # enumeracao, com a classe de hoje: nenhum plano, nada apagado, e o
-        # registro fica como estava.
-        dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-confirmacao de exclusao falhou}"
-        return $?
-        ;;
-    esac
-  done
+      # RF-114 (decisao do solicitante; C5): no modo incremental, TODA candidata a
+      # exclusao — `deleted` do delta ou ausencia no retrato — e confirmada no
+      # servidor nesta execucao, ANTES do plano, com ou sem `--espelhar` (DIV-218)
+      # e tambem na simulacao. O cursor sozinho nunca apaga nada.
+      [[ $DBX_CMD_SYNC_VARREDURA == 'incremental' && ${#DBX_SYNC_APAGAR[@]} -gt 0 ]] || break
+      dbx_sync_confirmar_exclusoes "$remoto" DBX_SYNC_APAGAR
+      case $? in
+        0)
+          DBX_CMD_SYNC_CURSOR_CONFIRMADAS=$DBX_SYNC_CONFIRMADAS
+          break
+          ;;
+        1)
+          dbx_cmd_avisar "exclusao nao confirmada pelo servidor (${DBX_SYNC_CONTRADICAO:-resposta duvidosa}): nada sera apagado por ela; varredura completa nesta execucao"
+          _dbx_cmd_sync_cursor_abandonar "${DBX_SYNC_CURSOR_MOTIVO:-contradicao}"
+          ;;
+        *)
+          # RF-114(b): falha de transporte na confirmacao e falha da fase de
+          # enumeracao, com a classe de hoje: nenhum plano, nada apagado, e o
+          # registro fica como estava.
+          dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-confirmacao de exclusao falhou}"
+          return $?
+          ;;
+      esac
+    done
+      fi
 
   # RF-161(d): a decisao do cursor desta execucao, com o motivo do vocabulario de
   # DBX_CMD_SYNC_CURSOR_MOTIVO; nunca o valor do cursor. `usado` nao tem motivo.
-  if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' && $DBX_CMD_SYNC_CURSOR_CAMPOS == 'sim' ]]; then
+  if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' && $DBX_CMD_SYNC_CURSOR_CAMPOS == 'sim' && $ciclo_i -eq 1 ]]; then
     case ${DBX_CMD_SYNC_CURSOR_MOTIVO:-} in
       '') dbx_debug_linha sync cursor=usado ;;
       desligado) dbx_debug_linha sync cursor=desligado motivo=desligado ;;
@@ -1175,10 +1292,18 @@ dbx_cmd_sync_executar() {
     origem_antes=$DBX_SYNC_REMOTOS_ANTES origem_depois=${#ordem_remota[@]}
     filtrados_origem=$filtrados_remoto filtrados_destino=$filtrados_local
   fi
+  # DIV-378 C: em ciclos, "vazia" e a resposta da sonda anterior ao ciclo 1.
+  [[ $modo_ciclos == 'sim' ]] && vazia=$vazia_global
+  fo_total=$((fo_total + filtrados_origem))
+  fd_total=$((fd_total + filtrados_destino))
 
   # DIV-91: filtro mal escrito avisa em stderr, sem mudar stdout nem codigo.
-  dbx_sync_avisos_de_filtro "$origem_antes" "$origem_depois"
-  dbx_cmd_avisos_de_filtro
+  antes_total=$((antes_total + origem_antes))
+  depois_total=$((depois_total + origem_depois))
+  if [[ $modo_ciclos != 'sim' ]]; then
+    dbx_sync_avisos_de_filtro "$origem_antes" "$origem_depois"
+    dbx_cmd_avisos_de_filtro
+  fi
 
   # RF-41(b) com O-1 (memorias `2026-10-18-2243-guarda-origem-vazia` e
   # `2026-10-19-0829-aliases-poda-e-comentarios`): com espelhamento, origem vazia
@@ -1192,12 +1317,15 @@ dbx_cmd_sync_executar() {
   # registra `recusada=origem vazia`, sem listar exclusao, e a execucao para ali.
   # Em SIMULACAO (RF-44, sai com 0) o plano anuncia `recusaria`.
   local recusa_origem_vazia='nao' a_apagar_recusado=0 recusaria=''
-  if [[ $espelhar == 'sim' && $vazia == 'sim' && ${#DBX_SYNC_APAGAR[@]} -gt 0 &&
+  # Ramo so do destino com arquivo conta como "algo a apagar" (RF-191): sem isso a
+  # origem vazia apagaria o conteudo desses ramos sem a recusa.
+  if [[ $espelhar == 'sim' && $vazia == 'sim' && $((${#DBX_SYNC_APAGAR[@]} + extras_arquivos)) -gt 0 &&
     $permitir_origem_vazia != 'sim' ]]; then
     recusa_origem_vazia='sim'
-    a_apagar_recusado=${#DBX_SYNC_APAGAR[@]}
+    a_apagar_recusado=$((${#DBX_SYNC_APAGAR[@]} + extras_arquivos))
     [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && recusaria='origem vazia'
     DBX_SYNC_APAGAR=()
+    extras_arquivos=0
   fi
 
   if dbx_progress_ativo; then
@@ -1269,6 +1397,7 @@ dbx_cmd_sync_executar() {
   if [[ -n $motivo_exclusao ]]; then
     exclusao_desabilitada='sim'
     DBX_SYNC_APAGAR=()
+    extras_arquivos=0
   fi
 
   local total_transferir=${#DBX_SYNC_TRANSFERIR[@]}
@@ -1360,23 +1489,28 @@ dbx_cmd_sync_executar() {
     fi
     dbx_cmd_falhar nao_concluida \
       "$vazia_texto e o espelhamento apagaria $a_apagar_recusado item(ns) no destino: execucao recusada integralmente (se a origem foi esvaziada de proposito, use --permitir-origem-vazia ou --allow-empty-source; --confirmar ou --yes nao basta)"
-    return $?
+    codigo_parada=$?
+        if [[ $modo_ciclos != 'sim' || $ciclo_i -eq 1 ]]; then return "$codigo_parada"; fi
+        ciclo_falho=$ciclo_i
+        break
   fi
 
   # RF-67(d): com o plano ja emitido e antes de qualquer escrita.
   if [[ $recusa_espaco == 'sim' ]]; then
     dbx_cmd_falhar espaco "$DBX_CMD_ESPACO_MOTIVO"
-    return $?
+    codigo_parada=$?
+        if [[ $modo_ciclos != 'sim' || $ciclo_i -eq 1 ]]; then return "$codigo_parada"; fi
+        ciclo_falho=$ciclo_i
+        break
   fi
 
   # RF-161: as decisoes saem tambem na simulacao (o plano e o mesmo).
   _dbx_cmd_sync_debug_decisoes
 
+  omitidos_total=$((omitidos_total + ${#DBX_SYNC_IDENTICOS[@]}))
+  # Em simulacao o ciclo termina aqui, sem escrita; o `simulado` sai ao fim.
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
-    dbx_cmd_iniciar_saida
-    dbx_output_campo simulado sim
-    dbx_output_render
-    return 0
+    continue
   fi
 
   local total_ops=0
@@ -1385,9 +1519,7 @@ dbx_cmd_sync_executar() {
     total_ops=$((total_ops + ${#DBX_SYNC_APAGAR[@]}))
   fi
 
-  local op_atual=0 alvo rev antes
-  local enviados=0 recebidos=0 apagados=0 falhas=0
-  DBX_CMD_SYNC_LIMITES_429=0
+  local op_atual=0
   # RF-133(d): com N=1 (ou um item so) e o laco de sempre, sem auxiliar. Com
   # N>1 as transferencias do plano vao aos auxiliares e o laco abaixo fica sem
   # itens; as exclusoes, depois, seguem no principal.
@@ -1397,7 +1529,7 @@ dbx_cmd_sync_executar() {
   # RF-149(g), DIV-331 (R2): a sonda de disponibilidade e uma por execucao, tambem
   # entre os auxiliares da etapa de lote e da transferencia (a marca fica na area
   # do ciclo, herdada por eles); semeada antes de qualquer auxiliar.
-  dbx_disp_compartilhar_sonda "$area"
+  [[ $ciclo_i -eq 1 ]] && dbx_disp_compartilhar_sonda "$area"
   _dbx_cmd_sync_lote_envio
   if [[ $paralelo -gt 1 && ${#DBX_SYNC_TRANSFERIR[@]} -gt 1 ]]; then
     _dbx_cmd_sync_transferir_paralelo
@@ -1431,6 +1563,7 @@ dbx_cmd_sync_executar() {
         dbx_progress_arquivo_falhar
         falhas=$((falhas + 1))
         _dbx_cmd_sync_falhou "$caminho" "$antes"
+        _dbx_cmd_sync_parada_sistemica && break
       fi
     else
       _dbx_cmd_sync_prg_iniciar "$op_atual" "$total_ops" baixando "$caminho" '' "${mapa_tam_remoto[$caminho]:-}"
@@ -1444,11 +1577,14 @@ dbx_cmd_sync_executar() {
         falhas=$((falhas + 1))
         _dbx_cmd_sync_falhou "$caminho" "$antes"
         _dbx_cmd_sync_falha_do_plano_incremental
+        _dbx_cmd_sync_parada_sistemica && break
       fi
     fi
   done
 
-  if [[ $espelhar == 'sim' && $sentido == 'enviar' ]]; then
+  if [[ $ciclo_falho -gt 0 ]]; then
+    : # RF-193: falha sistemica nesta execucao em ciclos: nenhuma exclusao
+  elif [[ $espelhar == 'sim' && $sentido == 'enviar' ]]; then
     # RF-136: exclusao remota em lote (delete_batch + check), nunca delete_v2 em
     # laco. As guardas ja agiram; a lista abaixo so perde, outra vez, o que o
     # escopo dos filtros protege (RF-80(d), sem estado).
@@ -1468,8 +1604,24 @@ dbx_cmd_sync_executar() {
       fi
     done
   fi
+    [[ $ciclo_falho -gt 0 ]] && break
+    done
 
-  dbx_progress_mensagem "[sync] sincronizacao concluida: $enviados enviados, $recebidos recebidos, $apagados apagados, ${#DBX_SYNC_IDENTICOS[@]} omitidos"
+  if [[ $modo_ciclos == 'sim' ]]; then
+    dbx_sync_avisos_de_filtro "$antes_total" "$depois_total"
+    dbx_cmd_avisos_de_filtro
+  fi
+  if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' && $ciclo_falho -eq 0 ]]; then
+    dbx_cmd_iniciar_saida
+    dbx_output_campo simulado sim
+    dbx_output_render
+    return 0
+  fi
+  dbx_debug_resumo_campo bloco "$DBX_CMD_SYNC_BLOCO"
+  dbx_debug_resumo_campo ciclos "$ciclo_i"
+  local filtrados_origem=$fo_total filtrados_destino=$fd_total
+
+  dbx_progress_mensagem "[sync] sincronizacao concluida: $enviados enviados, $recebidos recebidos, $apagados apagados, $omitidos_total omitidos"
 
   # RF-135(d), DIV-258, DIV-338 A: a linha `paralelo` deixou de existir; o N e os
   # `429` (principal e auxiliares) vao na linha `debug: resumo` (RF-162), emitida
@@ -1496,17 +1648,22 @@ dbx_cmd_sync_executar() {
   # RF-111(g), C6: o cursor e gravado UMA vez, depois da memoria, sob a trava,
   # so quando a execucao vai terminar com 0. Falha ao gravar preserva o
   # registro anterior (consistente, apenas mais antigo).
-  if [[ $DBX_CMD_SYNC_CURSOR_GRAVA == 'sim' && $falhas -eq 0 && $parcial != 'sim' &&
+  # Em ciclos (RF-192), o retrato e o acumulado dos ciclos e o cursor, o pedido
+  # antes do ciclo 1; tudo ou nada: ciclo falho ou leitura parcial nao grava.
+  if [[ $ciclo_falho -eq 0 && $DBX_CMD_SYNC_CURSOR_GRAVA == 'sim' && $falhas -eq 0 && $parcial != 'sim' &&
     ! ($espelhar == 'sim' && ($memoria_descartada == 'sim' || -z $conta)) ]]; then
-    _dbx_cmd_sync_cursor_gravar
+    if [[ $modo_ciclos != 'sim' ]]; then
+      _dbx_cmd_sync_cursor_gravar
+    elif _dbx_cmd_sync_retrato_restaurar; then
+      _dbx_cmd_sync_cursor_gravar
+    fi
   fi
-
   dbx_cmd_iniciar_saida
   dbx_output_campo operacao sync
   dbx_output_campo enviados "$enviados"
   dbx_output_campo recebidos "$recebidos"
   dbx_output_campo apagados "$apagados"
-  dbx_output_campo omitidos "${#DBX_SYNC_IDENTICOS[@]}"
+  dbx_output_campo omitidos "$omitidos_total"
   dbx_output_campo falhas "$falhas"
   # RF-59(b): no `--json`, cada falha vira o par `falha_caminho`/`falha_classe`,
   # na ordem das linhas de falha. Acrescimo compativel (RF-35): `falhas`, a
@@ -1525,6 +1682,22 @@ dbx_cmd_sync_executar() {
       dbx_output_campo falha_classe "${DBX_CMD_SYNC_FALHAS_CLASSES[indice]}"
     done
   fi
+  if [[ ${DBX_CLI_ESTRUTURADA:-nao} == 'sim' || $ciclo_i -gt 1 ]]; then
+    dbx_output_campo ciclos "$ciclo_i"
+    dbx_output_campo bloco "$DBX_CMD_SYNC_BLOCO"
+    dbx_output_campo bloco_origem "$DBX_CMD_SYNC_BLOCO_ORIGEM"
+  fi
+  if [[ $ciclo_falho -gt 0 ]]; then
+    dbx_output_campo ciclos_concluidos "$((ciclo_falho - 1))"
+    dbx_output_campo ciclo_falho "$ciclo_falho"
+    # Em fluxo (remota) o total de ciclos nao e conhecido: sao os diretorios
+    # pendentes na fila, nunca listados, que ficam sem tentar.
+    if [[ $modo_ciclos == 'sim' && $sentido == 'receber' ]]; then
+      dbx_output_campo ciclos_nao_tentados "${#fila_remota[@]}"
+    else
+      dbx_output_campo ciclos_nao_tentados "$(( ${#ciclos[@]} - ciclo_falho ))"
+    fi
+  fi
   # RF-80(j), RF-82(i): acrescimo compativel ao resumo (RF-35).
   dbx_cmd_campos_de_filtro "$filtrados_origem" "$filtrados_destino"
   dbx_output_campo limite_banda "$DBX_CMD_LIMITE_BANDA"
@@ -1533,6 +1706,8 @@ dbx_cmd_sync_executar() {
   # RF-41(a) exige codigo diferente de zero quando a travessia foi parcial, ainda
   # que nada tenha falhado: o operador precisa saber que o resultado nao e o
   # espelho completo que pediu.
+  # RF-193: a parada por enumeracao ou espaco ja disse a classe e o motivo.
+  [[ $ciclo_falho -gt 0 ]] && return "$codigo_parada"
   if [[ $falhas -gt 0 ]]; then
     dbx_cmd_falhar nao_concluida "$falhas operacao(oes) nao concluida(s)"
     return $?
@@ -1868,6 +2043,55 @@ _dbx_cmd_sync_cursor_preparar() {
   return 0
 }
 
+# F-101, RF-192: o retrato de uma varredura em ciclos. `_iniciar` zera o
+# acumulado e pede o cursor da raiz (`get_latest_cursor`, mesmos argumentos da
+# listagem completa) so quando a execucao pode gravar; `_acumular` junta a tabela
+# de cada ciclo (a tabela corrente e zerada no ciclo seguinte); `_restaurar`
+# devolve o acumulado a tabela com o cursor, para `_dbx_cmd_sync_cursor_gravar`.
+# Sem cursor obtido, nada e gravado: o cursor so acelera.
+declare -gA _DBX_CMD_SYNC_RETRATO=()
+_DBX_CMD_SYNC_RETRATO_ORDEM=()
+_DBX_CMD_SYNC_RETRATO_PERSISTIVEL='sim'
+_DBX_CMD_SYNC_RETRATO_CURSOR=''
+_dbx_cmd_sync_retrato_iniciar() {
+  _DBX_CMD_SYNC_RETRATO=()
+  _DBX_CMD_SYNC_RETRATO_ORDEM=()
+  _DBX_CMD_SYNC_RETRATO_PERSISTIVEL='sim'
+  _DBX_CMD_SYNC_RETRATO_CURSOR=''
+  [[ $DBX_CMD_SYNC_CURSOR_GRAVA == 'sim' ]] || return 0
+  dbx_sync_cursor_ultimo "$1" || {
+    dbx_progress_mensagem '[sync] cursor da raiz indisponivel: o registro de listagem nao sera gravado'
+    return 0
+  }
+  _DBX_CMD_SYNC_RETRATO_CURSOR=$DBX_SYNC_CURSOR_ULTIMO
+  DBX_SYNC_CURSOR_ULTIMO=''
+}
+
+_dbx_cmd_sync_retrato_acumular() {
+  [[ $DBX_CMD_SYNC_CURSOR_GRAVA == 'sim' && -n $_DBX_CMD_SYNC_RETRATO_CURSOR ]] || return 0
+  local pl
+  [[ $DBX_SYNC_TAB_PERSISTIVEL == 'sim' ]] || _DBX_CMD_SYNC_RETRATO_PERSISTIVEL='nao'
+  for pl in ${DBX_SYNC_TAB_ORDEM[@]+"${DBX_SYNC_TAB_ORDEM[@]}"}; do
+    [[ -n ${DBX_SYNC_TAB[$pl]+definido} ]] || continue
+    [[ -n ${_DBX_CMD_SYNC_RETRATO[$pl]+definido} ]] || _DBX_CMD_SYNC_RETRATO_ORDEM+=("$pl")
+    _DBX_CMD_SYNC_RETRATO[$pl]=${DBX_SYNC_TAB[$pl]}
+  done
+}
+
+_dbx_cmd_sync_retrato_restaurar() {
+  [[ -n $_DBX_CMD_SYNC_RETRATO_CURSOR ]] || return 1
+  local pl
+  dbx_sync_tabela_zerar
+  for pl in ${_DBX_CMD_SYNC_RETRATO_ORDEM[@]+"${_DBX_CMD_SYNC_RETRATO_ORDEM[@]}"}; do
+    _dbx_sync_tab_inserir "$pl" "${_DBX_CMD_SYNC_RETRATO[$pl]}"
+  done
+  DBX_SYNC_TAB_PERSISTIVEL=$_DBX_CMD_SYNC_RETRATO_PERSISTIVEL
+  DBX_SYNC_CURSOR_NOVO=$_DBX_CMD_SYNC_RETRATO_CURSOR
+  _DBX_CMD_SYNC_RETRATO=()
+  _DBX_CMD_SYNC_RETRATO_ORDEM=()
+  return 0
+}
+
 # _dbx_cmd_sync_cursor_gravar — grava cursor e retrato (C6): cursor da ultima
 # pagina, tabela sem filtro desta execucao, carimbo e contagem de incrementais.
 # Tabela fora do formato ou cursor fora da regex: nao persiste, sem aviso (a
@@ -1892,5 +2116,246 @@ _dbx_cmd_sync_cursor_gravar() {
     dbx_cmd_avisar 'registro de listagem nao gravado: a proxima execucao faz a varredura completa'
   fi
   DBX_SYNC_CURSOR_NOVO=''
+  return 0
+}
+
+# _dbx_cmd_sync_diretorios_enumerar — F-101, RF-188, DIV-378 C: antes do ciclo 1,
+# enumera os DIRETORIOS da origem (local: travessia por diretorio; remota: descida
+# por `list_folder` nao recursivo), ordena (DIV-384), planeja os ciclos e responde
+# "ha ao menos um arquivo no escopo" pela soma das contagens. So nomes e
+# contagens ficam em memoria. Variaveis do executor (escopo dinamico): dirs_v,
+# cont_v, ciclos, chaves_dirs, dirs_arq, vazia_global, total_origem, podadas_dirs,
+# parcial, motivo_parcial.
+_dbx_cmd_sync_diretorios_enumerar() {
+  local reg k
+  local -a brutos=() cbrutos=()
+  if [[ $sentido == 'enviar' ]]; then
+    dbx_progress_mensagem "[sync] enumerando diretorios locais em: $raiz_local"
+    dbx_walk_diretorios "$raiz_local" "$area/dirs_brutos" || {
+      dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
+      return $?
+    }
+    parcial=$DBX_WALK_PARCIAL
+    motivo_parcial=$DBX_WALK_MOTIVO
+    podadas_dirs=${#DBX_WALK_PODADAS[@]}
+    while IFS= read -r -d '' reg; do
+      cbrutos+=("${reg%%$'\t'*}")
+      brutos+=("${reg#*$'\t'}")
+    done <"$area/dirs_brutos"
+  else
+    # RF-188(b), RF-189: a origem remota NAO e enumerada antes do ciclo 1. Os
+    # ciclos se formam em fluxo (`_dbx_cmd_sync_ciclo_remoto_formar`): cada
+    # diretorio e listado uma vez, no ciclo que o consome.
+    fila_remota=('')
+    remoto_fim='nao'
+    dirs_v=()
+    cont_v=()
+    : >"$dirs_arq"
+    return 0
+  fi
+  dbx_sync_ordem_sem_caixa brutos
+  dirs_v=()
+  cont_v=()
+  {
+    for k in ${DBX_SYNC_ORDEM[@]+"${DBX_SYNC_ORDEM[@]}"}; do
+      dirs_v+=("${brutos[k]}")
+      cont_v+=("${cbrutos[k]}")
+      printf '%s\t%s\0' "${cbrutos[k]}" "${brutos[k]}"
+      chaves_dirs["k:${brutos[k],,}"]=1
+      total_origem=$((total_origem + cbrutos[k]))
+    done
+  } >"$dirs_arq"
+  [[ $total_origem -eq 0 ]] && vazia_global='sim'
+  dbx_sync_blocos_planejar dirs_v cont_v "$DBX_CMD_SYNC_BLOCO" || {
+    dbx_cmd_falhar uso_invalido 'nao foi possivel planejar os ciclos'
+    return $?
+  }
+  ciclos=("${DBX_SYNC_BLOCOS_CICLOS[@]}")
+  return 0
+}
+
+# _dbx_cmd_sync_ciclo_remoto_formar — F-101, RF-188(b), RF-189: forma o PROXIMO
+# ciclo de uma origem remota em fluxo. Descida em profundidade com filhos
+# ordenados (DIV-384); cada diretorio e listado UMA vez (nunca recursivo) e suas
+# entradas ficam na tabela do ciclo. O ciclo fecha quando os arquivos diretos
+# somam N ou mais (o diretorio que cruza N entra inteiro) ou a arvore esgota. A
+# fila guarda so caminhos. A sonda de origem vazia (DIV-378 C) se resolve aqui,
+# no ciclo 1, antes de qualquer exclusao. Variaveis do executor: fila_remota,
+# remoto_fim, dirs_v, cont_v, dirs_arq, chaves_dirs, total_origem, vazia_global,
+# ciclo, ci_ini, ci_fim, formacao_falhou.
+_dbx_cmd_sync_ciclo_remoto_formar() {
+  local acumulado=0 dir desde total i pl registro tag exibido rel pai arquivos k estado ordem
+  local -a filhos=() ordenados=()
+  formacao_falhou=0
+  ci_ini=${#dirs_v[@]}
+  dbx_sync_tabela_zerar
+  while ((${#fila_remota[@]} > 0)) || [[ $pend_ativo == 'sim' ]]; do
+    if [[ $pend_ativo == 'sim' ]]; then
+      # RF-187(c): o diretorio guardado do ciclo anterior ja foi listado e
+      # contado; so restaura a tabela e segue, sem listar de novo.
+      dir=$pend_dir
+      arquivos=$pend_arquivos
+      filhos=("${pend_filhos[@]}")
+      for ((i = 0; i < ${#pend_chaves[@]}; i++)); do
+        pl=${pend_chaves[i]}
+        DBX_SYNC_TAB[$pl]=${pend_regs[i]}
+        DBX_SYNC_TAB_ORDEM+=("$pl")
+        DBX_SYNC_TAB_NA_ORDEM[$pl]=1
+      done
+      pend_ativo='nao'
+      pend_filhos=()
+      pend_chaves=()
+      pend_regs=()
+      total=0
+      desde=0
+    else
+      dir=${fila_remota[0]}
+      if ((${#fila_remota[@]} > 1)); then fila_remota=("${fila_remota[@]:1}"); else fila_remota=(); fi
+      desde=${#DBX_SYNC_TAB_ORDEM[@]}
+      estado=0
+      dbx_sync_listar_diretorio "$remoto" "$remoto${dir:+/$dir}" "$lado_remoto" || estado=$?
+      if [[ $estado -ne 0 ]]; then
+        formacao_falhou=$estado
+        break
+      fi
+      total=${#DBX_SYNC_TAB_ORDEM[@]}
+      arquivos=0
+      filhos=()
+    fi
+    for ((i = desde; i < total; i++)); do
+      pl=${DBX_SYNC_TAB_ORDEM[i]}
+      registro=${DBX_SYNC_TAB[$pl]-}
+      [[ -n $registro ]] || continue
+      tag=${registro%%$'\t'*}
+      exibido=$registro
+      for k in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
+      dbx_sync_relativo "$remoto" "$exibido" || continue
+      rel=$DBX_SYNC_LIDO
+      pai=''
+      [[ $rel == */* ]] && pai=${rel%/*}
+      [[ ${pai,,} == "${dir,,}" ]] || continue
+      if [[ $tag == 'd' ]]; then
+        dbx_filtro_ativo && dbx_filtro_pasta_excluida "$rel" && continue
+        [[ -n ${chaves_dirs["k:${rel,,}"]+definido} ]] && continue
+        chaves_dirs["k:${rel,,}"]=1
+        filhos+=("$rel")
+      else
+        dbx_filtro_ativo && ! dbx_filtro_classificar "$rel" nao && continue
+        arquivos=$((arquivos + 1))
+      fi
+    done
+    if ((arquivos > DBX_CMD_SYNC_BLOCO && acumulado > 0)); then
+      # RF-187(c): diretorio com mais de N arquivos forma ciclo sozinho. Guarda
+      # o diretorio listado e seus registros e fecha o ciclo corrente sem ele.
+      pend_ativo='sim'
+      pend_dir=$dir
+      pend_arquivos=$arquivos
+      pend_filhos=(${filhos[@]+"${filhos[@]}"})
+      pend_chaves=()
+      pend_regs=()
+      for ((i = desde; i < total; i++)); do
+        pl=${DBX_SYNC_TAB_ORDEM[i]}
+        pend_chaves+=("$pl")
+        pend_regs+=("${DBX_SYNC_TAB[$pl]-}")
+        unset "DBX_SYNC_TAB[$pl]" "DBX_SYNC_TAB_NA_ORDEM[$pl]"
+      done
+      DBX_SYNC_TAB_ORDEM=("${DBX_SYNC_TAB_ORDEM[@]:0:desde}")
+      break
+    fi
+    chaves_dirs["k:${dir,,}"]=1
+    dirs_v+=("$dir")
+    cont_v+=("$arquivos")
+    printf '%s\t%s\0' "$arquivos" "$dir" >>"$dirs_arq"
+    total_origem=$((total_origem + arquivos))
+    acumulado=$((acumulado + arquivos))
+    if ((${#filhos[@]} > 0)); then
+      dbx_sync_ordem_sem_caixa filhos
+      ordenados=()
+      for ordem in "${DBX_SYNC_ORDEM[@]}"; do ordenados+=("${filhos[ordem]}"); done
+      fila_remota=("${ordenados[@]}" ${fila_remota[@]+"${fila_remota[@]}"})
+    fi
+    ((acumulado >= DBX_CMD_SYNC_BLOCO)) && break
+  done
+  ci_fim=${#dirs_v[@]}
+  ciclo="$ci_ini-$ci_fim"
+  if ((formacao_falhou != 0)) || { ((${#fila_remota[@]} == 0)) && [[ $pend_ativo != 'sim' ]]; }; then remoto_fim='sim'; fi
+  if ((ciclo_i == 0 && formacao_falhou == 0)); then
+    [[ $total_origem -eq 0 ]] && vazia_global='sim'
+  fi
+  return 0
+}
+
+# _dbx_cmd_sync_parada_sistemica — RF-193, DIV-380 C: em ciclos, falha de
+# transferencia que vale para todos os arquivos (autenticacao, permissao, ou
+# limite_taxa/rede com as tentativas esgotadas pela camada http) para a execucao
+# com o relatorio de ciclos; falha so do arquivo segue. Variaveis do executor:
+# modo_ciclos, ciclo_i, ciclo_falho, codigo_parada. Status 0 quando parou.
+_dbx_cmd_sync_parada_sistemica() {
+  [[ $modo_ciclos == 'sim' ]] || return 1
+  case ${DBX_CMD_SYNC_FALHA_CLASSE:-} in
+    autenticacao | permissao | limite_taxa | rede) ;;
+    *) return 1 ;;
+  esac
+  # So a falha vinda do servidor e sistemica; erro de escrita local e do arquivo.
+  [[ ${DBX_HTTP_CLASSE:-} == "$DBX_CMD_SYNC_FALHA_CLASSE" ]] || return 1
+  ciclo_falho=$ciclo_i
+  codigo_parada=$(dbx_errors_codigo_saida "$DBX_CMD_SYNC_FALHA_CLASSE")
+  return 0
+}
+
+# _dbx_cmd_sync_ciclo_proximo — entrega o proximo ciclo em `ciclo`, `ci_ini` e
+# `ci_fim`, ou devolve 1 quando acabaram. Remota em ciclos: forma em fluxo;
+# demais: o plano da enumeracao previa (ou o ciclo unico).
+_dbx_cmd_sync_ciclo_proximo() {
+  if [[ $modo_ciclos == 'sim' && $sentido == 'receber' ]]; then
+    [[ $remoto_fim == 'sim' ]] && return 1
+    _dbx_cmd_sync_ciclo_remoto_formar
+    return 0
+  fi
+  ((ciclo_i < ${#ciclos[@]})) || return 1
+  ciclo=${ciclos[ciclo_i]}
+  ci_ini=${ciclo%-*}
+  ci_fim=${ciclo#*-}
+  return 0
+}
+
+# _dbx_cmd_sync_ramos_destino_remotos — RF-190(b): pasta FILHA de um diretorio do
+# ciclo que existe so no destino remoto (nao esta no conjunto de diretorios da
+# origem) e lida inteira, descendo de pasta em pasta (nunca recursivo), NO ciclo
+# que a encontra: o plano do ciclo ve o ramo todo e a exclusao dele so sai com o
+# pai lido por inteiro nos dois lados. Custo: o ramo so do destino e lido sem
+# corte por N. Variaveis do executor: ci_ini, ci_fim, dirs_v, chaves_dirs.
+_dbx_cmd_sync_ramos_destino_remotos() {
+  local -A pais=() visitados=()
+  local -a fila=()
+  local k pl registro exibido rel pai dir total desde=0
+  for ((k = ci_ini; k < ci_fim; k++)); do
+    pais["k:${dirs_v[k],,}"]=1
+  done
+  while :; do
+    total=${#DBX_SYNC_TAB_ORDEM[@]}
+    for ((; desde < total; desde++)); do
+      pl=${DBX_SYNC_TAB_ORDEM[desde]}
+      registro=${DBX_SYNC_TAB[$pl]-}
+      [[ $registro == d$'\t'* ]] || continue
+      exibido=$registro
+      for k in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
+      dbx_sync_relativo "$remoto" "$exibido" || continue
+      rel=$DBX_SYNC_LIDO
+      pai=''
+      [[ $rel == */* ]] && pai=${rel%/*}
+      [[ -n ${pais["k:${pai,,}"]+definido} ]] || continue
+      [[ -n ${visitados["k:${rel,,}"]+definido} ]] && continue
+      [[ -n ${chaves_dirs["k:${rel,,}"]+definido} ]] && continue
+      dbx_filtro_ativo && dbx_filtro_pasta_excluida "$rel" && continue
+      visitados["k:${rel,,}"]=1
+      pais["k:${rel,,}"]=1
+      fila+=("$rel")
+    done
+    [[ ${#fila[@]} -gt 0 ]] || break
+    dir=${fila[0]}
+    fila=("${fila[@]:1}")
+    dbx_sync_listar_diretorio "$remoto" "$remoto/$dir" "$lado_remoto" || return $?
+  done
   return 0
 }

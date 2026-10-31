@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
-Atualizado em: 2026-10-27, demanda `protocolo-atual` (`docs/prompts/2026-10-27_1500_protocolo-atual.md`), por QA Expert (oito grupos em paralelo) com montagem e conferencia do Tech Lead.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 107 arquivos, 2757 casos, 0 divergencias.
+Atualizado em: 2026-10-31, demanda `sync-em-blocos` (`docs/prompts/2026-10-31_1200_sync-em-blocos.md`), por QA Expert, com montagem e conferencia do Tech Lead.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 111 arquivos, 2830 casos, 0 divergencias (com os quatro arquivos novos da demanda `sync-em-blocos` ainda nao versionados, conferidos por indice temporario com `git add -N`).
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -13,6 +13,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | Arquivo | Alvo | Modulo | Camada | Autoria | Casos | Regras de origem principais |
 |---|---|---|---|---|---|---|
 | `tests/integracao/banda_test.sh` | `bin/dbx` com `lib/cli.sh` (`dbx_cli_validar_taxa`), `lib/cmd.sh` e `lib/http.sh`: limite de banda (`--limite-banda`, `--bwlimit`, `DBX_L... | `bin/dbx` | integracao | Senior Developer (TDD da demanda `backlog-fase-4-filtros-e-banda`) | 13 | RF-82; TC-BND-01..14; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e-banda.md` |
+| `tests/integracao/bloco_cli_test.sh` | `bin/dbx` com `--bloco`/`--batch` e `DBX_BLOCO`: validacao antes de rede e estado | `bloco_cli_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 6 | RF-186; F-101; TC-BLC-nn |
 | `tests/integracao/comandos_test.sh` | `bin/dbx` ponta a ponta (entrada, opcoes globais, credencial, autenticacao, transporte, analise e saida) e os comandos `upload`, `downloa... | `comandos` (filtro do mapa de modulos; arquivo `tests/integracao/comandos_test.sh`) | integracao | Senior Developer (TDD; commit de criacao b2179b4 `feat(comandos): entrada fina com despacho por tabela literal`, anterior a trilha de log... | 119 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
 | `tests/integracao/compartilhar_test.sh` | `bin/dbx` nos comandos `link-temporario` (`temp-link`) e `compartilhar` (`share`) em todos os modos (criar, reusar, modificar, `--listar`... | compartilhar_test | integracao | Senior Developer (TDD da demanda `backlog-fase-5-compartilhamento`) | 83 | F-15; F-16; RF-84..RF-92; RF-86(g); TC-LTP; TC-CMP; TC-SNH; TC-LEX; TC-LST; TC-RVG; TC-SHE; TC-CPL-10; TC-DOC-04; TC-TST-08; DIV-117; DIV... |
 | `tests/integracao/completar_test.sh` | `completions/dbx.bash`, `commands/completar.sh` (`dbx completar bash`), `install.sh`, `uninstall.sh` e `scripts/empacotar.sh`, confrontad... | completar | integracao | Senior Developer (TDD da demanda `backlog-fase-1-consulta-diagnostico`) | 17 | RF-68; TC-CPL-01..08; log `docs/prompts/2026-10-19_1050_backlog-fase-1-consulta-diagnostico.md` |
@@ -63,12 +64,14 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_retencao_b6_test.sh` | `bin/dbx` (comandos `reter` e `retain`) com `commands/reter.sh`, `lib/retencao.sh`, `lib/filtro.sh`: plano de retencao, lixeira e guarda ... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-6-retencao`) | 60 | log `docs/prompts/2026-10-20_2010_backlog-fase-6-retencao.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-20-2010-retencao.m... |
 | `tests/integracao/qa_retomada_b7a_test.sh` | `bin/dbx` (upload e download retomados) com `commands/upload.sh`, `commands/download.sh`, `commands/unlink.sh`, `commands/diagnostico.sh`... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-7a-retomada`) | 41 | log `docs/prompts/2026-10-20_2315_backlog-fase-7a-retomada.md`; grupos de cenario D (download), L (nao pendurar em entradas nao regulares... |
 | `tests/integracao/qa_robustez_rede_p2_test.sh` | `bin/dbx` download, upload, sync e diagnostico sob falhas de rede, consumidor que fecha cedo, sinais e segredos (`commands/download.sh`, ... | `qa_robustez` | integracao | QA Expert (suite independente da demanda `robustez-de-rede-p2`) | 21 | RNF-30(c); RNF-07(e); RF-32(b); RF-59; RNF-31; log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md` |
+| `tests/integracao/qa_sync_blocos_b21_test.sh` | `bin/dbx` sync, upload e download de pasta em blocos cortados por diretorio | `qa_sync_blocos_b21` | integracao | QA Expert (suite independente da demanda `sync-em-blocos`) | 25 | F-101; RF-186..RF-197; DIV-377..DIV-384 |
 | `tests/integracao/qa_trava_tmp_b2_test.sh` | `bin/dbx` (sync, `--dry-run`, verificar, download de pasta, unlink, diagnostico, upload), `lib/state.sh` (trava de concorrencia por par),... | qa_trava_tmp | integracao | QA Expert (suite independente da demanda `backlog-fase-2-trava-e-tmp`) | 23 | F-12, F-31; RF-69, RF-70, RF-71; DIV-38..49; DIV-51; RNF-35, RNF-36; protocolo-tdd Regra 6; log `docs/prompts/2026-10-19_1419_backlog-fas... |
 | `tests/integracao/qa_upload_para_pasta_b15_test.sh` | `bin/dbx upload` de arquivo para pasta remota existente (`commands/upload.sh`, `lib/cmd.sh`), com e sem raiz remota e barra final | `qa_upload_para_pasta` | integracao | QA Expert (suite independente da demanda `upload-arquivo-para-pasta`) | 26 | RF-174; emenda de RF-60(g)(h); log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
 | `tests/integracao/recuperacao_test.sh` | `bin/dbx` (`revisoes`, `restaurar`, `lixeira` e aliases, incluindo expurgo permanente), `commands/revisoes.sh`, `commands/restaurar.sh`, ... | recuperacao | integracao | Senior Developer (TDD da demanda `backlog-fase-3-recuperacao`) | 61 | F-07, F-20; RF-72 a RF-78; TC-RVS, TC-RST, TC-RPA, TC-LIX, TC-EXP, TC-DOC-02; log `docs/prompts/2026-10-19_1828_backlog-fase-3-recuperaca... |
 | `tests/integracao/reter_test.sh` | `bin/dbx reter` (alias `retain`): `commands/reter.sh`, `lib/retencao.sh`, `lib/filtro.sh`; plano, lixeira e guarda por identidade | `reter_test` | integracao | Senior Developer (TDD da demanda `backlog-fase-6-retencao`) | 84 | F-10; RF-93..100; TC-RTA; TC-RTS; TC-RTP; TC-RTC; TC-RTG; TC-RTX; TC-RTO; TC-CPL-11; TC-DOC-05; TC-TST-09; DIV-130..147; DIV-158..168; lo... |
 | `tests/integracao/retomada_download_test.sh` | `bin/dbx download` retomado entre execucoes (`Range`), `--no-resume`, `diagnostico` e `unlink`; `commands/download.sh`, `lib/cmd.sh`, `li... | retomada_download | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 32 | F-03; RF-102, RF-104 a RF-108; TC-RMD-01..15, TC-RMO-01, 02, 04, 05, TC-RMC-01, 06, TC-RML-05..07, TC-RMS-06, TC-DBG-13..15; DIV-176 a DI... |
 | `tests/integracao/retomada_upload_test.sh` | `bin/dbx upload` retomado entre execucoes (`commands/upload.sh`, `lib/transfer.sh`, `lib/state.sh`, registro `retomada-*`) | retomada_upload | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 43 | F-03; RF-101..RF-109; DIV-171..DIV-190; TC-RMU-01..16; TC-RME-02, 12, 14; TC-RMO-01..03, 05..11; TC-RMC-01, 04, 05; TC-RMS-01..06; TC-DBG... |
+| `tests/integracao/sync_blocos_test.sh` | `bin/dbx sync` e `download` de pasta em ciclos por diretorio | `sync_blocos_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 23 | F-101; RF-187..RF-197; TC-BLC-nn |
 | `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 85 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
 | `tests/integracao/testar_test.sh` | `bin/dbx testar` (alias `check`) e a sonda de disponibilidade (`commands/testar.sh`, `lib/disponibilidade.sh`) | `commands/testar.sh` | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 29 | RF-148; RF-149; RF-150; RF-154; TC-DSP-01..25; TC-DSP-55; TC-DSP-57; TC-DSP-58; DIV-326; log `docs/prompts/2026-10-23_0900_teste-de-dispo... |
 | `tests/integracao/trava_test.sh` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help) com `lib/state.sh` e `lib/tmp.sh`: tr... | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 31 | RF-69, RF-70, RF-71, RNF-35; TC-TRV, TC-ESR, TC-DIA-11..14, TC-TMP-02, 05, 06; DIV-50, DIV-51; F-12, F-31; log `docs/prompts/2026-10-19_1... |
@@ -114,6 +117,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/state_test.sh` | `lib/state.sh` (cache unico de `content_hash`: carga, gravacao atomica, namespaces `memoria-*` do sync e `upload-*` do upload, identidade... | state | unitario | Senior Developer (TDD da demanda `cache-unico-p3`) | 24 | RNF-32(d); RNF-33; log `docs/prompts/2026-10-18_2243_cache-unico-p3.md` |
 | `tests/unit/state_trava_raiz_test.sh` | `lib/state.sh`: trava por raiz local canonica entre processos | `state_trava_raiz` | unitario | Senior Developer (TDD da demanda `backlog-fase-8-perfis`) | 9 | F-18; RF-132; DIV-250; TC-PFT-01..03; TC-PFT-06..08; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md` |
 | `tests/unit/state_trava_test.sh` | `lib/state.sh` (trava de concorrencia por par, retomada de trava orfa, listagem), com apoio de `lib/tmp.sh` e `lib/hash.sh` | state_trava | unitario | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 28 | RF-69; parecer do DBA de 2026-10-19; TC-TRV-12..15, 17, 21..30, 32..34 e a parte de biblioteca de TC-TRV-01, 09..11, 18; DIV-53; log `doc... |
+| `tests/unit/sync_blocos_test.sh` | `dbx_cli_validar_bloco`, `dbx_cmd_bloco`, planejador de ciclos e `dbx_sync_listar_diretorio` | `sync_blocos_test` | unitario | Senior Developer (TDD da demanda `sync-em-blocos`) | 19 | RF-186; RF-187; RF-189; TC-BLC-nn |
 | `tests/unit/sync_plano_test.sh` | `lib/sync.sh` (`dbx_sync_comparar`, traducao do plano para os quatro estados do `verificar`) | sync_plano | unitario | Senior Developer (TDD da demanda `backlog-fase-1-consulta-diagnostico`) | 6 | RF-65(c)(d); log `docs/prompts/2026-10-19_1050_backlog-fase-1-consulta-diagnostico.md` |
 | `tests/unit/sync_tabela_test.sh` | `lib/sync.sh` (tabela remota: retrato carregado, delta aplicado, confinamento e agrupamento das confirmacoes de exclusao) | sync_tabela | unitario | Senior Developer (TDD da demanda `backlog-fase-7b-cursor`) | 12 | F-14; DIV-g; RF-112; RF-114; RF-115; parecer do DBA (secao 5; C3, C4, C5); log `docs/prompts/2026-10-21_0713_backlog-fase-7b-cursor.md` |
 | `tests/unit/tmp_test.sh` | `lib/tmp.sh` (registro unico de areas temporarias e acoes de liberacao com tratadores de sinal) e auditoria de `mktemp` e `trap` em `lib/... | `lib/tmp.sh` | unitario | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 21 | RNF-35; RNF-36; TC-TMP-01..09; TC-CNF-01; F-12; F-31; log `docs/prompts/2026-10-19_1419_backlog-fase-2-trava-e-tmp.md`; mapa de modulos R... |
@@ -146,6 +150,28 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_bnd11_bnd12_com_e_sem_limite_mesmos_bytes_e_fluxo_aplica | Com e sem limite os bytes transferidos sao identicos e o envio por fluxo tambem aplica o limite | TC-BND-11; TC-BND-12 |
 | teste_bnd13_limite_banda_na_saida | O limite efetivo aparece na saida do comando em formato legivel | TC-BND-13 |
 | teste_bnd14_sync_nos_dois_sentidos_e_download_de_pasta_aplicam | Sync nos dois sentidos e download de pasta aplicam o limite em todas as transferencias | TC-BND-14 |
+
+
+## `tests/integracao/bloco_cli_test.sh`
+
+- **Alvo:** `bin/dbx` (`sync`, `upload`, `download`, `list`, `diagnostico`) com a opcao `--bloco`/`--batch` e a variavel `DBX_BLOCO` (`lib/cli.sh`, `lib/cmd.sh`, `commands/diagnostico.sh`): validacao antes de rede e estado
+- **Modulo:** `bloco_cli` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `sync-em-blocos`)
+- **Regras de origem:** F-101; RF-186..RF-197; TC-BLC-nn (secao 5.24 do escopo); log `docs/prompts/2026-10-31_1200_sync-em-blocos.md`; registro `docs/reviews/2026-10-31-1200-registro-sync-em-blocos.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** `curl` do cenario so registra a chamada e falha (exit 22); credencial e diretorios temporarios sinteticos; ambiente isolado por `env -i`; sem rede
+- **Comando:** `bash tests/run.sh tests/integracao/bloco_cli_test.sh`
+- **Observacoes:** Chamada registrada onde nao devia e achado: a verificacao e a ausencia do arquivo de chamadas.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_blc_sync_valor_invalido_sai_2_antes_da_rede_e_do_estado | `sync` com `--bloco` e `--batch` em valores invalidos (0, 1000001, -1, +2, 01, texto, vazio, com espaco, decimal) e sem valor sai com 2, a mensagem nomeia a opcao, nenhuma chamada de rede e nenhum estado sao criados. | RF-186 |
+| teste_blc_sync_variavel_invalida_nomeia_a_variavel_e_a_opcao_vence | `DBX_BLOCO` invalida (0, 1000001, texto, vazia, 01) sai com 2 nomeando a variavel e sem rede; com `--bloco 100` valido a opcao vence e a variavel nao e lida. | RF-186 |
+| teste_blc_upload_e_download_de_pasta_validam_antes_da_rede | Upload e download de pasta recusam com 2, antes de qualquer rede, a opcao invalida e a variavel invalida (esta nomeada na mensagem). | RF-186 |
+| teste_blc_upload_de_arquivo_unico_ignora_a_opcao_e_a_variavel_invalida | Upload de arquivo unico nao le a variavel invalida e aceita e ignora a opcao valida: so ha validacao onde ha pasta. | RF-186(e) |
+| teste_blc_outro_comando_recusa_a_opcao_e_ignora_a_variavel | `list --bloco 5` sai com 2; com `DBX_BLOCO` invalida `list` ignora a variavel. | RF-186 |
+| teste_blc_diagnostico_mostra_o_valor_efetivo_e_a_origem_da_variavel | `diagnostico` mostra a linha `bloco` com valor e origem (`7 (origem: ambiente, DBX_BLOCO)`), avisa nomeando a variavel quando invalida e nao a menciona quando ausente. | RF-186 |
 
 
 ## `tests/integracao/comandos_test.sh`
@@ -492,6 +518,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
 - **Dados e precondicoes:** duplo de `curl` por regras (endpoint, corpo e resposta por cenario) com registro de chamadas; `XDG_STATE_HOME` e raiz de sync temporarios por caso; servidor simulado com mapa remoto e cursor
 - **Comando:** `bash tests/run.sh tests/integracao/cursor_test.sh`
+- **Observacoes (demanda `sync-em-blocos`):** o duplo de `curl` passou a responder `list_folder` nao recursivo e `get_latest_cursor` (RF-189); nenhum caso foi criado ou removido.
 
 | Caso | O que verifica | Regra especifica |
 |---|---|---|
@@ -1359,9 +1386,10 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `backlog-fase-7b-cursor`)
 - **Regras de origem:** F-14; RF-110..RF-119; RF-43; RF-48; DIV-204..DIV-234; condicoes C1..C11 do DBA; TC-CUL-04; TC-CUL-05; log `docs/prompts/2026-10-21_0713_backlog-fase-7b-cursor.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-21-0713-cursor.md)
-- **Aceite do solicitante:** [entrada](../../.github/agents/memoria/entradas/2026-10-21-0713-cursor.md) com sha256 `8c40c6f0f77ea0dd9e147e4ba6e21898366e7e131f5b51043e021ce05235e4b6`
+- **Aceite do solicitante:** [entrada](../../.github/agents/memoria/entradas/2026-10-21-0713-cursor.md) com sha256 `8c40c6f0f77ea0dd9e147e4ba6e21898366e7e131f5b51043e021ce05235e4b6`; alterado na demanda `sync-em-blocos`: novo sha256 `15045c18464902f61c70069c513a506cd3ac8f7fa2e3ed251a82e26af4ab5159`, reaprovado em 2026-10-31, [entrada](../../.github/agents/memoria/entradas/2026-10-31-1200-aceite-testes-qa-sync-em-blocos.md)
 - **Dados e precondicoes:** duble de `curl` proprio por regras (endpoint, filtro do corpo, codigo, resposta; codigos especiais `REDE` e `SINAL:NOME`), registros de chamadas, argv e ambiente em arquivos temporarios; sem rede
 - **Comando:** `bash tests/run.sh tests/integracao/qa_cursor_b7b_test.sh`
+- **Observacoes (demanda `sync-em-blocos`):** o duplo de `curl` passou a responder `list_folder` nao recursivo e `get_latest_cursor` (RF-189); nenhum caso foi criado ou removido.
 - **Observacoes:** escrita como adversario, com foco em P0: o registro (cursor mais retrato) nunca causa sozinho exclusao local; o cursor nunca vaza.
 
 | Caso | O que verifica | Regra especifica |
@@ -1990,9 +2018,10 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `suporte-freebsd`)
 - **Regras de origem:** RF-166; TC-FBSD-19 (parte regex); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-24-1153-aceite-testes-qa-freebsd.md)
-- **Aceite do solicitante:** [entrada](../../.github/agents/memoria/entradas/2026-10-24-1153-aceite-testes-qa-freebsd.md) com sha256 `1406718ce5010677ca044cfaaa5acb2b2c042078d6ba627da2fcd55138a015d8`
+- **Aceite do solicitante:** [entrada](../../.github/agents/memoria/entradas/2026-10-24-1153-aceite-testes-qa-freebsd.md) com sha256 `1406718ce5010677ca044cfaaa5acb2b2c042078d6ba627da2fcd55138a015d8`; alterado na demanda `sync-em-blocos`: novo sha256 `87de2391cc3bd773d8884e35510ea0ce0e0f67870b0abce7332b1ba5dc62bb9e`, reaprovado em 2026-10-31, [entrada](../../.github/agents/memoria/entradas/2026-10-31-1200-aceite-testes-qa-sync-em-blocos.md)
 - **Dados e precondicoes:** fixture de texto com todas as formas de repeticao; copias do codigo para a mutacao; duble de `curl` proprio; session_id e cursor sinteticos de tamanhos de fronteira; diretorio de estado temporario; sem rede
 - **Comando:** `bash tests/run.sh tests/integracao/qa_regex_portavel_b17_test.sh`
+- **Observacoes (demanda `sync-em-blocos`):** o duplo de `curl` passou a responder `list_folder` nao recursivo e `get_latest_cursor` (RF-189); nenhum caso foi criado ou removido.
 - **Observacoes:** o defeito so e visivel por auditoria do texto das regex, pois o glibc aceita ate 32767; a parte M prova por mutacao que a auditoria reprova.
 
 | Caso | O que verifica | Regra especifica |
@@ -2183,6 +2212,47 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_qa_saida_padrao_sem_espaco_falha_sem_repetir | Saida padrao sem espaco falha uma vez, sem repetir a tentativa | |
 | teste_qa_sync_com_falha_de_item_nao_deixa_area_e_devolve_os_sinais | Sync com falha de item nao deixa area temporaria e devolve o sinal esperado | RNF-31 |
 | teste_qa_term_durante_a_listagem_do_receber_nao_deixa_area | `TERM` durante a listagem do receber nao deixa area temporaria | RNF-31 |
+
+
+## `tests/integracao/qa_sync_blocos_b21_test.sh`
+
+- **Alvo:** `bin/dbx` (`sync` nos dois sentidos, `upload` e `download` de pasta) em blocos de arquivos cortados por diretorio, com foco na exclusao, na origem vazia, no cursor e no corte por diretorio
+- **Modulo:** `qa_sync_blocos` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `sync-em-blocos`)
+- **Regras de origem:** F-101; RF-186..RF-197; TC-BLC-nn (secao 5.24 do escopo); log `docs/prompts/2026-10-31_1200_sync-em-blocos.md`; registro `docs/reviews/2026-10-31-1200-registro-sync-em-blocos.md`; DIV-377..DIV-384
+- **Aceite do solicitante:** [entrada](../../.github/agents/memoria/entradas/2026-10-31-1200-aceite-testes-qa-sync-em-blocos.md) com sha256 `f5e8fc366fda4d77c41db5e1541d40060a273ad1532397f11466209502bbd6f8` (2026-10-31)
+- **Dados e precondicoes:** duplo de `curl` proprio por roteiro, registros de chamadas em arquivos temporarios; arvores locais e remotas sinteticas por caso; sem rede; casos de modo 000 nao rodam como root
+- **Comando:** `bash tests/run.sh tests/integracao/qa_sync_blocos_b21_test.sh`
+- **Observacoes:** Escrita como adversario a partir da secao 5.24 do escopo; prioridade na exclusao (RF-190, RF-191, RF-41(a)): diretorio nao observado nunca perde arquivo.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_blc_exclusao_so_com_o_diretorio_lido_inteiro_nos_dois_lados | Em execucao integral, apaga os sobrantes de d1, d2, d3 e do topo e preserva os arquivos iguais. | RF-190 |
+| teste_qa_blc_listagem_remota_falha_no_ciclo_2_nao_apaga_o_nao_observado | Falha de listagem remota no ciclo 2 sai diferente de zero e nenhum arquivo do diretorio que falhou nem dos ciclos seguintes e apagado. | RF-190; RF-193 |
+| teste_qa_blc_segunda_pagina_que_falha_desliga_a_exclusao | Segunda pagina remota que falha sai diferente de zero e a pagina parcial nunca autoriza exclusao. | RF-190 |
+| teste_qa_blc_leitura_local_parcial_no_ciclo_2_desliga_a_exclusao_dos_seguintes | Leitura local parcial no ciclo 2 sai diferente de zero e desliga a exclusao do ciclo da parcialidade e dos seguintes. | RF-41(a); RF-190 |
+| teste_qa_blc_diretorio_so_no_destino_so_e_apagado_com_o_pai_observado | Diretorio so no destino e apagado quando o pai foi observado; com a listagem do pai falhando, o filho so do destino permanece. | RF-190 |
+| teste_qa_blc_origem_vazia_recusa_14_sem_nenhuma_escrita_e_o_flag_libera | Origem vazia recusa com 14 sem escrita, mesmo com `--confirmar`; `--dry-run` anuncia a recusa sem recusar; o flag proprio libera e o sobrante e apagado. | RF-191 |
+| teste_qa_blc_origem_so_de_pastas_vazias_com_bloco_1_continua_origem_vazia_de_arquivos | Origem so com pastas vazias e `--bloco 1` continua origem vazia de arquivos: 14 e nada apagado. | RF-191 |
+| teste_qa_blc_enviar_apaga_no_remoto_so_o_observado_nos_dois_lados | `--enviar --espelhar` apaga no remoto so o observado nos dois lados (sobrantes de d1, d2, d3 e pasta so do destino com pai observado) e nunca os arquivos iguais. | RF-190 |
+| teste_qa_blc_enviar_listagem_do_ciclo_falha_nao_apaga_do_nao_observado | No `--enviar`, falha de listagem do ciclo sai diferente de zero e nao apaga do diretorio que falhou nem dos ciclos seguintes. | RF-190(d); RF-193(b) |
+| teste_qa_blc_o_diretorio_que_cruza_n_entra_inteiro_e_fecha_o_ciclo | Com diretorios [2,2,2,2] e N=5 sao dois ciclos; com [1,1,1] e N=3, um ciclo (`ciclos=` no `--json`). | RF-187 |
+| teste_qa_blc_diretorio_maior_que_n_forma_ciclo_sozinho_e_nao_e_partido | Diretorio de 12 arquivos com N menor forma ciclo sozinho (`ciclos=2`) e nenhum diretorio e partido. | RF-187(c) |
+| teste_qa_blc_subdiretorio_sem_arquivo_direto_e_unidade_propria_de_custo_zero | Subdiretorio sem arquivo direto e unidade propria de custo zero: p(3)+s(1) atinge N so no fim e forma um ciclo. | RF-187 |
+| teste_qa_blc_o_conjunto_final_independe_do_tamanho_do_bloco | O conjunto final de arquivos e identico para varios tamanhos de bloco. | RF-187(d) |
+| teste_qa_blc_cada_diretorio_remoto_e_listado_uma_vez_e_nunca_recursivo | Na varredura completa nenhum `list_folder` e recursivo e cada diretorio remoto e listado exatamente uma vez. | RF-188(b); RF-189(a) |
+| teste_qa_blc_diretorio_remoto_inexistente_e_lista_vazia_e_o_ciclo_segue | `path/not_found` na listagem e lista vazia, nao falha, e o ciclo seguinte roda. | RF-189 |
+| teste_qa_blc_pasta_excluida_nao_e_listada_no_remoto | Pasta excluida pelo filtro nao e listada no remoto e seus arquivos locais permanecem. | RF-189; filtros |
+| teste_qa_blc_valor_invalido_sai_2_antes_de_rede_e_de_estado | `--bloco` e `DBX_BLOCO` invalidos saem com 2 nomeando a origem do valor, sem chamada de rede; a opcao vence a variavel e `--batch` e alias. | RF-186 |
+| teste_qa_blc_cursor_so_e_gravado_ao_fim_integral | O cursor so e gravado em execucao que termina integral; execucao com falha nao grava. | RF-192 |
+| teste_qa_blc_falha_no_ciclo_k_preserva_o_cursor_anterior_intacto | Falha no ciclo 2 deixa cursor e retrato anteriores intactos (impressao igual a anterior). | RF-192 |
+| teste_qa_blc_enviar_nao_le_nem_cria_cursor | `--enviar` nao pede cursor e nao cria nem le cursor. | RF-192 |
+| teste_qa_blc_colisao_de_caixa_no_diretorio_recusa_antes_de_enviar | Colisao de caixa no diretorio recusa e nenhum envio ocorre antes da recusa. | RF-194 |
+| teste_qa_blc_dry_run_nao_escreve_nada_em_nenhum_lado | `--dry-run` nao baixa, nao apaga, nao grava estado e nao faz chamada de escrita remota. | RF-196 |
+| teste_qa_blc_json_agrega_ciclos_e_traz_o_bloco_efetivo | `--json` agrega `ciclos=3`, `bloco=2`, `bloco_origem=opcao` e `recebidos=6` somando os tres ciclos. | RF-197 |
+| teste_qa_blc_arquivo_local_ilegivel_no_ciclo_desliga_a_exclusao_dali_em_diante | Arquivo local ilegivel no ciclo desliga a exclusao dali em diante: codigo diferente de zero, sobrantes do ciclo e dos seguintes preservados e o arquivo ilegivel permanece. | RF-41(a); RF-190 |
+| teste_qa_blc_filtro_sem_casamento_na_raiz_nao_recusa_por_origem_vazia | Filtro sem casamento na raiz nao recusa por origem vazia com `--bloco 1` nem com bloco grande; o plano apaga `sobra.log` nos dois casos. | RF-191; filtros |
 
 
 ## `tests/integracao/qa_trava_tmp_b2_test.sh`
@@ -2542,6 +2612,45 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_tc_dbg_10_retomada_encontrada_traz_o_deslocamento_e_nao_o_id_da_sessao | Retomada encontrada emite o deslocamento no debug e nao o id da sessao. | TC-DBG-10 |
 | teste_tc_dbg_11_sessao_recusada_descarta_a_retomada_com_motivo_do_vocabulario | Sessao recusada descarta a retomada com motivo do vocabulario no debug. | TC-DBG-11 |
 | teste_tc_dbg_12_sem_retomada_traz_o_motivo_sem_retomada | Upload sem retomada emite o motivo `sem-retomada` no debug. | TC-DBG-12 |
+
+
+## `tests/integracao/sync_blocos_test.sh`
+
+- **Alvo:** `bin/dbx sync` nos dois sentidos e `download` de pasta em ciclos cortados por diretorio (`commands/sync.sh`, `lib/sync.sh`, `lib/lote.sh`, `lib/state.sh`): exclusao, origem vazia, colisao de caixa, `--dry-run`, falhas, cursor e retrato, `--paralelo` e `--debug`
+- **Modulo:** `sync_blocos` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `sync-em-blocos`)
+- **Regras de origem:** F-101; RF-186..RF-197; TC-BLC-nn (secao 5.24 do escopo); log `docs/prompts/2026-10-31_1200_sync-em-blocos.md`; registro `docs/reviews/2026-10-31-1200-registro-sync-em-blocos.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** duplo de `curl` que responde a listagem por diretorio (`$base/ls/<caminho>`), registra chamadas e corpos de requisicao; credencial, raiz local e estado temporarios por caso; dado sintetico; sem rede; os casos de modo 000 nao rodam como root
+- **Comando:** `bash tests/run.sh tests/integracao/sync_blocos_test.sh`
+- **Observacoes:** Etapa 2 de F-101. O duplo foi alterado em `cursor_test.sh` e nas suites `qa_*` afetadas para responder `list_folder` nao recursivo e `get_latest_cursor`.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_blc_enviar_forma_ciclos_por_diretorio_e_consulta_so_nao_recursivo | `sync --enviar --bloco 2` forma dois ciclos por diretorio, envia os cinco arquivos sem omissao nem duplicacao, mostra o progresso por ciclo, nao faz listagem recursiva e consulta o destino so nos diretorios do ciclo. | RF-187(d); RF-189(a) |
+| teste_blc_uma_arvore_que_cabe_em_um_ciclo_nao_muda_o_resultado | Arvore que cabe em um ciclo da o mesmo resultado de antes e a saida nao traz o campo `ciclos=` fora do `--json`. | RF-187 |
+| teste_blc_receber_percorre_os_diretorios_remotos_nao_recursivamente | `sync --receber --bloco 2 --sem-cursor` recebe os quatro arquivos em dois ciclos, percorre os diretorios sem listagem recursiva e grava o arquivo do ciclo 2. | RF-187; RF-189(a) |
+| teste_blc_download_de_pasta_usa_ciclos | `download` de pasta com `--bloco 2` e `--excluir` recebe os arquivos pela descida por diretorio (listagem nao recursiva, nenhuma recursiva). | RF-188; RF-189(a) |
+| teste_blc_espelhar_apaga_so_em_diretorio_lido_inteiro_e_o_so_do_destino_depois_do_pai | `sync --enviar --espelhar --confirmar` em ciclos apaga o arquivo sobrante de diretorio lido inteiro e o conteudo do diretorio so do destino (2 exclusoes), emitindo `delete_v2`. | RF-190 |
+| teste_blc_travessia_parcial_desliga_a_exclusao_na_execucao_inteira | Diretorio local ilegivel (modo 000) torna a travessia parcial: codigo diferente de zero, `exclusao_desabilitada` informado e nenhuma exclusao remota em ciclo algum (nao roda como root). | RF-41(a); RF-190 |
+| teste_blc_origem_vazia_com_algo_a_apagar_e_recusa_14_sem_escrita | Origem sem arquivos com algo a apagar no destino (inclusive em diretorio so do destino) recusa com codigo 14 e nenhuma escrita. | RF-191 |
+| teste_blc_colisao_de_caixa_no_diretorio_do_ciclo_recusa_antes_de_escrever | Dois arquivos que diferem so na caixa no mesmo diretorio recusam com `colisao de caixa` antes de qualquer escrita. | RF-194 |
+| teste_blc_dry_run_percorre_os_ciclos_sem_escrever | `--dry-run` percorre todos os ciclos, mostra o plano do primeiro e do ultimo ciclo e nao escreve nada. | RF-196 |
+| teste_blc_falha_de_arquivo_segue_e_falha_de_enumeracao_para | Falha de arquivo (500) segue e os dois ciclos sao tentados, com codigo diferente de zero; falha de enumeracao no ciclo 2 para a execucao com `ciclos_concluidos=1` e `ciclo_falho=2`. | RF-193 |
+| teste_blc_download_de_arquivo_ignora_a_variavel_invalida_e_o_de_pasta_recusa_2_sem_escrita | `download` de arquivo unico ignora `DBX_BLOCO` invalida e baixa; o de pasta recusa com 2 nomeando a variavel assim que o alvo se revela pasta. | RF-186(e) |
+| teste_blc_primeira_execucao_em_ciclos_grava_cursor_e_retrato_e_a_segunda_usa_o_delta | Primeira execucao `--receber` sem cursor roda em ciclos, grava cursor e retrato, so a chamada do cursor e recursiva e `get_latest_cursor` e pedido antes da primeira listagem de diretorio. | RF-192; RF-189(a) |
+| teste_blc_retrato_dos_ciclos_e_o_da_varredura_recursiva_da_mesma_arvore | O retrato gravado pelos ciclos contem exatamente os mesmos caminhos da arvore remota esperada, sem repeticao nem omissao (esperado derivado da arvore). | TC-BLC-18 |
+| teste_blc_dry_run_nao_grava_cursor_nem_retrato | `--dry-run` percorre os ciclos, mostra o plano e nao grava cursor nem retrato nem pede `get_latest_cursor`. | RF-112; RF-196 |
+| teste_blc_falha_no_ciclo_k_nao_grava | Falha na enumeracao do ciclo 2 sai diferente de zero com `ciclo_falho=2` e nao grava cursor nem retrato. | RF-192 |
+| teste_blc_leitura_parcial_nao_grava | Travessia local parcial (diretorio modo 000) sai diferente de zero e nao grava cursor nem retrato (nao roda como root). | RF-192; RF-41(a) |
+| teste_blc_varredura_completa_forcada_roda_em_ciclos_e_regrava | `--varredura-completa` apos execucao com cursor roda em ciclos, pede novo cursor e regrava cursor e retrato. | RF-192 |
+| teste_blc_receber_lista_cada_diretorio_remoto_exatamente_uma_vez | `--receber --sem-cursor` em dois ciclos lista cada diretorio remoto (`/r`, `/r/a`, `/r/b`) exatamente uma vez. | RF-188(b); RF-189 |
+| teste_blc_receber_diretorio_maior_que_n_forma_ciclo_sozinho | Diretorio com mais de N arquivos forma ciclo sozinho no receber em fluxo: dois ciclos, quatro recebidos e cada diretorio listado uma vez. | RF-187(c) |
+| teste_blc_receber_espelhar_apaga_ramo_local_que_so_existe_no_destino | `--receber --espelhar --confirmar` recebe os quatro arquivos e apaga o ramo local so do destino e o arquivo extra de diretorio lido inteiro (2 exclusoes), preservando a origem. | RF-190 |
+| teste_blc_debug_traz_a_linha_bloco_no_resumo | `--debug` traz no resumo as linhas `bloco=2` e `ciclos=2`. | RF-197 |
+| teste_blc_paralelo_2_fecha_o_ciclo_antes_do_proximo_e_da_o_mesmo_resultado | `--paralelo 2` da o mesmo resultado de N=1 e os tres downloads do ciclo 1 terminam antes da leitura de `/r/b` (barreira no fim do ciclo). | RF-195 |
+| teste_blc_falha_sistemica_de_transferencia_para_e_a_de_arquivo_segue | Falha sistemica (403) em transferencia para a execucao (`ciclo_falho=1`, `falhas=1`, `ciclos_nao_tentados=1`, ciclo 2 nem lido, nada gravado); falha de arquivo (500) so segue. | RF-193; DIV-380 |
 
 
 ## `tests/integracao/sync_test.sh`
@@ -4328,6 +4437,41 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_trava_com_dono_alheio_ligacao_ou_diretorio_e_ilegivel_e_intacta | Trava de dono alheio, ligacao simbolica ou diretorio e ilegivel e fica intacta | protocolo-tdd Regra 6 |
 | teste_trava_viva_recusa_com_7_e_mensagem_sem_segredo | Trava viva recusa a aquisicao com codigo 7 e mensagem sem segredo | |
 | teste_vinte_processos_disputam_e_exatamente_um_vence | Vinte processos disputam a trava e exatamente um vence | |
+
+## `tests/unit/sync_blocos_test.sh`
+
+- **Alvo:** `lib/cli.sh` (`dbx_cli_validar_bloco`), `lib/cmd.sh` (`dbx_cmd_bloco`), `lib/sync.sh` (`dbx_sync_blocos_planejar`, `dbx_sync_listar_diretorio`): validacao de `--bloco`/`DBX_BLOCO`, planejador de ciclos e listagem remota de um diretorio
+- **Modulo:** `sync_blocos` (filtro do mapa de modulos)
+- **Camada:** unitario
+- **Autoria:** Senior Developer (TDD da demanda `sync-em-blocos`)
+- **Regras de origem:** F-101; RF-186..RF-197; TC-BLC-nn (secao 5.24 do escopo); log `docs/prompts/2026-10-31_1200_sync-em-blocos.md`; registro `docs/reviews/2026-10-31-1200-registro-sync-em-blocos.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** libs de `lib/` carregadas; a camada de autenticacao e substituida por funcoes locais que devolvem paginas sinteticas; vetores sinteticos de nomes e contagens; sem rede
+- **Comando:** `bash tests/run.sh tests/unit/sync_blocos_test.sh`
+- **Observacoes:** Etapa 1 de F-101 (RF-186, RF-187, RF-189); o planejador e puro.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_validar_bloco_aceita_a_faixa_1_a_1000000 | `dbx_cli_validar_bloco` aceita 1, 7, 50000, 999999 e 1000000, devolve 0 e publica o valor em `DBX_CLI_BLOCO`. | RF-186 |
+| teste_validar_bloco_recusa_fora_da_faixa_e_formato_invalido | Valores 0, 1000001, 9999999, negativos, com sinal, com zero a esquerda, vazio, com espaco, texto, decimal, expoente e com quebra de linha saem com erro de uso, nada e publicado e o motivo nomeia `--bloco`; na variavel o motivo nomeia `variavel de ambiente DBX_BLOCO`. | RF-186 |
+| teste_bloco_padrao_sem_opcao_nem_variavel | Sem opcao nem variavel, `dbx_cmd_bloco` resolve o padrao 50000 com origem `padrao`. | RF-186 |
+| teste_bloco_variavel_valida_vale_e_invalida_recusa | `DBX_BLOCO=100` vale com origem `ambiente`; `DBX_BLOCO=abc` e `DBX_BLOCO` vazia recusam com erro de uso e o motivo nomeia a variavel. | RF-186 |
+| teste_bloco_opcao_vence_e_a_variavel_nao_e_lida | Com `--bloco 100` valido e `DBX_BLOCO=abc` invalida, a opcao vence (origem `opcao`) e a variavel nao e lida; `--batch 0` recusa e o motivo nomeia a opcao como digitada. | RF-186 (precedencia e alias) |
+| teste_planejador_arvore_que_cabe_forma_um_ciclo | Com N=100 e diretorios de 10, 20 e 30 arquivos, o planejador forma um unico ciclo (`0-3`). | RF-187 |
+| teste_planejador_diretorio_que_cruza_n_entra_inteiro_e_fecha | Com N=10 e diretorios de 6, 6 e 1, o segundo cruza N (12), entra inteiro no ciclo e o fecha; o terceiro abre outro (`0-2 2-3`). | RF-187 |
+| teste_planejador_total_exato_em_n_fecha_o_ciclo | Com N=10 e diretorios de 6, 4 e 1, atingir exatamente N fecha o ciclo (`0-2 2-3`). | RF-187 |
+| teste_planejador_diretorio_maior_que_n_fica_sozinho | Com N=10 e diretorios de 3, 50 e 1, o diretorio maior que N forma ciclo proprio e o anterior fecha antes dele (`0-1 1-2 2-3`). | RF-187(c) |
+| teste_planejador_diretorio_vazio_conta_zero_e_e_unidade | Diretorios com zero arquivos contam zero, sao unidades do ciclo e nao fecham ciclo (`0-4`). | RF-187 |
+| teste_planejador_cada_diretorio_em_exatamente_um_ciclo | Em 40 diretorios com contagens variadas e N=17, a uniao dos ciclos cobre cada diretorio exatamente uma vez, sem omissao, duplicacao ou troca de ordem. | RF-187(d) |
+| teste_planejador_lista_vazia_e_entrada_invalida | Lista vazia planeja sem ciclos; contagem nao numerica e vetores de tamanhos diferentes saem com erro de uso. | RF-187 |
+| teste_listar_diretorio_pede_nao_recursivo_e_alimenta_a_tabela | `dbx_sync_listar_diretorio` pede `list_folder` com `"recursive":false` e coloca o arquivo (tipo f) e a subpasta (tipo d) na tabela remota. | RF-189(a) |
+| teste_listar_diretorio_acumula_entre_chamadas_e_segue_continue | Segue a paginacao por `list_folder/continue` e a tabela acumula as entradas de dois diretorios listados em chamadas sucessivas, sem zerar. | RF-189 |
+| teste_listar_diretorio_inexistente_e_vazio_legitimo | Resposta `path/not_found/` na listagem e lista vazia legitima: devolve 0 e a tabela fica vazia. | RF-189 |
+| teste_listar_diretorio_falha_remota_sinaliza_parcialidade | Falha remota (`too_many_requests`) devolve o codigo da classe de erro e o motivo cita a enumeracao remota. | RF-189; RF-190 |
+| teste_listar_diretorio_falha_na_segunda_pagina_e_parcial | Falha na segunda pagina da listagem devolve codigo diferente de zero (enumeracao parcial). | RF-190 |
+| teste_listar_diretorio_cursor_repetido_e_erro_remoto_parcial | Paginas que repetem o mesmo cursor (laco) saem com o codigo de `erro_remoto`. | RF-189 |
+| teste_listar_diretorio_recusa_uso_incorreto | Chamada sem o diretorio devolve erro de uso. | RF-189 |
+
 
 ## `tests/unit/sync_plano_test.sh`
 

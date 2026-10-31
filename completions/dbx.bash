@@ -75,15 +75,15 @@ _dbx_completar() {
   fi
 
   case $comando in
-    upload) lista='--modo --mode --rev --forcar --force --limite-banda --bwlimit --paralelo --parallel --sem-retomada --no-resume --progresso --progress -p --sem-progresso --no-progress' ;;
-    download) lista='--excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --paralelo --parallel --progresso --progress -p --sem-progresso --no-progress --forcar --force --sem-retomada --no-resume' ;;
+    upload) lista='--modo --mode --rev --forcar --force --limite-banda --bwlimit --paralelo --parallel --bloco --batch --sem-retomada --no-resume --progresso --progress -p --sem-progresso --no-progress' ;;
+    download) lista='--excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --paralelo --parallel --bloco --batch --progresso --progress -p --sem-progresso --no-progress --forcar --force --sem-retomada --no-resume' ;;
     list) lista='--limite --limit --recursivo --recursive -R' ;;
     delete) lista='--confirmar --yes -y --rev' ;;
     space) lista='--humano --human -H' ;;
     config) lista='--perfil --profile --substituir --replace --raiz --root --debug' ;;
     unlink) lista='--perfil --profile --confirmar --yes --manter-aplicativo --keep-app' ;;
     perfis) lista='' ;;
-    sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --paralelo --parallel --sem-cursor --no-cursor --varredura-completa --full-scan --progresso --progress -p --sem-progresso --no-progress' ;;
+    sync) lista='--enviar --push --receber --pull --origem --source --destino --dest --espelhar --mirror --confirmar --yes --permitir-origem-vazia --allow-empty-source --forcar --force --esperar --wait --excluir --exclude --incluir --include --modificado-desde --modified-since --modificado-ate --modified-until --tamanho-min --min-size --tamanho-max --max-size --limite-banda --bwlimit --paralelo --parallel --bloco --batch --sem-cursor --no-cursor --varredura-completa --full-scan --progresso --progress -p --sem-progresso --no-progress' ;;
     verificar) lista='--enviar --push --receber --pull --origem --source --destino --dest --esperar --wait --excluir --exclude --incluir --include --progresso --progress -p --sem-progresso --no-progress' ;;
     revisoes) lista='--limite --limit --por-id --by-id' ;;
     restaurar) lista='--rev --antes-de --before' ;;
@@ -107,7 +107,7 @@ _dbx_completar() {
     --rev | --limite | --limit | --raiz | --root | --esperar | --wait | --antes-de | --before | \
       --excluir | --purge | --confirmar-caminho | --exclude | --incluir | --include | \
       --modificado-desde | --modified-since | --modificado-ate | --modified-until | \
-      --tamanho-min | --min-size | --tamanho-max | --max-size | --limite-banda | --bwlimit | --paralelo | --parallel | \
+      --tamanho-min | --min-size | --tamanho-max | --max-size | --limite-banda | --bwlimit | --paralelo | --parallel | --bloco | --batch | \
       --expira | --expires | --revogar | --revoke | --padrao | --pattern | --manter | --keep | \
       --dias | --days | --perfil | --profile) return 0 ;;
     --origem | --source) [[ $sentido == 'enviar' ]] && local_='sim' ;;

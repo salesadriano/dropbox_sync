@@ -224,6 +224,36 @@ dbx_cli_validar_paralelo() {
   return "$DBX_CLI_ERRO_USO"
 }
 
+# Faixa e padrao de `--bloco` / `DBX_BLOCO` (RF-186(b), DIV-377 A), em arquivos
+# por ciclo do sync.
+readonly DBX_CLI_BLOCO_MAXIMO=1000000
+readonly DBX_CLI_BLOCO_PADRAO=50000
+
+# dbx_cli_validar_bloco <nome> <valor> [opcao|variavel] — RF-186(b).
+#
+# Inteiro de 1 a 1000000: zero, acima do teto, vazio, nao numerico, com sinal,
+# espaco ou zero a esquerda e uso invalido. O inteiro vai a DBX_CLI_BLOCO; o
+# motivo nomeia a ORIGEM (opcao ou variavel), com o valor citado truncado e
+# escapado se tiver byte de controle.
+DBX_CLI_BLOCO=''
+dbx_cli_validar_bloco() {
+  local nome=$1 valor=${2-} origem=${3:-opcao} exibido
+  DBX_CLI_MOTIVO=''
+  DBX_CLI_BLOCO=''
+  if [[ $valor =~ ^[1-9][0-9]{0,6}$ ]] && ((valor <= DBX_CLI_BLOCO_MAXIMO)); then
+    DBX_CLI_BLOCO=$valor
+    return 0
+  fi
+  exibido=${valor:0:64}
+  [[ $exibido == *[$'\001'-$'\037\177']* ]] && printf -v exibido '%q' "$exibido"
+  if [[ $origem == 'variavel' ]]; then
+    DBX_CLI_MOTIVO="variavel de ambiente $nome invalida: [$exibido]; use um inteiro de 1 a $DBX_CLI_BLOCO_MAXIMO, ou remova-a (unset $nome)"
+  else
+    DBX_CLI_MOTIVO="valor invalido para $nome: [$exibido]; use um inteiro de 1 a $DBX_CLI_BLOCO_MAXIMO (arquivos por ciclo)"
+  fi
+  return "$DBX_CLI_ERRO_USO"
+}
+
 # dbx_cli_validar_taxa <nome> <valor> <piso> [opcao|variavel] — RF-82(b)(c)(g).
 #
 # `[1-9][0-9]{0,8}` com sufixo opcional K, M ou G (base 1024, como o cURL), em

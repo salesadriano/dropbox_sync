@@ -1582,3 +1582,29 @@ dbx_cmd_paralelo() {
   fi
   return 0
 }
+
+# dbx_cmd_bloco <tem_opcao: sim|nao> <opcao_como_digitada> <valor>
+#
+# RF-186(b)(c): como `dbx_cmd_paralelo`. A opcao vence e a variavel DBX_BLOCO NAO
+# e lida; sem opcao, a variavel presente e invalida (inclusive vazia) recusa
+# nomeando-a. Resultado em DBX_CMD_BLOCO (padrao 50000) e DBX_CMD_BLOCO_ORIGEM
+# (padrao|opcao|ambiente); motivo da recusa em DBX_CLI_MOTIVO.
+DBX_CMD_BLOCO=${DBX_CLI_BLOCO_PADRAO:-50000}
+DBX_CMD_BLOCO_ORIGEM='padrao'
+dbx_cmd_bloco() {
+  local tem_opcao=$1 nome_opcao=$2 valor=${3-}
+  DBX_CMD_BLOCO=${DBX_CLI_BLOCO_PADRAO:-50000}
+  DBX_CMD_BLOCO_ORIGEM='padrao'
+  if [[ $tem_opcao == 'sim' ]]; then
+    dbx_cli_validar_bloco "$nome_opcao" "$valor" opcao || return $?
+    DBX_CMD_BLOCO=$DBX_CLI_BLOCO
+    DBX_CMD_BLOCO_ORIGEM='opcao'
+  elif [[ -n ${DBX_BLOCO+definida} ]]; then
+    dbx_cli_validar_bloco DBX_BLOCO "$DBX_BLOCO" variavel || return $?
+    # shellcheck disable=SC2034  # canal publico, lido pelos comandos
+    DBX_CMD_BLOCO=$DBX_CLI_BLOCO
+    # shellcheck disable=SC2034  # canal publico, lido pelos comandos
+    DBX_CMD_BLOCO_ORIGEM='ambiente'
+  fi
+  return 0
+}
