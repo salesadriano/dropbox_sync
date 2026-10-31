@@ -1355,6 +1355,7 @@ teste_qa_b7b_01_raiz_barra_grava_e_usa_o_cursor() {
   _pagina "${CUR_SENT}C1" false "${ent[@]}"
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
   _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
+  _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${CUR_SENT}C1\"}"
   _rodar sync --receber --origem / --destino "$B/l"
   assert_igual 0 "$ESTADO" "raiz /: $ERRO"
   _registro
@@ -1384,6 +1385,7 @@ teste_qa_b7b_02_subpasta_com_a_propria_pasta_grava_e_usa_o_cursor() {
   _pagina "${CUR_SENT}C1" false "${ent[@]}"
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
   _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
+  _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${CUR_SENT}C1\"}"
   _rodar sync --receber --origem /r/Sub --destino "$B/l"
   assert_igual 0 "$ESTADO" "subpasta: $ERRO"
   _registro
