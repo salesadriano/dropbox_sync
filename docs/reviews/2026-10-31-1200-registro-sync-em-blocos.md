@@ -76,6 +76,7 @@ Riscos residuais desta entrega (nao cobertos pelos `RSK` acima):
 4. Red nao isolado de alguns testes da etapa 3b (RF-190, RF-194, RF-195): ver evidencias. Pendente ao QA.
 5. Uma chamada a mais por execucao em blocos (`get_latest_cursor` antes do ciclo 1).
 6. Achados 5 (dependencia `lib/walk` -> `DBX_CMD_MARCA_RECEBIMENTO`), 6 (motivo de parcialidade com quebra de linha) e 7 (recuo do laco) do parecer de conformidade: abertos.
+7. Suite completa oficial (`sh scripts/suite-completa.sh`, commit `195af1e`) vermelha na familia do problema conhecido "retomada do download sob carga" (notas da v2.1.0). Tres execucoes de ~40 min, todas paradas em `tests/integracao/retomada_download_test.sh` (`rmd08`, `rmd07`, `rmd08`), depois de 104 arquivos e 2553-2554 casos aprovados; 7 arquivos nao executados pela suite oficial (verdes na execucao arquivo por arquivo do Tech Lead antes dos dois ultimos commits). O arquivo isolado passou 6 de 6 (3 no ramo, 3 na base `85885e3`). A demanda nao altera a retomada do download de arquivo unico. Decisao do solicitante: push da branch e PR aberta por ele; a nova execucao falhou de novo so em `rmd08`. Risco: a falha se repete 3 de 3 dentro da suite e nunca isolada, o que tambem admite interferencia entre arquivos da mesma execucao. Dono: Tech Lead, demanda propria de investigacao. Ver [aprovacao final](2026-10-31-1200-aprovacao-final-sync-em-blocos.md) e [revisao consolidada](2026-10-31-1200-revisao-consolidada-sync-em-blocos.md).
 
 ### Impacto
 
@@ -131,6 +132,9 @@ flowchart TD
 - QA: pendente (validacao independente e reaceite das suites `qa_*` alteradas).
 - Tech Lead: pendente (aprovacao final, decisao sobre achados 1, 3, 5, 6 e 7, e aceite do risco de ramo so no destino).
 - Solicitante: pendente (reaceite das suites `qa_*` alteradas).
+- Aprovacao final do Tech Lead (2026-10-31, Aprovado com ressalvas): [aprovacao-final-sync-em-blocos](2026-10-31-1200-aprovacao-final-sync-em-blocos.md).
+- Revisao consolidada do Tech Lead: [revisao-consolidada-sync-em-blocos](2026-10-31-1200-revisao-consolidada-sync-em-blocos.md).
+- Aceite do solicitante das suites `qa_*` (regra 12, 2026-10-31): [entrada de aceite](../../.github/agents/memoria/entradas/2026-10-31-1200-aceite-testes-qa-sync-em-blocos.md).
 
 ## Validacao do QA (partes 1 e 2a)
 
