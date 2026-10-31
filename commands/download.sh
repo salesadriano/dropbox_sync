@@ -16,12 +16,28 @@
 
 dbx_cmd_download_requisitos() { printf 'credencial'; }
 
+# _dbx_cmd_download_bloco_pasta — RF-186(d)(e): resolve `--bloco`/`DBX_BLOCO` so
+# quando o alvo e pasta (escopo dinamico: tem_bloco, opcao_bloco, valor_bloco) e
+# deixa em `repasse_bloco` o que segue ao `sync` interno, ja validado.
+_dbx_cmd_download_bloco_pasta() {
+  repasse_bloco=()
+  dbx_cmd_bloco "$tem_bloco" "$opcao_bloco" "$valor_bloco" || {
+    dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+    return $?
+  }
+  [[ $DBX_CMD_BLOCO_ORIGEM != 'padrao' ]] && repasse_bloco=(--bloco "$DBX_CMD_BLOCO")
+  return 0
+}
+
 # _dbx_cmd_download_pasta <remoto> <alvo> [opcoes do sync...] — recebimento
 # recursivo pelo `sync --receber` interno (RF-69(h)), com os filtros e o limite
 # de banda repassados (RF-80(l), RF-82(a)).
 _dbx_cmd_download_pasta() {
   local remoto=$1 alvo=$2
   shift 2
+  # RF-186(e): alvo revelado pasta; a opcao/variavel invalida recusa com 2 antes
+  # de qualquer escrita ou estado.
+  _dbx_cmd_download_bloco_pasta || return $?
   # RF-56: o destino que ja existe como arquivo e do usuario, e nao vira
   # diretorio. Remove-lo para dar lugar a pasta seria perda sem aviso.
   if [[ -e $alvo || -L $alvo ]] && [[ ! -d $alvo ]]; then
@@ -36,7 +52,7 @@ _dbx_cmd_download_pasta() {
   dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
   # shellcheck source=commands/sync.sh
   . "${BASH_SOURCE[0]%/*}/sync.sh"
-  local -a args_sync=(--receber --origem "$remoto" --destino "$alvo" "$@")
+  local -a args_sync=(--receber --origem "$remoto" --destino "$alvo" "$@" ${repasse_bloco[@]+"${repasse_bloco[@]}"})
   [[ ${DBX_CLI_PROGRESSO:-} == 'sim' ]] && args_sync+=(--progresso)
   [[ ${DBX_CLI_PROGRESSO:-} == 'nao' ]] && args_sync+=(--sem-progresso)
   # DIV-205 (fase 7b): o cursor de listagem serve so ao `sync --receber`; o
@@ -93,6 +109,8 @@ _dbx_cmd_download_retomavel() {
 dbx_cmd_download_executar() {
   local caminho='' destino='' opcao tem_limite='nao' opcao_limite='' valor_limite='' sem_retomada='nao'
   local tem_paralelo='nao' opcao_paralelo='' valor_paralelo=''
+  local tem_bloco='nao' opcao_bloco='' valor_bloco=''
+  local -a repasse_bloco=()
   local -a filtros_caminho=() filtros_meta=()
   while [[ $# -gt 0 ]]; do
     case ${1-} in
@@ -127,6 +145,13 @@ dbx_cmd_download_executar() {
         shift
         valor_paralelo=${1-}
         tem_paralelo='sim'
+        ;;
+      # RF-186: arquivos por ciclo; o ultimo valor vence, validado depois do laco.
+      --bloco | --batch)
+        opcao_bloco=$1
+        shift
+        valor_bloco=${1-}
+        tem_bloco='sim'
         ;;
       --progresso | --progress | -p)
         # shellcheck disable=SC2034 # variavel global consumida por lib/progress.sh
@@ -250,7 +275,8 @@ dbx_cmd_download_executar() {
     # DIV-205: download de pasta nunca usa o cursor de listagem.
     # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico
     local DBX_CMD_SYNC_CHAMADOR='download'
-    dbx_cmd_sync_executar --receber --origem / --destino "$dir_raiz_local" ${repasse[@]+"${repasse[@]}"}
+    _dbx_cmd_download_bloco_pasta || return $?
+    dbx_cmd_sync_executar --receber --origem / --destino "$dir_raiz_local" ${repasse[@]+"${repasse[@]}"} ${repasse_bloco[@]+"${repasse_bloco[@]}"}
     return $?
   fi
 

@@ -42,6 +42,14 @@ DBX_WALK_CARREGADO=1
 _dbx_walk_diretorio=${BASH_SOURCE[0]%/*}
 [[ $_dbx_walk_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_walk_diretorio=.
 _dbx_walk_diretorio=$(cd -P -- "$_dbx_walk_diretorio" && pwd -P)
+
+# Unica entrada por caminho montado da travessia (auditoria DP-26): roda no
+# shell do subshell chamador, entao o `cd` vale para ele. Nenhum outro ponto
+# reabre diretorio por caminho; a descida e sempre por nome relativo.
+_dbx_walk_entrar_raiz() {
+  local raiz=$1
+  cd -P -- "$raiz"
+}
 # shellcheck source=lib/errors.sh
 . "$_dbx_walk_diretorio/errors.sh"
 # shellcheck source=lib/hash.sh
@@ -70,6 +78,7 @@ DBX_WALK_TOTAL=0
 # descida PODOU, por caminho relativo. Quem consome as conta como filtradas.
 declare -ga DBX_WALK_PODADAS=()
 _dbx_walk_filtrar='nao'
+_dbx_walk_conjunto=''
 
 # _dbx_walk_descer <profundidade> <prefixo>
 #
@@ -102,19 +111,7 @@ _dbx_walk_descer() {
     # Vinculo e entrada que nao e arquivo comum so saem em silencio se ficam
     # fora do escopo tanto como arquivo quanto como pasta: assim o par do outro
     # lado, seja do tipo que for, tambem esta fora, e nada e apagado por eles.
-    if [[ $_dbx_walk_filtrar == 'sim' ]]; then
-      if [[ -d $nome && ! -L $nome ]]; then
-        if dbx_filtro_pasta_excluida "$relativo"; then
-          printf '%s\0' "$relativo" >&4
-          continue
-        fi
-      elif [[ -L $nome || ! -f $nome ]]; then
-        if ! dbx_filtro_classificar "$relativo" nao && ! dbx_filtro_classificar "$relativo" sim; then
-          printf '%s\0' "$relativo" >&4
-          continue
-        fi
-      fi
-    fi
+    _dbx_walk_podar_entrada "$relativo" "$nome" && continue
 
     # A ordem importa: `-L` antes de `-d`, porque uma ligacao PARA diretorio
     # satisfaz `-d` e seria percorrida.
@@ -208,7 +205,7 @@ dbx_walk_local() {
     # seja transferido como qualquer outro — omiti-lo faria o destino divergir
     # em silencio. `.` e `..` nao entram por `dotglob`.
     shopt -s nullglob dotglob
-    cd -P -- "$raiz" || exit 1
+    _dbx_walk_entrar_raiz "$raiz" || exit 1
     _dbx_walk_descer 1 ''
   ) >"$destino" 3>"$motivos" 4>"$podadas"
 
@@ -273,5 +270,271 @@ dbx_walk_ler() {
     _identidades+=("${resto%%$'\t'*}")
     _caminhos+=("${resto#*$'\t'}")
   done <"$arquivo"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Travessia por diretorio (F-101, RF-187, RF-188(a)) — etapa 2
+# ---------------------------------------------------------------------------
+#
+# Duas passadas, e as DUAS mantem as guardas da descida acima (nome relativo,
+# ligacao simbolica = parcial, `\0` nos registros, poda por filtro):
+#
+#   `dbx_walk_diretorios` enumera so os DIRETORIOS, cada um com a contagem dos
+#   seus arquivos diretos no escopo (nada de resumo, nada de `stat`);
+#   `dbx_walk_ciclo` le os arquivos diretos de um grupo de diretorios.
+#
+# Ordem de descoberta; quem planeja os ciclos ordena (DIV-384).
+
+# RF-80(b): poda da entrada fora do escopo do filtro (pasta excluida; vinculo ou
+# entrada que nao e arquivo comum fora de qualquer padrao). Status 0 = podada
+# (o relativo vai ao fd 4 e o chamador segue para a proxima entrada). Roda no
+# diretorio corrente da travessia, com `$2` o nome nele. Unico lugar da regra:
+# as tres travessias (`dbx_walk_local`, `_dbx_walk_dirs`, `_dbx_walk_ciclo_dir`).
+_dbx_walk_podar_entrada() {
+  local relativo=$1 nome=$2
+  [[ $_dbx_walk_filtrar == 'sim' ]] || return 1
+  if [[ -d $nome && ! -L $nome ]]; then
+    if dbx_filtro_pasta_excluida "$relativo"; then
+      printf '%s\0' "$relativo" >&4
+      return 0
+    fi
+  elif [[ -L $nome || ! -f $nome ]]; then
+    if ! dbx_filtro_classificar "$relativo" nao && ! dbx_filtro_classificar "$relativo" sim; then
+      printf '%s\0' "$relativo" >&4
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# _dbx_walk_dirs <profundidade> <prefixo> — roda no subshell de `dbx_walk_diretorios`.
+# Registro: `contagem<TAB>caminho_relativo\0` (raiz com caminho vazio).
+_dbx_walk_dirs() {
+  local profundidade=$1 prefixo=$2 nome relativo n=0
+  local -a subs=()
+  if [[ $profundidade -gt $DBX_WALK_PROFUNDIDADE_MAXIMA ]]; then
+    printf 'profundidade maxima excedida em: %s\n' "${prefixo:-.}" >&3
+    return 0
+  fi
+  for nome in *; do
+    relativo="${prefixo}${nome}"
+    _dbx_walk_podar_entrada "$relativo" "$nome" && continue
+    if [[ -L $nome ]]; then
+      printf 'ligacao simbolica nao percorrida: %s\n' "$relativo" >&3
+      continue
+    fi
+    if [[ -d $nome ]]; then
+      subs+=("$nome")
+      continue
+    fi
+    if [[ ! -f $nome ]]; then
+      printf 'entrada nao e arquivo comum: %s\n' "$relativo" >&3
+      continue
+    fi
+    # So o que entraria no ciclo conta: fora do escopo de caminho e temporario de
+    # recebimento ficam de fora (RF-196(b)).
+    if [[ $_dbx_walk_filtrar == 'sim' ]] && ! dbx_filtro_classificar "$relativo" nao; then
+      continue
+    fi
+    [[ -n ${DBX_CMD_MARCA_RECEBIMENTO:-} && $nome == .*"$DBX_CMD_MARCA_RECEBIMENTO"?????? ]] && continue
+    n=$((n + 1))
+  done
+  printf '%s\t%s\0' "$n" "${prefixo%/}"
+  for nome in ${subs[@]+"${subs[@]}"}; do
+    relativo="${prefixo}${nome}"
+    if [[ ! -r $nome || ! -x $nome ]]; then
+      printf 'diretorio ilegivel: %s\n' "$relativo" >&3
+      continue
+    fi
+    if ! cd -- "$nome" 2>/dev/null; then
+      printf 'nao foi possivel descer em: %s\n' "$relativo" >&3
+      continue
+    fi
+    _dbx_walk_dirs $((profundidade + 1)) "$relativo/"
+    if ! cd .. 2>/dev/null; then
+      printf 'nao foi possivel retornar de: %s\n' "$relativo" >&3
+      return 1
+    fi
+  done
+  return 0
+}
+
+# _dbx_walk_motivos <arquivo_de_motivos> — junta os motivos em DBX_WALK_MOTIVO
+# (uma linha so, ver a nota de `dbx_walk_local`) e marca a travessia parcial.
+_dbx_walk_motivos() {
+  local _linha
+  [[ -s $1 ]] || return 0
+  # shellcheck disable=SC2034  # canais publicos, ver nota no topo
+  DBX_WALK_PARCIAL='sim'
+  DBX_WALK_MOTIVO=''
+  while IFS= read -r _linha; do
+    [[ -n $_linha ]] || continue
+    DBX_WALK_MOTIVO="${DBX_WALK_MOTIVO}${DBX_WALK_MOTIVO:+; }${_linha}"
+  done <"$1"
+}
+
+# dbx_walk_diretorios <raiz> <arquivo_de_registros> [<subdiretorio_inicial>]
+#
+# Enumera os diretorios sob a raiz (ou sob o subdiretorio inicial, para a
+# varredura de um ramo so do destino, RF-190(b)). Mesmas marcas de parcialidade
+# de `dbx_walk_local`; `DBX_WALK_PODADAS` traz o que o filtro podou.
+dbx_walk_diretorios() {
+  [[ $# -ge 2 && $# -le 3 ]] || return "$DBX_WALK_ERRO_USO"
+  local raiz=$1 destino=$2 inicio=${3:-} motivos podadas
+  # shellcheck disable=SC2034  # canal publico, ver nota no topo
+  DBX_WALK_PARCIAL='nao'
+  DBX_WALK_MOTIVO=''
+  DBX_WALK_TOTAL=0
+  DBX_WALK_PODADAS=()
+  _dbx_walk_filtrar='nao'
+  dbx_filtro_ativo && _dbx_walk_filtrar='sim'
+  [[ -d $raiz && -r $raiz && -x $raiz ]] || return "$DBX_WALK_ERRO_NAO_ENCONTRADO"
+  dbx_tmp_arquivo "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX" || return "$DBX_WALK_ERRO_USO"
+  motivos=$DBX_TMP_CAMINHO
+  dbx_tmp_arquivo "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX" || {
+    dbx_tmp_remover "$motivos"
+    return "$DBX_WALK_ERRO_USO"
+  }
+  podadas=$DBX_TMP_CAMINHO
+  : >"$destino"
+  (
+    shopt -s nullglob dotglob
+    _dbx_walk_entrar_raiz "$raiz" || exit 1
+    resto=$inicio
+    while [[ -n $resto ]]; do
+      comp=${resto%%/*}
+      if [[ $resto == */* ]]; then resto=${resto#*/}; else resto=''; fi
+      if [[ -d $comp && ! -L $comp ]] && cd -- "$comp" 2>/dev/null; then
+        :
+      else
+        printf 'nao foi possivel descer em: %s\n' "$inicio" >&3
+        exit 0
+      fi
+    done
+    _dbx_walk_dirs 1 "${inicio:+$inicio/}"
+  ) >"$destino" 3>"$motivos" 4>"$podadas"
+  _dbx_walk_motivos "$motivos"
+  dbx_tmp_remover "$motivos"
+  local _podada _reg
+  while IFS= read -r -d '' _podada; do
+    DBX_WALK_PODADAS+=("$_podada")
+  done <"$podadas"
+  dbx_tmp_remover "$podadas"
+  while IFS= read -r -d '' _reg; do
+    DBX_WALK_TOTAL=$((DBX_WALK_TOTAL + 1))
+  done <"$destino"
+  return 0
+}
+
+# _dbx_walk_ciclo_dir <diretorio_relativo> — roda em subshell proprio, herdando
+# a raiz como diretorio corrente. Desce por componente (ligacao = parcial) e
+# emite os arquivos DIRETOS (`tamanho<TAB>identidade<TAB>caminho\0`, o formato de
+# `dbx_walk_local`) no descritor 1 e os subdiretorios no 5. Diretorio que nao
+# existe e vazio legitimo (destino ainda nao criado), nunca parcialidade.
+_dbx_walk_ciclo_dir() {
+  local dir=$1 resto=$1 comp prefixo='' nome relativo tamanho identidade
+  local -A _conj_vazio=()
+  local -n _conj=${_dbx_walk_conjunto:-_conj_vazio}
+  while [[ -n $resto ]]; do
+    comp=${resto%%/*}
+    if [[ $resto == */* ]]; then resto=${resto#*/}; else resto=''; fi
+    if [[ -L $comp ]]; then
+      printf 'ligacao simbolica nao percorrida: %s\n' "$dir" >&3
+      return 0
+    fi
+    [[ -d $comp ]] || return 0
+    if [[ ! -r $comp || ! -x $comp ]]; then
+      printf 'diretorio ilegivel: %s\n' "$dir" >&3
+      return 0
+    fi
+    if ! cd -- "$comp" 2>/dev/null; then
+      printf 'nao foi possivel descer em: %s\n' "$dir" >&3
+      return 0
+    fi
+  done
+  [[ -n $dir ]] && prefixo="$dir/"
+  for nome in *; do
+    relativo="${prefixo}${nome}"
+    _dbx_walk_podar_entrada "$relativo" "$nome" && continue
+    if [[ -L $nome ]]; then
+      printf 'ligacao simbolica nao percorrida: %s\n' "$relativo" >&3
+      continue
+    fi
+    if [[ -d $nome ]]; then
+      printf '%s\0' "$relativo" >&5
+      # Ramo SO DO DESTINO (fora do conjunto de diretorios da origem): lido inteiro
+      # aqui, pela descida de sempre, para o ciclo planejar a exclusao dele (RF-190(b)).
+      if [[ -n $_dbx_walk_conjunto && -z ${_conj["k:${relativo,,}"]+definido} ]]; then
+        if [[ ! -r $nome || ! -x $nome ]]; then
+          printf 'diretorio ilegivel: %s\n' "$relativo" >&3
+        elif ! (cd -- "$nome" 2>/dev/null && _dbx_walk_descer 2 "$relativo/"); then
+          printf 'nao foi possivel ler o ramo: %s\n' "$relativo" >&3
+        fi
+      fi
+      continue
+    fi
+    if [[ ! -f $nome ]]; then
+      printf 'entrada nao e arquivo comum: %s\n' "$relativo" >&3
+      continue
+    fi
+    if dbx_hash_identidade "$nome"; then
+      tamanho=$DBX_HASH_TAMANHO_ARQUIVO
+      identidade=$DBX_HASH_IDENTIDADE
+    elif dbx_atributo tamanho "$nome"; then
+      tamanho=$DBX_ATRIBUTO
+      identidade=''
+    else
+      printf 'nao foi possivel inspecionar: %s\n' "$relativo" >&3
+      continue
+    fi
+    printf '%s\t%s\t%s\0' "$tamanho" "$identidade" "$relativo"
+  done
+  return 0
+}
+
+# dbx_walk_ciclo <raiz> <arquivo_de_diretorios> <ini> <fim> <arquivo_de_registros>
+#   [<arquivo_de_subdiretorios>]
+#
+# Os arquivos diretos dos diretorios `ini..fim-1` (fim exclusivo) do arquivo de
+# diretorios (`contagem<TAB>caminho\0`, ja na ordem dos ciclos). Os
+# subdiretorios vistos vao ao ultimo arquivo (para achar ramos so do destino).
+dbx_walk_ciclo() {
+  [[ $# -ge 5 && $# -le 7 ]] || return "$DBX_WALK_ERRO_USO"
+  _dbx_walk_conjunto=${7:-}
+  local raiz=$1 dirs=$2 ini=$3 fim=$4 destino=$5 filhos=${6:-/dev/null} motivos reg i=0 _r
+  [[ $ini =~ ^[0-9]+$ && $fim =~ ^[0-9]+$ ]] || return "$DBX_WALK_ERRO_USO"
+  # shellcheck disable=SC2034  # canal publico, ver nota no topo
+  DBX_WALK_PARCIAL='nao'
+  DBX_WALK_MOTIVO=''
+  DBX_WALK_TOTAL=0
+  DBX_WALK_PODADAS=()
+  _dbx_walk_filtrar='nao'
+  dbx_filtro_ativo && _dbx_walk_filtrar='sim'
+  [[ -d $raiz && -r $raiz && -x $raiz ]] || return "$DBX_WALK_ERRO_NAO_ENCONTRADO"
+  dbx_tmp_arquivo "${TMPDIR:-/tmp}/dbx-walk.XXXXXXXX" || return "$DBX_WALK_ERRO_USO"
+  motivos=$DBX_TMP_CAMINHO
+  : >"$destino"
+  [[ $filhos == /dev/null ]] || : >"$filhos"
+  (
+    shopt -s nullglob dotglob
+    _dbx_walk_entrar_raiz "$raiz" || exit 1
+    while IFS= read -r -d '' reg; do
+      ((i >= fim)) && break
+      if ((i >= ini)); then
+        (_dbx_walk_ciclo_dir "${reg#*$'\t'}")
+      fi
+      i=$((i + 1))
+    done <"$dirs"
+  ) >"$destino" 3>"$motivos" 4>"$motivos.podadas" 5>>"$filhos"
+  _dbx_walk_motivos "$motivos"
+  dbx_tmp_remover "$motivos"
+  while IFS= read -r -d '' _r; do
+    DBX_WALK_PODADAS+=("$_r")
+  done <"$motivos.podadas"
+  rm -f -- "$motivos.podadas"
+  while IFS= read -r -d '' _r; do
+    DBX_WALK_TOTAL=$((DBX_WALK_TOTAL + 1))
+  done <"$destino"
   return 0
 }

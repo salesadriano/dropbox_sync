@@ -415,6 +415,15 @@ dbx_cmd_diagnostico_executar() {
     fi
   fi
 
+  # 8c. bloco (F-101, RF-186(f)) — como o paralelo: so com DBX_BLOCO definida; invalida e aviso, nunca falha.
+  if [[ -n ${DBX_BLOCO+definida} ]]; then
+    if dbx_cli_validar_bloco DBX_BLOCO "$DBX_BLOCO" variavel; then
+      _dbx_cmd_diag bloco ok "$DBX_CLI_BLOCO (origem: ambiente, DBX_BLOCO); --bloco vence a variavel"
+    else
+      _dbx_cmd_diag bloco aviso "$DBX_CLI_MOTIVO; sync, upload e download saem com 2 enquanto ela estiver assim" 'unset DBX_BLOCO'
+    fi
+  fi
+
   # 9. retomada (fase 7a, RF-107(d)) — uma linha por `retomada-*`, so lendo.
   _dbx_cmd_diag_retomadas
 
