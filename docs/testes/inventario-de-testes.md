@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
-Atualizado em: 2026-10-31, demanda `sync-em-blocos` (`docs/prompts/2026-10-31_1200_sync-em-blocos.md`), por QA Expert, com montagem e conferencia do Tech Lead.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 111 arquivos, 2830 casos, 0 divergencias (com os quatro arquivos novos da demanda `sync-em-blocos` ainda nao versionados, conferidos por indice temporario com `git add -N`).
+Atualizado em: 2026-10-31, demanda `investigar-retomada-download` (`docs/prompts/2026-10-31_1900_investigar-retomada-download.md`), pelo Tech Lead (Fluxo P: linhas do `harness_test.sh`); antes, demanda `sync-em-blocos`, por QA Expert.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 111 arquivos, 2833 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -91,7 +91,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/disponibilidade_test.sh` | `lib/disponibilidade.sh` e `dbx_http_sondar` em `lib/http.sh` (sonda de disponibilidade, reserva compartilhada entre processos, classific... | disponibilidade_test | unitario | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 19 | RF-149, RF-150, RF-152(a); TC-DSP-13..21, 22..25, 27; DIV-331; log `docs/prompts/2026-10-23_0900_teste-de-disponibilidade.md` |
 | `tests/unit/errors_test.sh` | `lib/errors.sh` (taxonomia de erro, codigos de saida, politica de retentativa, redacao de segredos, idempotencia) | `errors` | unitario | Senior Developer (TDD; commit `a03d2c0` "first commit", sem log de prompt) | 82 | RF-29; RF-35 (contrato congelado dos codigos); RNF-08; DIV-58 (tags da recuperacao); `docs/testes/mapa-modulos.md` (Regra 1: `errors` e c... |
 | `tests/unit/filtro_test.sh` | `lib/filtro.sh`: casamento de padroes estilo gitignore sem diferenca de caixa, validacao de padroes, filtros de data e de tamanho | `filtro_test` | unitario | Senior Developer (TDD da demanda `backlog-fase-4-filtros-e-banda`) | 34 | RF-79; RF-80(a); RF-81; TC-FLT; TC-FES-01; TC-FES-03; TC-FDT; DIV-94; DIV-103; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e... |
-| `tests/unit/harness_test.sh` | `tests/support/harness.sh` e `tests/run.sh`: assercoes e executor do arcabouco de teste | `harness_test` | unitario | Senior Developer (commit `64e6139`, `test: fixa todas as assercoes do arcabouco nos dois sentidos`; sem log de prompt) | 25 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste (commit `64e6139`); protocolo-tdd Regra 9 (parad... |
+| `tests/unit/harness_test.sh` | `tests/support/harness.sh` e `tests/run.sh`: assercoes e executor do arcabouco de teste | `harness_test` | unitario | Senior Developer (commit `64e6139`, `test: fixa todas as assercoes do arcabouco nos dois sentidos`; sem log de prompt) | 28 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste (commit `64e6139`); protocolo-tdd Regra 9 (parad... |
 | `tests/unit/hash_test.sh` | `lib/hash.sh`: `content_hash` da Dropbox (blocos de 4 MiB), API incremental, comparacao e identidade do arquivo | `hash` | unitario | Senior Developer (commit `a03d2c0`, `first commit`; sem log de prompt) | 44 | RF-33; RF-34; `docs/registros/vetores-content-hash.md` (vetores derivados de oraculo independente em Python); log de prompt: Nao aplicave... |
 | `tests/unit/hash_vetor_oficial_test.sh` | `lib/hash.sh` (`content_hash` da Dropbox) contra o arquivo de exemplo oficial da Dropbox | hash_vetor_oficial | unitario | Senior Developer (TDD da demanda `first commit`) | 2 | RF-34 (criterio de aceite: vetor oficial da Dropbox); Nao aplicavel como log de prompt: anterior a trilha do protocolo |
 | `tests/unit/http_fd_curl_real_test.sh` | `lib/http.sh`: destino `fd:n` e saida padrao do download, com o `curl` real do sistema (URL `file://`) | `http_fd_curl_real` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 4 | RF-171; RF-166..172; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
@@ -3467,13 +3467,11 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
 - **Dados e precondicoes:** diretorio temporario com copia de `tests/run.sh` e do harness e arquivos `a_test.sh` e `b_test.sh` fabricados; segredos sinteticos; variavel `MARCA_DIR`
 - **Comando:** `bash tests/run.sh tests/unit/harness_test.sh`
-- **Observacoes:** `teste_a_reprova`, `teste_b_nao_pode_rodar` e `teste_c_nao_pode_rodar` sao funcoes fabricadas dentro de heredocs dos casos de parada no primeiro erro (fixtures); o descobridor as lista como casos e por isso constam na tabela.
+- **Observacoes:** `teste_a_reprova`, `teste_b_nao_pode_rodar` e `teste_c_nao_pode_rodar` sao funcoes fabricadas dentro de heredocs dos casos de parada no primeiro erro (fixtures); o descobridor as lista como casos e por isso constam na tabela. Idem `teste_deixa_lixo` e `teste_ve_o_lixo_do_anterior`, fabricadas no caso da area temporaria por arquivo (demanda `investigar-retomada-download`).
 
 | Caso | O que verifica | Regra especifica |
 |---|---|---|
 | teste_a_reprova | Caso fabricado no arquivo `a_test.sh` do cenario de parada: reprova de proposito (fixture, nao roda na suite real) | protocolo-tdd Regra 9 |
-| teste_b_nao_pode_rodar | Caso fabricado que grava uma marca se rodar; a prova e a marca nao existir apos a reprova do caso anterior | protocolo-tdd Regra 9 |
-| teste_c_nao_pode_rodar | Caso fabricado no `b_test.sh` que grava uma marca se rodar; a prova e a marca nao existir apos a reprova do arquivo anterior | protocolo-tdd Regra 9 |
 | teste_arcabouco_para_no_primeiro_caso_com_reprovacao | O arcabouco nao executa o caso seguinte depois do primeiro caso reprovado | protocolo-tdd Regra 9 |
 | teste_assercao_contem_reprova_quando_o_trecho_falta | `assert_contem` reprova quando o trecho esperado falta | |
 | teste_assercao_de_arquivo_ausente_reprova_quando_o_arquivo_existe | A assercao de arquivo ausente reprova quando o arquivo existe | |
@@ -3485,6 +3483,10 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_assercao_diferente_reprova_quando_os_valores_sao_iguais | `assert_diferente` reprova quando os valores sao iguais | |
 | teste_assercao_igual_reprova_quando_os_valores_diferem | `assert_igual` reprova quando os valores diferem | |
 | teste_assercao_nao_contem_reprova_quando_o_trecho_esta_presente | `assert_nao_contem` reprova quando o trecho esta presente | |
+| teste_b_nao_pode_rodar | Caso fabricado que grava uma marca se rodar; a prova e a marca nao existir apos a reprova do caso anterior | protocolo-tdd Regra 9 |
+| teste_c_nao_pode_rodar | Caso fabricado no `b_test.sh` que grava uma marca se rodar; a prova e a marca nao existir apos a reprova do arquivo anterior | protocolo-tdd Regra 9 |
+| teste_cada_arquivo_tem_area_propria_removida_ao_terminar | O executor da a cada arquivo de teste uma area temporaria propria e a remove ao fim dele: o que um arquivo deixa nao chega ao seguinte (causa da falha do `retomada_download` na suite completa: area unica acumulava 9,4 GB num /tmp tmpfs de 9,8 GB) | log `docs/prompts/2026-10-31_1900_investigar-retomada-download.md` |
+| teste_deixa_lixo | Caso fabricado no `x_test.sh` do cenario da area por arquivo: grava 1 MiB na sua area e anota o caminho (fixture, nao roda na suite real) | log `docs/prompts/2026-10-31_1900_investigar-retomada-download.md` |
 | teste_diario_nao_recebe_segredo_sem_forma_reconhecivel | O diario de reprovacoes em disco nao recebe segredo mesmo sem forma reconhecivel | |
 | teste_diario_preserva_o_diagnostico_do_caso | O diario preserva o diagnostico do caso reprovado | |
 | teste_executor_para_no_primeiro_arquivo_com_reprovacao | O executor nao roda o arquivo seguinte depois do primeiro arquivo reprovado | protocolo-tdd Regra 9 |
@@ -3496,6 +3498,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_nenhum_arquivo_de_teste_redefine_uma_funcao_propria | Auditoria: nenhum arquivo de teste redefine funcao do arcabouco | |
 | teste_primitiva_de_falha_encerra_o_caso_com_status_um | A primitiva de falha encerra o caso com status 1 | |
 | teste_segredo_com_metacaractere_de_glob_e_tratado_literalmente | Segredo com metacaractere de glob e comparado literalmente | |
+| teste_ve_o_lixo_do_anterior | Caso fabricado no `y_test.sh`: marca se o arquivo do caso anterior sobreviveu ou se recebeu a mesma area (fixture) | log `docs/prompts/2026-10-31_1900_investigar-retomada-download.md` |
 
 
 ## `tests/unit/hash_test.sh`

@@ -406,4 +406,39 @@ teste_filtro_sem_correspondencia_continua_reprovando() {
   assert_contem 'nao corresponde a nenhum arquivo' "$DBX_LIDO" 'o motivo e dito'
 }
 
+# Area temporaria por arquivo de teste (demanda `investigar-retomada-download`).
+# Com uma area unica para a execucao inteira, o que cada arquivo deixava nela se
+# acumulava ate o fim: na suite completa chegou a 9,4 GB num /tmp tmpfs de 9,8 GB,
+# e `retomada_download_test.sh`, o primeiro arquivo grande depois disso, recebia
+# conteudo truncado (saida 11, integridade). Cada arquivo roda com a sua area,
+# removida assim que ele termina.
+teste_cada_arquivo_tem_area_propria_removida_ao_terminar() {
+  local raiz
+  raiz=$(_suite_fabricada)
+  rm -f "$raiz/tests/unit/a_test.sh" "$raiz/tests/unit/b_test.sh"
+  cat >"$raiz/tests/unit/x_test.sh" <<'FIM'
+. "$(dirname -- "${BASH_SOURCE[0]}")/../support/harness.sh"
+teste_deixa_lixo() {
+  head -c 1048576 /dev/zero >"$DBX_TESTES_TMP/lixo.bin"
+  printf '%s\n' "$DBX_TESTES_TMP" >"$MARCA_DIR/area_x"
+}
+harness_executar "$@"
+FIM
+  cat >"$raiz/tests/unit/y_test.sh" <<'FIM'
+. "$(dirname -- "${BASH_SOURCE[0]}")/../support/harness.sh"
+teste_ve_o_lixo_do_anterior() {
+  local area_x
+  area_x=$(<"$MARCA_DIR/area_x")
+  if [[ -e $area_x/lixo.bin ]]; then : >"$MARCA_DIR/lixo_sobreviveu"; fi
+  if [[ $DBX_TESTES_TMP == "$area_x" ]]; then : >"$MARCA_DIR/area_repetida"; fi
+}
+harness_executar "$@"
+FIM
+  _rodar_suite_fabricada "$raiz"
+  assert_igual 0 "$DBX_ESTADO" "suite fabricada verde: $DBX_LIDO"
+  assert_arquivo_ausente "$raiz/lixo_sobreviveu" \
+    'o que um arquivo de teste deixa na sua area temporaria nao chega ao arquivo seguinte'
+  assert_arquivo_ausente "$raiz/area_repetida" 'cada arquivo de teste recebe uma area temporaria propria'
+}
+
 harness_executar "$@"
