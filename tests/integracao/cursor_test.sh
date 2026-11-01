@@ -180,6 +180,8 @@ _servidor() {
   shift
   _pagina "$cursor" false '{".tag":"folder","name":"r","id":"id:raiz","path_lower":"/r","path_display":"/r"}' "$@"
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
+  _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
+  _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"$cursor\"}"
 }
 
 # _delta <de> <para> [entradas...] — o `continue` a partir de <de>.
@@ -354,11 +356,14 @@ teste_cul11_varredura_completa_de_duas_paginas_continue_sem_limit() {
   _arq a.txt && ent+=("$CUR_E")
   _pagina "${CUR_SENT}P1" true "${ent[@]}"
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
+  _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
+  _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${CUR_SENT}C1\"}"
   ent=()
   _arq b.txt && ent+=("$CUR_E")
   _delta "${CUR_SENT}P1" "${CUR_SENT}C1" "${ent[@]}"
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "duas paginas: $ERRO"
+  # RF-189: a coleta remota em fluxo lista a raiz uma unica vez (sem enumeracao previa).
   _contar files/list_folder '{"limit":100,*'
   assert_igual 1 "$CUR_CONTAGEM" 'o list_folder inicial leva limit (RNF-23)'
   _contar files/list_folder/continue "{\"cursor\":\"${CUR_SENT}P1\"}"
@@ -1349,6 +1354,8 @@ teste_qa_b7b_01_raiz_barra_grava_e_usa_o_cursor() {
   ent+=("$CUR_E")
   _pagina "${CUR_SENT}C1" false "${ent[@]}"
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
+  _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
+  _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${CUR_SENT}C1\"}"
   _rodar sync --receber --origem / --destino "$B/l"
   assert_igual 0 "$ESTADO" "raiz /: $ERRO"
   _registro
@@ -1377,6 +1384,8 @@ teste_qa_b7b_02_subpasta_com_a_propria_pasta_grava_e_usa_o_cursor() {
   _arq Sub/a.txt && ent+=("$CUR_E")
   _pagina "${CUR_SENT}C1" false "${ent[@]}"
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
+  _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
+  _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${CUR_SENT}C1\"}"
   _rodar sync --receber --origem /r/Sub --destino "$B/l"
   assert_igual 0 "$ESTADO" "subpasta: $ERRO"
   _registro

@@ -524,17 +524,18 @@ _dbx_sync_corpo_continue() {
   DBX_JSON_ESCAPADO=''
 }
 
-# dbx_sync_listar_completo <raiz_api> [lado] — a varredura completa: `list_folder`
-# recursivo com limite (RNF-23) e `continue` so com o cursor, montando a tabela
-# sem filtro. Raiz remota inexistente e tabela vazia, como sempre. Status de
-# hoje: 0, ou o codigo da classe do erro (motivo em DBX_SYNC_MOTIVO); laco de
-# paginas (DIV-h) e `erro_remoto`.
-dbx_sync_listar_completo() {
-  [[ $# -ge 1 && $# -le 2 ]] || return "$DBX_SYNC_ERRO_USO"
-  local raiz=$1 lado=${2:-} corpo url estado quantidade indice pagina=1 anterior='' codigo
-  dbx_sync_tabela_zerar
-  dbx_json_escapar_cadeia "$raiz"
-  corpo="{\"path\":\"$DBX_JSON_ESCAPADO\",\"recursive\":true}"
+# _dbx_sync_listar_paginas <raiz_api> <caminho_api> <recursivo: true|false> [lado]
+# — o laco de paginas comum da varredura completa e da listagem por diretorio:
+# `list_folder` com limite (RNF-23) e `continue` so com o cursor, alimentando a
+# tabela corrente sem zera-la (quem chama decide). Caminho inexistente e vazio.
+# Status: 0, ou o codigo da classe do erro (motivo em DBX_SYNC_MOTIVO); laco de
+# paginas (DIV-h) e `erro_remoto`. Leitura que NAO chegou ao fim e SEMPRE status
+# diferente de 0: quem chama (commands/sync) trata como falha de enumeracao,
+# interrompe o ciclo e nada e planejado nem apagado a partir dela.
+_dbx_sync_listar_paginas() {
+  local raiz=$1 caminho=$2 recursivo=$3 lado=${4:-} corpo url estado quantidade indice pagina=1 anterior='' codigo
+  dbx_json_escapar_cadeia "$caminho"
+  corpo="{\"path\":\"$DBX_JSON_ESCAPADO\",\"recursive\":$recursivo}"
   # O canal do escapador e ALHEIO e fica limpo assim que o documento e montado.
   # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
   DBX_JSON_ESCAPADO=''
@@ -590,6 +591,96 @@ dbx_sync_listar_completo() {
     _dbx_sync_corpo_continue "$anterior"
     url='https://api.dropboxapi.com/2/files/list_folder/continue'
   done
+  return 0
+}
+
+# dbx_sync_listar_completo <raiz_api> [lado] — a varredura completa: `list_folder`
+# recursivo sobre a raiz, montando a tabela sem filtro. Raiz remota inexistente e
+# tabela vazia, como sempre. Status e motivo: ver `_dbx_sync_listar_paginas`.
+dbx_sync_listar_completo() {
+  [[ $# -ge 1 && $# -le 2 ]] || return "$DBX_SYNC_ERRO_USO"
+  dbx_sync_tabela_zerar
+  _dbx_sync_listar_paginas "$1" "$1" true "${2:-}"
+}
+
+# dbx_sync_listar_diretorio <raiz_api> <diretorio_api> [lado] — RF-189: a
+# listagem de UM diretorio, `"recursive":false`, com `continue` ate o fim e as
+# mesmas guardas de paginas. NAO zera a tabela: o ciclo acumula os seus
+# diretorios (quem chama zera com `dbx_sync_tabela_zerar` ao iniciar o ciclo).
+# `path/not_found` e lista vazia legitima. Falha, pagina repetida ou teto de
+# paginas devolvem o codigo da classe (status diferente de 0): o
+# diretorio NAO foi lido por inteiro e a exclusao dele fica proibida (RF-190).
+dbx_sync_listar_diretorio() {
+  [[ $# -ge 2 && $# -le 3 ]] || return "$DBX_SYNC_ERRO_USO"
+  _dbx_sync_listar_paginas "$1" "$2" false "${3:-}"
+}
+
+# dbx_sync_blocos_planejar <vetor_dirs> <vetor_contagens> <n> — RF-187: o
+# planejador de ciclos, funcao pura (sem rede, sem disco). Os dois vetores (por
+# nome) estao na ordem da travessia (DIV-384) e tem o mesmo tamanho; a contagem
+# e de arquivos DIRETOS do diretorio. Resultado em DBX_SYNC_BLOCOS_CICLOS: uma
+# cadeia `ini-fim` por ciclo (indices dos vetores, `fim` exclusivo).
+#
+# O ciclo soma diretorios enquanto o acumulado for menor que N; o diretorio que
+# atinge ou cruza N entra INTEIRO e fecha o ciclo. Diretorio com mais de N
+# arquivos forma ciclo sozinho (fecha antes o ciclo em formacao, se ha um).
+# Diretorio sem arquivo conta 0 e e unidade valida. Nunca parte um diretorio.
+DBX_SYNC_BLOCOS_CICLOS=()
+dbx_sync_blocos_planejar() {
+  [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
+  [[ $3 =~ ^[1-9][0-9]*$ ]] || return "$DBX_SYNC_ERRO_USO"
+  local -n _blc_dirs=$1 _blc_qtds=$2
+  local n=$3 total=${#_blc_dirs[@]} indice inicio=0 acumulado=0 contagem
+  DBX_SYNC_BLOCOS_CICLOS=()
+  [[ ${#_blc_qtds[@]} -eq $total ]] || return "$DBX_SYNC_ERRO_USO"
+  for ((indice = 0; indice < total; indice++)); do
+    [[ ${_blc_qtds[indice]} =~ ^(0|[1-9][0-9]*)$ ]] || return "$DBX_SYNC_ERRO_USO"
+  done
+  for ((indice = 0; indice < total; indice++)); do
+    contagem=${_blc_qtds[indice]}
+    if ((contagem > n && indice > inicio)); then
+      DBX_SYNC_BLOCOS_CICLOS+=("$inicio-$indice")
+      inicio=$indice
+      acumulado=0
+    fi
+    acumulado=$((acumulado + contagem))
+    if ((acumulado >= n)); then
+      DBX_SYNC_BLOCOS_CICLOS+=("$inicio-$((indice + 1))")
+      inicio=$((indice + 1))
+      acumulado=0
+    fi
+  done
+  ((inicio < total)) && DBX_SYNC_BLOCOS_CICLOS+=("$inicio-$total")
+  return 0
+}
+
+# dbx_sync_cursor_ultimo <raiz_api> — RF-192: `get_latest_cursor` da raiz, com os
+# mesmos argumentos da listagem completa (recursivo, mesmo limite). Cursor em
+# DBX_SYNC_CURSOR_ULTIMO; status 0, ou o codigo da classe do erro. Cursor vazio,
+# grande ou fora da regex de lib/state e falha (nada e gravado com ele).
+DBX_SYNC_CURSOR_ULTIMO=''
+dbx_sync_cursor_ultimo() {
+  [[ $# -eq 1 ]] || return "$DBX_SYNC_ERRO_USO"
+  local corpo estado codigo
+  DBX_SYNC_CURSOR_ULTIMO=''
+  dbx_json_escapar_cadeia "$1"
+  corpo="{\"path\":\"$DBX_JSON_ESCAPADO\",\"recursive\":true,\"limit\":$DBX_SYNC_LIMITE_PAGINA}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/list_folder/get_latest_cursor' "$corpo" sim
+  estado=$?
+  if [[ $estado -ne 0 ]]; then
+    codigo=$(dbx_errors_codigo_saida "${DBX_HTTP_CLASSE:-erro_remoto}")
+    return "$codigo"
+  fi
+  _dbx_cmd_analisar_corpo || return $?
+  _dbx_cmd_campo cursor && DBX_SYNC_CURSOR_ULTIMO=$DBX_CMD_LIDO
+  DBX_CMD_LIDO=''
+  _dbx_cmd_encerrar_consulta
+  if [[ -z $DBX_SYNC_CURSOR_ULTIMO || ${#DBX_SYNC_CURSOR_ULTIMO} -gt 8192 || ! $DBX_SYNC_CURSOR_ULTIMO =~ $DBX_STATE_CURSOR_RE_CURSOR ]]; then
+    DBX_SYNC_CURSOR_ULTIMO=''
+    return "$(dbx_errors_codigo_saida erro_remoto)"
+  fi
   return 0
 }
 

@@ -53,6 +53,7 @@ dbx_cmd_upload_executar() {
   local origem='' destino='' modo='add' rev='' forcar='nao' sem_retomada='nao'
   local tem_limite='nao' opcao_limite='' valor_limite=''
   local tem_paralelo='nao' opcao_paralelo='' valor_paralelo=''
+  local tem_bloco='nao' opcao_bloco='' valor_bloco=''
   while [[ $# -gt 0 ]]; do
     case ${1-} in
       '') ;;
@@ -69,6 +70,13 @@ dbx_cmd_upload_executar() {
         shift
         valor_paralelo=${1-}
         tem_paralelo='sim'
+        ;;
+      # RF-186: arquivos por ciclo; o ultimo valor vence, validado depois do laco.
+      --bloco | --batch)
+        opcao_bloco=$1
+        shift
+        valor_bloco=${1-}
+        tem_bloco='sim'
         ;;
       --modo | --mode)
         shift
@@ -149,6 +157,14 @@ dbx_cmd_upload_executar() {
     }
     # RF-175(c): N efetivo no resumo de --debug.
     ((DBX_CMD_PARALELO > 1)) && dbx_debug_resumo_campo paralelo "$DBX_CMD_PARALELO"
+    # RF-186(e): a opcao e validada ja aqui (antes de rede e estado); a variavel
+    # so e lida onde ha pasta, adiante.
+    if [[ $tem_bloco == 'sim' ]]; then
+      dbx_cmd_bloco sim "$opcao_bloco" "$valor_bloco" || {
+        dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+        return $?
+      }
+    fi
   fi
 
   local eh_diretorio='nao'
@@ -226,6 +242,12 @@ dbx_cmd_upload_executar() {
     # RF-176: o N ja validado segue ao `sync` como opcao (a variavel nao e
     # relida la); em simulacao o `sync` aceita e ignora (DIV-372 A).
     ((DBX_CMD_PARALELO > 1)) && forcar_sync+=(--paralelo "$DBX_CMD_PARALELO")
+    # RF-186(d): resolvido uma vez aqui (opcao ou variavel) e repassado ja validado.
+    dbx_cmd_bloco "$tem_bloco" "$opcao_bloco" "$valor_bloco" || {
+      dbx_cmd_falhar uso_invalido "$DBX_CLI_MOTIVO"
+      return $?
+    }
+    [[ $DBX_CMD_BLOCO_ORIGEM != 'padrao' ]] && forcar_sync+=(--bloco "$DBX_CMD_BLOCO")
     # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico
     local DBX_CMD_SYNC_CHAMADOR='upload'
     dbx_cmd_sync_executar --enviar ${forcar_sync[@]+"${forcar_sync[@]}"} \
