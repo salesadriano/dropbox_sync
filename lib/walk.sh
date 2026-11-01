@@ -48,7 +48,7 @@ _dbx_walk_diretorio=$(cd -P -- "$_dbx_walk_diretorio" && pwd -P)
 # reabre diretorio por caminho; a descida e sempre por nome relativo.
 _dbx_walk_entrar_raiz() {
   local raiz=$1
-  cd -P -- "$raiz"
+  cd -P -- "$raiz" || return
 }
 # shellcheck source=lib/errors.sh
 . "$_dbx_walk_diretorio/errors.sh"

@@ -83,8 +83,17 @@ for arquivo in ${selecionados[@]+"${selecionados[@]}"}; do
   resumo_arquivo="$DBX_TESTES_TMP/resumo.$arquivos_executados"
   : >"$resumo_arquivo"
 
-  DBX_HARNESS_RESUMO="$resumo_arquivo" DBX_HARNESS_ARQUIVO="$nome" bash "$arquivo"
+  # Area temporaria propria de cada arquivo, removida assim que ele termina. Com
+  # uma area unica, o que cada arquivo deixava nela se acumulava ate o fim da
+  # execucao (9,4 GB num /tmp tmpfs de 9,8 GB na suite completa) e o primeiro
+  # arquivo grande depois disso recebia conteudo truncado. O agregado fica fora
+  # dela, na area da execucao.
+  area_arquivo="$DBX_TESTES_TMP/arquivo.$arquivos_executados"
+  mkdir -- "$area_arquivo" || exit 1
+  DBX_TESTES_TMP="$area_arquivo" DBX_HARNESS_RESUMO="$resumo_arquivo" DBX_HARNESS_ARQUIVO="$nome" \
+    bash "$arquivo"
   status=$?
+  rm -rf -- "$area_arquivo"
 
   if [[ ! -s $resumo_arquivo ]]; then
     printf '# INTEGRIDADE: %s terminou sem gravar o agregado (status %d)\n' "$nome" "$status"
