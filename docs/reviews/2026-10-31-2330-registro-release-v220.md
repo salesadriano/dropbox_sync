@@ -67,6 +67,6 @@ Total de linhas de codigo (producao e teste, sem documentacao): **2**.
 - Entradas de memoria: Nenhuma: sem decisao duravel.
 - Documentacao sincronizada: `README.md`, `docs/releases/v2.2.0.md`.
 - Commit(s): ver historico da branch.
-- PR: a abrir.
+- PR: #72 (para `develop`) e #73 (para `master`).
 - Tech Lead: **Aprovado**, 2026-10-31 - condicionado a suite completa oficial verde sobre o commit.
 - Solicitante: Nao aplicavel: sem arquivo do QA.

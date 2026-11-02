@@ -102,9 +102,8 @@ _linha() { # <id> — as linhas da checagem na saida
   printf '%s' "${saida%$'\n'}"
 }
 
-_localidade_disponivel() {
-  LC_ALL=C.UTF-8 "$BASH_ABSOLUTO" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
-}
+# shellcheck source=tests/support/localidade.sh
+. "$DBX_HARNESS_RAIZ/tests/support/localidade.sh"
 
 _retrato() { # <diretorio>
   [[ -e $1 ]] || {
