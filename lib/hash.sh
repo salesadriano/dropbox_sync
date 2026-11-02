@@ -89,6 +89,7 @@ readonly DBX_HASH_BACKENDS_ACEITOS='sha256sum shasum sha256 openssl'
 
 DBX_HASH_BACKEND=${DBX_HASH_BACKEND:-}
 DBX_HASH_FORMATO=''
+DBX_HASH_FORMATO_PARTES=()
 
 # Canais publicos da API incremental. Consumidos por lib/transfer e pela suite;
 # a analise estatica nao cruza arquivos e os ve como escrita sem leitura.
@@ -173,6 +174,14 @@ _dbx_hash_anexar_escapes() {
   for ((indice = 0; indice < 64; indice += 2)); do
     DBX_HASH_FORMATO+="\\x${hex:indice:2}"
   done
+  # No bash 4.2 `+=` numa cadeia longa copia a cadeia inteira (medido no CentOS
+  # 7: 2.000 blocos 1,1 s, 4.000 blocos 4,0 s, 8.000 blocos 18 s). Ao passar de
+  # 16 KiB a cadeia vai para um elemento de vetor e recomeca vazia: cada `+=`
+  # copia no maximo 16 KiB e o total volta a ser linear.
+  if [[ ${#DBX_HASH_FORMATO} -ge 16384 ]]; then
+    DBX_HASH_FORMATO_PARTES+=("$DBX_HASH_FORMATO")
+    DBX_HASH_FORMATO=''
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -206,6 +215,7 @@ _dbx_hash_anexar_escapes() {
 dbx_hash_acumular_iniciar() {
   dbx_hash_verificar_dependencias || return "$DBX_HASH_ERRO_DEPENDENCIA"
   DBX_HASH_FORMATO=''
+  DBX_HASH_FORMATO_PARTES=()
   DBX_HASH_BYTES=0
   DBX_HASH_RESULTADO=''
   return "$DBX_HASH_OK"
@@ -272,7 +282,7 @@ dbx_hash_acumular_encerrar() {
   [[ -n $trabalho ]] || return "$DBX_HASH_ERRO_USO"
 
   DBX_HASH_RESULTADO=''
-  printf '%b' "$DBX_HASH_FORMATO" >"$trabalho" 2>/dev/null ||
+  printf '%b' ${DBX_HASH_FORMATO_PARTES[@]+"${DBX_HASH_FORMATO_PARTES[@]}"} "$DBX_HASH_FORMATO" >"$trabalho" 2>/dev/null ||
     return "$DBX_HASH_ERRO_RESUMO"
   final=$(_dbx_hash_sha256_hex <"$trabalho") || return "$DBX_HASH_ERRO_RESUMO"
   [[ ${#final} -eq 64 ]] || return "$DBX_HASH_ERRO_RESUMO"

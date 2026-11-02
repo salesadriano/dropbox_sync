@@ -395,6 +395,12 @@ _estado_do_cliente_real() {
   return 0
 }
 
+# 0 quando o cliente real le o arquivo de corpo ANTES de conectar (curl moderno).
+_cliente_le_corpo_antes_de_conectar() {
+  _estado_do_cliente_real -s --data-binary '@/caminho/que/nao/existe' -o /dev/null "$ALVO_QUE_RECUSA"
+  [[ $DBX_ESTADO_REAL -eq 26 ]]
+}
+
 teste_contrato_opcoes_de_formulario_sao_aceitas_pelo_cliente_real() {
   command -v curl >/dev/null 2>&1 || pular 'curl ausente'
   # Campo com aspas e barra invertida: e o escape gerado por nos que esta sob
@@ -442,6 +448,7 @@ teste_interpretacao_de_erro_nao_json_preserva_mensagem_textual() {
 
 teste_contrato_corpo_ilegivel_produz_status_de_defeito_nosso() {
   command -v curl >/dev/null 2>&1 || pular 'curl ausente'
+  _cliente_le_corpo_antes_de_conectar || pular 'curl antigo (7.29) conecta antes de ler o corpo; o produto confere a legibilidade antes (teste do produto abaixo)'
   _estado_do_cliente_real -s --data-binary '@/caminho/que/nao/existe' \
     -o /dev/null -w '%{http_code}' "$ALVO_QUE_RECUSA"
   assert_igual 26 "$DBX_ESTADO_REAL" 'contrato do cliente para arquivo de corpo ilegivel'
@@ -456,6 +463,8 @@ teste_contrato_opcoes_malformadas_produzem_status_de_defeito_nosso() {
   command -v curl >/dev/null 2>&1 || pular 'curl ausente'
   local arquivo=$DBX_TESTES_TMP/ruim.$$
   printf 'isto-nao-e-uma-opcao-valida\n' >"$arquivo"
+  _estado_do_cliente_real -K "$arquivo" -s -o /dev/null "$ALVO_QUE_RECUSA"
+  [[ $DBX_ESTADO_REAL -eq 2 ]] || { rm -f "$arquivo"; pular 'curl antigo (7.29) ignora opcao desconhecida no -K e tenta conectar; o produto monta o -K e nao depende desse status'; }
   _estado_do_cliente_real -K "$arquivo" -s -o /dev/null -w '%{http_code}' "$ALVO_QUE_RECUSA"
   rm -f "$arquivo"
   assert_igual 2 "$DBX_ESTADO_REAL" 'contrato do cliente para arquivo de opcoes mal formado'
@@ -500,6 +509,21 @@ teste_defeito_do_cliente_nao_e_classificado_como_falha_de_rede() {
   assert_igual 26 "$DBX_HTTP_DEFEITO_CLIENTE" 'o status do cliente deve ser preservado'
   assert_igual 'uso_invalido' "$DBX_HTTP_CLASSE" \
     'defeito nosso mandaria o operador investigar rede alheia'
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$estado" 'codigo de saida coerente'
+  assert_igual 'nenhuma' "$DBX_HTTP_POLITICA" 'defeito nosso nao e retentavel'
+}
+
+teste_arquivo_de_corpo_ilegivel_e_defeito_nosso_mesmo_com_cliente_que_conecta_antes_de_ler() {
+  # curl 7.29 (CentOS 7) nao falha com 26 ao ler um corpo inexistente: com
+  # servidor vivo envia corpo VAZIO, e sem ele sai 7. O produto confere a
+  # legibilidade antes de chamar o cliente, para nao enviar vazio nem mandar o
+  # operador investigar a rede. O duplo diz 7, como o cliente antigo diria.
+  local dir
+  dir=$(_duplo_que_falha 7)
+  PATH=$dir:$PATH dbx_http_conteudo POST https://exemplo/api tok '{}' "$DBX_TESTES_TMP/nao-existe.$$" sim
+  local estado=$?
+  assert_igual 26 "$DBX_HTTP_DEFEITO_CLIENTE" 'corpo ilegivel e defeito nosso, nao rede'
+  assert_igual 'uso_invalido' "$DBX_HTTP_CLASSE" 'classe de defeito nosso'
   assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$estado" 'codigo de saida coerente'
   assert_igual 'nenhuma' "$DBX_HTTP_POLITICA" 'defeito nosso nao e retentavel'
 }

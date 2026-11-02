@@ -248,7 +248,7 @@ _local() { # <relativo> [conteudo]
 # _campos_do_registro <arquivo> — campos NUL do registro em CUR_CAMPOS.
 _campos_do_registro() {
   CUR_CAMPOS=()
-  mapfile -d '' -t CUR_CAMPOS <"$1"
+  CUR_CAMPOS=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do CUR_CAMPOS+=("$_m"); done <"$1"
 }
 
 # _reescrever <arquivo> <campos...> — grava os campos e um rodape VALIDO (o
@@ -266,11 +266,11 @@ _reescrever() {
 _regravar_cabecalho() {
   _registro
   _campos_do_registro "$CUR_REG"
-  local -a c=("${CUR_CAMPOS[@]}")
+  local -a c=(${CUR_CAMPOS[@]+"${CUR_CAMPOS[@]}"})
   unset 'c[${#c[@]}-1]' 'c[${#c[@]}-1]'
-  c=("${c[@]}")
+  c=(${c[@]+"${c[@]}"})
   c[$1]=$2
-  _reescrever "$CUR_REG" "${c[@]}"
+  _reescrever "$CUR_REG" ${c[@]+"${c[@]}"}
 }
 
 # Arvore base: tres arquivos na raiz e uma pasta com dois.
@@ -282,14 +282,14 @@ _arvore_base() {
   _arq c.txt && ent+=("$CUR_E")
   _arq p/x.txt && ent+=("$CUR_E")
   _arq p/y.txt && ent+=("$CUR_E")
-  CUR_BASE=("${ent[@]}")
+  CUR_BASE=(${ent[@]+"${ent[@]}"})
 }
 
 # _primeira — primeira execucao real sobre a arvore base, cursor C1.
 _primeira() {
   _cen
   _arvore_base
-  _servidor "${CUR_SENT}C1" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C1" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "primeira execucao: $ERRO"
   _registro
@@ -354,13 +354,13 @@ teste_cul11_varredura_completa_de_duas_paginas_continue_sem_limit() {
   local -a ent=()
   _cen
   _arq a.txt && ent+=("$CUR_E")
-  _pagina "${CUR_SENT}P1" true "${ent[@]}"
+  _pagina "${CUR_SENT}P1" true ${ent[@]+"${ent[@]}"}
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
   _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
   _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${CUR_SENT}C1\"}"
   ent=()
   _arq b.txt && ent+=("$CUR_E")
-  _delta "${CUR_SENT}P1" "${CUR_SENT}C1" "${ent[@]}"
+  _delta "${CUR_SENT}P1" "${CUR_SENT}C1" ${ent[@]+"${ent[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "duas paginas: $ERRO"
   # RF-189: a coleta remota em fluxo lista a raiz uma unica vez (sem enumeracao previa).
@@ -379,11 +379,11 @@ teste_cuv07_delta_de_varias_paginas() {
   _regras_zerar
   local -a ent=()
   _arq novo1.txt && ent+=("$CUR_E")
-  _pagina "${CUR_SENT}D1" true "${ent[@]}"
+  _pagina "${CUR_SENT}D1" true ${ent[@]+"${ent[@]}"}
   _regra files/list_folder/continue "*\"cursor\":\"${CUR_SENT}C1\"*" 200 "$CUR_P"
   ent=()
   _arq novo2.txt && ent+=("$CUR_E")
-  _delta "${CUR_SENT}D1" "${CUR_SENT}C2" "${ent[@]}"
+  _delta "${CUR_SENT}D1" "${CUR_SENT}C2" ${ent[@]+"${ent[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "delta paginado: $ERRO"
   _campo varredura; assert_igual incremental "$CUR_V" 'incremental'
@@ -427,7 +427,7 @@ teste_cuv03_diferencial_dez_cenarios() {
   local -a e2=() d=()
   _primeira
   # 1. novo
-  CUR_EST2=("${CUR_BASE[@]}"); _arq novo.txt "$CUR_H_OUTRO" && CUR_EST2+=("$CUR_E"); CUR_DLT=("$CUR_E")
+  CUR_EST2=(${CUR_BASE[@]+"${CUR_BASE[@]}"}); _arq novo.txt "$CUR_H_OUTRO" && CUR_EST2+=("$CUR_E"); CUR_DLT=("$CUR_E")
   _diferencial novo
   assert_contem 'transferir=novo.txt' "$CUR_PLANO_COMUM" 'novo: transferir'
   # 2. modificado
@@ -436,7 +436,7 @@ teste_cuv03_diferencial_dez_cenarios() {
   _arq a.txt "$CUR_H_OUTRO" '' 'bbbbbbbbbbb' && e2+=("$CUR_E") && d+=("$CUR_E")
   _arq b.txt && e2+=("$CUR_E"); _arq c.txt && e2+=("$CUR_E")
   _arq p/x.txt && e2+=("$CUR_E"); _arq p/y.txt && e2+=("$CUR_E")
-  CUR_EST2=("${e2[@]}") CUR_DLT=("${d[@]}")
+  CUR_EST2=(${e2[@]+"${e2[@]}"}) CUR_DLT=(${d[@]+"${d[@]}"})
   _diferencial modificado
   assert_contem 'transferir=a.txt' "$CUR_PLANO_COMUM" 'modificado: transferir'
   # 3. apagado (confirmado por not_found)
@@ -444,7 +444,7 @@ teste_cuv03_diferencial_dez_cenarios() {
   _pasta p && e2+=("$CUR_E"); _arq a.txt && e2+=("$CUR_E"); _arq c.txt && e2+=("$CUR_E")
   _arq p/x.txt && e2+=("$CUR_E"); _arq p/y.txt && e2+=("$CUR_E")
   _apagado b.txt && d+=("$CUR_E")
-  CUR_EST2=("${e2[@]}") CUR_DLT=("${d[@]}")
+  CUR_EST2=(${e2[@]+"${e2[@]}"}) CUR_DLT=(${d[@]+"${d[@]}"})
   _diferencial apagado
   assert_contem 'apagar=b.txt' "$CUR_PLANO_COMUM" 'apagado: apagar com --espelhar'
   _diferencial apagado_sem_espelhar nao
@@ -455,7 +455,7 @@ teste_cuv03_diferencial_dez_cenarios() {
   _arq p/x.txt && e2+=("$CUR_E"); _arq p/y.txt && e2+=("$CUR_E")
   _arq b2.txt '' 'id:b_txt' && e2+=("$CUR_E")
   _apagado b.txt && d+=("$CUR_E"); _arq b2.txt '' 'id:b_txt' && d+=("$CUR_E")
-  CUR_EST2=("${e2[@]}") CUR_DLT=("${d[@]}")
+  CUR_EST2=(${e2[@]+"${e2[@]}"}) CUR_DLT=(${d[@]+"${d[@]}"})
   _diferencial renomeado
   assert_contem 'transferir=b2.txt' "$CUR_PLANO_COMUM" 'renomeado: o novo e baixado'
   assert_contem 'apagar=b.txt' "$CUR_PLANO_COMUM" 'renomeado: o antigo sai com --espelhar'
@@ -464,13 +464,13 @@ teste_cuv03_diferencial_dez_cenarios() {
   _pasta p && e2+=("$CUR_E"); _arq a.txt && e2+=("$CUR_E"); _arq b.txt && e2+=("$CUR_E")
   _arq p/x.txt && e2+=("$CUR_E"); _arq p/y.txt && e2+=("$CUR_E"); _arq p/c.txt '' 'id:c_txt' && e2+=("$CUR_E")
   _arq p/c.txt '' 'id:c_txt' && d+=("$CUR_E"); _apagado c.txt && d+=("$CUR_E")
-  CUR_EST2=("${e2[@]}") CUR_DLT=("${d[@]}")
+  CUR_EST2=(${e2[@]+"${e2[@]}"}) CUR_DLT=(${d[@]+"${d[@]}"})
   _diferencial movido
   # 6. pasta apagada com descendentes
   e2=() d=()
   _arq a.txt && e2+=("$CUR_E"); _arq b.txt && e2+=("$CUR_E"); _arq c.txt && e2+=("$CUR_E")
   _apagado p && d+=("$CUR_E")
-  CUR_EST2=("${e2[@]}") CUR_DLT=("${d[@]}")
+  CUR_EST2=(${e2[@]+"${e2[@]}"}) CUR_DLT=(${d[@]+"${d[@]}"})
   _diferencial pasta_apagada
   assert_contem 'apagar=p/x.txt' "$CUR_PLANO_COMUM" 'pasta apagada: descendentes'
   # 7. apagado e recriado no mesmo caminho (vale a `file`)
@@ -479,7 +479,7 @@ teste_cuv03_diferencial_dez_cenarios() {
   _arq p/x.txt && e2+=("$CUR_E"); _arq p/y.txt && e2+=("$CUR_E")
   _arq a.txt "$CUR_H_OUTRO" 'id:a_novo' 'ccccccccccc' && e2+=("$CUR_E")
   _apagado a.txt && d+=("$CUR_E"); _arq a.txt "$CUR_H_OUTRO" 'id:a_novo' 'ccccccccccc' && d+=("$CUR_E")
-  CUR_EST2=("${e2[@]}") CUR_DLT=("${d[@]}")
+  CUR_EST2=(${e2[@]+"${e2[@]}"}) CUR_DLT=(${d[@]+"${d[@]}"})
   _diferencial recriado
   assert_contem 'transferir=a.txt' "$CUR_PLANO_COMUM" 'recriado: transferir'
   assert_nao_contem 'apagar=a.txt' "$CUR_PLANO_COMUM" 'recriado: nunca apagado'
@@ -487,7 +487,7 @@ teste_cuv03_diferencial_dez_cenarios() {
   e2=() d=()
   _pasta p && e2+=("$CUR_E"); _arq A.txt '' 'id:a_txt' && e2+=("$CUR_E"); _arq b.txt && e2+=("$CUR_E")
   _arq c.txt && e2+=("$CUR_E"); _arq p/x.txt && e2+=("$CUR_E"); _arq p/y.txt && e2+=("$CUR_E")
-  CUR_EST2=("${e2[@]}") CUR_DLT=()
+  CUR_EST2=(${e2[@]+"${e2[@]}"}) CUR_DLT=()
   _diferencial caixa
   assert_igual 0 "$(grep -c '^apagar=' <<<"$CUR_PLANO_COMUM")" 'caixa: nenhuma exclusao (RF-54)'
   # 9. muitos
@@ -496,10 +496,10 @@ teste_cuv03_diferencial_dez_cenarios() {
   _arq p/x.txt && e2+=("$CUR_E")
   _arq n1.txt && e2+=("$CUR_E") && d+=("$CUR_E"); _arq n2.txt && e2+=("$CUR_E") && d+=("$CUR_E")
   _apagado b.txt && d+=("$CUR_E"); _apagado c.txt && d+=("$CUR_E"); _apagado p/y.txt && d+=("$CUR_E")
-  CUR_EST2=("${e2[@]}") CUR_DLT=("${d[@]}")
+  CUR_EST2=(${e2[@]+"${e2[@]}"}) CUR_DLT=(${d[@]+"${d[@]}"})
   _diferencial muitos
   # 10. nenhum
-  CUR_EST2=("${CUR_BASE[@]}") CUR_DLT=()
+  CUR_EST2=(${CUR_BASE[@]+"${CUR_BASE[@]}"}) CUR_DLT=()
   _diferencial nenhum
   assert_contem 'identicos=5' "$CUR_PLANO_COMUM" 'nenhum: tudo identico'
 }
@@ -510,7 +510,7 @@ teste_cuv04_05_lado_local_igual_a_varredura_completa() {
   # do lado local, e o plano e o da completa.
   printf '%s' 'editado a mao' >"$B/l/a.txt"
   rm -f -- "$B/l/b.txt"
-  CUR_EST2=("${CUR_BASE[@]}") CUR_DLT=()
+  CUR_EST2=(${CUR_BASE[@]+"${CUR_BASE[@]}"}) CUR_DLT=()
   _diferencial local_mudou
   assert_contem 'transferir=a.txt' "$CUR_PLANO_COMUM" 'local editado e sobrescrito pela origem'
   assert_contem 'transferir=b.txt' "$CUR_PLANO_COMUM" 'local apagado e baixado de novo'
@@ -519,9 +519,9 @@ teste_cuv04_05_lado_local_igual_a_varredura_completa() {
 teste_cuv11_cul10_filtros_sobre_o_mapa_reconstruido() {
   local -a d=()
   _primeira
-  _arq p/novo.log && d+=("$CUR_E"); CUR_EST2=("${CUR_BASE[@]}" "$CUR_E")
+  _arq p/novo.log && d+=("$CUR_E"); CUR_EST2=(${CUR_BASE[@]+"${CUR_BASE[@]}"} "$CUR_E")
   _arq z.log && d+=("$CUR_E"); CUR_EST2+=("$CUR_E")
-  CUR_DLT=("${d[@]}")
+  CUR_DLT=(${d[@]+"${d[@]}"})
   CUR_FILTROS=(--excluir '*.log' --excluir p)
   _diferencial filtro_excluir
   assert_contem 'filtrados' "$CUR_PLANO_COMUM" 'contadores de filtrados presentes'
@@ -537,7 +537,7 @@ teste_cuv12_pasta_excluida_pelo_filtro_nunca_apagada_com_cursor() {
   _primeira
   _apagado p && d+=("$CUR_E")
   _regras_zerar
-  _delta "${CUR_SENT}C1" "${CUR_SENT}C2" "${d[@]}"
+  _delta "${CUR_SENT}C1" "${CUR_SENT}C2" ${d[@]+"${d[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l" --espelhar --excluir p
   assert_igual 0 "$ESTADO" "filtro com cursor: $ERRO"
   assert_arquivo_existe "$B/l/p/x.txt" 'pasta excluida pelo filtro intacta (RF-80)'
@@ -558,7 +558,7 @@ teste_cuv09_delta_incoerente_volta_a_varredura_completa_sem_10() {
       id_repetido) _arq n.txt "$CUR_H" 'id:a_txt' ;;
     esac
     _delta "${CUR_SENT}C1" "${CUR_SENT}C2" "$CUR_E"
-    _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+    _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
     _rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$caso: nunca 10 por estado: $ERRO"
     _campo varredura; assert_igual completa "$CUR_V" "$caso: varredura completa"
@@ -572,7 +572,7 @@ teste_cuv10_continue_malformado_volta_a_varredura_completa() {
   _primeira
   _regras_zerar
   _regra files/list_folder/continue '*' 200 '{"entries":[{".tag":"file"'
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "malformado: $ERRO"
   _campo cursor_motivo; assert_igual descartado "$CUR_V" 'malformado: descartado'
@@ -588,7 +588,7 @@ teste_cuf01_cuf12_reset_varredura_completa_zero_e_memoria_intacta() {
   assert_arquivo_existe "${memorias[0]}" 'memoria-* gravada na primeira'
   _regras_zerar
   _regra files/list_folder/continue '*' 409 '{"error_summary":"reset/...","error":{".tag":"reset"}}'
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "reset nunca e 14 (RF-113(c)): $ERRO"
   _campo varredura; assert_igual completa "$CUR_V" 'reset: completa'
@@ -608,7 +608,7 @@ teste_cuf02_outro_409_e_4xx_voltam_a_varredura_completa() {
     _primeira
     _regras_zerar
     _regra files/list_folder/continue '*' "$codigo" '{"error_summary":"path/not_found/.."}'
-    _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+    _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
     _rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$codigo: completa, nao falha: $ERRO"
     _campo cursor_motivo; assert_igual descartado "$CUR_V" "$codigo: descartado"
@@ -619,7 +619,7 @@ teste_cuf03_04_transitorio_no_continue_e_completa_que_tambem_falha() {
   _primeira
   _regras_zerar
   _regra files/list_folder/continue '*' 503 '{"error_summary":"internal_error/"}'
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "5xx esgotado no continue: completa: $ERRO"
   _campo cursor_motivo; assert_igual transitorio "$CUR_V" 'motivo transitorio'
@@ -653,7 +653,7 @@ teste_cuf06_cursor_repetido_e_laco_abandonam_o_incremental() {
   _regras_zerar
   _pagina "${CUR_SENT}C1" true
   _regra files/list_folder/continue '*' 200 "$CUR_P"
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "cursor repetido: $ERRO"
   _campo cursor_motivo; assert_igual descartado "$CUR_V" 'laco: descartado'
@@ -668,7 +668,7 @@ teste_cuf07_08_varredura_periodica_obrigatoria() {
   _primeira
   _regravar_cabecalho 8 "$((agora - 604800 - 60))"
   _regras_zerar
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   _campo cursor_motivo; assert_igual periodica "$CUR_V" '7 dias e 1 minuto: periodica'
   _contar files/list_folder/continue
@@ -687,14 +687,14 @@ teste_cuf07_08_varredura_periodica_obrigatoria() {
   _primeira
   _regravar_cabecalho 8 "$((agora + 600))"
   _regras_zerar
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   _campo cursor_motivo; assert_igual periodica "$CUR_V" 'idade negativa: periodica'
   # 100 incrementais: completa; 99: incremental e vira 100.
   _primeira
   _regravar_cabecalho 9 100
   _regras_zerar
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   _campo cursor_motivo; assert_igual periodica "$CUR_V" '100 incrementais: periodica'
   _primeira
@@ -713,7 +713,7 @@ teste_cuf09_cuo01_02_05_forcada_e_desligado() {
   for opcao in --varredura-completa --full-scan; do
     _primeira
     _regras_zerar
-    _servidor "${CUR_SENT}C5" "${CUR_BASE[@]}"
+    _servidor "${CUR_SENT}C5" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
     _rodar sync --receber --origem /r --destino "$B/l" "$opcao"
     assert_igual 0 "$ESTADO" "$opcao: $ERRO"
     _campo cursor_motivo; assert_igual forcada "$CUR_V" "$opcao: forcada"
@@ -727,7 +727,7 @@ teste_cuf09_cuo01_02_05_forcada_e_desligado() {
     _primeira
     antes=$(_impressao "$CUR_REG")
     _regras_zerar
-    _servidor "${CUR_SENT}C5" "${CUR_BASE[@]}"
+    _servidor "${CUR_SENT}C5" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
     _rodar sync --receber --origem /r --destino "$B/l" "$opcao"
     assert_igual 0 "$ESTADO" "$opcao: $ERRO"
     _campo cursor_motivo; assert_igual desligado "$CUR_V" "$opcao: desligado"
@@ -738,7 +738,7 @@ teste_cuf09_cuo01_02_05_forcada_e_desligado() {
   # --sem-cursor sem registro nao cria nenhum.
   _cen
   _arvore_base
-  _servidor "${CUR_SENT}C1" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C1" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l" --sem-cursor
   _registro
   assert_igual '' "$CUR_REG" '--sem-cursor nao cria cursor-*'
@@ -773,7 +773,7 @@ teste_cud01_02_deleted_confirmado_apaga_so_com_espelhar() {
   _primeira
   _apagado b.txt && d+=("$CUR_E")
   _regras_zerar
-  _delta "${CUR_SENT}C1" "${CUR_SENT}C2" "${d[@]}"
+  _delta "${CUR_SENT}C1" "${CUR_SENT}C2" ${d[@]+"${d[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "sem espelhar: $ERRO"
   assert_arquivo_existe "$B/l/b.txt" 'sem --espelhar: nada apagado'
@@ -782,7 +782,7 @@ teste_cud01_02_deleted_confirmado_apaga_so_com_espelhar() {
   assert_igual 1 "$CUR_CONTAGEM" 'confirmado tambem sem --espelhar (DIV-218)'
   _primeira
   _regras_zerar
-  _delta "${CUR_SENT}C1" "${CUR_SENT}C2" "${d[@]}"
+  _delta "${CUR_SENT}C1" "${CUR_SENT}C2" ${d[@]+"${d[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l" --espelhar
   assert_igual 0 "$ESTADO" "com espelhar: $ERRO"
   assert_arquivo_ausente "$B/l/b.txt" 'confirmado por not_found: apagado'
@@ -801,7 +801,7 @@ teste_cud03_04_contradicao_nunca_apaga_e_volta_a_completa() {
     [[ $caso == 'recriado' ]] && id_resposta='id:outro'
     _regra files/get_metadata '*"path":"/r/b.txt"*' 200 \
       "{\".tag\":\"file\",\"id\":\"$id_resposta\",\"path_display\":\"/r/b.txt\",\"rev\":\"0123456789a\"}"
-    _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+    _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
     _rodar sync --receber --origem /r --destino "$B/l" --espelhar
     assert_igual 0 "$ESTADO" "$caso: $ERRO"
     assert_arquivo_existe "$B/l/b.txt" "$caso: contradicao nunca apaga"
@@ -821,7 +821,7 @@ teste_cud05_cus02_retrato_que_omite_arquivo_nao_apaga() {
   _regras_zerar
   _delta "${CUR_SENT}C1" "${CUR_SENT}C2"
   _arq extra.txt
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}" "$CUR_E"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"} "$CUR_E"
   _regra files/get_metadata '*"path":"/r/extra.txt"*' 200 '{".tag":"file","id":"id:extra_txt"}'
   _rodar sync --receber --origem /r --destino "$B/l" --espelhar --permitir-origem-vazia --confirmar
   assert_igual 0 "$ESTADO" "retrato omisso: $ERRO"
@@ -872,11 +872,11 @@ teste_cud09_cuf10_cinquenta_confirmacoes_e_cinquenta_e_uma() {
       _apagado "f$i.txt" && d+=("$CUR_E")
     done
     _arq fica.txt && ent+=("$CUR_E")
-    _servidor "${CUR_SENT}C1" "${ent[@]}"
+    _servidor "${CUR_SENT}C1" ${ent[@]+"${ent[@]}"}
     _rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$total, primeira: $ERRO"
     _regras_zerar
-    _delta "${CUR_SENT}C1" "${CUR_SENT}C2" "${d[@]}"
+    _delta "${CUR_SENT}C1" "${CUR_SENT}C2" ${d[@]+"${d[@]}"}
     _arq fica.txt
     _servidor "${CUR_SENT}C3" "$CUR_E"
     _marcar
@@ -937,8 +937,8 @@ teste_cuf11_cus05_mapa_vazio_com_retrato_nao_vazio_vai_a_completa() {
   _primeira
   for rel in a.txt b.txt c.txt p; do _apagado "$rel" && d+=("$CUR_E"); done
   _regras_zerar
-  _delta "${CUR_SENT}C1" "${CUR_SENT}C2" "${d[@]}"
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _delta "${CUR_SENT}C1" "${CUR_SENT}C2" ${d[@]+"${d[@]}"}
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l" --espelhar
   assert_igual 0 "$ESTADO" "mapa vazio: $ERRO"
   _campo varredura; assert_igual completa "$CUR_V" 'completa antes de RF-41(b)'
@@ -965,7 +965,7 @@ teste_cud13_cul01_simulacao_confirma_e_nao_grava_nem_apaga() {
   # Registro invalido em simulacao: nao e apagado.
   printf 'lixo' >"$CUR_REG"
   antes=$(_impressao "$CUR_REG")
-  _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar --dry-run sync --receber --origem /r --destino "$B/l"
   _campo cursor_motivo; assert_igual descartado "$CUR_V" 'descartado'
   assert_igual "$antes" "$(_impressao "$CUR_REG")" 'simulacao nunca apaga o registro (RF-117(a))'
@@ -975,7 +975,7 @@ teste_cud13_cul01_simulacao_confirma_e_nao_grava_nem_apaga() {
 teste_cul02_simulacao_sem_registro_nao_cria() {
   _cen
   _arvore_base
-  _servidor "${CUR_SENT}C1" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C1" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar --dry-run sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "simulacao: $ERRO"
   _registro
@@ -1033,7 +1033,7 @@ teste_cua02_03_enviar_verificar_e_download_de_pasta_nao_tocam_o_registro() {
   _primeira
   antes=$(_impressao "$CUR_REG")
   _regras_zerar
-  _servidor "${CUR_SENT}C7" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C7" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _marcar
   _rodar sync --enviar --origem "$B/l" --destino /r
   assert_igual "$antes" "$(_impressao "$CUR_REG")" '--enviar nao altera cursor-*'
@@ -1046,7 +1046,7 @@ teste_cua02_03_enviar_verificar_e_download_de_pasta_nao_tocam_o_registro() {
   # download de pasta: o sync interno nao usa o cursor (DIV-205).
   _cen
   _arvore_base
-  _servidor "${CUR_SENT}C1" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C1" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _regra files/get_metadata '*"path":"/r"*' 200 '{".tag":"folder","id":"id:r","path_display":"/r"}'
   # Com filtro, o tipo vem do get_metadata e a pasta vai ao sync interno.
   _rodar download --excluir nada.zzz /r "$B/l2"
@@ -1069,31 +1069,31 @@ teste_cur05_06_registro_invalido_e_descartado_com_aviso_e_codigo_0() {
     conta_divergente local_divergente remoto_divergente ponto_ponto duplicado controle; do
     _primeira
     _campos_do_registro "$CUR_REG"
-    c=("${CUR_CAMPOS[@]}")
+    c=(${CUR_CAMPOS[@]+"${CUR_CAMPOS[@]}"})
     unset 'c[${#c[@]}-1]' 'c[${#c[@]}-1]'
-    c=("${c[@]}")
+    c=(${c[@]+"${c[@]}"})
     case $caso in
       vazio) : >"$CUR_REG" ;;
       truncado) head -c 300 -- "$CUR_REG" >"$B/t" && cat "$B/t" >"$CUR_REG" ;;
       sha_errado)
         CUR_CAMPOS[${#CUR_CAMPOS[@]} - 1]=0000000000000000000000000000000000000000000000000000000000000000
-        printf '%s\0' "${CUR_CAMPOS[@]}" >"$CUR_REG"
+        printf '%s\0' ${CUR_CAMPOS[@]+"${CUR_CAMPOS[@]}"} >"$CUR_REG"
         ;;
-      contagem) c[11]=7 && _reescrever "$CUR_REG" "${c[@]}" ;;
-      campo_8k) printf -v c[7] '%8193s' '' && c[7]=${c[7]// /A} && _reescrever "$CUR_REG" "${c[@]}" ;;
-      cursor_regex) c[7]='com espaco' && _reescrever "$CUR_REG" "${c[@]}" ;;
-      versao2) c[1]=2 && _reescrever "$CUR_REG" "${c[@]}" ;;
-      magia) c[0]=dbx-retomada && _reescrever "$CUR_REG" "${c[@]}" ;;
-      assinatura) c[4]='list_folder;recursive=0' && _reescrever "$CUR_REG" "${c[@]}" ;;
-      conta_divergente) c[3]=dbid:OUTRA && _reescrever "$CUR_REG" "${c[@]}" ;;
-      local_divergente) c[6]=/outro/lugar && _reescrever "$CUR_REG" "${c[@]}" ;;
-      remoto_divergente) c[5]=/R && _reescrever "$CUR_REG" "${c[@]}" ;;
-      ponto_ponto) c[13]='/r/../fora.txt' && c[12]=${c[12]%$'\t'*}$'\t/r/../fora.txt' && _reescrever "$CUR_REG" "${c[@]}" ;;
-      duplicado) c[15]=${c[13]} && _reescrever "$CUR_REG" "${c[@]}" ;;
-      controle) c[12]=${c[12]%$'\t'*}$'\t/r/a\x01.txt' && c[13]=$'/r/a\x01.txt' && _reescrever "$CUR_REG" "${c[@]}" ;;
+      contagem) c[11]=7 && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      campo_8k) printf -v c[7] '%8193s' '' && c[7]=${c[7]// /A} && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      cursor_regex) c[7]='com espaco' && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      versao2) c[1]=2 && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      magia) c[0]=dbx-retomada && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      assinatura) c[4]='list_folder;recursive=0' && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      conta_divergente) c[3]=dbid:OUTRA && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      local_divergente) c[6]=/outro/lugar && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      remoto_divergente) c[5]=/R && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      ponto_ponto) c[13]='/r/../fora.txt' && c[12]=${c[12]%$'\t'*}$'\t/r/../fora.txt' && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      duplicado) c[15]=${c[13]} && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
+      controle) c[12]=${c[12]%$'\t'*}$'\t/r/a\x01.txt' && c[13]=$'/r/a\x01.txt' && _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ;;
     esac
     _regras_zerar
-    _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+    _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
     _rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$caso: codigo de execucao sem estado: $ERRO"
     _campo varredura; assert_igual completa "$CUR_V" "$caso: completa"
@@ -1120,7 +1120,7 @@ teste_cur07_fifo_e_ligacao_no_lugar_do_registro_nao_sao_lidos() {
       diretorio) mkdir "$CUR_REG" ;;
     esac
     _regras_zerar
-    _servidor "${CUR_SENT}C3" "${CUR_BASE[@]}"
+    _servidor "${CUR_SENT}C3" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
     _rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$caso: nao pendura, segue: $ERRO"
     _campo varredura; assert_igual completa "$CUR_V" "$caso: completa"
@@ -1138,7 +1138,7 @@ teste_cur07_fifo_e_ligacao_no_lugar_do_registro_nao_sao_lidos() {
 teste_cur13_sem_trava_sem_cursor_e_codigo_normal() {
   _cen
   _arvore_base
-  _servidor "${CUR_SENT}C1" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C1" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   mkdir -p "$B/estado/dbx"
   chmod 500 "$B/estado/dbx"
   _rodar sync --receber --origem /r --destino "$B/l"
@@ -1154,7 +1154,7 @@ teste_cur08_cuo08_cursor_nunca_sai_do_processo() {
   for modo in '' --json --null --debug --progresso; do
     _regras_zerar
     _regra files/list_folder/continue '*' 409 '{"error_summary":"reset/..."}'
-    _servidor "${CUR_SENT}C4" "${CUR_BASE[@]}"
+    _servidor "${CUR_SENT}C4" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
     _rodar ${modo:+"$modo"} sync --receber --origem /r --destino "$B/l"
     assert_nao_contem "$CUR_SENT" "$SAIDA$ERRO" "cursor ausente da saida (${modo:-texto})"
     assert_nao_contem $'\x01' "$ERRO" 'sem byte de controle nos avisos'
@@ -1213,7 +1213,7 @@ teste_cul08_diagnostico_le_so_o_cabecalho() {
     printf -v 'corpo[2*i]' 'd\tid:d%s\t-\t-\t0\t-\t/r/pasta_com_nome_longo_%s' "$i" "$i"
     printf -v 'corpo[2*i+1]' '/r/pasta_com_nome_longo_%s' "$i"
   done
-  _reescrever "$CUR_REG" "${c[@]}" "${corpo[@]}"
+  _reescrever "$CUR_REG" ${c[@]+"${c[@]}"} ${corpo[@]+"${corpo[@]}"}
   [[ $(stat -c %s -- "$CUR_REG") -gt 16384 ]] || _harness_falhar 'o registro grande deveria passar de 16 KiB'
   _rodar diagnostico
   assert_contem 'valido' "$SAIDA" 'registro grande lido so pelo cabecalho'
@@ -1243,7 +1243,7 @@ teste_cul09_poda_101_registros_e_mais_de_8_dias() {
   printf 'x' >"$B/estado/dbx/retomada-velha"
   touch -d '@1600000000' "$B/estado/dbx/memoria-velha" "$B/estado/dbx/upload-velho" "$B/estado/dbx/retomada-velha"
   _arvore_base
-  _servidor "${CUR_SENT}C1" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C1" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "poda: $ERRO"
   local -a restantes=("$B/estado/dbx"/cursor-*)
@@ -1264,14 +1264,14 @@ teste_cul09_poda_101_registros_e_mais_de_8_dias() {
     touch -d "@$((agora - 3600 - i))" "$nome"
   done
   _arvore_base
-  _servidor "${CUR_SENT}C1" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C1" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   restantes=("$B/estado/dbx"/cursor-*)
   assert_igual 100 "${#restantes[@]}" 'teto de 100 com o recem-gravado'
   printf -v nome '%s/cursor-%032x' "$B/estado/dbx" 99
   assert_arquivo_ausente "$nome" 'saiu o mais antigo'
   local f presente=0
-  for f in "${restantes[@]}"; do
+  for f in ${restantes[@]+"${restantes[@]}"}; do
     [[ $(head -c 10 -- "$f") == dbx-cursor ]] && presente=1
   done
   assert_igual 1 "$presente" 'o registro corrente nunca sai'
@@ -1285,7 +1285,7 @@ teste_cur11_temporario_orfao_varrido_apos_um_dia() {
   printf 'x' >"$B/estado/dbx/.cursor.222.BBBBBBBB"
   touch -d '@1600000000' "$B/estado/dbx/.cursor.111.AAAAAAAA"
   _arvore_base
-  _servidor "${CUR_SENT}C1" "${CUR_BASE[@]}"
+  _servidor "${CUR_SENT}C1" ${CUR_BASE[@]+"${CUR_BASE[@]}"}
   _rodar sync --receber --origem /r --destino "$B/l"
   assert_arquivo_ausente "$B/estado/dbx/.cursor.111.AAAAAAAA" '.cursor.* com mais de 1 dia sai'
   assert_arquivo_existe "$B/estado/dbx/.cursor.222.BBBBBBBB" '.cursor.* recente fica'
@@ -1352,7 +1352,7 @@ teste_qa_b7b_01_raiz_barra_grava_e_usa_o_cursor() {
   ent+=("$CUR_E")
   printf -v CUR_E '{".tag":"file","name":"x.txt","id":"id:x","path_lower":"/p/x.txt","path_display":"/p/x.txt","rev":"%s","size":15,"server_modified":"2026-01-01T00:00:00Z","content_hash":"%s"}' "$CUR_REV" "$CUR_H"
   ent+=("$CUR_E")
-  _pagina "${CUR_SENT}C1" false "${ent[@]}"
+  _pagina "${CUR_SENT}C1" false ${ent[@]+"${ent[@]}"}
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
   _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
   _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${CUR_SENT}C1\"}"
@@ -1382,7 +1382,7 @@ teste_qa_b7b_02_subpasta_com_a_propria_pasta_grava_e_usa_o_cursor() {
   printf -v CUR_E '{".tag":"folder","name":"sub","id":"id:sub","path_lower":"/r/sub","path_display":"/r/sub"}'
   ent+=("$CUR_E")
   _arq Sub/a.txt && ent+=("$CUR_E")
-  _pagina "${CUR_SENT}C1" false "${ent[@]}"
+  _pagina "${CUR_SENT}C1" false ${ent[@]+"${ent[@]}"}
   _regra files/list_folder '*"recursive":true*' 200 "$CUR_P"
   _regra files/list_folder '*"recursive":false*' 200 "$CUR_P"
   _regra files/list_folder/get_latest_cursor '*' 200 "{\"cursor\":\"${CUR_SENT}C1\"}"

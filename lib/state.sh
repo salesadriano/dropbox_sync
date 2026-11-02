@@ -433,8 +433,8 @@ _DBX_STATE_CABECALHO=()
 _DBX_STATE_SO_VISITADAS='nao'
 _dbx_state_conteudo_memoria() {
   local caminho
-  printf '%s\0' "$DBX_STATE_VERSAO" "${_DBX_STATE_CABECALHO[@]}"
-  for caminho in "${!DBX_STATE_ENTRADA[@]}"; do
+  printf '%s\0' "$DBX_STATE_VERSAO" ${_DBX_STATE_CABECALHO[@]+"${_DBX_STATE_CABECALHO[@]}"}
+  for caminho in ${DBX_STATE_ENTRADA[@]+"${!DBX_STATE_ENTRADA[@]}"}; do
     if [[ $_DBX_STATE_SO_VISITADAS == 'sim' && -z ${DBX_STATE_VISITADA[$caminho]:-} ]]; then
       continue
     fi
@@ -521,7 +521,7 @@ dbx_state_upload_consultar() {
 # Conteudo do registro do upload, para `_dbx_state_gravar_arquivo`.
 _DBX_STATE_REGISTRO_UPLOAD=()
 _dbx_state_conteudo_upload() {
-  printf '%s\0%s\0%s\0%s\t%s\0' "$DBX_STATE_VERSAO" upload "${_DBX_STATE_REGISTRO_UPLOAD[@]}"
+  printf '%s\0%s\0%s\0%s\t%s\0' "$DBX_STATE_VERSAO" upload ${_DBX_STATE_REGISTRO_UPLOAD[@]+"${_DBX_STATE_REGISTRO_UPLOAD[@]}"}
 }
 
 # _dbx_state_podar_upload <diretorio> — RF-61(i). Conta os registros JA
@@ -1005,7 +1005,7 @@ _dbx_state_trava_diretorio() {
   local -a faltam=()
   _dbx_state_trava_criados=()
   while [[ -n $acima && ! -e $acima && ! -L $acima ]]; do
-    faltam=("$acima" "${faltam[@]}")
+    faltam=("$acima" ${faltam[@]+"${faltam[@]}"})
     acima=${acima%/*}
   done
   if [[ ${#faltam[@]} -gt 0 ]]; then
@@ -1014,7 +1014,7 @@ _dbx_state_trava_diretorio() {
       DBX_STATE_MOTIVO="diretorio de estado sem escrita: $diretorio"
       return "$DBX_STATE_ERRO_PERMISSAO"
     }
-    _dbx_state_trava_criados=("${faltam[@]}")
+    _dbx_state_trava_criados=(${faltam[@]+"${faltam[@]}"})
   fi
   if ! _dbx_state_diretorio_confiavel "$diretorio"; then
     DBX_STATE_MOTIVO='diretorio de estado pertence a outro usuario'
@@ -1134,7 +1134,7 @@ _dbx_state_trava_raiz_garantir_diretorio() {
       DBX_STATE_MOTIVO="diretorio de estado sem escrita: $diretorio"
       return "$DBX_STATE_ERRO_PERMISSAO"
     }
-    _dbx_state_trava_raiz_criados+=("${faltam[@]}")
+    _dbx_state_trava_raiz_criados+=(${faltam[@]+"${faltam[@]}"})
   fi
   if ! _dbx_state_diretorio_confiavel "$diretorio"; then
     DBX_STATE_MOTIVO='diretorio de estado pertence a outro usuario'
@@ -1443,7 +1443,7 @@ _dbx_state_intervalos_validos() {
   local item ini fim anterior=-2 itens
   [[ $1 == '-' ]] && return 0
   IFS=, read -r -a itens <<<"$1"
-  for item in "${itens[@]}"; do
+  for item in ${itens[@]+"${itens[@]}"}; do
     ini=$((10#${item%-*})) fim=$((10#${item#*-}))
     ((ini <= fim && ini > anterior + 1 && fim < $2)) || return 1
     anterior=$fim
@@ -1585,6 +1585,7 @@ dbx_state_retomada_carregar() {
     ${c[5]} != "$DBX_STATE_RETOMADA_REMOTO" || ${c[esperado - 1]} != "$DBX_STATE_RETOMADA_LOCAL" ]]; then
     # QA-B7A-02 (ciclo 2): o registro legivel diz qual `.part` era dele; sai
     # junto, so pela barreira de identidade, para nao ficar parcial invisivel.
+    # bash 4.2: sem protecao de vetor vazio de proposito; c nunca e vazio aqui (c[1] lido acima) e o texto e alvo fixo do mutante c2.
     _dbx_state_retomada_descartar_part "${c[@]}"
     _dbx_state_retomada_descartar 'registro de outra conta, host, sentido ou caminho'
     return $?
@@ -1595,7 +1596,7 @@ dbx_state_retomada_carregar() {
 }
 
 _dbx_state_conteudo_retomada() {
-  printf '%s\0' "${_DBX_STATE_REGISTRO_RETOMADA[@]}"
+  printf '%s\0' ${_DBX_STATE_REGISTRO_RETOMADA[@]+"${_DBX_STATE_REGISTRO_RETOMADA[@]}"}
 }
 
 # dbx_state_retomada_gravar <campos do sentido...> — gravacao atomica do
@@ -1609,7 +1610,7 @@ dbx_state_retomada_gravar() {
   local -a registro=("$DBX_STATE_RETOMADA_MAGIA" "${DBX_STATE_RETOMADA_VERSAO_GRAVAR:-$DBX_STATE_RETOMADA_VERSAO}" "$DBX_STATE_RETOMADA_SENTIDO"
     "$DBX_STATE_RETOMADA_CONTA" "$DBX_STATE_RETOMADA_HOST" "$DBX_STATE_RETOMADA_REMOTO" "$@"
     "$DBX_STATE_RETOMADA_LOCAL")
-  _dbx_state_retomada_formato "${registro[@]}" || return "$DBX_STATE_ERRO_USO"
+  _dbx_state_retomada_formato ${registro[@]+"${registro[@]}"} || return "$DBX_STATE_ERRO_USO"
   [[ $DBX_STATE_RESULTADO == "$DBX_STATE_RETOMADA_SENTIDO" ]] || return "$DBX_STATE_ERRO_USO"
   DBX_STATE_RESULTADO=''
   diretorio=${arquivo%/*}
@@ -1623,7 +1624,7 @@ dbx_state_retomada_gravar() {
   if [[ -L $arquivo ]] || { [[ -e $arquivo ]] && ! [[ -f $arquivo && -O $arquivo ]]; }; then
     return 1
   fi
-  _DBX_STATE_REGISTRO_RETOMADA=("${registro[@]}")
+  _DBX_STATE_REGISTRO_RETOMADA=(${registro[@]+"${registro[@]}"})
   _dbx_state_gravar_arquivo "$arquivo" .retomada _dbx_state_conteudo_retomada || return 1
   if [[ $primeira == 'sim' ]]; then
     _dbx_state_retomada_preparado=$diretorio
@@ -1695,7 +1696,7 @@ _dbx_state_retomada_podar_um() {
     [[ $DBX_STATE_TRAVA_ESTADO == 'viva' ]] && return 1
   fi
   if _dbx_state_ler_limitado "$arquivo" "$DBX_STATE_RETOMADA_CAMPOS_UPLOAD" &&
-    _dbx_state_retomada_formato "${_DBX_STATE_CAMPOS[@]}" && [[ $DBX_STATE_RESULTADO == 'download' ]]; then
+    _dbx_state_retomada_formato ${_DBX_STATE_CAMPOS[@]+"${_DBX_STATE_CAMPOS[@]}"} && [[ $DBX_STATE_RESULTADO == 'download' ]]; then
     _dbx_state_retomada_dir_local "${_DBX_STATE_CAMPOS[12]}"
     dbx_state_retomada_part_apagar "$DBX_STATE_RESULTADO" "${_DBX_STATE_CAMPOS[9]}" "${_DBX_STATE_CAMPOS[10]}" || :
   fi
@@ -1729,7 +1730,7 @@ _dbx_state_retomada_podar() {
     # O mais antigo sai do teste `-ot` do bash sobre a lista do glob, sem `find
     # -printf` (RF-168): o utilitario do FreeBSD nao o conhece.
     antigo=''
-    for arquivo in "${registros[@]}"; do
+    for arquivo in ${registros[@]+"${registros[@]}"}; do
       [[ $arquivo == "$DBX_STATE_RETOMADA_ARQUIVO" || -n ${mantidos[$arquivo]:-} ]] && continue
       [[ -f $arquivo && ! -L $arquivo ]] || continue
       if [[ -z $antigo || $arquivo -ot $antigo ]]; then
@@ -1849,8 +1850,8 @@ dbx_state_retomada_listar() {
     DBX_STATE_RETOMADAS_ARQUIVO+=("$arquivo")
     DBX_STATE_RETOMADAS_IDADE+=("$idade")
     if _dbx_state_ler_limitado "$arquivo" "$DBX_STATE_RETOMADA_CAMPOS_UPLOAD" &&
-      _dbx_state_retomada_formato "${_DBX_STATE_CAMPOS[@]}"; then
-      c=("${_DBX_STATE_CAMPOS[@]}")
+      _dbx_state_retomada_formato ${_DBX_STATE_CAMPOS[@]+"${_DBX_STATE_CAMPOS[@]}"}; then
+      c=(${_DBX_STATE_CAMPOS[@]+"${_DBX_STATE_CAMPOS[@]}"})
       part='' devino='' bytes=0
       if [[ ${c[2]} == 'upload' && ${c[1]} == "$DBX_STATE_RETOMADA_VERSAO_PARTES" ]]; then
         # Versao 2: bytes confirmados = partes confirmadas x tamanho da parte
@@ -2185,7 +2186,7 @@ dbx_state_cursor_carregar() {
     _dbx_state_cursor_descartar 'registro de listagem ilegivel, truncado ou com campo acima de 8 KiB' "$apagar"
     return $?
   fi
-  if ! _dbx_state_cursor_cabecalho_formato "${cab[@]}"; then
+  if ! _dbx_state_cursor_cabecalho_formato ${cab[@]+"${cab[@]}"}; then
     exec {fd}<&-
     _dbx_state_cursor_descartar "$DBX_STATE_MOTIVO" "$apagar"
     return $?
@@ -2273,7 +2274,7 @@ dbx_state_cursor_vencido() {
 }
 
 _dbx_state_conteudo_cursor() {
-  printf '%s\0' "${_DBX_STATE_CURSOR_REG[@]}"
+  printf '%s\0' ${_DBX_STATE_CURSOR_REG[@]+"${_DBX_STATE_CURSOR_REG[@]}"}
   "$_dbx_state_cursor_corpo"
 }
 
@@ -2304,7 +2305,7 @@ dbx_state_cursor_gravar() {
   local -a registro=("$DBX_STATE_CURSOR_MAGIA" "$DBX_STATE_CURSOR_VERSAO" "$DBX_STATE_CURSOR_CONTA"
     "$DBX_STATE_CURSOR_ACCOUNT" "$DBX_STATE_CURSOR_ASSINATURA" "$DBX_STATE_CURSOR_REMOTO"
     "$DBX_STATE_CURSOR_LOCAL" "$1" "$2" "$3" "$agora" "$4")
-  _dbx_state_cursor_cabecalho_formato "${registro[@]}" || return 1
+  _dbx_state_cursor_cabecalho_formato ${registro[@]+"${registro[@]}"} || return 1
   declare -F -- "$5" >/dev/null || return "$DBX_STATE_ERRO_USO"
   diretorio=${arquivo%/*}
   _dbx_state_preparar_diretorio "$diretorio"
@@ -2313,7 +2314,7 @@ dbx_state_cursor_gravar() {
   if [[ -L $arquivo ]] || { [[ -e $arquivo ]] && ! [[ -f $arquivo && -O $arquivo ]]; }; then
     return 1
   fi
-  _DBX_STATE_CURSOR_REG=("${registro[@]}")
+  _DBX_STATE_CURSOR_REG=(${registro[@]+"${registro[@]}"})
   _dbx_state_cursor_corpo=$5
   _dbx_state_gravar_arquivo "$arquivo" .cursor _dbx_state_conteudo_cursor _dbx_state_rodape_cursor
   estado=$?
@@ -2356,7 +2357,7 @@ _dbx_state_cursor_podar() {
     voltas=$((voltas + 1))
     # Mesmo criterio da poda de `retomada-*`: `-ot` sobre o glob (RF-168).
     antigo=''
-    for arquivo in "${registros[@]}"; do
+    for arquivo in ${registros[@]+"${registros[@]}"}; do
       [[ $arquivo == "$DBX_STATE_CURSOR_ARQUIVO" || -n ${mantidos[$arquivo]:-} ]] && continue
       [[ -f $arquivo && ! -L $arquivo ]] || continue
       if [[ -z $antigo || $arquivo -ot $antigo ]]; then

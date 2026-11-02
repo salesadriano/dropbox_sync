@@ -204,7 +204,9 @@ _dbx_output_terminar() {
 # consumidor lia CAMPO FORJADO — dois `http_status` onde um fora alimentado, o
 # forjado escolhido por quem controla a resposta.
 _dbx_output_validar_para_linha() {
-  local -n _vetor=$1
+  dbx_ref_valido "${1-}" || return "$DBX_OUTPUT_ERRO_USO"
+  local -a _vetor=()
+  dbx_ref_copiar _vetor "$1"
   local indice total=${#_vetor[@]}
   [[ $DBX_OUTPUT_TERMINADOR == 'linha' ]] || return 0
   for ((indice = 0; indice < total; indice++)); do

@@ -475,7 +475,7 @@ _dbx_cmd_compartilhar_existente() {
   fi
   if [[ ${#candidatos[@]} -gt 1 ]]; then
     local lista=''
-    for indice in "${candidatos[@]}"; do
+    for indice in ${candidatos[@]+"${candidatos[@]}"}; do
       _dbx_cmd_compartilhar_ler_link links "$indice"
       lista+=" $DBX_COMPARTILHAR_URL"
     done
@@ -672,7 +672,7 @@ _dbx_cmd_compartilhar_listar() {
   # Ordem pela chave sem caixa de path_lower e depois pela url (LC_ALL=C).
   local -a ordem=()
   local atual posicao
-  for indice in "${!chaves[@]}"; do
+  for indice in ${chaves[@]+"${!chaves[@]}"}; do
     posicao=${#ordem[@]}
     while ((posicao > 0)); do
       atual=${ordem[posicao - 1]}

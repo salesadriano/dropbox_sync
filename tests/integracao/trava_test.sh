@@ -111,7 +111,7 @@ _rodar() {
   shift
   _env "$base"
   DBX_SAIDA='' DBX_ERRO=''
-  setsid -w "${AMBIENTE[@]}" bash "$DBX_EXEC" "$@" </dev/null >"$base/out" 2>"$base/err"
+  setsid -w ${AMBIENTE[@]+"${AMBIENTE[@]}"} bash "$DBX_EXEC" "$@" </dev/null >"$base/out" 2>"$base/err"
   DBX_ESTADO=$?
   IFS= read -r -d '' DBX_SAIDA <"$base/out"
   IFS= read -r -d '' DBX_ERRO <"$base/err"
@@ -123,7 +123,7 @@ _segundo_plano() {
   local base=$1 rotulo=$2
   shift 2
   _env "$base"
-  ( setsid -w "${AMBIENTE[@]}" bash "$DBX_EXEC" "$@" </dev/null >"$base/out.$rotulo" 2>"$base/err.$rotulo"
+  ( setsid -w ${AMBIENTE[@]+"${AMBIENTE[@]}"} bash "$DBX_EXEC" "$@" </dev/null >"$base/out.$rotulo" 2>"$base/err.$rotulo"
     printf '%s' "$?" >"$base/estado.$rotulo" ) &
 }
 
@@ -317,7 +317,7 @@ teste_trv05_tmp02_tmp05_sinal_em_cada_fase_sem_residuo_e_sem_trava() {
       fi
       printf '%s' "$sinal" >"$base/sinal"
       printf '%s' "$fase" >"$base/sinal_url"
-      _rodar "$base" sync "${sentido[@]}"
+      _rodar "$base" sync ${sentido[@]+"${sentido[@]}"}
       assert_igual "$NAO_CONCLUIDA" "$DBX_ESTADO" "$sinal em $fase: nao concluida ($DBX_ERRO)"
       assert_igual 1 "$(_harness_contar "$fase" "$base/chamadas")" "$sinal em $fase: o sinal chegou na fase"
       assert_igual '' "$(_residuo "$base")" "$sinal em $fase: nenhuma entrada dbx-* em TMPDIR"
@@ -373,13 +373,13 @@ teste_trv18_verificar_e_simulacao_deixam_o_estado_byte_a_byte() {
       fi
       antes=$(_retrato "$base/estado")
       local -a args=("$comando" --enviar --origem "$base/local" --destino /r)
-      [[ $comando == sync ]] && args=(--dry-run "${args[@]}")
-      _rodar "$base" "${args[@]}"
+      [[ $comando == sync ]] && args=(--dry-run ${args[@]+"${args[@]}"})
+      _rodar "$base" ${args[@]+"${args[@]}"}
       assert_igual "$antes" "$(_retrato "$base/estado")" "$cenario/$comando: termino normal"
       for sinal in INT TERM HUP; do
         printf '%s' "$sinal" >"$base/sinal"
         printf 'list_folder' >"$base/sinal_url"
-        _rodar "$base" "${args[@]}"
+        _rodar "$base" ${args[@]+"${args[@]}"}
         assert_igual "$NAO_CONCLUIDA" "$DBX_ESTADO" "$cenario/$comando/$sinal"
         assert_igual "$antes" "$(_retrato "$base/estado")" "$cenario/$comando: depois de $sinal"
       done
@@ -405,7 +405,7 @@ teste_trv31_ordem_trava_leitura_gravacao_liberacao() {
   # acontece: cada evento anota se a trava existia naquele instante (T/N), e a
   # liberacao depois do `mv` se prova por "T no mv" e "nenhuma trava no fim".
   _env "$base"
-  "${AMBIENTE[@]}" LOG="$base/ordem" EST="$base/estado/dbx" bash -c '
+  ${AMBIENTE[@]+"${AMBIENTE[@]}"} LOG="$base/ordem" EST="$base/estado/dbx" bash -c '
     set -o functrace
     trap '"'"'case $BASH_COMMAND in
       "dbx_state_trava_adquirir "*) e=adquirir ;;
@@ -576,7 +576,7 @@ teste_esr07_sinal_durante_a_espera_sai_com_14_sem_residuo() {
     antes=$(_retrato "$base/estado")
     ( _esperar_arquivo "$base/esperando"; kill "-$sinal" -- "-$(cat "$base/pid")" ) &
     _env "$base"
-    setsid -w "${AMBIENTE[@]}" bash -c 'printf "%s" "$$" >"$1/pid"; exec bash "$2" sync --enviar --origem "$1/local" --destino /r --esperar 30' \
+    setsid -w ${AMBIENTE[@]+"${AMBIENTE[@]}"} bash -c 'printf "%s" "$$" >"$1/pid"; exec bash "$2" sync --enviar --origem "$1/local" --destino /r --esperar 30' \
       _ "$base" "$DBX_EXEC" </dev/null >"$base/out" 2>"$base/err"
     DBX_ESTADO=$?
     wait
@@ -681,7 +681,7 @@ b.close()
 p = subprocess.run(sys.argv[1:], stdout=a.fileno(), stdin=subprocess.DEVNULL,
                    stderr=open(os.environ["ERRO"], "wb"))
 print(p.returncode)
-' "${AMBIENTE[@]}" bash "$DBX_EXEC" download /r/a.txt)
+' ${AMBIENTE[@]+"${AMBIENTE[@]}"} bash "$DBX_EXEC" download /r/a.txt)
   DBX_ERRO=$(cat "$base/err" 2>/dev/null)
   assert_igual "$(dbx_errors_codigo_saida consumidor_encerrou)" "$estado" "classe 15: $DBX_ERRO"
   assert_contem 'consumidor' "$DBX_ERRO" 'a mensagem nomeia a causa'
@@ -822,7 +822,7 @@ while True:
     dados += c
 p.wait()
 print(p.returncode, dados.decode())
-' "${AMBIENTE[@]}" bash "$DBX_EXEC" download /r/a.txt)
+' ${AMBIENTE[@]+"${AMBIENTE[@]}"} bash "$DBX_EXEC" download /r/a.txt)
   assert_igual '0 conteudo remoto' "$saida" "socket vivo: sai 0 e recebe tudo ($(cat "$base/err"))"
   assert_igual 1 "$(_harness_contar 'files/download' "$base/chamadas")" 'uma transferencia'
   assert_igual '' "$(_residuo "$base")" 'sem residuo'

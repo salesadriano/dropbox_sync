@@ -63,7 +63,7 @@ _aplicar() {
 }
 
 _chaves() { # chaves presentes, ordenadas
-  printf '%s\n' "${!DBX_SYNC_TAB[@]}" | LC_ALL=C sort | tr '\n' ' '
+  printf '%s\n' ${DBX_SYNC_TAB[@]+"${!DBX_SYNC_TAB[@]}"} | LC_ALL=C sort | tr '\n' ' '
 }
 
 teste_receita_do_servico_deleted_file_e_folder() {
@@ -75,7 +75,7 @@ teste_receita_do_servico_deleted_file_e_folder() {
   _arq_json /r/q && e+=("$T_E")
   _pasta_json /r/s && e+=("$T_E")
   _arq_json /r/s/f.txt && e+=("$T_E")
-  _aplicar completa "${e[@]}"
+  _aplicar completa ${e[@]+"${e[@]}"}
   assert_igual '/r/p /r/p/a.txt /r/p/b.txt /r/q /r/s /r/s/f.txt ' "$(_chaves)" 'varredura: tabela inteira, sem filtro'
   assert_igual sim "$DBX_SYNC_TAB_PERSISTIVEL" 'entradas no formato: persistivel'
   e=()
@@ -87,12 +87,12 @@ teste_receita_do_servico_deleted_file_e_folder() {
   _arq_json /r/s '' 'bbbbbbbbbbb' && e+=("$T_E")
   # lib/sync zera a contagem no inicio de cada delta (dbx_sync_listar_delta).
   DBX_SYNC_DELTA_MUDANCAS=0
-  _aplicar delta "${e[@]}"
+  _aplicar delta ${e[@]+"${e[@]}"}
   assert_igual 0 "$T_ESTADO" 'delta coerente'
   assert_igual '/r/q /r/s ' "$(_chaves)" 'receita aplicada'
   [[ ${DBX_SYNC_TAB[/r/q]} == d$'\t'* ]] || _harness_falhar 'q virou pasta'
   [[ ${DBX_SYNC_TAB[/r/s]} == f$'\t'* ]] || _harness_falhar 's virou arquivo'
-  assert_igual '/r/p' "${!DBX_SYNC_DELTA_APAGADAS[*]}" 'so a raiz apagada que existia e registrada'
+  assert_igual '/r/p' ${DBX_SYNC_DELTA_APAGADAS[@]+"${!DBX_SYNC_DELTA_APAGADAS[*]}"} 'so a raiz apagada que existia e registrada'
   assert_igual 4 "$DBX_SYNC_DELTA_MUDANCAS" 'quatro mudancas'
 }
 
@@ -120,7 +120,7 @@ teste_ids_unicos_detecta_movimento_sem_deleted() {
   local -a e=()
   dbx_sync_tabela_zerar
   _arq_json /r/a.txt id:X && e+=("$T_E")
-  _aplicar completa "${e[@]}"
+  _aplicar completa ${e[@]+"${e[@]}"}
   _arq_json /r/b.txt id:X
   _aplicar delta "$T_E"
   _dbx_sync_ids_unicos && _harness_falhar 'mesmo id em dois caminhos deveria reprovar'
@@ -140,17 +140,17 @@ teste_emitir_aplica_o_escopo_depois_e_conta_como_antes() {
   _arq_json /r/b.txt && e+=("$T_E")
   _arq_json /r/c.log && e+=("$T_E")
   _pasta_json /r/vazia && e+=("$T_E")
-  _aplicar completa "${e[@]}"
+  _aplicar completa ${e[@]+"${e[@]}"}
   caminhos=(--excluir p --excluir '*.log' --excluir vazia)
   dbx_cmd_filtros_preparar caminhos metas || _harness_falhar "filtros: $DBX_CMD_FILTRO_MOTIVO"
   dbx_sync_filtrados_zerar
   dbx_sync_tabela_emitir /r "$area/remoto" "$area/revs" origem
   assert_igual 3 "$DBX_SYNC_REMOTOS_ANTES" 'arquivos antes do filtro'
   assert_igual 3 "$DBX_SYNC_FILTRADOS" 'pasta excluida conta 1 (inclusive vazia), o .log 1 (RF-80(i))'
-  mapfile -d '' -t conteudo <"$area/remoto"
-  assert_igual "$H1"$'\t3\tb.txt' "${conteudo[*]}" 'so b.txt no escopo, no formato de lib/walk'
-  mapfile -d '' -t conteudo <"$area/revs"
-  assert_igual $'0123456789a\tb.txt' "${conteudo[*]}" 'rev em arquivo proprio'
+  conteudo=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do conteudo+=("$_m"); done <"$area/remoto"
+  assert_igual "$H1"$'\t3\tb.txt' ${conteudo[@]+"${conteudo[*]}"} 'so b.txt no escopo, no formato de lib/walk'
+  conteudo=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do conteudo+=("$_m"); done <"$area/revs"
+  assert_igual $'0123456789a\tb.txt' ${conteudo[@]+"${conteudo[*]}"} 'rev em arquivo proprio'
 }
 
 teste_retrato_confina_cada_caminho_e_recusa_repetido() {
@@ -207,8 +207,8 @@ teste_confirmacao_agrupa_por_raiz_apagada_e_respeita_o_teto() {
   dbx_sync_confirmar_exclusoes /r candidatas
   assert_igual 0 $? 'confirmadas por not_found'
   assert_igual 2 "${#T_PEDIDOS[@]}" 'uma por raiz apagada (p) e uma avulsa (z.txt)'
-  assert_contem '"path":"/r/p"' "${T_PEDIDOS[*]}" 'a raiz confirma os descendentes, sem caixa'
-  assert_contem '"path":"/r/z.txt"' "${T_PEDIDOS[*]}" 'ausencia no retrato tambem e confirmada (DIV-m)'
+  assert_contem '"path":"/r/p"' ${T_PEDIDOS[@]+"${T_PEDIDOS[*]}"} 'a raiz confirma os descendentes, sem caixa'
+  assert_contem '"path":"/r/z.txt"' ${T_PEDIDOS[@]+"${T_PEDIDOS[*]}"} 'ausencia no retrato tambem e confirmada (DIV-m)'
   assert_igual 2 "$DBX_SYNC_CONFIRMADAS" 'contagem'
   for ((i = 0; i < 51; i++)); do muitas+=("f$i.txt"); done
   T_PEDIDOS=()
@@ -249,7 +249,7 @@ teste_raiz_apagada_e_recriada_nao_cobre_ninguem() {
   DBX_SYNC_DELTA_APAGADAS=([/r/p]=$'d\tid:p\t-\t-\t0\t-\t/r/p')
   T_PEDIDOS=() T_RESPOSTA=nf
   dbx_sync_confirmar_exclusoes /r candidatas
-  assert_contem '"path":"/r/p/x.txt"' "${T_PEDIDOS[*]}" 'a pasta voltou: confirma o proprio item'
+  assert_contem '"path":"/r/p/x.txt"' ${T_PEDIDOS[@]+"${T_PEDIDOS[*]}"} 'a pasta voltou: confirma o proprio item'
 }
 
 teste_qa_b7b_02_entrada_da_propria_raiz_e_ignorada_sem_bloquear_o_retrato() {
@@ -260,7 +260,7 @@ teste_qa_b7b_02_entrada_da_propria_raiz_e_ignorada_sem_bloquear_o_retrato() {
   dbx_sync_tabela_zerar
   _pasta_json /r && e+=("$T_E")
   _arq_json /r/a.txt && e+=("$T_E")
-  _aplicar completa "${e[@]}"
+  _aplicar completa ${e[@]+"${e[@]}"}
   assert_igual 0 "$T_ESTADO" 'completa aceita'
   assert_igual sim "$DBX_SYNC_TAB_PERSISTIVEL" 'a propria pasta nao bloqueia o retrato (QA-B7B-02)'
   assert_igual '/r/a.txt ' "$(_chaves)" 'a raiz nao entra na tabela'

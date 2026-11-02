@@ -87,7 +87,7 @@ _dbx_cmd_unlink_remover_estado() {
   # Fase 7a (RF-107(c), DIV-185): os `.part` de download interrompido saem so
   # pela barreira de identidade, antes dos registros que os descrevem.
   _dbx_cmd_unlink_parts
-  for indice in "${!DBX_STATE_TRAVAS_ARQUIVO[@]}"; do
+  for indice in ${DBX_STATE_TRAVAS_ARQUIVO[@]+"${!DBX_STATE_TRAVAS_ARQUIVO[@]}"}; do
     dbx_state_trava_examinar "${DBX_STATE_TRAVAS_ARQUIVO[indice]}"
     # shellcheck disable=SC2034  # lido por referencia de nome na conferencia
     impressoes["${DBX_STATE_TRAVAS_ARQUIVO[indice]}"]="$DBX_STATE_TRAVA_ESTADO|$DBX_STATE_RESULTADO"
@@ -122,7 +122,7 @@ _dbx_cmd_unlink_parts() {
   local indice part cred=${1:-}
   DBX_CMD_UNLINK_PARTS=()
   dbx_state_retomada_listar
-  for indice in "${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"; do
+  for indice in ${DBX_STATE_RETOMADAS_ARQUIVO[@]+"${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"}; do
     # Fase 8 (RF-125(c)): com identidade, so os `.part` dos registros dela.
     [[ -z $cred || ${DBX_STATE_RETOMADAS_CRED[indice]} == "$cred" ]] || continue
     part=${DBX_STATE_RETOMADAS_PART[indice]}
@@ -137,17 +137,18 @@ _dbx_cmd_unlink_parts() {
 # `trava-*` presente e uma das listadas, com a MESMA impressao (estado, pid,
 # host, inicio) e nao viva. Trava que sumiu nao impede (ninguem a detem mais).
 _dbx_cmd_unlink_travas_inalteradas() {
-  local estado=$1 trava
-  local -n _conhecidas=$2
+  local estado=$1 trava _ut_conhecida=''
+  dbx_ref_valido "${2-}" || return 2
   for trava in "$estado"/trava-*; do
     [[ -e $trava || -L $trava ]] || continue
-    [[ -n ${_conhecidas[$trava]:-} ]] || {
+    dbx_ref_obter _ut_conhecida "$2" "$trava"
+    [[ -n $_ut_conhecida ]] || {
       _dbx_cmd_unlink_trava_nova "$trava"
       return $?
     }
     dbx_state_trava_examinar "$trava"
     if [[ $DBX_STATE_TRAVA_ESTADO == 'viva' ||
-      "$DBX_STATE_TRAVA_ESTADO|$DBX_STATE_RESULTADO" != "${_conhecidas[$trava]}" ]]; then
+      "$DBX_STATE_TRAVA_ESTADO|$DBX_STATE_RESULTADO" != "$_ut_conhecida" ]]; then
       _dbx_cmd_unlink_trava_nova "$trava"
       return $?
     fi
@@ -175,7 +176,7 @@ _dbx_cmd_unlink_recusar_se_trava_viva() {
   [[ ${DBX_CMD_UNLINK_MULTI:-nao} == 'sim' ]] &&
     outro=' (pode ser um sync ou verificar de outro perfil: a trava nao identifica o perfil)'
   dbx_state_travas_listar
-  for indice in "${!DBX_STATE_TRAVAS_ARQUIVO[@]}"; do
+  for indice in ${DBX_STATE_TRAVAS_ARQUIVO[@]+"${!DBX_STATE_TRAVAS_ARQUIVO[@]}"}; do
     [[ ${DBX_STATE_TRAVAS_ESTADO[indice]} == 'viva' ]] || continue
     dbx_state_trava_descrever "$indice"
     dbx_cmd_caminho_exibivel "${DBX_STATE_TRAVAS_ARQUIVO[indice]}"
@@ -225,7 +226,7 @@ _dbx_cmd_unlink_remover_estado_seletivo() {
   dbx_state_retomada_listar
   registros=(${DBX_STATE_RETOMADAS_ARQUIVO[@]+"${DBX_STATE_RETOMADAS_ARQUIVO[@]}"})
   creds=(${DBX_STATE_RETOMADAS_CRED[@]+"${DBX_STATE_RETOMADAS_CRED[@]}"})
-  for indice in "${!registros[@]}"; do
+  for indice in ${registros[@]+"${!registros[@]}"}; do
     [[ ${creds[indice]} == "$cred" ]] || continue
     arquivo=${registros[indice]}
     trava="$estado/trava-${arquivo##*/retomada-}"
@@ -266,7 +267,7 @@ _dbx_cmd_unlink_remover_estado_seletivo() {
   dbx_state_cursor_listar
   registros=(${DBX_STATE_CURSORES_ARQUIVO[@]+"${DBX_STATE_CURSORES_ARQUIVO[@]}"})
   creds=(${DBX_STATE_CURSORES_CRED[@]+"${DBX_STATE_CURSORES_CRED[@]}"})
-  for indice in "${!registros[@]}"; do
+  for indice in ${registros[@]+"${!registros[@]}"}; do
     [[ ${creds[indice]} == "$cred" ]] || continue
     arquivo=${registros[indice]}
     if [[ -f $arquivo && ! -L $arquivo && -O $arquivo ]]; then
@@ -370,7 +371,7 @@ dbx_cmd_unlink_executar() {
   if [[ ${#compartilhado[@]} -gt 0 ]]; then
     # RF-124(e), DIV-237: identidade compartilhada nao revoga.
     {
-      printf 'Este perfil (%s) tem a MESMA credencial (app key e refresh token) de: %s.\n' "$nome" "${compartilhado[*]}"
+      printf 'Este perfil (%s) tem a MESMA credencial (app key e refresh token) de: %s.\n' "$nome" ${compartilhado[@]+"${compartilhado[*]}"}
       printf 'O refresh token NAO sera revogado: revoga-lo, em cascata, inutilizaria esses perfis.\n'
       printf 'So o arquivo do perfil sai; o estado dessa credencial e mantido.\n'
     } >&2
@@ -524,7 +525,7 @@ dbx_cmd_unlink_executar() {
     dbx_output_diagnostico aviso \
       "${#DBX_CMD_UNLINK_PARTS[@]} arquivo(s) parcial(is) de download interrompido nao apagado(s): nao passam a barreira de identidade (outro inode, outro dono, ligacao simbolica ou fora do padrao); confira e remova com rm"
     local parte
-    for parte in "${DBX_CMD_UNLINK_PARTS[@]}"; do
+    for parte in ${DBX_CMD_UNLINK_PARTS[@]+"${DBX_CMD_UNLINK_PARTS[@]}"}; do
       dbx_cmd_caminho_exibivel "$parte"
       dbx_output_diagnostico aviso "parcial mantido: $DBX_CMD_EXIBIDO"
     done

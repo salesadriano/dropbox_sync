@@ -404,7 +404,7 @@ teste_tc_pud_registro_v2_com_intervalos_nao_canonicos_e_descartado_com_aviso() {
     campos=()
     while IFS= read -r -d '' f; do campos+=("$f"); done <"$arquivo"
     campos[12]=$ruim
-    printf '%s\0' "${campos[@]}" >"$arquivo"
+    printf '%s\0' ${campos[@]+"${campos[@]}"} >"$arquivo"
     rm -f "$base/ctl/sinal_em"
     : >"$base/chamadas"
     _up "$base" --paralelo 2

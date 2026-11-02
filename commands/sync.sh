@@ -334,7 +334,7 @@ _dbx_cmd_sync_aux_encerrar() {
 _dbx_cmd_sync_transferir_paralelo() {
   local total=${#DBX_SYNC_TRANSFERIR[@]} lancados=0 descarregados=0 vivos indice pid
   local caminho alvo rev antes status classe resumo limites resultado acao_id=''
-  local -a itens=("${DBX_SYNC_TRANSFERIR[@]}") pids=()
+  local -a itens=(${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}) pids=()
   local pasta="$area/paralelo" base_op=$op_atual canal='' tam_blc=''
   # A pasta fica na area do ciclo (lib/tmp a remove em todo termino).
   mkdir -m 0700 -- "$pasta" 2>/dev/null || :
@@ -448,7 +448,16 @@ _dbx_cmd_sync_transferir_paralelo() {
       dbx_progress_bloco_tick
       sleep 0.2
     else
-      wait -n 2>/dev/null || :
+      # So os VIVOS ainda nao descarregados: a descarga e em ordem, e um filho
+      # posterior ja terminado so sai depois do primeiro; passa-lo faria o
+      # aguardo voltar de imediato a cada volta (laco ocupado ate o primeiro
+      # terminar). Com todos mortos a lista fica vazia e o aguardo retorna.
+      local -a _vp=()
+      local _pv
+      for _pv in ${pids[@]+"${pids[@]:descarregados:lancados-descarregados}"}; do
+        [[ -n $_pv ]] && kill -0 "$_pv" 2>/dev/null && _vp+=("$_pv")
+      done
+      dbx_par_aguardar_algum ${_vp[@]+"${_vp[@]}"}
     fi
   done
   dbx_progress_bloco_encerrar
@@ -516,9 +525,11 @@ _dbx_cmd_sync_lote_iniciar() {
     set -m
     while :; do
       vivos=0
+      local _vp=()
       for pid in ${pids[@]+"${pids[@]}"}; do
-        kill -0 "$pid" 2>/dev/null && vivos=$((vivos + 1))
+        kill -0 "$pid" 2>/dev/null && vivos=$((vivos + 1)) && _vp+=("$pid")
       done
+      pids=(${_vp[@]+"${_vp[@]}"})
       while ((lancados < total && vivos < paralelo)); do
         local destino_dbg=''
         [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]] && destino_dbg="$pasta/dbg.$lancados"
@@ -530,7 +541,7 @@ _dbx_cmd_sync_lote_iniciar() {
         vivos=$((vivos + 1))
       done
       ((vivos > 0)) || break
-      wait -n 2>/dev/null || :
+      dbx_par_aguardar_algum ${pids[@]+"${pids[@]}"}
     done
     wait 2>/dev/null || :
     set +m
@@ -584,7 +595,7 @@ _dbx_cmd_sync_lote_concluir() {
   DBX_LOTE_SESSOES=() DBX_LOTE_DESLOCAMENTOS=() DBX_LOTE_COMMITS=()
   DBX_LOTE_ENVIO_RESULTADO=() DBX_LOTE_ENVIO_CLASSE=() DBX_LOTE_ENVIO_MOTIVO=()
   DBX_LOTE_ENVIO_HASH=() DBX_LOTE_ENVIO_HASH_DEVOLVIDO=()
-  for k in "${!_DBX_CMD_SYNC_LOTE_ITENS[@]}"; do
+  for k in ${_DBX_CMD_SYNC_LOTE_ITENS[@]+"${!_DBX_CMD_SYNC_LOTE_ITENS[@]}"}; do
     [[ ${_DBX_CMD_SYNC_LOTE_STATUS[k]} == 0 ]] || continue
     caminho=${_DBX_CMD_SYNC_LOTE_ITENS[k]}
     alvo=${DBX_SYNC_ALVO[$caminho]:-$caminho}
@@ -650,14 +661,14 @@ _dbx_cmd_sync_lote_envio() {
   # RF-159(a): a modalidade `lote` de cada pequeno, antes da primeira chamada de
   # conteudo (a do `start`).
   if [[ ${DBX_CLI_DEBUG:-nao} == 'sim' ]]; then
-    for caminho in "${_DBX_CMD_SYNC_LOTE_ITENS[@]}"; do
+    for caminho in ${_DBX_CMD_SYNC_LOTE_ITENS[@]+"${_DBX_CMD_SYNC_LOTE_ITENS[@]}"}; do
       dbx_transfer_tamanho_de_arquivo "$raiz_local/$caminho" || :
       dbx_debug_linha upload modalidade=lote arquivo="$caminho" bytes="$DBX_TRANSFER_TAMANHO"
     done
   fi
   _dbx_cmd_sync_lote_iniciar
   _dbx_cmd_sync_lote_concluir
-  for k in "${!_DBX_CMD_SYNC_LOTE_ITENS[@]}"; do
+  for k in ${_DBX_CMD_SYNC_LOTE_ITENS[@]+"${!_DBX_CMD_SYNC_LOTE_ITENS[@]}"}; do
     _DBX_CMD_SYNC_LOTE_POS[${_DBX_CMD_SYNC_LOTE_ITENS[k]}]=$k
     # RF-159(d): resultado final de cada pequeno, na ordem do plano.
     if [[ ${_DBX_CMD_SYNC_LOTE_STATUS[k]} == 0 ]]; then
@@ -1062,7 +1073,7 @@ dbx_cmd_sync_executar() {
   if [[ $DBX_CMD_SYNC_VARREDURA != 'incremental' ]]; then
     modo_ciclos='sim'
   fi
-  local dirs_arq="$area/dirs" vazia_global='nao' podadas_dirs=0 total_origem=0 extras_arquivos=0
+  local dirs_arq="$area/dirs" vazia_global='nao' podadas_dirs=0 total_origem=0 extras_arquivos=0 retidos_total=0
   local so_destino='nao' ciclo ci_ini ci_fim ciclo_i=0 ciclo_falho=0 codigo_parada=0
   local enviados=0 recebidos=0 apagados=0 falhas=0 alvo rev antes
   local omitidos_total=0 fo_total=0 fd_total=0 antes_total=0 depois_total=0 kk
@@ -1138,7 +1149,7 @@ dbx_cmd_sync_executar() {
     [[ $modo_ciclos == 'sim' && $ciclo_i -eq 1 && $sentido == 'enviar' ]] && filtrados_local=$((filtrados_local + podadas_dirs))
     local indice
     local total_locais=${#caminhos_locais[@]}
-    for indice in "${!caminhos_locais[@]}"; do
+    for indice in ${caminhos_locais[@]+"${!caminhos_locais[@]}"}; do
       if _dbx_cmd_sync_resumo_local "$raiz_local" "${caminhos_locais[$indice]}" \
         "${identidades[$indice]}"; then
         ordem_local+=("${caminhos_locais[$indice]}")
@@ -1200,6 +1211,7 @@ dbx_cmd_sync_executar() {
           dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
         fi
         _dbx_cmd_sync_sem_protegidos
+        _dbx_cmd_sync_reter_nao_ascii
         # RF-190(b): o ramo so do destino e lido inteiro NO ciclo que o encontra.
       else
   # QA-P3-03: o status e capturado ANTES do teste. Lido dentro de `if ! …`, ele
@@ -1238,6 +1250,7 @@ dbx_cmd_sync_executar() {
       # o escopo; esta e a segunda barreira, SEM ESTADO: refaz a conta pelos
       # padroes desta linha de comando, e nada da memoria entra nela.
       _dbx_cmd_sync_sem_protegidos
+      _dbx_cmd_sync_reter_nao_ascii
 
       # RF-114 (decisao do solicitante; C5): no modo incremental, TODA candidata a
       # exclusao — `deleted` do delta ou ausencia no retrato — e confirmada no
@@ -1412,7 +1425,7 @@ dbx_cmd_sync_executar() {
   if [[ $sentido == 'enviar' && $recusa_origem_vazia != 'sim' ]]; then
     local -A tamanho_local=()
     local item total_bytes=0
-    for item in "${!caminhos_locais[@]}"; do
+    for item in ${caminhos_locais[@]+"${!caminhos_locais[@]}"}; do
       tamanho_local["${caminhos_locais[$item]}"]=${tamanhos[$item]}
     done
     for item in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
@@ -1582,6 +1595,11 @@ dbx_cmd_sync_executar() {
     fi
   done
 
+  # QA-B42-01: UM aviso por execucao, com o total dos ciclos.
+  if [[ $retidos_total -gt 0 ]]; then
+    dbx_cmd_avisar "$retidos_total caminho(s) fora do ASCII mantido(s) sem apagar: $DBX_SYNC_LOCALIDADE ausente, a comparacao sem caixa so vale no ASCII e o par poderia ser o mesmo arquivo na Dropbox; nada foi apagado por isso"
+  fi
+
   if [[ $ciclo_falho -gt 0 ]]; then
     : # RF-193: falha sistemica nesta execucao em ciclos: nenhuma exclusao
   elif [[ $espelhar == 'sim' && $sentido == 'enviar' ]]; then
@@ -1670,7 +1688,7 @@ dbx_cmd_sync_executar() {
   # contagem, continua como era, e sem `--json` a saida padrao nao muda.
   local indice valor
   if [[ ${DBX_CLI_ESTRUTURADA:-nao} == 'sim' ]]; then
-    for indice in "${!DBX_CMD_SYNC_FALHAS_CAMINHOS[@]}"; do
+    for indice in ${DBX_CMD_SYNC_FALHAS_CAMINHOS[@]+"${!DBX_CMD_SYNC_FALHAS_CAMINHOS[@]}"}; do
       valor=${DBX_CMD_SYNC_FALHAS_CAMINHOS[indice]}
       # Com `--null` o registro carrega qualquer byte; por linha, vale a mesma
       # citacao da linha de falha.
@@ -1752,19 +1770,27 @@ _dbx_cmd_sync_sem_protegidos() {
   DBX_SYNC_APAGAR=(${manter[@]+"${manter[@]}"})
 }
 
+# _dbx_cmd_sync_reter_nao_ascii — falha fechada (QA-B42-01): so com `--espelhar`,
+# tira do plano de exclusao o caminho fora do ASCII quando a localidade falta, e
+# soma o que reteve em `retidos_total` (variavel do executor) para o aviso unico.
+_dbx_cmd_sync_reter_nao_ascii() {
+  [[ $espelhar == 'sim' ]] || return 0
+  dbx_sync_reter_nao_ascii
+  retidos_total=$((retidos_total + DBX_SYNC_RETIDOS))
+}
+
 # _dbx_cmd_sync_ler_tamanhos <arquivo> <nome_do_mapa> — `size` por caminho remoto,
 # lido da tabela `resumo<TAB>tamanho<TAB>caminho\0` ja montada pela listagem.
 _dbx_cmd_sync_ler_tamanhos() {
   local arquivo=$1 reg tam
-  local -n _tams=$2
-  _tams=()
+  dbx_ref_limpar "$2" || return 2
   [[ -r $arquivo ]] || return 0
   while IFS= read -r -d '' reg; do
     tam=${reg#*$'\t'}
     tam=${tam%%$'\t'*}
     [[ $tam =~ ^[0-9]+$ ]] || continue
     reg=${reg#*$'\t'}
-    _tams["${reg#*$'\t'}"]=$tam
+    dbx_ref_definir "$2" "${reg#*$'\t'}" "$tam"
   done <"$arquivo"
   return 0
 }
@@ -1859,7 +1885,7 @@ _dbx_cmd_sync_apagar_remoto_em_lote() {
   local acao_exclusao=$DBX_TMP_ID
   dbx_lote_excluir
   dbx_tmp_acao_cancelar "$acao_exclusao"
-  for i in "${!alvos[@]}"; do
+  for i in ${alvos[@]+"${!alvos[@]}"}; do
     caminho=${alvos[i]}
     op_atual=$((op_atual + 1))
     dbx_progress_etapa "$op_atual" "$total_ops" 'apagando' "$caminho"
@@ -2170,7 +2196,7 @@ _dbx_cmd_sync_diretorios_enumerar() {
     dbx_cmd_falhar uso_invalido 'nao foi possivel planejar os ciclos'
     return $?
   }
-  ciclos=("${DBX_SYNC_BLOCOS_CICLOS[@]}")
+  ciclos=(${DBX_SYNC_BLOCOS_CICLOS[@]+"${DBX_SYNC_BLOCOS_CICLOS[@]}"})
   return 0
 }
 
@@ -2195,7 +2221,7 @@ _dbx_cmd_sync_ciclo_remoto_formar() {
       # contado; so restaura a tabela e segue, sem listar de novo.
       dir=$pend_dir
       arquivos=$pend_arquivos
-      filhos=("${pend_filhos[@]}")
+      filhos=(${pend_filhos[@]+"${pend_filhos[@]}"})
       for ((i = 0; i < ${#pend_chaves[@]}; i++)); do
         pl=${pend_chaves[i]}
         DBX_SYNC_TAB[$pl]=${pend_regs[i]}
@@ -2271,8 +2297,8 @@ _dbx_cmd_sync_ciclo_remoto_formar() {
     if ((${#filhos[@]} > 0)); then
       dbx_sync_ordem_sem_caixa filhos
       ordenados=()
-      for ordem in "${DBX_SYNC_ORDEM[@]}"; do ordenados+=("${filhos[ordem]}"); done
-      fila_remota=("${ordenados[@]}" ${fila_remota[@]+"${fila_remota[@]}"})
+      for ordem in ${DBX_SYNC_ORDEM[@]+"${DBX_SYNC_ORDEM[@]}"}; do ordenados+=("${filhos[ordem]}"); done
+      fila_remota=(${ordenados[@]+"${ordenados[@]}"} ${fila_remota[@]+"${fila_remota[@]}"})
     fi
     ((acumulado >= DBX_CMD_SYNC_BLOCO)) && break
   done

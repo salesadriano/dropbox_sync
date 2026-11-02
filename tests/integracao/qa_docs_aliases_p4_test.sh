@@ -174,7 +174,7 @@ _qa_memoria_semantica() {
         "$caminho" "$resumo" "${campos[0]-}" "${campos[1]-}" "${campos[5]-}"
       linhas+=("$linha")
     done <"$arquivo"
-    [[ ${#linhas[@]} -eq 0 ]] || printf '%s\n' "${linhas[@]}" | LC_ALL=C sort
+    [[ ${#linhas[@]} -eq 0 ]] || printf '%s\n' ${linhas[@]+"${linhas[@]}"} | LC_ALL=C sort
   done < <(find "$BASE/estado" -type f -name 'memoria-*' -print0 2>/dev/null | LC_ALL=C sort -z)
 }
 
@@ -372,7 +372,7 @@ teste_qa_p4_alias_ajuda_e_readme_documentam_os_onze_pares() {
   local par comando pt en readme
   IFS= read -r -d '' readme <"$DBX_HARNESS_RAIZ/README.md"
   _qa_cenario
-  for par in "${pares[@]}"; do
+  for par in ${pares[@]+"${pares[@]}"}; do
     IFS='|' read -r comando pt en <<<"$par"
     _qa_rodar -- help "$comando"
     assert_igual 0 "$ESTADO" "help $comando sai com 0"
@@ -541,7 +541,9 @@ teste_qa_p4_localidade_valor_fora_do_alfabeto_cai_no_padrao_e_c_puro_avisa() {
   _qa_rodar DBX_SYNC_LOCALIDADE=C -- --json --dry-run sync --push --source "$BASE/local" --dest /r --mirror --yes
   assert_igual 0 "$ESTADO" "[C]: o aviso nao recusa; diagnostico: $ERRO"
   assert_igual 1 "$(_harness_contar 'comparacao sem caixa' "$BASE/err")" '[C]: um aviso'
-  assert_contem "apagar=$nome_remoto" "$SAIDA" '[C]: so ASCII, o par vira dois caminhos'
+  # RF-54(f2) (DIV-391, QA-B42-01): so ASCII, o par vira dois caminhos, mas o
+  # nao ASCII nao entra no plano de exclusao sem a localidade.
+  assert_nao_contem "apagar=$nome_remoto" "$SAIDA" '[C]: so ASCII; o nao ASCII nao e apagado (RF-54(f2))'
 }
 
 teste_qa_p4_localidade_ausente_aviso_unico_fora_do_stdout_sem_segredo() {
@@ -600,7 +602,7 @@ teste_qa_p4_localidade_nao_muda_bytes_enviados_a_rede() {
 
 teste_qa_p4_doc_readme_lista_os_utilitarios_do_preflight_e_nao_tem_frase_revogada() {
   local linha readme preflight arquivo frase
-  linha=$(grep -m1 'Utilit.rios da instala' "$DBX_HARNESS_RAIZ/README.md")
+  linha=$(grep -m1 'Utilit.*rios da instala' "$DBX_HARNESS_RAIZ/README.md")
   readme=$(grep -oE '`[a-z0-9]+`' <<<"$linha" | tr -d '`' |
     grep -vxE 'sha256sum|shasum|sha256|openssl' | LC_ALL=C sort | tr '\n' ' ')
   preflight=$(bash -c '. "$1/lib/errors.sh"; . "$1/lib/preflight.sh"; printf "%s" "$DBX_PREFLIGHT_UTILITARIOS"' \

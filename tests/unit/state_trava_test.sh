@@ -272,7 +272,7 @@ teste_matriz_hostil_e_ilegivel_nunca_apagada_nem_retomada_nem_ecoada() {
   hostis+=("$massa")
   printf -v massa 'dbx-trava\t1\t%s\t%s\t1700000000\tsync\tfim\nsegunda\n' "$morto" "$host"
   hostis+=("$massa")
-  for conteudo in "${hostis[@]}"; do
+  for conteudo in ${hostis[@]+"${hostis[@]}"}; do
     indice=$((indice + 1))
     _plantar "$trava" "$conteudo" cru
     cp "$trava" "$AREA/antes"
@@ -631,7 +631,7 @@ teste_listagem_classifica_e_nao_cria_o_diretorio() {
   _plantar "$ESTADO/trava-dddddddddddddddddddddddddddddddd" 'lixo'
   _plantar "$ESTADO/trava-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.r" "$(_linha "$morto" "$host" 1700000001 sync)"
   _filho 'dbx_state_travas_listar
-    for i in "${!DBX_STATE_TRAVAS_ARQUIVO[@]}"; do
+    for i in ${DBX_STATE_TRAVAS_ARQUIVO[@]+"${!DBX_STATE_TRAVAS_ARQUIVO[@]}"}; do
       printf "%s %s %s\n" "${DBX_STATE_TRAVAS_ARQUIVO[i]##*/}" "${DBX_STATE_TRAVAS_ESTADO[i]}" "${DBX_STATE_TRAVAS_PID[i]}"
     done'
   kill "$vivo" 2>/dev/null

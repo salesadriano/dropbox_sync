@@ -49,6 +49,9 @@ _qa_mutante() {
   printf '%s' "$copia/bin/dbx"
 }
 
+# python3 e o oraculo independente do content_hash; sem ele (CentOS 7) o caso pula.
+_qa_exigir_python3() { command -v python3 >/dev/null 2>&1 || pular 'python3 ausente: oraculo independente do content_hash'; }
+
 # _qa_ref_hash <arquivo> — content_hash da Dropbox calculado fora do produto.
 _qa_ref_hash() {
   python3 -I -c '
@@ -125,6 +128,7 @@ _qa_rodar_verificar() {
 # com o resumo de referencia e exige que o produto, sob o duble do FreeBSD, o ache
 # igual.
 _qa_verificar_tamanhos() {
+  _qa_exigir_python3
   local base tamanho i=0 ref entradas='' sep=''
   base=$(_qa_cenario_verificar)
   for tamanho in "$@"; do
@@ -200,6 +204,7 @@ teste_leitura_curta_de_cano_nao_e_tomada_como_fim_e_nao_perde_bytes() {
 }
 
 teste_content_hash_de_fluxo_lento_igual_ao_de_referencia_sob_o_duble() {
+  _qa_exigir_python3
   local arquivo="$DBX_TESTES_TMP/lento.bin" ref obtido
   . "$DBX_HARNESS_RAIZ/lib/hash.sh"
   _qa_aleatorio "$arquivo" $((2 * QA_PARTE + 4321))
@@ -380,6 +385,7 @@ _qa_soma_anexos() {
 
 # _qa_confere_servidor <base> <bytes> — o servidor tem EXATAMENTE a origem.
 _qa_confere_servidor() {
+  _qa_exigir_python3
   local base=$1 tamanho=$2 sid
   sid=$(<"$base/sessao_final")
   assert_igual "$tamanho" "$(dbx_freebsd_real stat -c %s "$base/sess/$sid/bytes")" 'o servidor recebeu o tamanho exato do arquivo'
@@ -433,6 +439,7 @@ teste_retomada_de_upload_interrompido_deixa_o_arquivo_final_identico() {
 # ---------------------------------------------------------------------------
 
 teste_mutacao_head_c_no_lugar_de_dbx_ler_exato_e_reprovada_sob_o_duble() {
+  _qa_exigir_python3
   local base mutante tamanho=$((2 * QA_PARTE + 777)) ref
   mutante=$(_qa_mutante)
   base=$(_qa_cenario_verificar)

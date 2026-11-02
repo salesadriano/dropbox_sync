@@ -36,6 +36,22 @@ DBX_TESTES_TMP=$(mktemp -d "${TMPDIR:-/tmp}/dbx-testes.XXXXXXXX") || exit 1
 export DBX_TESTES_TMP
 trap 'rm -rf "$DBX_TESTES_TMP"' EXIT INT TERM
 
+# Linha legada (CentOS 7, util-linux 2.23): `setsid -w` so existe a partir da
+# 2.30, e os testes usam `setsid -w` para rodar o dbx em sessao propria e
+# esperar por ele. Sem `-w`, o `setsid` so cria processo novo quando quem o
+# chama e lider de grupo, o que nao ocorre num script nao interativo: ele faz
+# `exec` direto e a espera e a mesma. O calco so entra quando `-w` falta e
+# remove apenas esse argumento; o produto nao usa `setsid`.
+_dbx_setsid_real=$(command -v setsid 2>/dev/null) || _dbx_setsid_real=''
+if [[ -n $_dbx_setsid_real ]] && ! "$_dbx_setsid_real" -w true >/dev/null 2>&1; then
+  mkdir -p -- "$DBX_TESTES_TMP/.calco"
+  printf '#!/bin/sh\n[ "${1-}" = -w ] && shift\nexec %q "$@"\n' "$_dbx_setsid_real" >"$DBX_TESTES_TMP/.calco/setsid"
+  chmod 755 "$DBX_TESTES_TMP/.calco/setsid"
+  PATH="$DBX_TESTES_TMP/.calco:$PATH"
+  export PATH
+fi
+unset _dbx_setsid_real
+
 # Diario de reprovacoes. Precisa SOBREVIVER a execucao: a area temporaria acima e
 # removida ao final, e uma reprovacao intermitente so e diagnosticavel se o
 # registro persistir. Fica fora do controle de versao — e evidencia de execucao,

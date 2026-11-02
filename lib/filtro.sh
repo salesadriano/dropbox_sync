@@ -489,7 +489,7 @@ dbx_filtro_adicionar() {
 # casou junto com outro). Roda sob a localidade fixada por quem chama.
 _dbx_filtro_casa() {
   local tipo=$1 alvo=$2 e_pasta=$3 i casou=1 rx estado
-  for i in "${!DBX_FILTRO_TIPOS[@]}"; do
+  for i in ${DBX_FILTRO_TIPOS[@]+"${!DBX_FILTRO_TIPOS[@]}"}; do
     [[ ${DBX_FILTRO_TIPOS[i]} == "$tipo" ]] || continue
     [[ ${_dbx_filtro_so_pasta[i]} == 'sim' && $e_pasta != 'sim' ]] && continue
     rx=${_dbx_filtro_regex[i]}
@@ -497,6 +497,16 @@ _dbx_filtro_casa() {
       # DIV-103: inclusao imprecisa em bytes nao casa; o item fica fora do
       # escopo e, portanto, protegido.
       [[ $tipo == 'incluir' && ${_dbx_filtro_impreciso[i]} == 'sim' ]] && continue
+      # QA-B42-01: sem localidade UTF-8 ATIVA nao ha dobra fora do ASCII, e um
+      # padrao com letra nao ASCII (`acao` com cedilha) nao reconhece a outra
+      # caixa. Falha fechada: no --incluir ele nao casa (o item fica fora do
+      # escopo, intocado); no --excluir ele casa (protege a mais).
+      if [[ $_dbx_filtro_utf8_ativa == 'nao' && ${DBX_FILTRO_PADROES[i]} == *[$'\x80'-$'\xff']* ]]; then
+        [[ $tipo == 'incluir' ]] && continue
+        _dbx_filtro_casou[i]='sim'
+        casou=0
+        continue
+      fi
       rx=${_dbx_filtro_regex_b[i]}
     fi
     [[ $alvo =~ $rx ]]
@@ -509,6 +519,33 @@ _dbx_filtro_casa() {
     fi
   done
   return "$casou"
+}
+
+# _dbx_filtro_em_caracteres <texto> — 0 quando o texto pode ser comparado por
+# CARACTERE (regex sob a localidade); 1 manda para o modo `bytes`, onde o
+# padrao impreciso nunca casa no --incluir (DIV-103) e casa no --excluir.
+# Chamar com `LC_ALL` ja fixado na localidade (escopo dinamico do chamador).
+#
+# QA-B42-01: o teste antigo era so `[[ $t =~ ^.*$ ]]`. Sem a localidade UTF-8
+# no sistema (CentOS 7 nao tem C.UTF-8), o shell cai em `C`, onde todo byte e
+# caractere valido: o nome nao UTF-8 nunca ia para `bytes`, o conjunto negado
+# do --incluir o casava e o --espelhar o APAGAVA. Agora, sem localidade UTF-8
+# ATIVA (medida pela propria contagem de caracteres), so o ASCII fica no modo
+# caractere; todo nome com byte >= 0x80 vai para `bytes` e falha fechado.
+_dbx_filtro_utf8_ativa=''
+_dbx_filtro_em_caracteres() {
+  if [[ -z $_dbx_filtro_utf8_ativa ]]; then
+    local _ec_v=$'\xc3\xa9'
+    _dbx_filtro_utf8_ativa='nao'
+    ((${#_ec_v} == 1)) && _dbx_filtro_utf8_ativa='sim'
+  fi
+  if [[ $_dbx_filtro_utf8_ativa == 'sim' ]]; then
+    [[ ${1-} =~ ^.*$ ]]
+    return
+  fi
+  # Sem localidade UTF-8 ativa o shell ja compara por byte; sem trocar LC_ALL
+  # aqui (a restauracao na volta emitiria o aviso de setlocale).
+  [[ ${1-} != *[$'\x80'-$'\xff']* ]]
 }
 
 # _dbx_filtro_dobrar_bytes <caminho> — o caminho dobrado caractere a caractere
@@ -539,7 +576,7 @@ dbx_filtro_classificar() {
   { local LC_ALL=$DBX_FILTRO_LOCALIDADE; } 2>/dev/null
   local _dbx_filtro_modo='caracteres' dobrado
   # Byte invalido na localidade: compara por bytes, com a mesma dobra (topo).
-  if [[ $caminho =~ ^.*$ ]]; then
+  if _dbx_filtro_em_caracteres "$caminho"; then
     dobrado=${caminho,,}
   else
     _dbx_filtro_dobrar_bytes "$caminho" 2>/dev/null
@@ -594,7 +631,7 @@ dbx_filtro_pasta_excluida() {
   [[ ${#DBX_FILTRO_PADROES[@]} -gt 0 && -n ${1-} ]] || return 1
   { local LC_ALL=$DBX_FILTRO_LOCALIDADE; } 2>/dev/null
   local _dbx_filtro_modo='caracteres' dobrado
-  if [[ $1 =~ ^.*$ ]]; then
+  if _dbx_filtro_em_caracteres "$1"; then
     dobrado=${1,,}
   else
     _dbx_filtro_dobrar_bytes "$1" 2>/dev/null
@@ -609,7 +646,7 @@ dbx_filtro_pasta_excluida() {
 dbx_filtro_avisos() {
   local i
   DBX_FILTRO_SEM_CASAMENTO=()
-  for i in "${!DBX_FILTRO_PADROES[@]}"; do
+  for i in ${DBX_FILTRO_PADROES[@]+"${!DBX_FILTRO_PADROES[@]}"}; do
     [[ ${_dbx_filtro_casou[i]} == 'sim' ]] || DBX_FILTRO_SEM_CASAMENTO+=("${DBX_FILTRO_PADROES[i]}")
   done
   return 0
@@ -619,7 +656,7 @@ dbx_filtro_avisos() {
 dbx_filtro_descrever() {
   local i
   DBX_FILTRO_DESCRICAO=''
-  for i in "${!DBX_FILTRO_PADROES[@]}"; do
+  for i in ${DBX_FILTRO_PADROES[@]+"${!DBX_FILTRO_PADROES[@]}"}; do
     dbx_filtro_citar "${DBX_FILTRO_PADROES[i]}"
     DBX_FILTRO_DESCRICAO+="${DBX_FILTRO_DESCRICAO:+ }${DBX_FILTRO_OPCOES[i]} $DBX_FILTRO_CITADO"
   done
@@ -680,7 +717,7 @@ dbx_filtro_nome_casa() {
   local nome=${1-} dobrado rx
   [[ $_dbx_filtro_nome_pronto == 'sim' && -n $nome && $nome != */* ]] || return 1
   { local LC_ALL=$DBX_FILTRO_LOCALIDADE; } 2>/dev/null
-  if [[ $nome =~ ^.*$ ]]; then
+  if _dbx_filtro_em_caracteres "$nome"; then
     dobrado=${nome,,}
     rx=$_dbx_filtro_nome_rx
     [[ $dobrado =~ $rx ]]

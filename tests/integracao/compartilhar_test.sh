@@ -175,6 +175,7 @@ _rodar_tty() {
   linha+=$arg
   for arg in "$@"; do printf -v arg ' %q' "$arg" && linha+=$arg; done
   linha+='; printf "\nESTADO=%s\n" "$?"; stty -a'
+  linha="stty sane 2>/dev/null; $linha"
   rm -f "$base/fifo" "$base/pid"
   mkfifo "$base/fifo"
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \

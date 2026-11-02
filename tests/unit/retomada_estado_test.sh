@@ -526,8 +526,10 @@ teste_rml03_part_de_registro_podado_so_sai_pela_barreira() {
   local di_bom di_trocado
   di_bom=$(_part "$bom")
   di_trocado=$(_part "$trocado")
-  rm -f "$AREA/alvo/$trocado"
-  printf 'usuario' >"$AREA/alvo/$trocado" # mesmo nome, outro inode
+  # Mesmo nome, outro inode: o novo e criado ENQUANTO o antigo existe (rm antes
+  # de criar deixaria o sistema de arquivos reaproveitar o numero de inode).
+  printf 'usuario' >"$AREA/alvo/novo.$$"
+  mv -f "$AREA/alvo/novo.$$" "$AREA/alvo/$trocado"
   printf 'alvo' >"$AREA/real"
   ln -s "$AREA/real" "$AREA/alvo/$ligado"
   _registro_down_em "$ESTADO/retomada-0000000000000000000000000000000a" "$bom" "$di_bom"
@@ -577,7 +579,7 @@ teste_rml06_listagem_so_le_e_classifica_pendente_ilegivel_e_orfa() {
   touch -d '9 days ago' "$velho"
   printf 'ruim' >"$ESTADO/retomada-0000000000000000000000000000000f"
   _filho 'dbx_state_retomada_listar
-    for i in "${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"; do
+    for i in ${DBX_STATE_RETOMADAS_ARQUIVO[@]+"${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"}; do
       printf "%s|%s|%s|%s\n" "${DBX_STATE_RETOMADAS_ESTADO[i]}" "${DBX_STATE_RETOMADAS_SENTIDO[i]}" "${DBX_STATE_RETOMADAS_BYTES[i]}" "${DBX_STATE_RETOMADAS_REMOTO[i]}"
     done'
   assert_contem 'pendente|upload|8388608|/Remoto/Grande.ISO' "$FILHO_SAIDA" 'pendente com bytes confirmados'
@@ -601,8 +603,8 @@ teste_c2_fifo_no_lugar_do_registro_nao_bloqueia_leitor_listagem_nem_travas() {
   _filho 'timeout 10 bash -c '"'"'
     . "$RAIZ/lib/errors.sh"; . "$RAIZ/lib/json.sh"; . "$RAIZ/lib/config.sh"; . "$RAIZ/lib/state.sh"
     _dbx_state_ler_limitado "$ESTADO/retomada-0123456789abcdef0123456789abcdef" 15; printf "leitor=%s\n" "$?"
-    dbx_state_retomada_listar; printf "lista=%s\n" "${DBX_STATE_RETOMADAS_ESTADO[*]}"
-    dbx_state_travas_listar; printf "travas=%s\n" "${DBX_STATE_TRAVAS_ESTADO[*]}"
+    dbx_state_retomada_listar; printf "lista=%s\n" ${DBX_STATE_RETOMADAS_ESTADO[@]+"${DBX_STATE_RETOMADAS_ESTADO[*]}"}
+    dbx_state_travas_listar; printf "travas=%s\n" ${DBX_STATE_TRAVAS_ESTADO[@]+"${DBX_STATE_TRAVAS_ESTADO[*]}"}
   '"'"'; printf "saida=%s\n" "$?"'
   assert_contem 'saida=0' "$FILHO_SAIDA" 'nada bloqueia numa FIFO (timeout seria 124)'
   assert_contem 'leitor=1' "$FILHO_SAIDA" 'o leitor limitado recusa a FIFO'
@@ -638,7 +640,14 @@ teste_c2_descarte_por_cabecalho_leva_o_part_pela_barreira() {
   assert_contem 'estado=2' "$FILHO_SAIDA" 'descartado pelo cabecalho'
   assert_arquivo_ausente "$AREA/alvo/$nome" 'o .part do registro descartado sai pela barreira'
   # O mesmo, com o arquivo trocado por outro inode: fica.
+  # Criado com varios candidatos vivos ao mesmo tempo: o numero de inode do
+  # arquivo recem-apagado pode ser reaproveitado, e o teste exige outro inode.
   printf 'usuario' >"$AREA/alvo/$nome"
+  if [[ $(stat -c '%d|%i' "$AREA/alvo/$nome") == "$di" ]]; then
+    printf 'usuario' >"$AREA/alvo/c.$$"
+    mv -f "$AREA/alvo/c.$$" "$AREA/alvo/$nome"
+  fi
+  [[ $(stat -c '%d|%i' "$AREA/alvo/$nome") != "$di" ]] || _harness_falhar 'nao obteve outro inode'
   printf '%s\0' dbx-retomada 1 download "$CONTA" "$host" /Remoto/grande.iso 0123456789a 10 "$HASH_D" \
     "$nome" "$di" 1700000000 "$AREA/alvo/grande.iso" | _plantar "$d"
   _filho "$CTX_DOWN; $CARREGAR"

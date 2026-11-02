@@ -1,1 +1,1 @@
-bash tests/run.sh
+sh scripts/suite-bash42.sh

@@ -168,7 +168,13 @@ teste_caractere_de_controle_no_nome_vira_interrogacao() {
   assert_nao_contem $'\033' "$CONTEUDO" 'RF-145(d)'
 }
 
+# 0 quando a localidade C.UTF-8 existe (um caractere multibyte conta 1).
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${#x} -eq 1 ]]' 2>/dev/null
+}
+
 teste_nome_longo_e_truncado_pelo_meio_preservando_extensao_no_terminal() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   _prg_preparar sim
   COLUMNS=60
   dbx_progress_arquivo_iniciar 1 1 enviando 'diretorio/muito/longo/com/nome/enorme/de/arquivo/relatorio-final.pdf' 10485760 2>"$ARQ_ERR"
@@ -259,12 +265,12 @@ teste_canal_escrita_concorrente_nunca_deixa_status_invalido() {
   vivo=sim
   while [[ $vivo == sim ]]; do
     vivo=nao
-    for w in "${pids[@]}"; do kill -0 "$w" 2>/dev/null && vivo=sim; done
+    for w in ${pids[@]+"${pids[@]}"}; do kill -0 "$w" 2>/dev/null && vivo=sim; done
     { IFS= read -r f; IFS= read -r t; IFS= read -r e; } <"$canal" 2>/dev/null
     rodadas=$((rodadas + 1))
     [[ $f =~ ^[0-9]+$ && $t == 1000 && $e == ativo ]] || invalidos=$((invalidos + 1))
   done
-  for w in "${pids[@]}"; do wait "$w" || _harness_falhar 'um escritor falhou na troca atomica do status'; done
+  for w in ${pids[@]+"${pids[@]}"}; do wait "$w" || _harness_falhar 'um escritor falhou na troca atomica do status'; done
   assert_igual 0 "$invalidos" "o leitor nunca ve status invalido ($rodadas leituras)"
   assert_igual "$canal" "$(find "${canal%/*}" -maxdepth 1 -name "${canal##*/}*")" 'so o arquivo de status resta, sem temporario ao lado'
   rm -f "$canal"

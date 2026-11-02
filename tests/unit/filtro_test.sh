@@ -130,6 +130,7 @@ teste_flt09_sem_caixa_no_ascii_e_faixa_depois_da_dobra() {
 }
 
 teste_flt10_sem_caixa_unicode_sob_lc_all_c_sem_vazar_a_localidade() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local obtido
   # O processo inteiro sob `LC_ALL=C`: a fixacao e so dentro da comparacao.
   obtido=$(LC_ALL=C bash -c '
@@ -140,14 +141,23 @@ teste_flt10_sem_caixa_unicode_sob_lc_all_c_sem_vazar_a_localidade() {
     printf "%s|%s|%s" "$r" "$LC_ALL" "${#v}"
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
   assert_igual 'fora|C|2' "$obtido" 'E* casa ea.txt; LC_ALL do processo intacto; contagem em bytes intacta'
-  # Prova de discriminacao: sem a fixacao (localidade `C` na comparacao), o
-  # mesmo par deixa de casar — e a fixacao que faz o caso passar.
-  obtido=$(LC_ALL=C DBX_SYNC_LOCALIDADE=C bash -c '
+  # Prova de discriminacao pelo --incluir: com a fixacao, `É*` inclui `éa.txt`;
+  # sem ela (localidade `C` na comparacao) nao ha dobra fora do ASCII e o
+  # padrao nao ASCII nao inclui (falha fechada, QA-B42-01). No --excluir os dois
+  # casos dao `fora` (sem a fixacao o padrao protege a mais), por isso a prova
+  # passou a usar a inclusao.
+  obtido=$(LC_ALL=C bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/filtro.sh"
-    dbx_filtro_adicionar excluir --excluir $'"'"'\xc3\x89*'"'"'
+    dbx_filtro_adicionar incluir --incluir $'"'"'\xc3\x89*'"'"'
     if dbx_filtro_classificar $'"'"'\xc3\xa9a.txt'"'"' nao; then printf dentro; else printf fora; fi
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
-  assert_igual dentro "$obtido" 'sem a fixacao a caixa acentuada nao dobra'
+  assert_igual dentro "$obtido" 'com a fixacao a caixa acentuada dobra'
+  obtido=$(LC_ALL=C DBX_SYNC_LOCALIDADE=C bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/filtro.sh"
+    dbx_filtro_adicionar incluir --incluir $'"'"'\xc3\x89*'"'"'
+    if dbx_filtro_classificar $'"'"'\xc3\xa9a.txt'"'"' nao; then printf dentro; else printf fora; fi
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  assert_igual fora "$obtido" 'sem a fixacao a caixa acentuada nao dobra'
 }
 
 teste_flt11_localidade_ausente_vale_so_o_ascii_e_interrogacao_e_um_byte() {
@@ -165,13 +175,44 @@ teste_flt11_localidade_ausente_vale_so_o_ascii_e_interrogacao_e_um_byte() {
     dbx_filtro_classificar $'"'"'a\xc3\xa9.txt'"'"' nao || r+="dois-bytes"
     printf "%s" "$r"
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
-  assert_igual 'ascii acento-distinto um-byte dois-bytes' "$obtido" 'sem a localidade: so ASCII, ? casa um byte'
+  # QA-B42-01 (linha legada): sem a localidade, nome com byte >= 0x80 vai para
+  # o modo de bytes; ali `?` e padrao com letra nao ASCII sao imprecisos e, no
+  # --excluir, CASAM (protegem a mais). Antes, `É*` deixava `éa` no escopo e
+  # `a?.txt` deixava `aé.txt` no escopo: com o --espelhar, apagaveis.
+  assert_igual 'ascii dois-bytes' "$obtido" 'sem a localidade: so ASCII dobra; nome nao ASCII so sai do escopo a mais'
+}
+
+# QA-B42-01: sem a localidade UTF-8, nenhuma combinacao de padrao com nome nao
+# ASCII poe no escopo o que deveria ficar fora, nem tira do --excluir o que ele
+# nomeia em outra caixa. Roda nos dois ambientes (ausencia simulada).
+teste_qa_b42_01_sem_localidade_padrao_e_nome_nao_ascii_falham_fechado() {
+  local obtido
+  obtido=$(LC_ALL=C DBX_SYNC_LOCALIDADE=xx_YY.inexistente bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/filtro.sh"
+    r=""
+    dbx_filtro_adicionar excluir --excluir $'"'"'a\xc3\xa7\xc3\xa3o/'"'"'
+    dbx_filtro_classificar $'"'"'A\xc3\x87\xc3\x83O/f'"'"' nao || r+="excluir-outra-caixa "
+    dbx_filtro_limpar; dbx_filtro_adicionar incluir --incluir $'"'"'a\xc3\xa7\xc3\xa3o*'"'"'
+    dbx_filtro_classificar $'"'"'a\xc3\xa7\xc3\xa3o.txt'"'"' nao || r+="incluir-nao-ascii-fora "
+    dbx_filtro_limpar; dbx_filtro_adicionar incluir --incluir "[!a]*"
+    dbx_filtro_classificar $'"'"'x\xff'"'"' nao || r+="negado-fora "
+    dbx_filtro_limpar; dbx_filtro_adicionar incluir --incluir "*.txt"
+    dbx_filtro_classificar "a.txt" nao && r+="ascii-segue"
+    printf "%s" "$r"
+  ' _ "$DBX_HARNESS_RAIZ" 2>/dev/null)
+  assert_igual 'excluir-outra-caixa incluir-nao-ascii-fora negado-fora ascii-segue' "$obtido" \
+    'sem localidade: excluir protege a mais, incluir nao ASCII fica fora, ASCII inalterado'
 }
 
 teste_flt12_nfc_e_nfd_sao_distintos() {
   # e composto (U+00E9) e decomposto (e + U+0301): limitacao declarada.
   assert_igual sim "$(_exclui $'\xc3\xa9.txt' $'\xc3\xa9.txt')" 'NFC casa NFC'
-  assert_igual nao "$(_exclui $'\xc3\xa9.txt' $'e\xcc\x81.txt')" 'NFC nao casa NFD'
+  if _localidade_disponivel; then
+    assert_igual nao "$(_exclui $'\xc3\xa9.txt' $'e\xcc\x81.txt')" 'NFC nao casa NFD'
+  else
+    # QA-B42-01: sem a localidade, padrao nao ASCII no --excluir protege a mais.
+    assert_igual sim "$(_exclui $'\xc3\xa9.txt' $'e\xcc\x81.txt')" 'sem localidade o excluir nao ASCII protege'
+  fi
 }
 
 teste_flt_nome_que_nao_e_utf8_valido_ainda_casa_por_bytes() {
@@ -182,6 +223,7 @@ teste_flt_nome_que_nao_e_utf8_valido_ainda_casa_por_bytes() {
 }
 
 teste_qa_b4_01_queda_para_bytes_usa_a_mesma_dobra_do_padrao() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   # QA-B4-01: na queda para bytes o caminho tem de passar pela MESMA dobra
   # UTF-8 do padrao; com dobra so ASCII, `É` deixava de casar `é`.
   assert_igual sim "$(_exclui $'\xc3\x89foto.jpg' $'x\xff/\xc3\x89foto.jpg')" 'grafia identica nao ASCII'
@@ -189,6 +231,14 @@ teste_qa_b4_01_queda_para_bytes_usa_a_mesma_dobra_do_padrao() {
   assert_igual sim "$(_exclui $'\xc3\xbc/' $'\xc3\x9c/\xfea')" 'pasta nao ASCII, byte invalido abaixo dela'
   assert_igual nao "$(_exclui $'\xc3\xbc/' $'\xc3\x9c\xfe/a')" 'a pasta e outra: o byte faz parte do nome'
   assert_igual nao "$(_exclui $'\xc3\xa9x' $'x\xff/\xc3\xa9y')" 'e nao casa o que e diferente'
+}
+
+# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
+# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
+# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
+# (RF-54(f)) e o caso, que exige a dobra, e pulado.
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
 }
 
 teste_div103_incluir_impreciso_em_bytes_nunca_casa_a_mais() {
@@ -205,7 +255,12 @@ teste_div103_incluir_impreciso_em_bytes_nunca_casa_a_mais() {
   assert_igual fora "$(_inclui $'[\xc3\xa9]*' "$nome")" 'membro nao ASCII nao inclui em bytes'
   assert_igual fora "$(_inclui '?eu.txt' "$nome")" '? nao inclui em bytes'
   assert_igual dentro "$(_inclui '*.txt' "$nome")" 'padrao preciso continua incluindo'
-  assert_igual dentro "$(_inclui $'\xc3\x89eu.txt' "$nome")" 'literal nao ASCII continua incluindo'
+  # So com a localidade: sem ela nao ha dobra fora do ASCII e o literal nao
+  # ASCII nunca inclui (falha fechada, QA-B42-01); as assercoes de "nao
+  # inclui" acima valem nos dois casos.
+  if _localidade_disponivel; then
+    assert_igual dentro "$(_inclui $'\xc3\x89eu.txt' "$nome")" 'literal nao ASCII continua incluindo'
+  fi
   assert_igual dentro "$(_inclui '[!a]*' 'x/beu.txt')" 'fora do modo de bytes, nada muda'
   # No --excluir o mesmo padrao continua casando (protege a mais).
   assert_igual sim "$(_exclui '[!a]*' "$nome")" 'excluir impreciso segue casando'
@@ -342,7 +397,7 @@ teste_fes18_padrao_sem_casamento_e_listado_para_o_aviso() {
   dbx_filtro_adicionar excluir --excluir '*.lgo'
   dbx_filtro_classificar a.log nao
   dbx_filtro_avisos
-  assert_igual '*.lgo' "${DBX_FILTRO_SEM_CASAMENTO[*]}" 'so o que nunca casou'
+  assert_igual '*.lgo' ${DBX_FILTRO_SEM_CASAMENTO[@]+"${DBX_FILTRO_SEM_CASAMENTO[*]}"} 'so o que nunca casou'
 }
 
 teste_flt_sem_filtro_tudo_esta_no_escopo() {

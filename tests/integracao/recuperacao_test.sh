@@ -126,10 +126,20 @@ _rodar_tty() {
   command -v script >/dev/null 2>&1 || pular 'script(1) ausente: sem terminal para o caso'
   printf -v linha 'bash %q' "$DBX_EXEC"
   for arg in "$@"; do printf -v arg ' %q' "$arg" && linha+=$arg; done
-  printf '%s\n' "$resposta" | env -i PATH="$base/bin:$PATH" HOME="$base" \
+  # script(1) 2.23 encerra o filho quando o stdin chega ao fim: a entrada vem de
+  # uma fifo mantida aberta ate o fim do comando (no 2.41 o pipe bastava).
+  local fd pid
+  rm -f "$base/fifo"
+  mkfifo "$base/fifo"
+  env -i PATH="$base/bin:$PATH" HOME="$base" \
     XDG_CONFIG_HOME="$base/config" XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" \
-    script -qec "$linha" /dev/null >"$base/out" 2>&1
+    script -qec "stty sane 2>/dev/null; $linha" /dev/null <"$base/fifo" >"$base/out" 2>&1 &
+  pid=$!
+  exec {fd}>"$base/fifo"
+  { printf '%s\n' "$resposta" >&"$fd"; } 2>/dev/null
+  wait "$pid"
   DBX_ESTADO=$?
+  exec {fd}>&-
   DBX_SAIDA=''
   IFS= read -r -d '' DBX_SAIDA <"$base/out"
   return 0

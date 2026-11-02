@@ -60,7 +60,7 @@ _dbx_cmd_download_pasta() {
   # dele. Variavel local: vale so durante esta chamada.
   # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico
   local DBX_CMD_SYNC_CHAMADOR='download'
-  dbx_cmd_sync_executar "${args_sync[@]}"
+  dbx_cmd_sync_executar ${args_sync[@]+"${args_sync[@]}"}
 }
 
 # _dbx_cmd_download_retomavel <remoto> <alvo> — RF-102(a): 0 quando o remoto e

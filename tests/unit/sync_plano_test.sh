@@ -22,7 +22,7 @@ readonly H2=2222222222222222222222222222222222222222222222222222222222222222
 # _relatorio — linhas `estado|motivo|caminho`, na ordem publicada.
 _relatorio() {
   local indice
-  for indice in "${!DBX_SYNC_COMPARADOS_CAMINHOS[@]}"; do
+  for indice in ${DBX_SYNC_COMPARADOS_CAMINHOS[@]+"${!DBX_SYNC_COMPARADOS_CAMINHOS[@]}"}; do
     printf '%s|%s|%s\n' "${DBX_SYNC_COMPARADOS_ESTADOS[indice]}" \
       "${DBX_SYNC_COMPARADOS_MOTIVOS[indice]}" "${DBX_SYNC_COMPARADOS_CAMINHOS[indice]}"
   done

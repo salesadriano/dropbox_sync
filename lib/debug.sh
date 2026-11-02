@@ -169,7 +169,7 @@ _DBX_DEBUG_CAMPOS=()
 dbx_debug_resumo_campo() {
   local i
   # A mesma chave publicada de novo (executor chamado duas vezes) troca o valor.
-  for i in "${!_DBX_DEBUG_CAMPOS[@]}"; do
+  for i in ${_DBX_DEBUG_CAMPOS[@]+"${!_DBX_DEBUG_CAMPOS[@]}"}; do
     if [[ ${_DBX_DEBUG_CAMPOS[i]%%=*} == "${1-}" ]]; then
       _DBX_DEBUG_CAMPOS[i]="${1-}=${2-}"
       return 0

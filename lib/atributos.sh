@@ -109,9 +109,9 @@ dbx_atributo() {
   # terminar nem devolve o status dele, e quem chama confere o arquivo logo em
   # seguida (barreira de inode do `.part`).
   if [[ $_dbx_atributos_forma == gnu ]]; then
-    leitura=$(stat "${seguir[@]}" -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null) || return 1
+    leitura=$(stat ${seguir[@]+"${seguir[@]}"} -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null) || return 1
   else
-    leitura=$(stat "${seguir[@]}" -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null) || return 1
+    leitura=$(stat ${seguir[@]+"${seguir[@]}"} -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null) || return 1
     _dbx_atributos_normalizar_modo "$1"
   fi
   # shellcheck disable=SC2034  # canal publico, lido pelo chamador

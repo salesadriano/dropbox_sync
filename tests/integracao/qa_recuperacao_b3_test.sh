@@ -125,9 +125,19 @@ _qa_rodar_tty() {
   command -v script >/dev/null 2>&1 || pular 'script(1) ausente'
   printf -v linha 'bash %q' "$QA_DBX"
   for arg in "$@"; do printf -v arg ' %q' "$arg" && linha+=$arg; done
+  # script(1) 2.23 encerra o filho quando o stdin chega ao fim: fifo mantida aberta.
+  local fd pid
+  rm -f "$B/fifo"
+  mkfifo "$B/fifo"
   env -i PATH="$B/bin:$PATH" HOME="$B" XDG_CONFIG_HOME="$B/cfg" XDG_STATE_HOME="$B/estado" \
-    TMPDIR="$B/tmp" timeout 20 script -qec "$linha" /dev/null <"$entrada" >"$B/out" 2>&1
+    TMPDIR="$B/tmp" timeout 20 script -qec "stty sane 2>/dev/null; $linha" /dev/null <"$B/fifo" >"$B/out" 2>&1 &
+  pid=$!
+  exec {fd}>"$B/fifo"
+  # Entrada vazia = fim de entrada: Ctrl-D no pty (a fifo aberta nao o transmite).
+  if [[ -s $entrada ]]; then { cat "$entrada" >&"$fd"; } 2>/dev/null; else { printf '\004' >&"$fd"; } 2>/dev/null; fi
+  wait "$pid"
   QA_ESTADO=$?
+  exec {fd}>&-
   QA_SAIDA=''
   IFS= read -r -d '' QA_SAIDA <"$B/out"
   return 0
@@ -231,10 +241,12 @@ teste_qa_e03_fora_da_raiz_e_bytes_hostis_sem_rede() {
     $'/proj/a\nb' $'/proj/a\tb' $'/proj/a\rb' $'/proj/\e[31mx' $'/proj/a\x7fb')
   _qa_cenario /proj
   _qa_expurgo_padrao
-  for alvo in "${alvos[@]}"; do
+  for alvo in ${alvos[@]+"${alvos[@]}"}; do
     _qa_rodar lixeira --excluir "$alvo" --confirmar-caminho "$alvo"
-    _qa_estado_em "alvo hostil [${alvo@Q}]" "$QA_USO" "$QA_CAMINHO"
-    assert_nao_contem $'\e' "$QA_ERRO" "sem ESC cru no diagnostico [${alvo@Q}]"
+    printf -v _q '%q' "$alvo"
+    _qa_estado_em "alvo hostil [$_q]" "$QA_USO" "$QA_CAMINHO"
+    printf -v _q '%q' "$alvo"
+    assert_nao_contem $'\e' "$QA_ERRO" "sem ESC cru no diagnostico [$_q]"
   done
   _qa_sem_chamada 'alvos fora da raiz ou com controle'
   # Caixa fora do ASCII: raiz /Ação; /AÇÃO nao e a mesma pasta para o
@@ -260,9 +272,10 @@ teste_qa_e04_confirmacao_divergente_e_2_sem_rede() {
   local -a valores=(/X.txt /x.TXT /x.txt/ //x.txt/ /x.txt/. ' /x.txt' '/x.txt ' $'/x.txt\n' /y.txt x.txt "$vazio")
   _qa_cenario
   _qa_expurgo_padrao
-  for valor in "${valores[@]}"; do
+  for valor in ${valores[@]+"${valores[@]}"}; do
     _qa_rodar lixeira --excluir /x.txt --confirmar-caminho "$valor"
-    assert_igual "$QA_USO" "$QA_ESTADO" "confirmacao divergente [${valor@Q}]"
+    printf -v _q '%q' "$valor"
+    assert_igual "$QA_USO" "$QA_ESTADO" "confirmacao divergente [$_q]"
   done
   # NFC no alvo, NFD na confirmacao (e vice-versa).
   _qa_rodar lixeira --excluir $'/caf\xc3\xa9' --confirmar-caminho $'/cafe\xcc\x81'
@@ -351,7 +364,7 @@ teste_qa_e08_deleted_de_outro_caminho_nao_autoriza() {
     '"path_lower":"/x.txt\u001b"'
     '"path_lower":"x.txt"'
     '"path_lower":["/x.txt"]')
-  for pl in "${variantes[@]}"; do
+  for pl in ${variantes[@]+"${variantes[@]}"}; do
     meta="{\".tag\":\"deleted\",\"name\":\"x.txt\",$pl}"
     _qa_cenario
     _qa_regra files/get_metadata '*' 200 "$meta"
@@ -521,9 +534,10 @@ teste_qa_r02_rev_malformado_ou_injecao_sem_rede() {
     "0000000c3\\" '-0000000c3' '' 'ffffffffff"}' $'0000000c3\t')
   _qa_cenario
   _qa_arquivo_vivo
-  for rev in "${revs[@]}"; do
+  for rev in ${revs[@]+"${revs[@]}"}; do
     _qa_rodar restaurar /a.txt --rev "$rev"
-    assert_igual "$QA_USO" "$QA_ESTADO" "rev [${rev@Q}]"
+    printf -v _q '%q' "$rev"
+    assert_igual "$QA_USO" "$QA_ESTADO" "rev [$_q]"
     assert_nao_contem $'\n0000000c3\n' "$QA_ERRO" 'sem quebra crua'
   done
   _qa_sem_chamada 'rev invalido'

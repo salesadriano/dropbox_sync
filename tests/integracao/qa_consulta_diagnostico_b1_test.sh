@@ -716,7 +716,7 @@ _qa_completar() {
     source "$1"; shift
     COMP_WORDS=("$@"); COMP_CWORD=$(($# - 1))
     _dbx_completar
-    printf "%s\n" "${COMPREPLY[@]}"' _ "$DBX_HARNESS_RAIZ/completions/dbx.bash" "$@"
+    printf "%s\n" ${COMPREPLY[@]+"${COMPREPLY[@]}"}' _ "$DBX_HARNESS_RAIZ/completions/dbx.bash" "$@"
 }
 
 teste_qa_cpl_funciona_sem_curl_e_sem_rede() {
@@ -756,7 +756,7 @@ _qa_opcoes_da_ajuda() {
     if [[ $linha =~ ^\ \ +- ]]; then
       dentro=sim
       read -r -a palavras <<<"$linha"
-      for palavra in "${palavras[@]}"; do
+      for palavra in ${palavras[@]+"${palavras[@]}"}; do
         palavra=${palavra%,}
         case $palavra in
           -*) printf '%s\n' "$palavra" ;;

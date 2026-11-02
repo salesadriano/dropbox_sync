@@ -34,7 +34,7 @@ teste_pfs07_repeticao_sai_2_mesmo_igual() {
 teste_pfs08_depois_do_subcomando_so_em_config_e_unlink() {
   dbx_cli_analisar config --perfil a || _harness_falhar "config: $DBX_CLI_MOTIVO"
   assert_igual a "$DBX_CLI_PERFIL" 'config'
-  assert_igual '--perfil a' "${DBX_CLI_ARGS[*]}" 'os argumentos seguem com o comando'
+  assert_igual '--perfil a' ${DBX_CLI_ARGS[@]+"${DBX_CLI_ARGS[*]}"} 'os argumentos seguem com o comando'
   dbx_cli_analisar unlink --yes --profile b || _harness_falhar "unlink: $DBX_CLI_MOTIVO"
   assert_igual b "$DBX_CLI_PERFIL" 'unlink'
   dbx_cli_analisar space --perfil a

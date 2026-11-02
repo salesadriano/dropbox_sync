@@ -43,7 +43,7 @@ dbx_cmd_perfis_executar() {
   }
 
   local ativo=${DBX_CONFIG_PERFIL:-$DBX_CONFIG_PERFIL_PADRAO} indice marca total=0
-  for indice in "${!DBX_CONFIG_PERFIS_NOME[@]}"; do
+  for indice in ${DBX_CONFIG_PERFIS_NOME[@]+"${!DBX_CONFIG_PERFIS_NOME[@]}"}; do
     marca='nao'
     [[ ${DBX_CONFIG_PERFIS_NOME[indice]} == "$ativo" ]] && marca='sim'
     dbx_cmd_iniciar_saida
@@ -57,7 +57,7 @@ dbx_cmd_perfis_executar() {
 
   if [[ ${#DBX_CONFIG_PERFIS_IGNORADAS[@]} -gt 0 ]]; then
     local lista='' nome contados=0
-    for nome in "${DBX_CONFIG_PERFIS_IGNORADAS[@]}"; do
+    for nome in ${DBX_CONFIG_PERFIS_IGNORADAS[@]+"${DBX_CONFIG_PERFIS_IGNORADAS[@]}"}; do
       contados=$((contados + 1))
       [[ $contados -le 5 ]] || break
       dbx_cmd_caminho_exibivel "$nome"

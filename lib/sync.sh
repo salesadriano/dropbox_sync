@@ -156,9 +156,13 @@ dbx_sync_no_escopo() {
 dbx_sync_filtrar_caminhos() {
   [[ $# -eq 4 ]] || return "$DBX_SYNC_ERRO_USO"
   local lado=$1
-  local -n _fc_c=$2 _fc_t=$3 _fc_i=$4
+  dbx_ref_valido "$2" && dbx_ref_valido "$3" && dbx_ref_valido "$4" || return "$DBX_SYNC_ERRO_USO"
   dbx_filtro_ativo || return 0
   local podada indice
+  local -a _fc_c=() _fc_t=() _fc_i=()
+  dbx_ref_copiar _fc_c "$2"
+  dbx_ref_copiar _fc_t "$3"
+  dbx_ref_copiar _fc_i "$4"
   # A poda roda no subshell da travessia, onde a marca de "padrao casou" se
   # perde; reclassificar aqui a refaz e conta a pasta como 1.
   for podada in ${DBX_WALK_PODADAS[@]+"${DBX_WALK_PODADAS[@]}"}; do
@@ -166,11 +170,16 @@ dbx_sync_filtrar_caminhos() {
     dbx_sync_no_escopo "$lado" "$podada" arquivo || :
   done
   local -a c=() t=() i=()
-  for indice in "${!_fc_c[@]}"; do
+  for indice in ${_fc_c[@]+"${!_fc_c[@]}"}; do
     dbx_sync_no_escopo "$lado" "${_fc_c[$indice]}" arquivo || continue
     c+=("${_fc_c[$indice]}") t+=("${_fc_t[$indice]}") i+=("${_fc_i[$indice]}")
   done
-  _fc_c=(${c[@]+"${c[@]}"}) _fc_t=(${t[@]+"${t[@]}"}) _fc_i=(${i[@]+"${i[@]}"})
+  dbx_ref_limpar "$2"
+  dbx_ref_limpar "$3"
+  dbx_ref_limpar "$4"
+  dbx_ref_anexar "$2" ${c[@]+"${c[@]}"}
+  dbx_ref_anexar "$3" ${t[@]+"${t[@]}"}
+  dbx_ref_anexar "$4" ${i[@]+"${i[@]}"}
   return 0
 }
 
@@ -182,11 +191,15 @@ dbx_sync_filtrar_caminhos() {
 # filtro de data.
 dbx_sync_filtrar_meta() {
   [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
-  local -n _fm_c=$1 _fm_t=$2 _fm_i=$3
+  dbx_ref_valido "$1" && dbx_ref_valido "$2" && dbx_ref_valido "$3" || return "$DBX_SYNC_ERRO_USO"
   dbx_filtro_meta_ativo || return 0
   local indice
+  local -a _fm_c=() _fm_t=() _fm_i=()
+  dbx_ref_copiar _fm_c "$1"
+  dbx_ref_copiar _fm_t "$2"
+  dbx_ref_copiar _fm_i "$3"
   local -a c=() t=() i=()
-  for indice in "${!_fm_c[@]}"; do
+  for indice in ${_fm_c[@]+"${!_fm_c[@]}"}; do
     dbx_filtro_carimbo_de_epoca "${_fm_i[$indice]%%|*}" || :
     if ! dbx_filtro_meta_passa "$DBX_FILTRO_CARIMBO" "${_fm_t[$indice]}"; then
       _dbx_sync_contar_filtrado "${_fm_c[$indice]}"
@@ -194,7 +207,12 @@ dbx_sync_filtrar_meta() {
     fi
     c+=("${_fm_c[$indice]}") t+=("${_fm_t[$indice]}") i+=("${_fm_i[$indice]}")
   done
-  _fm_c=(${c[@]+"${c[@]}"}) _fm_t=(${t[@]+"${t[@]}"}) _fm_i=(${i[@]+"${i[@]}"})
+  dbx_ref_limpar "$1"
+  dbx_ref_limpar "$2"
+  dbx_ref_limpar "$3"
+  dbx_ref_anexar "$1" ${c[@]+"${c[@]}"}
+  dbx_ref_anexar "$2" ${t[@]+"${t[@]}"}
+  dbx_ref_anexar "$3" ${i[@]+"${i[@]}"}
   return 0
 }
 
@@ -229,6 +247,30 @@ dbx_sync_localidade_disponivel() {
   return 1
 }
 
+# dbx_sync_reter_nao_ascii — falha fechada da exclusao sem a localidade.
+#
+# Sem a localidade, a comparacao sem caixa so dobra o ASCII (RF-54(f)): `Éa.txt` e
+# `éa.txt` viram chaves distintas aqui e o mesmo arquivo na Dropbox, e o plano
+# apagaria o recem-enviado. Nesse caso nenhum caminho com byte >= 0x80 sai de
+# DBX_SYNC_APAGAR (arquivos e ramos so do destino, que chegam como arquivos).
+# Com a localidade presente nao faz nada. Devolve em DBX_SYNC_RETIDOS quantos
+# ficaram; a soma entre chamadas fica a cargo de quem chama.
+dbx_sync_reter_nao_ascii() {
+  DBX_SYNC_RETIDOS=0
+  dbx_sync_localidade_disponivel && return 0
+  local caminho
+  local -a manter=()
+  for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+    if [[ $caminho == *[$'\x80'-$'\xff']* ]]; then
+      DBX_SYNC_RETIDOS=$((DBX_SYNC_RETIDOS + 1))
+      continue
+    fi
+    manter+=("$caminho")
+  done
+  DBX_SYNC_APAGAR=(${manter[@]+"${manter[@]}"})
+  return 0
+}
+
 # dbx_sync_colisao_de_caixa <nome_do_vetor> — 1 quando dois caminhos do vetor
 # so diferem na caixa; o par vai nomeado em DBX_SYNC_MOTIVO.
 #
@@ -237,10 +279,12 @@ dbx_sync_localidade_disponivel() {
 # primeiro sem aviso; receber escolheria um deles por acaso.
 dbx_sync_colisao_de_caixa() {
   [[ $# -eq 1 ]] || return "$DBX_SYNC_ERRO_USO"
-  local -n _caminhos=$1
+  dbx_ref_valido "$1" || return "$DBX_SYNC_ERRO_USO"
+  local -a _col_caminhos=()
+  dbx_ref_copiar _col_caminhos "$1"
   local -A _vistos=()
   local caminho
-  for caminho in ${_caminhos[@]+"${_caminhos[@]}"}; do
+  for caminho in ${_col_caminhos[@]+"${_col_caminhos[@]}"}; do
     _dbx_sync_chave "$caminho"
     if [[ -n ${_vistos[$DBX_SYNC_CHAVE]+definido} ]]; then
       # shellcheck disable=SC2034  # canal publico, ver nota no topo
@@ -259,15 +303,24 @@ dbx_sync_colisao_de_caixa() {
 # `--enviar` os publicaria e um `--receber --espelhar` os planejaria apagar.
 dbx_sync_sem_temporarios() {
   [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
-  local -n _c=$1 _t=$2 _m=$3
+  dbx_ref_valido "$1" && dbx_ref_valido "$2" && dbx_ref_valido "$3" || return "$DBX_SYNC_ERRO_USO"
+  local -a _st_c=() _st_t=() _st_m=()
+  dbx_ref_copiar _st_c "$1"
+  dbx_ref_copiar _st_t "$2"
+  dbx_ref_copiar _st_m "$3"
   local -a c=() t=() m=()
   local indice nome
-  for indice in "${!_c[@]}"; do
-    nome=${_c[$indice]##*/}
+  for indice in ${_st_c[@]+"${!_st_c[@]}"}; do
+    nome=${_st_c[$indice]##*/}
     [[ $nome == .*"$DBX_CMD_MARCA_RECEBIMENTO"?????? ]] && continue
-    c+=("${_c[$indice]}") t+=("${_t[$indice]}") m+=("${_m[$indice]}")
+    c+=("${_st_c[$indice]}") t+=("${_st_t[$indice]}") m+=("${_st_m[$indice]}")
   done
-  _c=(${c[@]+"${c[@]}"}) _t=(${t[@]+"${t[@]}"}) _m=(${m[@]+"${m[@]}"})
+  dbx_ref_limpar "$1"
+  dbx_ref_limpar "$2"
+  dbx_ref_limpar "$3"
+  dbx_ref_anexar "$1" ${c[@]+"${c[@]}"}
+  dbx_ref_anexar "$2" ${t[@]+"${t[@]}"}
+  dbx_ref_anexar "$3" ${m[@]+"${m[@]}"}
   return 0
 }
 
@@ -365,7 +418,7 @@ _dbx_sync_tab_remover() {
   local registro=${DBX_SYNC_TAB[$pl]-}
   unset 'DBX_SYNC_TAB[$pl]'
   [[ $registro == d$'\t'* ]] || return 0
-  for outra in "${!DBX_SYNC_TAB[@]}"; do
+  for outra in ${DBX_SYNC_TAB[@]+"${!DBX_SYNC_TAB[@]}"}; do
     [[ $outra == "$pl/"* ]] && unset 'DBX_SYNC_TAB[$outra]'
   done
   return 0
@@ -629,10 +682,14 @@ DBX_SYNC_BLOCOS_CICLOS=()
 dbx_sync_blocos_planejar() {
   [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
   [[ $3 =~ ^[1-9][0-9]*$ ]] || return "$DBX_SYNC_ERRO_USO"
-  local -n _blc_dirs=$1 _blc_qtds=$2
-  local n=$3 total=${#_blc_dirs[@]} indice inicio=0 acumulado=0 contagem
+  dbx_ref_valido "$1" && dbx_ref_valido "$2" || return "$DBX_SYNC_ERRO_USO"
+  local n=$3 total _blc_totq indice inicio=0 acumulado=0 contagem
+  local -a _blc_qtds=()
+  dbx_ref_tamanho total "$1"
+  dbx_ref_tamanho _blc_totq "$2"
+  dbx_ref_copiar _blc_qtds "$2"
   DBX_SYNC_BLOCOS_CICLOS=()
-  [[ ${#_blc_qtds[@]} -eq $total ]] || return "$DBX_SYNC_ERRO_USO"
+  [[ $_blc_totq -eq $total ]] || return "$DBX_SYNC_ERRO_USO"
   for ((indice = 0; indice < total; indice++)); do
     [[ ${_blc_qtds[indice]} =~ ^(0|[1-9][0-9]*)$ ]] || return "$DBX_SYNC_ERRO_USO"
   done
@@ -782,7 +839,7 @@ dbx_sync_listar_delta() {
 _dbx_sync_ids_unicos() {
   local pl registro id
   local -A vistos=()
-  for pl in "${!DBX_SYNC_TAB[@]}"; do
+  for pl in ${DBX_SYNC_TAB[@]+"${!DBX_SYNC_TAB[@]}"}; do
     registro=${DBX_SYNC_TAB[$pl]}
     [[ $registro == f$'\t'* ]] || continue
     id=${registro#*$'\t'}
@@ -818,7 +875,7 @@ dbx_sync_tabela_contar() {
 # dbx_sync_tabela_arquivos — arquivos da tabela em DBX_SYNC_LIDO.
 dbx_sync_tabela_arquivos() {
   local pl total=0
-  for pl in "${!DBX_SYNC_TAB[@]}"; do
+  for pl in ${DBX_SYNC_TAB[@]+"${!DBX_SYNC_TAB[@]}"}; do
     [[ ${DBX_SYNC_TAB[$pl]} == f$'\t'* ]] && total=$((total + 1))
   done
   # shellcheck disable=SC2034  # canal publico
@@ -831,7 +888,7 @@ dbx_sync_tabela_arquivos() {
 dbx_sync_tabela_datada() {
   local pl registro
   [[ -n ${DBX_FILTRO_DESDE:-}${DBX_FILTRO_ATE:-} ]] || return 0
-  for pl in "${!DBX_SYNC_TAB[@]}"; do
+  for pl in ${DBX_SYNC_TAB[@]+"${!DBX_SYNC_TAB[@]}"}; do
     registro=${DBX_SYNC_TAB[$pl]}
     [[ $registro == f$'\t'* ]] || continue
     registro=${registro#*$'\t'*$'\t'*$'\t'*$'\t'*$'\t'}
@@ -926,7 +983,9 @@ dbx_sync_tabela_emitir() {
 dbx_sync_confirmar_exclusoes() {
   [[ $# -eq 2 ]] || return "$DBX_SYNC_ERRO_USO"
   local raiz=$1 candidata alvo pl raiz_apagada relativa registro id_antigo id_novo
-  local -n _cf_candidatas=$2
+  dbx_ref_valido "$2" || return "$DBX_SYNC_ERRO_USO"
+  local -a _cf_candidatas=()
+  dbx_ref_copiar _cf_candidatas "$2"
   local -A raizes=() alvos=() do_retrato=()
   local -a ordem=()
   DBX_SYNC_CONFIRMADAS=0
@@ -934,7 +993,7 @@ dbx_sync_confirmar_exclusoes() {
   DBX_SYNC_CURSOR_MOTIVO=''
   # Raizes apagadas do delta, pela chave sem caixa do caminho relativo. A que
   # voltou a existir no mapa final (apagada e recriada) nao cobre ninguem.
-  for pl in "${!DBX_SYNC_DELTA_APAGADAS[@]}"; do
+  for pl in ${DBX_SYNC_DELTA_APAGADAS[@]+"${!DBX_SYNC_DELTA_APAGADAS[@]}"}; do
     [[ -n ${DBX_SYNC_TAB[$pl]+definido} ]] && continue
     registro=${DBX_SYNC_DELTA_APAGADAS[$pl]}
     dbx_sync_relativo "$raiz" "${registro##*$'\t'}" || continue
@@ -947,7 +1006,7 @@ dbx_sync_confirmar_exclusoes() {
     alvo=$candidata
     _dbx_sync_chave "$candidata"
     pl=$DBX_SYNC_CHAVE
-    for raiz_apagada in "${!raizes[@]}"; do
+    for raiz_apagada in ${raizes[@]+"${!raizes[@]}"}; do
       if [[ $pl == "$raiz_apagada" || $pl == "$raiz_apagada/"* ]]; then
         alvo=${raizes[$raiz_apagada]}
         break
@@ -1016,16 +1075,16 @@ dbx_sync_confirmar_exclusoes() {
 dbx_sync_ler_resumos() {
   [[ $# -eq 3 ]] || return "$DBX_SYNC_ERRO_USO"
   local arquivo=$1
-  local -n _ordem=$2 _mapa=$3
+  dbx_ref_valido "$2" && dbx_ref_valido "$3" || return "$DBX_SYNC_ERRO_USO"
   local registro resto
-  _ordem=()
-  _mapa=()
+  dbx_ref_limpar "$2"
+  dbx_ref_limpar "$3"
   [[ -r $arquivo ]] || return 0
   while IFS= read -r -d '' registro; do
     [[ $registro == *$'\t'*$'\t'* ]] || continue
     resto=${registro#*$'\t'}
-    _ordem+=("${resto#*$'\t'}")
-    _mapa["${resto#*$'\t'}"]=${registro%%$'\t'*}
+    dbx_ref_anexar "$2" "${resto#*$'\t'}"
+    dbx_ref_definir "$3" "${resto#*$'\t'}" "${registro%%$'\t'*}"
   done <"$arquivo"
   return 0
 }
@@ -1034,13 +1093,13 @@ dbx_sync_ler_resumos() {
 dbx_sync_ler_revs() {
   [[ $# -eq 2 ]] || return "$DBX_SYNC_ERRO_USO"
   local arquivo=$1
-  local -n _revs=$2
+  dbx_ref_valido "$2" || return "$DBX_SYNC_ERRO_USO"
   local registro
-  _revs=()
+  dbx_ref_limpar "$2"
   [[ -r $arquivo ]] || return 0
   while IFS= read -r -d '' registro; do
     [[ $registro == *$'\t'* ]] || continue
-    _revs["${registro#*$'\t'}"]=${registro%%$'\t'*}
+    dbx_ref_definir "$2" "${registro#*$'\t'}" "${registro%%$'\t'*}"
   done <"$arquivo"
   return 0
 }
@@ -1056,8 +1115,12 @@ dbx_sync_ler_revs() {
 # lado e "apagar" do outro.
 dbx_sync_planejar() {
   [[ $# -eq 4 ]] || return "$DBX_SYNC_ERRO_USO"
-  local -n _ordem_o=$1 _mapa_o=$2 _ordem_d=$3 _mapa_d=$4
+  dbx_ref_valido "$1" && dbx_ref_valido "$2" && dbx_ref_valido "$3" && dbx_ref_valido "$4" ||
+    return "$DBX_SYNC_ERRO_USO"
   local caminho par resumo_o resumo_d
+  local -a _pl_ordem_o=() _pl_ordem_d=()
+  dbx_ref_copiar _pl_ordem_o "$1"
+  dbx_ref_copiar _pl_ordem_d "$3"
   local -A _destino_por_chave=() _chaves_da_origem=()
 
   DBX_SYNC_TRANSFERIR=()
@@ -1065,13 +1128,13 @@ dbx_sync_planejar() {
   DBX_SYNC_IDENTICOS=()
   DBX_SYNC_ALVO=()
 
-  for caminho in ${_ordem_d[@]+"${_ordem_d[@]}"}; do
+  for caminho in ${_pl_ordem_d[@]+"${_pl_ordem_d[@]}"}; do
     _dbx_sync_chave "$caminho"
     _destino_por_chave[$DBX_SYNC_CHAVE]=$caminho
   done
 
-  for caminho in ${_ordem_o[@]+"${_ordem_o[@]}"}; do
-    resumo_o=${_mapa_o[$caminho]:-}
+  for caminho in ${_pl_ordem_o[@]+"${_pl_ordem_o[@]}"}; do
+    dbx_ref_obter resumo_o "$2" "$caminho"
     _dbx_sync_chave "$caminho"
     _chaves_da_origem[$DBX_SYNC_CHAVE]=1
     if [[ -z ${_destino_por_chave[$DBX_SYNC_CHAVE]+definido} ]]; then
@@ -1082,7 +1145,7 @@ dbx_sync_planejar() {
     par=${_destino_por_chave[$DBX_SYNC_CHAVE]}
     # shellcheck disable=SC2034  # canal publico, lido por commands/sync
     DBX_SYNC_ALVO[$caminho]=$par
-    resumo_d=${_mapa_d[$par]:-}
+    dbx_ref_obter resumo_d "$4" "$par"
     # `dbx_hash_iguais` distingue "diferentes" de "malformado", e a distincao
     # decide: resumo ilegivel NAO pode ser lido como conteudo identico, sob pena
     # de omitir uma transferencia necessaria — que e a falha sem sintoma.
@@ -1093,7 +1156,7 @@ dbx_sync_planejar() {
     esac
   done
 
-  for caminho in ${_ordem_d[@]+"${_ordem_d[@]}"}; do
+  for caminho in ${_pl_ordem_d[@]+"${_pl_ordem_d[@]}"}; do
     _dbx_sync_chave "$caminho"
     [[ -z ${_chaves_da_origem[$DBX_SYNC_CHAVE]+definido} ]] && DBX_SYNC_APAGAR+=("$caminho")
   done
@@ -1118,14 +1181,12 @@ declare -ga DBX_SYNC_ORDEM=()
 # arquivos sao comparados.
 _dbx_sync_pastas_de() {
   local caminho=$1 prefixo=''
-  local -n _pastas=$2
+  dbx_ref_valido "$2" || return "$DBX_SYNC_ERRO_USO"
   while [[ $caminho == */* ]]; do
     prefixo+=${prefixo:+/}${caminho%%/*}
     caminho=${caminho#*/}
     _dbx_sync_chave "$prefixo"
-    # shellcheck disable=SC2004  # `_pastas` e nameref para mapa associativo:
-    # o `$` e necessario, a chave e texto e nao expressao aritmetica.
-    _pastas[$DBX_SYNC_CHAVE]=1
+    dbx_ref_definir "$2" "$DBX_SYNC_CHAVE" 1
   done
 }
 
@@ -1136,9 +1197,11 @@ _dbx_sync_pastas_de() {
 # utilitario fora do preflight, e `[[ < ]]` sem localidade fixa compararia por
 # colacao, que muda de maquina para maquina.
 _dbx_sync_ordenar_por_chave() {
-  local -n _chaves=$1
+  dbx_ref_valido "$1" || return "$DBX_SYNC_ERRO_USO"
   { local LC_ALL=C; } 2>/dev/null
-  local total=${#_chaves[@]} largura inicio meio fim a b k
+  local -a _oc_chaves=()
+  dbx_ref_copiar _oc_chaves "$1"
+  local total=${#_oc_chaves[@]} largura inicio meio fim a b k
   local -a ordem=() auxiliar=()
   for ((k = 0; k < total; k++)); do ordem[k]=$k; done
   for ((largura = 1; largura < total; largura *= 2)); do
@@ -1149,7 +1212,7 @@ _dbx_sync_ordenar_por_chave() {
       ((fim > total)) && fim=$total
       a=$inicio b=$meio k=$inicio
       while ((a < meio && b < fim)); do
-        if [[ ${_chaves[ordem[b]]} < ${_chaves[ordem[a]]} ]]; then
+        if [[ ${_oc_chaves[ordem[b]]} < ${_oc_chaves[ordem[a]]} ]]; then
           auxiliar[k]=${ordem[b]} b=$((b + 1))
         else
           auxiliar[k]=${ordem[a]} a=$((a + 1))
@@ -1159,7 +1222,7 @@ _dbx_sync_ordenar_por_chave() {
       while ((a < meio)); do auxiliar[k]=${ordem[a]} a=$((a + 1)) k=$((k + 1)); done
       while ((b < fim)); do auxiliar[k]=${ordem[b]} b=$((b + 1)) k=$((k + 1)); done
     done
-    ordem=("${auxiliar[@]}")
+    ordem=(${auxiliar[@]+"${auxiliar[@]}"})
   done
   DBX_SYNC_ORDEM=(${ordem[@]+"${ordem[@]}"})
 }
@@ -1169,9 +1232,10 @@ _dbx_sync_ordenar_por_chave() {
 # uso fora daqui: a ordem dos itens da restauracao de pasta (RF-74(d)).
 dbx_sync_ordem_sem_caixa() {
   [[ $# -eq 1 ]] || return "$DBX_SYNC_ERRO_USO"
-  local -n _osc_caminhos=$1
-  local -a chaves=()
+  dbx_ref_valido "$1" || return "$DBX_SYNC_ERRO_USO"
+  local -a chaves=() _osc_caminhos=()
   local caminho
+  dbx_ref_copiar _osc_caminhos "$1"
   for caminho in ${_osc_caminhos[@]+"${_osc_caminhos[@]}"}; do
     _dbx_sync_chave "$caminho"
     chaves+=("$DBX_SYNC_CHAVE")
@@ -1191,8 +1255,12 @@ dbx_sync_ordem_sem_caixa() {
 # de dentro da pasta continua listado no proprio estado.
 dbx_sync_comparar() {
   [[ $# -eq 4 ]] || return "$DBX_SYNC_ERRO_USO"
-  local -n _cmp_ordem_o=$1 _cmp_ordem_d=$3 _cmp_mapa_d=$4
+  dbx_ref_valido "$1" && dbx_ref_valido "$2" && dbx_ref_valido "$3" && dbx_ref_valido "$4" ||
+    return "$DBX_SYNC_ERRO_USO"
   local caminho par indice
+  local -a _cmp_ordem_o=() _cmp_ordem_d=()
+  dbx_ref_copiar _cmp_ordem_o "$1"
+  dbx_ref_copiar _cmp_ordem_d "$3"
   local -A _cmp_pastas_o=() _cmp_pastas_d=()
   local -a caminhos=() estados=() motivos=() chaves=()
 
@@ -1210,7 +1278,7 @@ dbx_sync_comparar() {
   for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
     par=${DBX_SYNC_ALVO[$caminho]:-$caminho}
     _dbx_sync_chave "$caminho"
-    if [[ -n ${_cmp_mapa_d[$par]+definido} ]]; then
+    if dbx_ref_existe "$4" "$par"; then
       caminhos+=("$caminho") estados+=(diferente) motivos+=(conteudo)
     elif [[ -n ${_cmp_pastas_d[$DBX_SYNC_CHAVE]+definido} ]]; then
       caminhos+=("$caminho") estados+=(diferente) motivos+=(tipo)

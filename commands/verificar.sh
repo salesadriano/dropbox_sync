@@ -236,7 +236,7 @@ dbx_cmd_verificar_executar() {
   # shellcheck disable=SC2034  # lido por referencia de nome em lib/sync
   local -A mapa_local=()
   local indice
-  for indice in "${!caminhos_locais[@]}"; do
+  for indice in ${caminhos_locais[@]+"${!caminhos_locais[@]}"}; do
     if dbx_hash_publicar_arquivo "$raiz_local/${caminhos_locais[$indice]}" 2>/dev/null &&
       [[ -n $DBX_HASH_RESULTADO ]]; then
       ordem_local+=("${caminhos_locais[$indice]}")
@@ -273,7 +273,7 @@ dbx_cmd_verificar_executar() {
   dbx_output_campo destino "$destino"
   dbx_output_campo travessia_parcial "$parcial"
   dbx_cmd_campos_de_filtro "$filtrados_origem" "$filtrados_destino"
-  for indice in "${!DBX_SYNC_COMPARADOS_CAMINHOS[@]}"; do
+  for indice in ${DBX_SYNC_COMPARADOS_CAMINHOS[@]+"${!DBX_SYNC_COMPARADOS_CAMINHOS[@]}"}; do
     estado=${DBX_SYNC_COMPARADOS_ESTADOS[indice]}
     valor=${DBX_SYNC_COMPARADOS_CAMINHOS[indice]}
     contagem[$estado]=$((contagem[$estado] + 1))

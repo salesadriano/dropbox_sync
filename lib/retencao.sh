@@ -177,7 +177,7 @@ dbx_retencao_epoca_http() {
     *) return 1 ;;
   esac
   local carimbo="${BASH_REMATCH[4]}-$mes-${BASH_REMATCH[2]}T${BASH_REMATCH[5]}:${BASH_REMATCH[6]}:${BASH_REMATCH[7]}Z"
-  local -a partes=("${BASH_REMATCH[@]}")
+  local -a partes=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
   dbx_retencao_carimbo_valido "$carimbo" || return 1
   _dbx_retencao_epoca_de $((10#${partes[4]})) $((10#$mes)) $((10#${partes[2]})) \
     $((10#${partes[5]})) $((10#${partes[6]})) $((10#${partes[7]}))
@@ -214,7 +214,7 @@ _dbx_retencao_manter_o_primeiro() {
 # senao, status 1 com o candidato em DBX_RETENCAO_MOTIVO.
 _dbx_retencao_carimbos_validos() {
   local i
-  for i in "${!_rp_sm[@]}"; do
+  for i in ${_rp_sm[@]+"${!_rp_sm[@]}"}; do
     dbx_retencao_carimbo_valido "${_rp_sm[i]}" && continue
     DBX_RETENCAO_MOTIVO="server_modified invalido no candidato $i"
     return 1
@@ -230,7 +230,7 @@ _dbx_retencao_carimbos_validos() {
 _dbx_retencao_caminhos_unicos() {
   local i
   local -A vistos=()
-  for i in "${!_rp_pl[@]}"; do
+  for i in ${_rp_pl[@]+"${!_rp_pl[@]}"}; do
     dbx_retencao_chave "${_rp_pl[i]}" || {
       DBX_RETENCAO_MOTIVO="caminho fora do ASCII sem a chave sem caixa de RF-54 (localidade C.UTF-8 indisponivel) no candidato $i"
       return 1
@@ -257,7 +257,15 @@ _dbx_retencao_caminhos_unicos() {
 # exclusao) ou a politica e desconhecida; nada e publicado como plano.
 dbx_retencao_planejar() {
   local politica=${1-} valor=${2-} agora=${3-}
-  local -n _rp_sm=$4 _rp_chave=$5 _rp_pl=$6
+  if ! dbx_ref_valido "${4-}" || ! dbx_ref_valido "${5-}" || ! dbx_ref_valido "${6-}"; then
+    DBX_RETENCAO_MOTIVO='vetores da politica invalidos'
+    return 1
+  fi
+  # Copias locais: os auxiliares abaixo as leem por escopo dinamico.
+  local -a _rp_sm=() _rp_chave=() _rp_pl=()
+  dbx_ref_copiar _rp_sm "$4"
+  dbx_ref_copiar _rp_chave "$5"
+  dbx_ref_copiar _rp_pl "$6"
   local i pos atual total=${#_rp_sm[@]}
   DBX_RETENCAO_ORDEM=() DBX_RETENCAO_ACAO=()
   DBX_RETENCAO_FICAM=0 DBX_RETENCAO_SAEM=0 DBX_RETENCAO_MINIMO='nao'
@@ -432,6 +440,19 @@ dbx_retencao_nome_coerente() {
   [[ $chave == "$DBX_FILTRO_CHAVE" ]]
 }
 
+# _dbx_retencao_e_indexado <nome> — 0 quando o nome e de um vetor INDEXADO
+# (o teste de atributo por expansao so existe no bash 4.4).
+_dbx_retencao_e_indexado() {
+  dbx_ref_valido "${1-}" || return 1
+  local _ei_decl=''
+  # Existe e e vetor (indexado ou, no bash 5, associativo): sem processo.
+  compgen -A arrayvar -X "!$1" -- "$1" >/dev/null || return 1
+  # Indexado: so o prefixo do `declare -p` importa, lido por `read` (nao por
+  # captura: o valor do vetor e dado externo e nao e usado).
+  IFS= read -r _ei_decl < <(declare -p "$1" 2>/dev/null) || :
+  [[ $_ei_decl == 'declare -a'* ]]
+}
+
 # _dbx_retencao_identidade_fora <rev> <id> <vetor_revs> <vetor_ids>
 #   <vetor_ficam> — DIV-167: 0 quando o `rev` (o `parent_rev` do delete) e o
 # `id` de quem sai diferem dos de TODOS os que ficam. Falha fechada: rev ou id
@@ -443,14 +464,18 @@ _dbx_retencao_identidade_fora() {
   for nome in "${3-}" "${4-}" "${5-}"; do
     [[ $nome =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
   done
-  local -n _ri_revs=$3 _ri_ids=$4 _ri_cam=$5
-  [[ -n ${_ri_revs[*]+x} && ${_ri_revs@a} == *a* && -n ${_ri_ids[*]+x} && ${_ri_ids@a} == *a* ]] || return 1
+  _dbx_retencao_e_indexado "$3" && _dbx_retencao_e_indexado "$4" || return 1
+  local -a _ri_revs=() _ri_ids=() _ri_cam=()
+  dbx_ref_copiar _ri_revs "$3"
+  dbx_ref_copiar _ri_ids "$4"
+  dbx_ref_copiar _ri_cam "$5"
+  [[ ${#_ri_revs[@]} -gt 0 && ${#_ri_ids[@]} -gt 0 ]] || return 1
   [[ ${#_ri_revs[@]} -eq ${#_ri_cam[@]} && ${#_ri_ids[@]} -eq ${#_ri_cam[@]} ]] || return 1
   local outro
-  for outro in "${_ri_revs[@]}"; do
+  for outro in ${_ri_revs[@]+"${_ri_revs[@]}"}; do
     [[ -n $outro && $outro != "$rev" ]] || return 1
   done
-  for outro in "${_ri_ids[@]}"; do
+  for outro in ${_ri_ids[@]+"${_ri_ids[@]}"}; do
     [[ -n $outro && $outro != "$id" ]] || return 1
   done
   return 0
@@ -461,14 +486,16 @@ _dbx_retencao_identidade_fora() {
 # fechada: vetor ausente, inexistente ou vazio, ou chave indisponivel, recusa.
 _dbx_retencao_fora_dos_que_ficam() {
   [[ ${2-} =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1 # MUTACAO:lista
-  local -n _rf_ficam=$2
   # DIV-162: vetor inexistente, que nao e vetor, ou vazio nao e "nenhum fica":
   # com pelo menos 1 candidato, sempre ha quem fique (RF-95(e)).
-  [[ -n ${_rf_ficam[*]+x} && ${_rf_ficam@a} == *a* ]] || return 1 # MUTACAO:lista
+  _dbx_retencao_e_indexado "$2" || return 1 # MUTACAO:lista
+  local -a _rf_ficam=()
+  dbx_ref_copiar _rf_ficam "$2"
+  [[ ${#_rf_ficam[@]} -gt 0 ]] || return 1 # MUTACAO:lista
   local alvo outro
   dbx_retencao_chave "$1" || return 1
   alvo=$DBX_RETENCAO_CHAVE
-  for outro in "${_rf_ficam[@]}"; do
+  for outro in ${_rf_ficam[@]+"${_rf_ficam[@]}"}; do
     dbx_retencao_caminho_canonico "$outro" || return 1 # MUTACAO:formato
     dbx_retencao_chave "$outro" || return 1
     [[ $DBX_RETENCAO_CHAVE == "$alvo" ]] && return 1

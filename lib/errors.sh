@@ -28,6 +28,15 @@
 [[ -n ${DBX_ERRORS_CARREGADO:-} ]] && return 0
 DBX_ERRORS_CARREGADO=1
 
+# Linha legada (bash 4.2): acesso a vetor pelo nome, sem nameref (lib/ref.sh).
+# Carregado aqui porque errors.sh e a raiz das dependencias de lib/ e de
+# commands/; diretorio por expansao de parametro, como em lib/output.sh.
+_dbx_errors_diretorio=${BASH_SOURCE[0]%/*}
+[[ $_dbx_errors_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_errors_diretorio=.
+# shellcheck source=lib/ref.sh
+. "$_dbx_errors_diretorio/ref.sh"
+unset _dbx_errors_diretorio
+
 # ---------------------------------------------------------------------------
 # Contrato congelado de codigos de saida (RF-29, RF-35)
 #
@@ -55,7 +64,9 @@ DBX_ERRORS_CLASSES=(
   consumidor_encerrou
 )
 
-declare -gA DBX_ERRORS_CODIGO=(
+# bash 4.2: `declare -g` com valores dentro de funcao nao cria o global.
+declare -gA DBX_ERRORS_CODIGO
+DBX_ERRORS_CODIGO=(
   [sucesso]=0
   [desconhecido]=1
   [uso_invalido]=2
@@ -74,7 +85,9 @@ declare -gA DBX_ERRORS_CODIGO=(
   [consumidor_encerrou]=15
 )
 
-declare -gA DBX_ERRORS_MENSAGEM=(
+# bash 4.2: `declare -g` com valores dentro de funcao nao cria o global.
+declare -gA DBX_ERRORS_MENSAGEM
+DBX_ERRORS_MENSAGEM=(
   [sucesso]='Operacao concluida.'
   [desconhecido]='Falha nao classificada. Repita com diagnostico elevado e guarde o error_summary integral e o identificador de requisicao para abrir chamado.'
   [uso_invalido]='Uso invalido. Verifique os argumentos e as opcoes do comando; consulte a ajuda do subcomando.'
@@ -228,11 +241,11 @@ DBX_ERRORS_DELIMITADORES=(
 )
 
 declare -gA DBX_ERRORS_E_SENSIVEL=()
-for _dbx_errors_chave in "${DBX_ERRORS_CHAVES_SENSIVEIS[@]}"; do
+for _dbx_errors_chave in ${DBX_ERRORS_CHAVES_SENSIVEIS[@]+"${DBX_ERRORS_CHAVES_SENSIVEIS[@]}"}; do
   DBX_ERRORS_E_SENSIVEL[$_dbx_errors_chave]=1
 done
 declare -gA DBX_ERRORS_E_CABECALHO=()
-for _dbx_errors_chave in "${DBX_ERRORS_CHAVES_DE_CABECALHO[@]}"; do
+for _dbx_errors_chave in ${DBX_ERRORS_CHAVES_DE_CABECALHO[@]+"${DBX_ERRORS_CHAVES_DE_CABECALHO[@]}"}; do
   DBX_ERRORS_E_CABECALHO[$_dbx_errors_chave]=1
 done
 unset _dbx_errors_chave
@@ -250,7 +263,7 @@ readonly DBX_ERRORS_STATUS_USO=2
 # ---------------------------------------------------------------------------
 
 dbx_errors_listar_classes() {
-  printf '%s\n' "${DBX_ERRORS_CLASSES[@]}"
+  printf '%s\n' ${DBX_ERRORS_CLASSES[@]+"${DBX_ERRORS_CLASSES[@]}"}
 }
 
 dbx_errors_classe_valida() {
@@ -279,7 +292,7 @@ dbx_errors_codigo_saida() {
 # padrao e o resultado nao e nem um nem outro.
 dbx_errors_classe_do_codigo() {
   local codigo=${1:-} classe
-  for classe in "${DBX_ERRORS_CLASSES[@]}"; do
+  for classe in ${DBX_ERRORS_CLASSES[@]+"${DBX_ERRORS_CLASSES[@]}"}; do
     if [[ ${DBX_ERRORS_CODIGO[$classe]} == "$codigo" ]]; then
       printf '%s' "$classe"
       return 0
@@ -313,7 +326,7 @@ _dbx_errors_classe_da_tag() {
   local resumo=$1 entrada tag classe
   DBX_ERRORS_CLASSE_DA_TAG=''
   [[ -n $resumo ]] || return 1
-  for entrada in "${DBX_ERRORS_TAGS[@]}"; do
+  for entrada in ${DBX_ERRORS_TAGS[@]+"${DBX_ERRORS_TAGS[@]}"}; do
     tag=${entrada%%=*}
     classe=${entrada#*=}
     if _dbx_errors_prefixo_casa "$resumo" "$tag"; then
@@ -336,7 +349,7 @@ _dbx_errors_classe_da_tag() {
 _dbx_errors_remover_qualificador() {
   local resumo=$1 qualificador
   DBX_ERRORS_RESTANTE=''
-  for qualificador in "${DBX_ERRORS_QUALIFICADORES[@]}"; do
+  for qualificador in ${DBX_ERRORS_QUALIFICADORES[@]+"${DBX_ERRORS_QUALIFICADORES[@]}"}; do
     if [[ $resumo == "$qualificador/"* ]]; then
       DBX_ERRORS_RESTANTE=${resumo#"$qualificador"/}
       return 0
@@ -412,7 +425,7 @@ dbx_errors_tag_reconhecida() {
   local restante=${1-} voltas=0 entrada tag
   DBX_ERRORS_TAG=''
   while [[ -n $restante && $voltas -le 4 ]]; do
-    for entrada in "${DBX_ERRORS_TAGS[@]}"; do
+    for entrada in ${DBX_ERRORS_TAGS[@]+"${DBX_ERRORS_TAGS[@]}"}; do
       tag=${entrada%%=*}
       if _dbx_errors_prefixo_casa "$restante" "$tag"; then
         # shellcheck disable=SC2034  # canal publico, lido por commands/compartilhar
@@ -607,7 +620,7 @@ dbx_errors_redigir() {
   fi
 
   local separador=$'\x01' marcado=$texto delimitador
-  for delimitador in "${DBX_ERRORS_DELIMITADORES[@]}"; do
+  for delimitador in ${DBX_ERRORS_DELIMITADORES[@]+"${DBX_ERRORS_DELIMITADORES[@]}"}; do
     marcado=${marcado//"$delimitador"/$separador$delimitador$separador}
   done
 
@@ -709,7 +722,8 @@ dbx_errors_redigir() {
   done
 
   local IFS=''
-  texto="${partes[*]}"
+  texto=''
+  [[ ${#partes[@]} -gt 0 ]] && texto="${partes[*]}"
 
   # A truncagem ocorre DEPOIS da redacao. Truncar antes podia cortar a aspa de
   # fechamento que as regras antigas exigiam e, com isso, o proprio corte
@@ -726,21 +740,22 @@ dbx_errors_redigir() {
 # separador estrutural, `linha` para ate o fim da linha, `arranjo` para ate o
 # fechamento do colchete, `espaco` para ate o proximo espaco.
 _dbx_errors_mascarar_valor() {
-  local -n vetor=$1
+  local _mv_nome=${1-}
   local posicao=$2 total=$3 modo=$4
   local primeiro=$posicao elemento anterior=''
+  dbx_ref_valido "$_mv_nome" || return 2
 
   [[ $posicao -lt $total ]] || return 0
 
   while [[ $posicao -lt $total ]]; do
-    elemento=${vetor[posicao]}
+    dbx_ref_obter elemento "$_mv_nome" "$posicao"
     # Aspa precedida de barra invertida esta ESCAPADA e pertence ao valor. Sem
     # esta verificacao, `"a\"b<segredo>"` encerrava o mascaramento na primeira
     # aspa e o restante do valor vazava. Nao ocorre com token da Dropbox, que e
     # base64url, mas a funcao e generica e cobre `password` e `secret`.
     if [[ $anterior == $'\\' && ( $elemento == '"' || $elemento == "'" ) ]]; then
       anterior=$elemento
-      vetor[posicao]=''
+      dbx_ref_definir "$_mv_nome" "$posicao" ''
       posicao=$((posicao + 1))
       continue
     fi
@@ -765,12 +780,12 @@ _dbx_errors_mascarar_valor() {
         _dbx_errors_e_espaco "$elemento" && break
         ;;
     esac
-    vetor[posicao]=''
+    dbx_ref_definir "$_mv_nome" "$posicao" ''
     posicao=$((posicao + 1))
   done
 
   [[ $posicao -gt $primeiro ]] || return 0
-  vetor[primeiro]='[REDIGIDO]'
+  dbx_ref_definir "$_mv_nome" "$primeiro" '[REDIGIDO]'
 }
 
 # dbx_errors_mensagem <classe> [detalhe] — mensagem acionavel, com o detalhe

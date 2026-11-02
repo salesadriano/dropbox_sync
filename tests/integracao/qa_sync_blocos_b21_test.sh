@@ -448,7 +448,7 @@ _b_ciclos() { # <N> <layout...> — layout "d1=2 d2=2": remoto, ciclos no JSON
   shift
   _q_cen
   for par in "$@"; do nomes+=("dir:${par%%=*}"); done
-  _b_dir '' "${nomes[@]}"
+  _b_dir '' ${nomes[@]+"${nomes[@]}"}
   for par in "$@"; do
     d=${par%%=*}; q=${par##*=}
     local -a fs=()

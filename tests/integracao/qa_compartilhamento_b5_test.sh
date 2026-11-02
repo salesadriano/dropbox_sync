@@ -108,7 +108,8 @@ else
       for f in cmdline environ; do
         [[ -r $d/$f ]] || continue
         partes=()
-        mapfile -d '' partes <"$d/$f" 2>/dev/null || continue
+        [[ -r "$d/$f" ]] || continue
+        partes=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do partes+=("$_m"); done <"$d/$f"
         for p in ${partes[@]+"${partes[@]}"}; do
           [[ $p == *"$alvo"* ]] && { printf '%s %s\n' "$d" "$f" >>"$QA/varredura"; break; }
         done
@@ -187,10 +188,10 @@ _qa_ler_saidas() {
   local pedaco
   local -a pedacos=()
   QA_SAIDA='' QA_ERRO=''
-  mapfile -d '' pedacos <"$B/out"
-  for pedaco in ${pedacos[@]+"${pedacos[@]}"}; do QA_SAIDA+="${pedaco%$'\0'}"$'\n'; done
-  mapfile -d '' pedacos <"$B/err"
-  for pedaco in ${pedacos[@]+"${pedacos[@]}"}; do QA_ERRO+="${pedaco%$'\0'}"$'\n'; done
+  pedacos=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do pedacos+=("$_m"); done <"$B/out"
+  for pedaco in ${pedacos[@]+"${pedacos[@]}"}; do QA_SAIDA+="$pedaco"$'\n'; done
+  pedacos=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do pedacos+=("$_m"); done <"$B/err"
+  for pedaco in ${pedacos[@]+"${pedacos[@]}"}; do QA_ERRO+="$pedaco"$'\n'; done
   return 0
 }
 
@@ -813,7 +814,7 @@ teste_qa_v01_combinacoes_invalidas_saem_2_sem_rede() {
     read -r -a args <<<"$linha"
     _qa_cenario /r
     _qa_entrada "$QA_SENHA\n"
-    _qa_rodar compartilhar "${args[@]}"
+    _qa_rodar compartilhar ${args[@]+"${args[@]}"}
     _qa_estado "$QA_USO" "combinacao [$linha]"
     _qa_sem_chamada "combinacao [$linha]"
     assert_segredo_ausente "$QA_SENHA" "$QA_SAIDA$QA_ERRO" "combinacao [$linha]"
@@ -875,7 +876,7 @@ teste_qa_v03_corpo_corresponde_ao_pedido() {
     _qa_link 1 /r/a.txt public false
     _qa_regra sharing/create_shared_link_with_settings '*' 200 "$QA_LINK"
     _qa_entrada "$QA_SENHA\n"
-    _qa_rodar compartilhar "${args[@]}" /r/a.txt
+    _qa_rodar compartilhar ${args[@]+"${args[@]}"} /r/a.txt
     _qa_estado 0 "criar [$linha]"
     _qa_contar "sharing/create_shared_link_with_settings	{\"path\":\"/r/a.txt\",\"settings\":{$esperado}}"
     assert_igual 1 "$QA_CONTAGEM" "corpo exato [$linha]"
@@ -917,7 +918,7 @@ teste_qa_x01_reuso_so_quando_igual() {
     _qa_regra sharing/modify_shared_link_settings '*' 200 "$QA_LINK"
     _qa_entrada "$QA_SENHA\n"
     read -r -a partes <<<"$pedido"
-    _qa_rodar compartilhar "${partes[@]}" /r/a.txt
+    _qa_rodar compartilhar ${partes[@]+"${partes[@]}"} /r/a.txt
     _qa_estado 0 "[$antes] pedido [$pedido]"
     _qa_contar sharing/modify_shared_link_settings
     if [[ $situacao == existente ]]; then
@@ -1118,7 +1119,7 @@ teste_qa_l04_confinamento_antes_da_rede() {
       _qa_cenario /r
       _qa_entrada "$QA_SENHA\n"
       read -r -a args <<<"$caso"
-      _qa_rodar "${args[@]}" "$alvo"
+      _qa_rodar ${args[@]+"${args[@]}"} "$alvo"
       _qa_estado "$QA_RECUSADO" "[$caso] [$alvo]"
       _qa_sem_chamada "[$caso] [$alvo]"
     done
@@ -1131,7 +1132,7 @@ teste_qa_l04_confinamento_antes_da_rede() {
   for caso in 'compartilhar --publico' 'link-temporario'; do
     _qa_cenario /
     read -r -a args <<<"$caso"
-    _qa_rodar "${args[@]}" /
+    _qa_rodar ${args[@]+"${args[@]}"} /
     _qa_estado "$QA_USO" "[$caso] raiz da conta"
     _qa_sem_chamada "[$caso] raiz da conta"
   done
@@ -1191,7 +1192,7 @@ teste_qa_e01_mapeamento_de_erros() {
     _qa_cenario /r
     _qa_regra "$rota" '*' 409 "{\"error_summary\":\"$resumo\",\"error\":{\".tag\":\"x\"}}"
     read -r -a partes <<<"$args"
-    _qa_rodar --debug "${partes[@]}"
+    _qa_rodar --debug ${partes[@]+"${partes[@]}"}
     _qa_estado "$esperado" "[$rota] [$resumo]"
   done <<FIM
 sharing/create_shared_link_with_settings	$QA_PERM	settings_error/not_authorized/..	compartilhar --equipe /r/a
@@ -1278,7 +1279,7 @@ teste_qa_d01_grafia_do_arquivo_nao_documentada() {
       . "$1"
       COMP_WORDS=(dbx "$2"); COMP_CWORD=1
       _dbx_completar dbx "$2" dbx
-      printf "%s\n" "${COMPREPLY[@]}"' _ "$DBX_HARNESS_RAIZ/completions/dbx.bash" "$prefixo" \
+      printf "%s\n" ${COMPREPLY[@]+"${COMPREPLY[@]}"}' _ "$DBX_HARNESS_RAIZ/completions/dbx.bash" "$prefixo" \
       >"$B/comp" 2>&1
     _qa_ler "$B/comp"
     assert_nao_contem link_temporario "$QA_TEXTO" "autocompletar [$prefixo]"
@@ -1287,7 +1288,7 @@ teste_qa_d01_grafia_do_arquivo_nao_documentada() {
     . "$1"
     COMP_WORDS=(dbx l); COMP_CWORD=1
     _dbx_completar dbx l dbx
-    printf "%s\n" "${COMPREPLY[@]}"' _ "$DBX_HARNESS_RAIZ/completions/dbx.bash" >"$B/comp" 2>&1
+    printf "%s\n" ${COMPREPLY[@]+"${COMPREPLY[@]}"}' _ "$DBX_HARNESS_RAIZ/completions/dbx.bash" >"$B/comp" 2>&1
   _qa_ler "$B/comp"
   assert_contem link-temporario "$QA_TEXTO" 'autocompletar oferece link-temporario'
 }

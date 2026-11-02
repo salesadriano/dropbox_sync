@@ -80,7 +80,7 @@ _rodar() {
   DBX_SAIDA='' DBX_ERRO=''
   rm -f "$base/argv" "$base/opcoes"
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
-    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" "${extra[@]}" \
+    XDG_STATE_HOME="$base/estado" TMPDIR="$DBX_TESTES_TMP" ${extra[@]+"${extra[@]}"} \
     bash "$DBX_EXEC" "$@" <"$entrada" >"$base/out" 2>"$base/err"
   DBX_ESTADO=$?
   IFS= read -r -d '' DBX_SAIDA <"$base/out"

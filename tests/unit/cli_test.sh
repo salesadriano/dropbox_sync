@@ -157,7 +157,7 @@ teste_todo_comando_declara_seu_requisito_de_ambiente() {
       faltando+=("$nome nao define execucao")
   done
   [[ ${#faltando[@]} -eq 0 ]] ||
-    _harness_falhar 'comando sem contrato declarado' "${faltando[@]}"
+    _harness_falhar 'comando sem contrato declarado' ${faltando[@]+"${faltando[@]}"}
   return 0
 }
 
@@ -210,7 +210,7 @@ teste_tabela_de_despacho_e_os_arquivos_de_comando_se_correspondem() {
       faltando+=("$nome resolve para [$destino] em vez de [$arquivo]")
   done
   [[ ${#faltando[@]} -eq 0 ]] ||
-    _harness_falhar 'tabela de despacho e arquivos de comando divergem' "${faltando[@]}"
+    _harness_falhar 'tabela de despacho e arquivos de comando divergem' ${faltando[@]+"${faltando[@]}"}
   return 0
 }
 

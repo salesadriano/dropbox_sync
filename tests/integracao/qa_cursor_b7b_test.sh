@@ -247,7 +247,7 @@ _q_filhos() {
     fi
     [[ $e == *'".tag":"folder"'* ]] && existe[d$caminho]=1
   done
-  for dir in "${!existe[@]}"; do
+  for dir in ${existe[@]+"${!existe[@]}"}; do
     printf -v Q_P '{"entries":[%s],"cursor":"%s","has_more":false}' "${filhos[$dir]:-}" "$cursor"
     _q_regra files/list_folder "*\"path\":\"${dir#d}\",\"recursive\":false*" 200 "$Q_P"
   done
@@ -292,7 +292,7 @@ _q_registro() { # o unico cursor-* em Q_REG
 
 _q_campos() { # <arquivo> — campos NUL em Q_CAMPOS
   Q_CAMPOS=()
-  mapfile -d '' -t Q_CAMPOS <"$1"
+  Q_CAMPOS=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do Q_CAMPOS+=("$_m"); done <"$1"
 }
 
 # _q_reescrever <arquivo> <campos...> — campos e rodape VALIDO recalculado (o
@@ -309,9 +309,9 @@ _q_reescrever() {
 _q_sem_rodape() {
   _q_registro
   _q_campos "$Q_REG"
-  Q_C=("${Q_CAMPOS[@]}")
+  Q_C=(${Q_CAMPOS[@]+"${Q_CAMPOS[@]}"})
   unset 'Q_C[${#Q_C[@]}-1]' 'Q_C[${#Q_C[@]}-1]'
-  Q_C=("${Q_C[@]}")
+  Q_C=(${Q_C[@]+"${Q_C[@]}"})
 }
 
 _q_impressao() { # <arquivo> — modo e conteudo
@@ -366,7 +366,7 @@ _q_base() {
   _q_pasta q && ent+=("$Q_E")
   _q_pasta q/r && ent+=("$Q_E")
   _q_arq q/r/z.txt && ent+=("$Q_E")
-  Q_BASE=("${ent[@]}")
+  Q_BASE=(${ent[@]+"${ent[@]}"})
 }
 
 # _q_primeira — primeira execucao real (com --espelhar --confirmar,
@@ -374,7 +374,7 @@ _q_base() {
 _q_primeira() {
   _q_cen
   _q_base
-  _q_servidor "${Q_SENT}C1" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C1" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar --confirmar
   assert_igual 0 "$ESTADO" "primeira execucao: $ERRO"
   _q_registro
@@ -420,14 +420,14 @@ _q_forjar_sem() {
     novo+=("${Q_C[i]}" "${Q_C[i + 1]}")
   done
   novo[11]=$(((${#novo[@]} - 12) / 2))
-  _q_reescrever "$Q_REG" "${novo[@]}"
+  _q_reescrever "$Q_REG" ${novo[@]+"${novo[@]}"}
 }
 
 # _q_cabecalho <indice> <valor> — troca um campo e recalcula o rodape.
 _q_cabecalho() {
   _q_sem_rodape
   Q_C[$1]=$2
-  _q_reescrever "$Q_REG" "${Q_C[@]}"
+  _q_reescrever "$Q_REG" ${Q_C[@]+"${Q_C[@]}"}
 }
 
 # _q_byte <deslocamento> <byte> — troca um byte do registro SEM recalcular.
@@ -452,7 +452,7 @@ teste_qa_a01_retrato_forjado_com_rodape_valido_nunca_apaga() {
   _q_forjar_sem /r/b.txt /r/c.txt /r/p/x.txt /r/p/y.txt /r/q/r/z.txt
   _q_zerar
   _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
-  _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
   for f in b.txt c.txt p/x.txt p/y.txt q/r/z.txt; do _q_meta "$f"; done
   _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar --permitir-origem-vazia
   assert_igual 0 "$ESTADO" "retrato forjado: $ERRO"
@@ -471,7 +471,7 @@ teste_qa_a02_retrato_forjado_sem_arquivo_algum_nao_vira_origem_vazia() {
   _q_forjar_sem /r/a.txt /r/b.txt /r/c.txt /r/p/x.txt /r/p/y.txt /r/q/r/z.txt
   _q_zerar
   _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
-  _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
   for f in a.txt b.txt c.txt p/x.txt p/y.txt q/r/z.txt; do _q_meta "$f"; done
   _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
   assert_igual 0 "$ESTADO" "retrato sem arquivos nao pode gerar recusa nem exclusao: $ERRO"
@@ -487,7 +487,7 @@ teste_qa_a03_deleted_de_item_que_ainda_existe_nunca_apaga() {
     _q_zerar
     _q_apagado b.txt
     _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "$Q_E"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     id=id:b_txt
     [[ $caso == outro_id ]] && id=id:b_recriado
     _q_meta b.txt "$id"
@@ -507,7 +507,7 @@ teste_qa_a04_resposta_duvidosa_na_confirmacao_nunca_apaga() {
     _q_zerar
     _q_apagado b.txt
     _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "$Q_E"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     case $caso in
       outro_409) cod=409 corpo='{"error_summary":"path/malformed_path/..","error":{".tag":"path"}}' ;;
       tag_deleted_200) cod=200 corpo='{".tag":"deleted","name":"b.txt","path_lower":"/r/b.txt","path_display":"/r/b.txt"}' ;;
@@ -533,12 +533,12 @@ teste_qa_a05_pasta_apagada_e_arquivo_readicionado_no_mesmo_delta() {
   _q_zerar
   _q_apagado p && d+=("$Q_E")
   _q_arq p/novo.txt '' 'id:p_novo' 'abcabcabcab' && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
   _q_pasta p 'id:p_nova' && est+=("$Q_E")
   _q_arq a.txt && est+=("$Q_E"); _q_arq b.txt && est+=("$Q_E"); _q_arq c.txt && est+=("$Q_E")
   _q_arq p/novo.txt '' 'id:p_novo' 'abcabcabcab' && est+=("$Q_E")
   _q_pasta q && est+=("$Q_E"); _q_pasta q/r && est+=("$Q_E"); _q_arq q/r/z.txt && est+=("$Q_E")
-  _q_servidor "${Q_SENT}C9" "${est[@]}"
+  _q_servidor "${Q_SENT}C9" ${est[@]+"${est[@]}"}
   # A pasta p existe de novo: confirmar p pelo caminho devolve metadado.
   _q_pasta p 'id:p_nova'
   _q_regra files/get_metadata '*"path":"/r/p"*' 200 "$Q_E"
@@ -559,12 +559,12 @@ teste_qa_a06_arquivo_no_lugar_de_pasta_e_pasta_no_lugar_de_arquivo() {
   _q_arq p '' 'id:p_arquivo' 'eeeeeeeeeee' && d+=("$Q_E")
   _q_pasta a.txt 'id:a_pasta' && d+=("$Q_E")
   _q_arq a.txt/dentro.txt '' 'id:dentro' && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
   _q_arq p '' 'id:p_arquivo' 'eeeeeeeeeee' && est+=("$Q_E")
   _q_pasta a.txt 'id:a_pasta' && est+=("$Q_E"); _q_arq a.txt/dentro.txt '' 'id:dentro' && est+=("$Q_E")
   _q_arq b.txt && est+=("$Q_E"); _q_arq c.txt && est+=("$Q_E")
   _q_pasta q && est+=("$Q_E"); _q_pasta q/r && est+=("$Q_E"); _q_arq q/r/z.txt && est+=("$Q_E")
-  _q_servidor "${Q_SENT}C9" "${est[@]}"
+  _q_servidor "${Q_SENT}C9" ${est[@]+"${est[@]}"}
   _q_equiv tipo_trocado --espelhar
   assert_contem 'apagar=p/x.txt' "$Q_PLANO_COMUM" 'filho da pasta que virou arquivo sai'
   assert_contem 'transferir=p' "$Q_PLANO_COMUM" 'o arquivo p e transferido'
@@ -579,9 +579,9 @@ teste_qa_a07_renomeacao_so_de_caixa_relatada_nunca_apaga() {
   # com a mesma chave sem caixa: a exclusao e anulada.
   _q_apagado b.txt && d+=("$Q_E")
   _q_arq B.TXT '' 'id:b_txt' && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
-  local -a est=("${Q_BASE[@]}")
-  _q_servidor "${Q_SENT}C9" "${est[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
+  local -a est=(${Q_BASE[@]+"${Q_BASE[@]}"})
+  _q_servidor "${Q_SENT}C9" ${est[@]+"${est[@]}"}
   _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
   assert_igual 0 "$ESTADO" "caixa: $ERRO"
   assert_arquivo_existe "$B/l/b.txt" 'a grafia local fica (RF-54)'
@@ -598,7 +598,7 @@ teste_qa_a08_simulacao_com_confirmacoes_nunca_apaga_nem_toca_o_estado() {
   antes=$Q_FOTO
   _q_zerar
   _q_apagado b.txt && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
   _q_rodar --dry-run sync --receber --origem /r --destino "$B/l" --espelhar
   assert_igual 0 "$ESTADO" "simulacao: $ERRO"
   _q_valor cursor_confirmadas; assert_igual 1 "$Q_V" 'simulacao confirma (leitura)'
@@ -611,7 +611,7 @@ teste_qa_a08_simulacao_com_confirmacoes_nunca_apaga_nem_toca_o_estado() {
   d=()
   for ((i = 1; i <= 51; i++)); do _q_local "extra$i.txt"; done
   _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
-  _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar --dry-run sync --receber --origem /r --destino "$B/l" --espelhar
   assert_igual 0 "$ESTADO" "51 na simulacao: $ERRO"
   _q_valor varredura; assert_igual completa "$Q_V" '51 candidatas: completa'
@@ -664,7 +664,7 @@ teste_qa_a10_registro_adulterado_sem_recalcular_rodape_e_descartado() {
     esac
     _q_zerar
     _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
     assert_igual 0 "$ESTADO" "$caso: $ERRO"
     _q_valor varredura; assert_igual completa "$Q_V" "$caso: descartado, completa"
@@ -738,7 +738,7 @@ teste_qa_b01_cadeia_de_execucoes_reais_converge_para_o_servidor() {
         ;;
     esac
     _q_delta "${Q_SENT}C$passo" "${Q_SENT}C$((passo + 1))" ${d[@]+"${d[@]}"}
-    _q_servidor "${Q_SENT}F$passo" "${est[@]}"
+    _q_servidor "${Q_SENT}F$passo" ${est[@]+"${est[@]}"}
     _q_regra files/download '*/r/a.txt[!/]*' 200 'conteudo versao 2'
     # O delta parte do cursor gravado no passo anterior (C1 na primeira).
     if [[ $passo -gt 1 ]]; then
@@ -763,12 +763,12 @@ teste_qa_b02_filtros_trocados_entre_execucoes_mesmo_plano() {
   _q_zerar
   _q_arq p/n.log && d+=("$Q_E"); _q_arq q/r/w.log && d+=("$Q_E")
   _q_apagado p/y.txt && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
   _q_pasta p && est+=("$Q_E"); _q_arq a.txt && est+=("$Q_E"); _q_arq b.txt && est+=("$Q_E")
   _q_arq c.txt && est+=("$Q_E"); _q_arq p/x.txt && est+=("$Q_E"); _q_arq p/n.log && est+=("$Q_E")
   _q_pasta q && est+=("$Q_E"); _q_pasta q/r && est+=("$Q_E"); _q_arq q/r/z.txt && est+=("$Q_E")
   _q_arq q/r/w.log && est+=("$Q_E")
-  _q_servidor "${Q_SENT}C9" "${est[@]}"
+  _q_servidor "${Q_SENT}C9" ${est[@]+"${est[@]}"}
   _q_local local.log 'conteudo local'
   _q_equiv excluir_q --espelhar --excluir q
   _q_equiv excluir_log --espelhar --excluir '*.log'
@@ -783,8 +783,8 @@ teste_qa_b03_filtro_de_data_sem_data_no_retrato_vai_a_completa_com_mesmo_plano()
   _q_primeira
   _q_zerar
   _q_arq novo.txt && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
-  _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}" "$Q_E"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
+  _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"} "$Q_E"
   Q_ESPERA_MODO=completa _q_equiv data_desde --modificado-desde 2025-01-01
   Q_ESPERA_MODO=completa _q_equiv data_ate --modificado-ate 2025-01-01
 }
@@ -793,17 +793,17 @@ teste_qa_b04_filtro_de_data_nas_duas_execucoes_incremental_com_mesmo_plano() {
   local -a d=() est=()
   _q_cen
   _q_base
-  _q_servidor "${Q_SENT}C1" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C1" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar sync --receber --origem /r --destino "$B/l" --modificado-desde 2025-06-01
   assert_igual 0 "$ESTADO" "primeira com data: $ERRO"
   _q_zerar
   # Um arquivo antigo e um novo no delta.
   printf -v Q_E '{".tag":"file","name":"velho.txt","id":"id:velho","path_lower":"/r/velho.txt","path_display":"/r/velho.txt","rev":"%s","size":15,"server_modified":"2020-01-01T00:00:00Z","content_hash":"%s"}' "$Q_REV" "$Q_H1"
   d+=("$Q_E")
-  est=("${Q_BASE[@]}" "$Q_E")
+  est=(${Q_BASE[@]+"${Q_BASE[@]}"} "$Q_E")
   _q_arq novo.txt && d+=("$Q_E") && est+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
-  _q_servidor "${Q_SENT}C9" "${est[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
+  _q_servidor "${Q_SENT}C9" ${est[@]+"${est[@]}"}
   _q_equiv data_nas_duas --modificado-desde 2025-06-01
   assert_nao_contem 'transferir=velho.txt' "$Q_PLANO_COMUM" 'o antigo e filtrado nos dois modos'
 }
@@ -819,12 +819,12 @@ teste_qa_b05_edicao_local_extra_local_e_remoto_alterado() {
   _q_arq c.txt "$Q_H2" '' 33333333333 && d+=("$Q_E")
   _q_apagado p/y.txt && d+=("$Q_E")
   _q_arq n.txt && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
   _q_pasta p && est+=("$Q_E"); _q_arq a.txt && est+=("$Q_E"); _q_arq b.txt && est+=("$Q_E")
   _q_arq c.txt "$Q_H2" '' 33333333333 && est+=("$Q_E"); _q_arq p/x.txt && est+=("$Q_E")
   _q_arq n.txt && est+=("$Q_E")
   _q_pasta q && est+=("$Q_E"); _q_pasta q/r && est+=("$Q_E"); _q_arq q/r/z.txt && est+=("$Q_E")
-  _q_servidor "${Q_SENT}C9" "${est[@]}"
+  _q_servidor "${Q_SENT}C9" ${est[@]+"${est[@]}"}
   _q_equiv local_e_remoto --espelhar
   assert_contem 'transferir=a.txt' "$Q_PLANO_COMUM" 'edicao local sobrescrita pela origem'
   assert_contem 'transferir=b.txt' "$Q_PLANO_COMUM" 'apagado local volta'
@@ -855,7 +855,7 @@ teste_qa_c01_erros_do_continue_voltam_a_completa_na_mesma_execucao() {
       rede) cod=REDE motivo=transitorio ;;
     esac
     _q_regra files/list_folder/continue "*${Q_SENT}C1*" "$cod" "$corpo"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
     assert_igual 0 "$ESTADO" "$caso: nunca falha por causa do estado: $ERRO"
     _q_valor varredura; assert_igual completa "$Q_V" "$caso: completa"
@@ -877,7 +877,7 @@ teste_qa_c02_401_e_403_no_continue_mantem_a_classe_5_e_nao_avancam() {
     antes=$(_q_impressao "$Q_REG")
     _q_zerar
     _q_regra files/list_folder/continue '*' "$cod" '{"error_summary":"invalid_access_token/"}'
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
     assert_igual 5 "$ESTADO" "$cod: classe 5: $ERRO"
     assert_igual "$antes" "$(_q_impressao "$Q_REG")" "$cod: registro intacto"
@@ -897,7 +897,7 @@ teste_qa_c03_cursor_repetido_e_has_more_sem_cursor_abandonam_o_incremental() {
       cursor_invalido) Q_P='{"entries":[],"cursor":"tem espaco e acento","has_more":false}' ;;
     esac
     _q_regra files/list_folder/continue "*${Q_SENT}C1*" 200 "$Q_P"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$caso: $ERRO"
     _q_valor varredura; assert_igual completa "$Q_V" "$caso: completa"
@@ -922,7 +922,7 @@ teste_qa_c04_varredura_periodica_por_idade_contagem_e_relogio() {
     esac
     _q_zerar
     _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$caso: $ERRO"
     if [[ -n $esperado ]]; then
@@ -953,7 +953,7 @@ teste_qa_c05_cabecalho_de_outra_conta_raiz_listagem_versao_e_descartado() {
     _q_cabecalho "$indice" "$valor"
     _q_zerar
     _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
     assert_igual 0 "$ESTADO" "$caso: $ERRO"
     _q_valor cursor_motivo; assert_igual descartado "$Q_V" "$caso: descartado"
@@ -993,10 +993,10 @@ teste_qa_c06_retrato_forjado_com_campo_invalido_e_descartado() {
       pasta_com_rev) Q_C+=("d	id:g	$Q_REV	-	0	-	/r/g" "/r/g"); Q_C[11]=$((Q_C[11] + 1)) ;;
       tag_x) Q_C+=("x	id:g	$Q_REV	$Q_H1	15	-	/r/g.txt" "/r/g.txt"); Q_C[11]=$((Q_C[11] + 1)) ;;
     esac
-    _q_reescrever "$Q_REG" "${Q_C[@]}"
+    _q_reescrever "$Q_REG" ${Q_C[@]+"${Q_C[@]}"}
     _q_zerar
     _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
     assert_igual 0 "$ESTADO" "$caso: $ERRO"
     _q_valor cursor_motivo; assert_igual descartado "$Q_V" "$caso: descartado"
@@ -1019,7 +1019,7 @@ teste_qa_c07_ligacao_simbolica_para_registro_valido_nao_e_seguida() {
   antes=$(_q_impressao "$alvo")
   _q_zerar
   _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
-  _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "ligacao: $ERRO"
   _q_valor varredura; assert_igual completa "$Q_V" 'ligacao nao e seguida'
@@ -1062,7 +1062,7 @@ teste_qa_z03_delta_com_path_lower_fora_da_raiz_e_incoerente() {
       fora_da_raiz) printf -v e '{".tag":"file","name":"ok.txt","id":"id:ok","path_lower":"/outra/ok.txt","path_display":"/r/ok.txt","rev":"%s","size":15,"server_modified":"2026-01-01T00:00:00Z","content_hash":"%s"}' "$Q_REV" "$Q_H1" ;;
     esac
     _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "$e"
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$caso: $ERRO"
     _q_valor varredura
@@ -1123,7 +1123,7 @@ teste_qa_d04_enviar_verificar_e_download_de_pasta_nao_tocam_cursor() {
   _q_primeira
   antes=$(_q_impressao "$Q_REG")
   _q_zerar
-  _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
   _q_regra files/get_metadata '*"path":"/r"*' 200 '{".tag":"folder","name":"r","id":"id:raiz","path_lower":"/r","path_display":"/r"}'
   _q_rodar sync --enviar --origem "$B/l" --destino /r
@@ -1155,7 +1155,7 @@ teste_qa_e01_sinal_durante_o_continue() {
     antes=$(_q_impressao "$Q_REG")
     _q_zerar
     _q_regra files/list_folder/continue "*${Q_SENT}C1*" "SINAL:$sinal" '{}'
-    _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
     assert_igual 14 "$ESTADO" "$sinal no continue: 14 ($ERRO)"
     assert_igual "$antes" "$(_q_impressao "$Q_REG")" "$sinal: registro intacto"
@@ -1178,7 +1178,7 @@ teste_qa_e02_sinal_durante_as_confirmacoes() {
     d=()
     _q_apagado a.txt && d+=("$Q_E")
     _q_apagado b.txt && d+=("$Q_E")
-    _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
+    _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
     _q_regra files/get_metadata '*"path":"/r/b.txt"*' "SINAL:$sinal" '{}'
     _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar
     assert_igual 14 "$ESTADO" "$sinal na confirmacao: 14 ($ERRO)"
@@ -1236,7 +1236,7 @@ teste_qa_f02_sem_cursor_nao_le_nao_grava_nao_apaga() {
   _q_foto "$B/estado/dbx"
   antes=$Q_FOTO
   _q_zerar
-  _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar sync --receber --origem /r --destino "$B/l" --no-cursor
   assert_igual 0 "$ESTADO" "$ERRO"
   _q_valor cursor_motivo; assert_igual desligado "$Q_V" 'desligado'
@@ -1252,7 +1252,7 @@ teste_qa_f03_cursor_nunca_sai_por_saida_argv_ambiente_ou_residuo() {
   _q_primeira
   _q_zerar
   _q_apagado b.txt && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
   : >"$B/argv"
   : >"$B/ambiente"
   _q_rodar --debug --json sync --receber --origem /r --destino "$B/l" --progresso
@@ -1260,7 +1260,7 @@ teste_qa_f03_cursor_nunca_sai_por_saida_argv_ambiente_ou_residuo() {
   assert_nao_contem "$Q_SENT" "$SAIDA$ERRO" '--debug --json --progresso'
   _q_zerar
   _q_regra files/list_folder/continue "*${Q_SENT}C2*" 409 '{"error_summary":"reset/","error":{".tag":"reset"}}'
-  _q_servidor "${Q_SENT}C3" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C3" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar --null --debug sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "null reset: $ERRO"
   assert_nao_contem "$Q_SENT" "$SAIDA$ERRO" '--null com reset'
@@ -1287,7 +1287,7 @@ teste_qa_f03_cursor_nunca_sai_por_saida_argv_ambiente_ou_residuo() {
 teste_qa_f04_umask_000_registro_0600_e_diretorio_0700() {
   _q_cen
   _q_base
-  _q_servidor "${Q_SENT}C1" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C1" ${Q_BASE[@]+"${Q_BASE[@]}"}
   Q_UMASK=000 _q_rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "$ERRO"
   _q_registro
@@ -1306,7 +1306,7 @@ teste_qa_f05_campos_em_json_e_null() {
   assert_contem 'cursor_confirmadas=0' "$SAIDA" 'json: cursor_confirmadas'
   assert_nao_contem 'cursor_motivo' "$SAIDA" 'json: sem motivo no incremental'
   _q_zerar
-  _q_servidor "${Q_SENT}C9" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C9" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar --null sync --receber --origem /r --destino "$B/l" --full-scan
   assert_igual 0 "$ESTADO" "$ERRO"
   assert_contem 'cursor_motivo=forcada' "$SAIDA" 'null: forcada'
@@ -1408,7 +1408,7 @@ teste_qa_z02_listagem_com_a_propria_pasta_grava_o_registro() {
   _q_cen
   _q_base
   printf -v raiz '{".tag":"folder","name":"r","id":"id:raiz","path_lower":"/r","path_display":"/r"}'
-  _q_servidor "${Q_SENT}C1" "$raiz" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C1" "$raiz" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "propria pasta: $ERRO"
   _q_registro
@@ -1449,7 +1449,7 @@ _q_base_raiz() {
   _q_ent file /b.txt && ent+=("$Q_E")
   _q_ent folder /d && ent+=("$Q_E")
   _q_ent file /d/x.txt && ent+=("$Q_E")
-  Q_BASE_RAIZ=("${ent[@]}")
+  Q_BASE_RAIZ=(${ent[@]+"${ent[@]}"})
 }
 
 # _q_delta_cru <json_da_entrada> — delta C1 -> C2 com a entrada
@@ -1459,14 +1459,14 @@ _q_delta_cru() {
   _q_pagina "${Q_SENT}C2" false "$1"
   _q_regra files/list_folder/continue "*\"cursor\":\"${Q_SENT}C1\"*" 200 "$Q_P"
   _q_ent folder /r 'id:raiz'
-  _q_servidor "${Q_SENT}C9" "$Q_E" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C9" "$Q_E" ${Q_BASE[@]+"${Q_BASE[@]}"}
 }
 
 teste_qa_h01_raiz_barra_incremental_confirma_e_contradiz_por_servidor() {
   local -a d=()
   _q_cen
   _q_base_raiz
-  _q_servidor "${Q_SENT}C1" "${Q_BASE_RAIZ[@]}"
+  _q_servidor "${Q_SENT}C1" ${Q_BASE_RAIZ[@]+"${Q_BASE_RAIZ[@]}"}
   _q_rodar sync --receber --origem / --destino "$B/l" --espelhar --confirmar
   assert_igual 0 "$ESTADO" "raiz /, primeira: $ERRO"
   _q_registro
@@ -1477,7 +1477,7 @@ teste_qa_h01_raiz_barra_incremental_confirma_e_contradiz_por_servidor() {
   _q_zerar
   _q_ent deleted /a.txt && d+=("$Q_E")
   _q_ent deleted /b.txt && d+=("$Q_E")
-  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" "${d[@]}"
+  _q_delta "${Q_SENT}C1" "${Q_SENT}C2" ${d[@]+"${d[@]}"}
   _q_ent file /b.txt
   _q_regra files/get_metadata '*"path":"/b.txt"*' 200 "$Q_E"
   _q_servidor "${Q_SENT}C9" "${Q_BASE_RAIZ[@]:1}"
@@ -1524,7 +1524,7 @@ teste_qa_h02_entrada_da_raiz_na_completa_nao_vira_porta() {
         e2=$e1
         ;;
     esac
-    _q_servidor "${Q_SENT}C1" "$e1" "${Q_BASE[@]}" "$e2"
+    _q_servidor "${Q_SENT}C1" "$e1" ${Q_BASE[@]+"${Q_BASE[@]}"} "$e2"
     _q_rodar sync --receber --origem /r --destino "$B/l"
     assert_igual 0 "$ESTADO" "$caso: $ERRO"
     assert_arquivo_ausente "$B/fora" "$caso: nada fora da raiz local"
@@ -1630,7 +1630,7 @@ teste_qa_h06_raiz_na_linha_de_comando_com_caixa_e_barra_final() {
     _q_zerar
     _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
     _q_ent folder /r 'id:raiz'
-    _q_servidor "${Q_SENT}C9" "$Q_E" "${Q_BASE[@]}"
+    _q_servidor "${Q_SENT}C9" "$Q_E" ${Q_BASE[@]+"${Q_BASE[@]}"}
     _q_rodar sync --receber --origem "$arg" --destino "$B/l" --espelhar
     if [[ $ESTADO -eq 0 ]]; then
       _q_locais
@@ -1655,7 +1655,7 @@ teste_qa_h07_raiz_unicode_em_localidade_c_e_segura() {
   ent+=("$Q_E")
   printf -v Q_E '{".tag":"file","name":"B.txt","id":"id:b","path_lower":"/ünï/b.txt","path_display":"/Ünï/B.txt","rev":"%s","size":15,"content_hash":"%s"}' "$Q_REV" "$Q_H1"
   ent+=("$Q_E")
-  _q_servidor "${Q_SENT}C1" "${ent[@]}"
+  _q_servidor "${Q_SENT}C1" ${ent[@]+"${ent[@]}"}
   _q_delta "${Q_SENT}C1" "${Q_SENT}C2"
   _q_rodar sync --receber --origem /Ünï --destino "$B/l" --espelhar --confirmar
   assert_igual 0 "$ESTADO" "unicode, primeira: $ERRO"
@@ -1674,14 +1674,14 @@ teste_qa_h08_registros_da_raiz_barra_e_da_subpasta_nao_se_cruzam() {
   _q_ent folder /r 'id:raiz' && ent+=("$Q_E")
   _q_arq a.txt && ent+=("$Q_E")
   # list_folder de "" e de "/r" respondem cursores diferentes.
-  _q_pagina "${Q_SENT}RAIZ1" false "${Q_BASE_RAIZ[@]}"
+  _q_pagina "${Q_SENT}RAIZ1" false ${Q_BASE_RAIZ[@]+"${Q_BASE_RAIZ[@]}"}
   _q_regra files/list_folder '*"path":"","recursive":true*' 200 "$Q_P"
-  _q_pagina "${Q_SENT}SUB1" false "${ent[@]}"
+  _q_pagina "${Q_SENT}SUB1" false ${ent[@]+"${ent[@]}"}
   _q_regra files/list_folder '*"path":"/r","recursive":true*' 200 "$Q_P"
   # RF-189: a coleta em fluxo lista um diretorio por vez (filhos diretos); o
   # cursor de cada par vem do get_latest_cursor da propria raiz.
-  _q_filhos "${Q_SENT}RAIZ1" "${Q_BASE_RAIZ[@]}"
-  _q_filhos "${Q_SENT}SUB1" "${ent[@]}"
+  _q_filhos "${Q_SENT}RAIZ1" ${Q_BASE_RAIZ[@]+"${Q_BASE_RAIZ[@]}"}
+  _q_filhos "${Q_SENT}SUB1" ${ent[@]+"${ent[@]}"}
   _q_regra files/list_folder/get_latest_cursor '*"path":"","recursive":true*' 200 "{\"cursor\":\"${Q_SENT}RAIZ1\"}"
   _q_regra files/list_folder/get_latest_cursor '*"path":"/r","recursive":true*' 200 "{\"cursor\":\"${Q_SENT}SUB1\"}"
   mkdir -p "$B/l2"

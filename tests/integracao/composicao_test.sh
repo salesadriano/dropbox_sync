@@ -35,7 +35,7 @@ teste_qualquer_ordem_de_carregamento_funciona() {
     'path hash json output errors'
     'output errors json path hash'
   )
-  for ordem in "${ordens[@]}"; do
+  for ordem in ${ordens[@]+"${ordens[@]}"}; do
     saida=$(timeout 30 bash -c '
       for componente in $2; do . "$1/$componente.sh" || exit 1; done
       dbx_json_analisar "{\"a\":1}" || exit 2
@@ -287,7 +287,7 @@ teste_preflight_e_config_entram_em_qualquer_ordem_de_carregamento() {
     'json config errors preflight output path hash'
     'preflight config errors json path hash output'
   )
-  for ordem in "${ordens[@]}"; do
+  for ordem in ${ordens[@]+"${ordens[@]}"}; do
     saida=$(timeout 30 bash -c '
       for componente in $2; do . "$1/$componente.sh" || exit 1; done
       dbx_preflight_verificar >/dev/null 2>&1 || exit 2
@@ -595,7 +595,7 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
   # lida. Auditoria que aprova tudo e auditoria que nao verifica nada, com o
   # agravante de parecer mais rigorosa.
   local sensivel
-  for sensivel in "${sensiveis[@]}"; do
+  for sensivel in ${sensiveis[@]+"${sensiveis[@]}"}; do
     [[ ${#sensivel} -ge 3 && $sensivel =~ ^[A-Z][A-Z_]*[A-Z]$ ]] ||
       _harness_falhar 'chave sensivel derivada nao identifica campo algum: o predicado viraria tautologia' \
         "chave: [$sensivel]"
@@ -617,7 +617,7 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
 
     # O componente lida com credencial?
     local lida_com_credencial=nao
-    for chave in "${sensiveis[@]}"; do
+    for chave in ${sensiveis[@]+"${sensiveis[@]}"}; do
       grep -qE "DBX_[A-Z_]*${chave}" <<<"$texto" && lida_com_credencial=sim && break
     done
     [[ $lida_com_credencial == 'sim' ]] || continue
@@ -628,7 +628,7 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
       outro=${var#DBX_}
       outro=${outro%%_*}
       [[ $outro == "$proprio" ]] && continue
-      printf '%s\n' "${prefixos[@]}" | grep -qx "$outro" || continue
+      printf '%s\n' ${prefixos[@]+"${prefixos[@]}"} | grep -qx "$outro" || continue
       _canal_nao_carrega_credencial "$var" && continue
       # A exigencia recai sobre quem PREENCHEU o canal, e nao sobre quem apenas
       # o le como entrada. Sem esta distincao a regra mandaria lib/auth apagar
@@ -646,7 +646,7 @@ teste_canal_publico_alheio_com_dado_de_credencial_e_limpo_por_quem_o_encheu() {
   done
 
   [[ ${#faltando[@]} -eq 0 ]] ||
-    _harness_falhar 'canal publico alheio com dado de credencial sem limpeza' "${faltando[@]}"
+    _harness_falhar 'canal publico alheio com dado de credencial sem limpeza' ${faltando[@]+"${faltando[@]}"}
   return 0
 }
 
@@ -669,7 +669,7 @@ teste_canal_de_corpo_nunca_e_alimentado_na_apresentacao() {
       grep -nE 'dbx_output_(campo|diagnostico)[^#]*DBX_(HTTP|JSON)_CORPO' || true)
   done
   [[ ${#achados[@]} -eq 0 ]] ||
-    _harness_falhar 'canal de corpo do transporte alimentado na apresentacao' "${achados[@]}"
+    _harness_falhar 'canal de corpo do transporte alimentado na apresentacao' ${achados[@]+"${achados[@]}"}
 
   # Prova de discriminacao: o reconhecedor precisa reagir a forma que procura.
   local amostra='  dbx_output_campo conteudo "$DBX_HTTP_CORPO_ARQUIVO"'

@@ -126,7 +126,7 @@ _qa_env() {
 # _qa_dbx <args...> — roda em sessao propria; publica QA_ESTADO/SAIDA/ERRO.
 _qa_dbx() {
   _qa_env
-  setsid -w "${QA_AMBIENTE[@]}" bash "$QA_DBX" "$@" </dev/null >"$B/out" 2>"$B/err"
+  setsid -w ${QA_AMBIENTE[@]+"${QA_AMBIENTE[@]}"} bash "$QA_DBX" "$@" </dev/null >"$B/out" 2>"$B/err"
   QA_ESTADO=$?
   QA_SAIDA=$(cat "$B/out")
   QA_ERRO=$(cat "$B/err")
@@ -139,7 +139,7 @@ _qa_fundo() {
   shift
   _qa_env
   (
-    setsid -w "${QA_AMBIENTE[@]}" bash "$QA_DBX" "$@" </dev/null >"$B/out.$rotulo" 2>"$B/err.$rotulo" &
+    setsid -w ${QA_AMBIENTE[@]+"${QA_AMBIENTE[@]}"} bash "$QA_DBX" "$@" </dev/null >"$B/out.$rotulo" 2>"$B/err.$rotulo" &
     printf '%s' "$!" >"$B/pid.$rotulo"
     wait "$!"
     printf '%s' "$?" >"$B/estado.$rotulo.tmp"
@@ -262,7 +262,7 @@ teste_qa_b2_01_dez_execucoes_simultaneas_do_mesmo_par_um_so_entra() {
     [[ -e $B/estado.p$i ]] || vencedora=$i
   done
   [[ -n $vencedora ]] || _harness_falhar 'nenhuma execucao presa'
-  for t in "${travas[@]}"; do
+  for t in ${travas[@]+"${travas[@]}"}; do
     assert_arquivo_existe "$t" 'a trava viva e um arquivo de verdade'
     IFS=$'\t' read -r -a campo <"$t"
     assert_igual 'dbx-trava' "${campo[0]}" "formato da trava $t"
@@ -499,7 +499,7 @@ teste_qa_b2_07_trava_hostil_e_ilegivel_nunca_retomada_apagada_nem_ecoada() {
     'NUL-NO-MEIO'
     'NUL-E-LIXO'
   )
-  for variante in "${variantes[@]}"; do
+  for variante in ${variantes[@]+"${variantes[@]}"}; do
     i=$((i + 1))
     # `printf %s` nao grava o nulo de uma variavel: a variante com nulo e escrita
     # por printf com escape.
@@ -584,7 +584,7 @@ teste_qa_b2_09_verificar_e_simulacao_deixam_o_estado_como_estava() {
     local -a args=(verificar --enviar --origem "$B/local" --destino /r)
     [[ $comando == simulacao ]] && args=(--dry-run sync --enviar --origem "$B/local" --destino /r)
     QA_XDG_STATE="$B/x/y/z"
-    _qa_dbx "${args[@]}"
+    _qa_dbx ${args[@]+"${args[@]}"}
     # O verificar acusa `a.txt` so na origem (11); a simulacao conclui (0).
     [[ $QA_ESTADO == 0 || $QA_ESTADO == 11 ]] || _harness_falhar "$comando com XDG ausente: $QA_ESTADO $QA_ERRO"
     assert_arquivo_ausente "$B/x" "$comando: nenhum nivel do XDG ausente sobra"
@@ -596,7 +596,7 @@ teste_qa_b2_09_verificar_e_simulacao_deixam_o_estado_como_estava() {
     printf 'u' >"$B/estado/dbx/upload-qa"
     printf 't' >"$B/estado/dbx/.memoria.recente"
     antes=$(_qa_retrato "$B/estado")
-    _qa_dbx "${args[@]}"
+    _qa_dbx ${args[@]+"${args[@]}"}
     [[ $QA_ESTADO == 0 || $QA_ESTADO == 11 ]] || _harness_falhar "$comando com estado existente: $QA_ESTADO $QA_ERRO"
     assert_igual "$antes" "$(_qa_retrato "$B/estado")" "$comando: arquivos, bytes e modos (inclusive 0755) iguais"
   done
@@ -1028,7 +1028,7 @@ while True:
     dados += c
 p.wait()
 print("%d %s" % (p.returncode, dados.decode()))
-' "$QA_DBX" "${QA_AMBIENTE[@]}")
+' "$QA_DBX" ${QA_AMBIENTE[@]+"${QA_AMBIENTE[@]}"})
   assert_igual '0 x' "$resultado" 'socket vivo: codigo 0 e o conteudo inteiro'
   # Consumidor que fecha antes: o socket ja nasce fechado do outro lado.
   rm -f "$B/diario"
@@ -1042,7 +1042,7 @@ p = subprocess.Popen(["bash", sys.argv[1], "download", "/x"], stdout=a, stderr=s
 a.close()
 _, err = p.communicate()
 print("%d %s" % (p.returncode, "consumidor" in err.decode()))
-' "$QA_DBX" "${QA_AMBIENTE[@]}")
+' "$QA_DBX" ${QA_AMBIENTE[@]+"${QA_AMBIENTE[@]}"})
   assert_igual '15 True' "$resultado" 'socket fechado: 15 com a causa nomeada'
   assert_igual 1 "$(_harness_contar 'files/download' "$B/diario")" 'socket fechado: sem reemissao do download'
   assert_igual '' "$(_qa_residuo)" 'sem residuo'

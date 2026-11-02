@@ -28,6 +28,23 @@ readonly Q_CRED='{"versao":1,"app_key":"qa-b22-ak","refresh_token":"QAB22-refres
 _qb22_area() {
   A=$(mktemp -d "$DBX_TESTES_TMP/qa-b22.XXXXXX") || return 1
   mkdir -p "$A/home" "$A/tmp" "$A/bin"
+  _qb22_principal
+}
+
+# _qb22_principal — linha legada (support/bash-4.2): esta suite foi escrita
+# para o instalador da linha PRINCIPAL, cuja fonte local tem piso 4.4. Aqui a
+# arvore do repositorio tem piso 4.2 e versao -bash42, e atenderia o host 4.2
+# como fonte local. A copia em $A/principal restaura o cenario original (piso
+# 4.4, versao sem sufixo) e e a raiz do instalador em `_qb22_instalar`.
+_qb22_principal() {
+  local item
+  mkdir -p "$A/principal"
+  for item in bin lib commands completions install.sh; do
+    cp -R -- "$DBX_HARNESS_RAIZ/$item" "$A/principal/"
+  done
+  sed -i 's/^readonly DBX_PREFLIGHT_BASH_MENOR=2$/readonly DBX_PREFLIGHT_BASH_MENOR=4/' "$A/principal/lib/preflight.sh"
+  sed -i "s/^readonly DBX_CLI_VERSAO='\\(.*\\)-bash42'$/readonly DBX_CLI_VERSAO='\\1'/" "$A/principal/lib/cli.sh"
+  Q_RAIZ="$A/principal"
 }
 
 # _qb22_git_falso — `git` no PATH da area que registra cada argumento em
@@ -93,7 +110,7 @@ _qb22_instalar() {
     }
     FUNCAO_BAIXAR=duplo
     executar_instalacao
-  ' _ "$DBX_HARNESS_RAIZ" "$1" "$2" "$A/prefixo" "$3" "$A/canais" "${4-}" >"$A/saida" 2>&1
+  ' _ "${Q_RAIZ:-$DBX_HARNESS_RAIZ}" "$1" "$2" "$A/prefixo" "$3" "$A/canais" "${4-}" >"$A/saida" 2>&1
   Q_STATUS=$?
 }
 
@@ -116,7 +133,7 @@ teste_qa_b22_canal_hostil_e_recusado_sem_chamar_git_nem_escrever() {
     "--upload-pack=touch $A/pwned"
     "-x"
   )
-  for canal in "${canais[@]}"; do
+  for canal in ${canais[@]+"${canais[@]}"}; do
     _qb22_canal_hostil "$canal"
     assert_igual 1 "$Q_STATUS" "canal recusado com status 1: $canal"
     assert_contem 'Canal invalido' "$(<"$A/saida")" "mensagem de recusa: $canal"

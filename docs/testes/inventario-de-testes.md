@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
 Atualizado em: 2026-10-31, demanda `investigar-retomada-download` (`docs/prompts/2026-10-31_1900_investigar-retomada-download.md`), pelo Tech Lead (Fluxo P: linhas do `harness_test.sh`); antes, demanda `sync-em-blocos`, por QA Expert.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 111 arquivos, 2833 casos, 0 divergencias.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 116 arquivos, 2899 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -52,6 +52,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_filtros_banda_b4_test.sh` | `bin/dbx` com filtros de caminho, data e tamanho (`--incluir`, `--excluir`, `--espelhar`) e limite de banda, no sync nos dois sentidos, u... | qa_filtros_banda | integracao | QA Expert (suite independente da demanda `backlog-fase-4-filtros-e-banda`) | 21 | F-13; F-17; RF-79..RF-82; RF-80(d); DIV-79..DIV-102; DIV-99; DIV-103; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e-banda.md` |
 | `tests/integracao/qa_freebsd_b13_test.sh` | `bin/dbx` (config, upload, download, sync, retomada) com os dubles BSD de `chmod`, `stat`, `find` e `sha256` a frente do `PATH` | `qa_freebsd` | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-166..172; RNF-39; TC-FBSD-*; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; protocolo-tdd Regra 6 |
 | `tests/integracao/qa_instalador_linha_b22_test.sh` | `install.sh` (`--canal` hostil, troca de linha, fonte invalida, bordas de `escolher_linha`) e `scripts/empacotar.sh` (`--latest=false`, `--target`) | `qa_instalador_linha` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`) | 17 | F-102; RF-201..RF-205; TC-B42-09..22; DIV-385; DIV-389; protocolo-tdd Regra 6; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md` |
+| `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh` | `sync --receber/--enviar --espelhar` com `--incluir`/`--excluir` e nomes com byte nao ASCII sem `C.UTF-8` (nada apagado) | `qa_exclusao_sem_localidade` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`, ciclo 2) | 6 | QA-B42-01; RF-54(f2); RF-80; DIV-391; protocolo-tdd Regra 6 |
 | `tests/integracao/qa_integridade_p1_test.sh` | `bin/dbx` (download de arquivo e de pasta, sync, upload) com `lib/transfer.sh`, `lib/hash.sh`, `lib/walk.sh`: integridade de dados no rec... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `integridade-de-dados-p1`) | 27 | RF-49, RF-54, RF-55, RF-56, RF-57, RNF-29, RNF-04 (emendado); log `docs/prompts/2026-10-18_1745_integridade-de-dados-p1.md` |
 | `tests/integracao/qa_leitura_exata_b14_test.sh` | `lib/atributos.sh` (`dbx_ler_exato`), calculo do `content_hash` em `lib/hash.sh` e upload em sessao de `bin/dbx` sob o duble `head` do Fr... | qa_leitura_exata (sem linha propria no mapa de modulos; ver observacoes) | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-173, TC-FBSD-25..27; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada de aceite](../../.github/agents/memoria/entradas/... |
 | `tests/integracao/qa_paralelo_download_b20_test.sh` | `bin/dbx download` de arquivo grande em faixas simultaneas (`commands/download.sh`, `lib/transfer.sh`, `lib/http.sh`) | `qa_paralelo_download` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 21 | F-100 etapa 2b; RF-180 a RF-184; RF-104(c)(d); RF-106(a); DIV-369 a DIV-371; DIV-373 a DIV-376; log `docs/prompts/2026-10-26_1900_paralel... |
@@ -73,13 +74,14 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/retomada_download_test.sh` | `bin/dbx download` retomado entre execucoes (`Range`), `--no-resume`, `diagnostico` e `unlink`; `commands/download.sh`, `lib/cmd.sh`, `li... | retomada_download | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 32 | F-03; RF-102, RF-104 a RF-108; TC-RMD-01..15, TC-RMO-01, 02, 04, 05, TC-RMC-01, 06, TC-RML-05..07, TC-RMS-06, TC-DBG-13..15; DIV-176 a DI... |
 | `tests/integracao/retomada_upload_test.sh` | `bin/dbx upload` retomado entre execucoes (`commands/upload.sh`, `lib/transfer.sh`, `lib/state.sh`, registro `retomada-*`) | retomada_upload | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 43 | F-03; RF-101..RF-109; DIV-171..DIV-190; TC-RMU-01..16; TC-RME-02, 12, 14; TC-RMO-01..03, 05..11; TC-RMC-01, 04, 05; TC-RMS-01..06; TC-DBG... |
 | `tests/integracao/sync_blocos_test.sh` | `bin/dbx sync` e `download` de pasta em ciclos por diretorio | `sync_blocos_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 23 | F-101; RF-187..RF-197; TC-BLC-nn |
-| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 85 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
+| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 89 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
 | `tests/integracao/testar_test.sh` | `bin/dbx testar` (alias `check`) e a sonda de disponibilidade (`commands/testar.sh`, `lib/disponibilidade.sh`) | `commands/testar.sh` | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 29 | RF-148; RF-149; RF-150; RF-154; TC-DSP-01..25; TC-DSP-55; TC-DSP-57; TC-DSP-58; DIV-326; log `docs/prompts/2026-10-23_0900_teste-de-dispo... |
 | `tests/integracao/trava_test.sh` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help) com `lib/state.sh` e `lib/tmp.sh`: tr... | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 31 | RF-69, RF-70, RF-71, RNF-35; TC-TRV, TC-ESR, TC-DIA-11..14, TC-TMP-02, 05, 06; DIV-50, DIV-51; F-12, F-31; log `docs/prompts/2026-10-19_1... |
 | `tests/integracao/upload_pasta_test.sh` | `bin/dbx` (`upload` de arquivo para destino que e pasta) com `commands/upload.sh`: grava em `<pasta>/<nome>` sem falhar com `path/conflic... | `commands/upload.sh` | integracao | Senior Developer (TDD da demanda `upload-arquivo-para-pasta`) | 13 | RF-174; log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
 | `tests/integracao/verificar_test.sh` | `bin/dbx verificar` (alias `verify`) (`commands/verificar.sh`, `lib/walk.sh`, `lib/sync.sh`) | `commands/verificar.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-1-consulta-diagnostico`) | 17 | RF-65; TC-VER-01..09; log `docs/prompts/2026-10-19_1050_backlog-fase-1-consulta-diagnostico.md`; protocolo-tdd Regra 6 |
 | `tests/unit/atributos_portavel_test.sh` | `lib/atributos.sh` (`dbx_atributo`), `lib/http.sh` e `lib/transfer.sh` na leitura de atributos de arquivo com `stat` GNU ou BSD | `atributos_portavel` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 11 | RF-167; TC-FBSD-02; TC-FBSD-11; TC-FBSD-19 (parte `stat`); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/auth_test.sh` | `lib/auth.sh` (troca de codigo e renovacao de token de curta duracao, revogacao, esquecimento de credencial) | auth_test | unitario | Senior Developer (TDD da demanda `feat(auth): renovacao de token sem escrita do segredo em disco`) | 42 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
+| `tests/unit/bash42_auditoria_test.sh` | Auditoria de compatibilidade com bash 4.2: proibe nameref, `wait -n`, `${nome@op}`, outras construcoes 4.3+ e vetor global com valores na declaracao em bin/, lib/, commands/, completions/, instaladores e tests/ | `lib/`, `commands/`, `bin/` | unitario | Senior Developer (TDD, demanda `suporte-bash-42`, passo B1; sem log de prompt proprio) | 7 | RF-199..RF-201; TC-B42-* |
 | `tests/unit/cabecalho_test.sh` | `lib/http.sh` (recusa de valor de cabecalho HTTP com CR, LF ou byte de controle antes de chegar ao cliente) | `cabecalho` | unitario | Senior Developer (commit de criacao e0cee97 `test: casos adversariais da recusa de cabecalho, escritos pelo QA`, sem log de prompt) | 17 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
 | `tests/unit/chmod_portavel_test.sh` | chamadas de `chmod` de `lib/auth.sh`, `lib/state.sh` e `lib/http.sh` (gravacao da credencial, diretorio de estado, modo do alvo no recebi... | chmod_portavel | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 6 | RF-166; TC-FBSD-01; TC-FBSD-19 (parte chmod); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/cli_test.sh` | `lib/cli.sh`: interpretacao de opcoes globais, despacho por tabela fechada de comandos e requisito de ambiente de cada comando | `lib/cli.sh` | unitario | Senior Developer (TDD; commit de criacao `b2179b4`, "feat(comandos): entrada fina com despacho por tabela literal") | 18 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
@@ -91,12 +93,12 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/descritor_portavel_test.sh` | `lib/atributos.sh` (`dbx_atributo_fd`) e os chamadores em `lib/state.sh`, `lib/transfer.sh`, `lib/hash.sh`: conferencia de arquivo aberto... | `lib/atributos.sh` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 11 | RF-171(a); TC-FBSD-20; DIV-352; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/disponibilidade_test.sh` | `lib/disponibilidade.sh` e `dbx_http_sondar` em `lib/http.sh` (sonda de disponibilidade, reserva compartilhada entre processos, classific... | disponibilidade_test | unitario | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 19 | RF-149, RF-150, RF-152(a); TC-DSP-13..21, 22..25, 27; DIV-331; log `docs/prompts/2026-10-23_0900_teste-de-disponibilidade.md` |
 | `tests/unit/errors_test.sh` | `lib/errors.sh` (taxonomia de erro, codigos de saida, politica de retentativa, redacao de segredos, idempotencia) | `errors` | unitario | Senior Developer (TDD; commit `a03d2c0` "first commit", sem log de prompt) | 82 | RF-29; RF-35 (contrato congelado dos codigos); RNF-08; DIV-58 (tags da recuperacao); `docs/testes/mapa-modulos.md` (Regra 1: `errors` e c... |
-| `tests/unit/filtro_test.sh` | `lib/filtro.sh`: casamento de padroes estilo gitignore sem diferenca de caixa, validacao de padroes, filtros de data e de tamanho | `filtro_test` | unitario | Senior Developer (TDD da demanda `backlog-fase-4-filtros-e-banda`) | 34 | RF-79; RF-80(a); RF-81; TC-FLT; TC-FES-01; TC-FES-03; TC-FDT; DIV-94; DIV-103; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e... |
+| `tests/unit/filtro_test.sh` | `lib/filtro.sh`: casamento de padroes estilo gitignore sem diferenca de caixa, validacao de padroes, filtros de data e de tamanho | `filtro_test` | unitario | Senior Developer (TDD da demanda `backlog-fase-4-filtros-e-banda`) | 35 | RF-79; RF-80(a); RF-81; TC-FLT; TC-FES-01; TC-FES-03; TC-FDT; DIV-94; DIV-103; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e... |
 | `tests/unit/harness_test.sh` | `tests/support/harness.sh` e `tests/run.sh`: assercoes e executor do arcabouco de teste | `harness_test` | unitario | Senior Developer (commit `64e6139`, `test: fixa todas as assercoes do arcabouco nos dois sentidos`; sem log de prompt) | 28 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste (commit `64e6139`); protocolo-tdd Regra 9 (parad... |
 | `tests/unit/hash_test.sh` | `lib/hash.sh`: `content_hash` da Dropbox (blocos de 4 MiB), API incremental, comparacao e identidade do arquivo | `hash` | unitario | Senior Developer (commit `a03d2c0`, `first commit`; sem log de prompt) | 44 | RF-33; RF-34; `docs/registros/vetores-content-hash.md` (vetores derivados de oraculo independente em Python); log de prompt: Nao aplicave... |
 | `tests/unit/hash_vetor_oficial_test.sh` | `lib/hash.sh` (`content_hash` da Dropbox) contra o arquivo de exemplo oficial da Dropbox | hash_vetor_oficial | unitario | Senior Developer (TDD da demanda `first commit`) | 2 | RF-34 (criterio de aceite: vetor oficial da Dropbox); Nao aplicavel como log de prompt: anterior a trilha do protocolo |
 | `tests/unit/http_fd_curl_real_test.sh` | `lib/http.sh`: destino `fd:n` e saida padrao do download, com o `curl` real do sistema (URL `file://`) | `http_fd_curl_real` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 4 | RF-171; RF-166..172; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
-| `tests/unit/http_test.sh` | `lib/http.sh` (ponto unico de saida de rede: paginacao, retentativa, recuo, `Retry-After`, classificacao de erro, canal do segredo) | http | unitario | Senior Developer (TDD da demanda `feat(http): cliente com paginacao, retentativa e contexto isolado`) | 53 | RNF-14 (a suite padrao nao usa rede); Nao aplicavel como log de prompt: anterior a trilha do protocolo; comportamento inferido do codigo ... |
+| `tests/unit/http_test.sh` | `lib/http.sh` (ponto unico de saida de rede: paginacao, retentativa, recuo, `Retry-After`, classificacao de erro, canal do segredo) | http | unitario | Senior Developer (TDD da demanda `feat(http): cliente com paginacao, retentativa e contexto isolado`) | 54 | RNF-14 (a suite padrao nao usa rede); Nao aplicavel como log de prompt: anterior a trilha do protocolo; comportamento inferido do codigo ... |
 | `tests/unit/identidade_gnustat_test.sh` | `lib/hash.sh` (identidade forte do arquivo lida com `stat -c`) sob o GNU coreutils | `identidade_gnustat` | unitario | Senior Developer (TDD da demanda `backlog-fase-0-pendencias`) | 7 | RSK-43; log `docs/prompts/2026-10-19_1023_backlog-fase-0-pendencias.md` |
 | `tests/unit/instalador_linha_test.sh` | `install.sh` (escolha da linha pelo bash do host, piso lido da fonte, troca de linha), `scripts/empacotar.sh` (`--target`, `--latest=false`) e `scripts/suite-bash42.sh` | `install.sh` | unitario | Senior Developer (TDD da demanda `suporte-bash-42`) | 19 | RF-198; RF-201 a RF-206; TC-B42-09..22; DIV-385; DIV-389; DIV-390; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md` |
 | `tests/unit/json_test.sh` | `lib/json.sh` (interpretador JSON proprio, sem `jq`) | json | unitario | Senior Developer (TDD da demanda `feat(json): interpretador JSON proprio sem dependencia externa`; sem log de prompt) | 62 | RNF-11; DIV-04 (citados no cabecalho do teste); sem log de prompt (commit de criacao `edfd8ad`, anterior a trilha do protocolo) |
@@ -112,6 +114,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/progresso_linha_test.sh` | `lib/progress.sh`: progresso por arquivo (`dbx_progress_arquivo_*`), linha com percentual, terminal simulado, observador do `.part` e can... | `progresso_linha` | unitario | Senior Developer (TDD da demanda `progresso-por-arquivo`) | 18 | F-49; RF-140..147; TC-PRG-01; TC-PRG-03; TC-PRG-04; TC-PRG-10..13; TC-PRG-15; TC-PRG-27; TC-PRG-29..32; log `docs/prompts/2026-10-22_1600... |
 | `tests/unit/qa_rede_p2_test.sh` | `lib/http.sh` (timeouts, retentativas, `Retry-After`), `lib/transfer.sh` (retomada em partes, `correct_offset`) e o executor de testes `t... | `qa_rede` | unitario | QA Expert (suite independente da demanda `robustez-de-rede-p2`) | 27 | RNF-07; RNF-30; RF-09; RF-58; RNF-32(a); log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md`; protocolo-tdd Regra 9 (parada no prim... |
 | `tests/unit/qa_state_p3_test.sh` | `lib/state.sh` (estado hostil, anti-corrida na fronteira de dois segundos), `lib/errors.sh` e `lib/http.sh` (regressao da P3.4 por tabela... | `lib/state.sh` | unitario | QA Expert (suite independente da demanda `cache-unico-p3`) | 8 | RNF-25, RF-42, RF-61(a), RF-61(d), RF-63(a); log `docs/prompts/2026-10-18_2243_cache-unico-p3.md`; [entrada](../../.github/agents/memoria... |
+| `tests/unit/ref_test.sh` | `lib/ref.sh` (acesso a vetor pelo nome sem nameref, chaves adversariais) | lib/ref | unitario | Tech Lead (TDD, demanda `suporte-bash-42`, PARTE B) | 8 | RF-199 |
 | `tests/unit/regex_portavel_test.sh` | expressoes regulares de `lib/state.sh` (registro de retomada e cursor) e a regra de portabilidade com RE_DUP_MAX do FreeBSD | `lib/state.sh` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 3 | RF-166; TC-FBSD-19 (parte regex); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/resumo_freebsd_test.sh` | resumo SHA-256 por capacidade (`lib/hash.sh`), `lib/preflight.sh` e `lib/tmp.sh` sob os utilitarios da base do FreeBSD | `resumo_freebsd` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 6 | RF-168; RF-169; TC-FBSD-04, TC-FBSD-05, TC-FBSD-06, TC-FBSD-07, TC-FBSD-10; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/retencao_test.sh` | `lib/retencao.sh` (politica pura de `--manter` e `--dias`, carimbo, guardas) e casamento de nome avulso de `lib/filtro.sh` | `retencao_test` | unitario | Senior Developer (TDD da demanda `backlog-fase-6-retencao`) | 38 | F-10; RF-93(e)(f)(g)(h)(j); RF-95; RF-97(b); TC-RTA-05..07; TC-RTP-01..12; TC-RTG-03..05; TC-RTG-09; log `docs/prompts/2026-10-20_2010_ba... |
@@ -2782,6 +2785,10 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_caixa_fora_do_ascii_e_um_caminho_mesmo_com_lc_all_c | Caminhos que diferem so em caixa fora do ASCII sao o mesmo caminho mesmo com LC_ALL=C | RF-54 |
 | teste_caixa_fora_do_ascii_com_conteudo_igual_e_omitida_com_lc_all_c | Arquivo com caixa fora do ASCII e conteudo igual e omitido com LC_ALL=C | RF-54 |
 | teste_comparacao_sem_caixa_nao_muda_medida_em_bytes | A comparacao sem caixa nao altera a medida de tamanho em bytes | RF-54 |
+| teste_com_localidade_o_espelhar_fora_do_ascii_nao_muda | Com a localidade presente o espelhar fora do ASCII segue apagando como antes | RF-54 |
+| teste_sem_localidade_caminho_ascii_so_no_destino_continua_sendo_apagado | Sem a localidade o caminho ASCII so no destino continua sendo apagado | RF-54 |
+| teste_sem_localidade_o_espelhar_nao_apaga_o_recem_enviado_fora_do_ascii | Sem a localidade o espelhar nao apaga o recem-enviado fora do ASCII (QA-B42-01) | RF-54 |
+| teste_sem_localidade_ramo_de_pasta_fora_do_ascii_so_no_destino_nao_e_apagado | Sem a localidade o ramo de pasta fora do ASCII so no destino nao e apagado (QA-B42-01) | RF-54 |
 | teste_localidade_ausente_avisa_uma_vez_e_compara_so_no_ascii | Localidade ausente avisa uma unica vez e compara a caixa so no ASCII | RF-54 |
 | teste_localidade_ausente_nao_muda_saida_nem_codigo_no_ascii | Localidade ausente nao muda saida nem codigo para nomes ASCII | RF-54 |
 | teste_aviso_de_localidade_e_so_do_sync | O aviso de localidade ausente e emitido apenas pelo sync | RF-54 |
@@ -3020,6 +3027,48 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_validade_respeita_margem_antes_do_vencimento | A validade do token considera uma margem de seguranca antes do vencimento | |
 
 
+## `tests/unit/bash42_auditoria_test.sh`
+
+- **Alvo:** codigo entregue (`bin/`, `lib/`, `commands/`, `completions/`, instaladores da raiz, `tests/support/`): ausencia de construcoes de bash 4.3+
+- **Modulo:** `lib/`, `commands/`, `bin/`
+- **Camada:** unitario
+- **Autoria:** Senior Developer (TDD, demanda `suporte-bash-42`, passo B1)
+- **Regras de origem:** RF-199..RF-201 (secao 5.25 de `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md`)
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** leitura dos arquivos do repositorio; linhas de comentario ignoradas. Tres casos ficam pulados ate os passos B3 (namerefs) e B4 (`wait -n`, `${nome@a}`)
+- **Comando:** `bash tests/run.sh tests/unit/bash42_auditoria_test.sh`
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_a_auditoria_acusa_as_formas_proibidas | A regex acusa cada forma proibida (nameref, `wait -n`, `${v@Q}`, `${v[0]@a}`) | RF-199 |
+| teste_a_auditoria_enxerga_os_arquivos_do_codigo | A lista auditada inclui `lib/cli.sh`, `install.sh` e `tests/support/harness.sh` | RF-199 |
+| teste_nao_ha_nameref_no_codigo | Nenhum `local -n`/`declare -n` no codigo (pulado: pendente B3) | RF-199 |
+| teste_nao_ha_transformacao_de_expansao_no_codigo | Nenhuma `${nome@op}` no codigo (pulado: pendente B4) | RF-201 |
+| teste_nao_ha_wait_n_no_codigo | Nenhum `wait -n` no codigo (pulado: pendente B4) | RF-200 |
+| teste_nao_ha_construcao_de_bash_4_3_ou_superior_no_codigo_nem_nos_testes | Nenhum `mapfile -d`/`readarray -d`, subscrito negativo, `EPOCHSECONDS`, `local -`, `inherit_errexit` ou `${nome@op}` em bin/, lib/, commands/, completions/, install.sh e tests/ (exceto o proprio arquivo) | RF-199..RF-201 |
+| teste_nao_ha_vetor_global_com_valores_na_declaracao | `readonly X=(...)` ou `declare -g... X=(valores)` em bin/, lib/, commands/, completions/, tests/support/ e install.sh reprova (no bash 4.2, dentro de funcao, nao cria o global) | RF-199 |
+
+
+## `tests/unit/ref_test.sh`
+
+- **Alvo:** `lib/ref.sh` (acesso a vetor pelo nome, substituto do nameref na linha legada)
+- **Modulo:** lib/ref
+- **Camada:** unitario
+- **Autoria:** Tech Lead (TDD da demanda `suporte-bash-42`, PARTE B)
+- **Regras de origem:** RF-199; System Design suporte-bash-42, eixo 5
+- **Aceite do solicitante:** Nao aplicavel: teste do desenvolvimento
+- **Comando:** `bash tests/run.sh ref_test.sh` (CentOS 7: `sh scripts/suite-bash42.sh ref_test.sh`)
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_anexar_tamanho_copiar_em_vetor_indexado | Anexa cada argumento como elemento, mede e copia vetor indexado, inclusive vazio sob `set -u` | RF-199 |
+| teste_chaves_lista_associativo_e_vazio | Lista as chaves literais de mapa associativo; mapa vazio da lista vazia sob `set -u` | RF-199 |
+| teste_definir_e_obter_preserva_chave_e_valor_adversariais | Chaves com `$(...)`, crase, `]`, `*`, `@`, aspas e barra sao gravadas e lidas literalmente, sem executar | RF-199 |
+| teste_existe_e_remover_com_chave_adversarial | Existencia e remocao por chave adversarial, sem executar | RF-199 |
+| teste_grava_na_local_do_chamador_por_escopo_dinamico | O destino e a variavel local do chamador; nada vaza para o escopo global | RF-199 |
+| teste_limpar_mantem_o_tipo_associativo | Esvaziar preserva o tipo associativo declarado | RF-199 |
+| teste_nome_invalido_e_recusado_sem_efeito | Nome de vetor ou destino invalido devolve 2 sem gravar nada | RF-199 |
+| teste_obter_chave_ausente_devolve_vazio_sob_set_u | Chave ausente vira vazio, sem erro de variavel nao definida | RF-199 |
 ## `tests/unit/cabecalho_test.sh`
 
 - **Alvo:** `lib/http.sh` (recusa de valor de cabecalho HTTP com CR, LF ou byte de controle antes de chegar ao cliente)
@@ -3455,6 +3504,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 
 | Caso | O que verifica | Regra especifica |
 |---|---|---|
+| teste_qa_b42_01_sem_localidade_padrao_e_nome_nao_ascii_falham_fechado | Sem a localidade, padrao e nome fora do ASCII falham fechado no escopo dos filtros (QA-B42-01) | RF-54; RF-80 |
 | teste_flt01_padrao_sem_barra_casa_o_nome_em_qualquer_nivel | Padrao sem barra casa o nome em qualquer nivel da arvore | TC-FLT-01 |
 | teste_flt02_estrela_nao_cruza_barra_e_casa_nome_com_ponto | `*` nao atravessa barra e casa nomes com ponto | TC-FLT-02 |
 | teste_flt03_interrogacao_casa_um_caractere | `?` casa exatamente um caractere | TC-FLT-03 |
@@ -3696,6 +3746,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_umask_do_processo_e_preservado_apos_chamada_http | O umask do processo e preservado apos uma chamada HTTP | |
 | teste_validacao_de_ambiente_e_publica_e_aceita_o_padrao | A validacao do ambiente e publica e aceita os valores padrao | |
 | teste_variavel_de_ambiente_invalida_e_recusada_antes_da_rede | Variavel de ambiente invalida e recusada antes de qualquer chamada de rede | |
+| teste_arquivo_de_corpo_ilegivel_e_defeito_nosso_mesmo_com_cliente_que_conecta_antes_de_ler | Arquivo de corpo ilegivel sai com o status 26 (defeito nosso) sem chamar o cliente, mesmo com cliente que conectaria antes de ler (curl 7.29) | RF-199 |
 
 
 ## `tests/unit/identidade_gnustat_test.sh`
@@ -4126,7 +4177,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_omissao_de_nivel_assume_o_mais_estrito | Sem nivel informado vale o mais estrito | |
 | teste_palavras_que_abrem_comando_vem_da_gramatica_do_shell | As palavras que abrem comando seguem a gramatica do shell | |
 | teste_permissao_da_credencial_e_verificada_no_preflight | A permissao do arquivo de credencial e verificada pelo preflight | |
-| teste_piso_declarado_e_o_verificado | O piso de versao do bash declarado e o verificado | |
+| teste_piso_declarado_e_o_verificado | O piso de versao do bash declarado e o verificado (4.2 na linha legada) | RF-198 |
 | teste_ponto_de_entrada_recusa_bash_antigo_antes_de_carregar_as_bibliotecas | `bin/dbx` confere o piso de bash (pelo `lib/preflight.sh`) antes de carregar qualquer outra biblioteca e recusa com o codigo de configuracao, para a mensagem de reinstalacao chegar no bash 4.2/4.3. | RF-204 |
 | teste_preflight_e_diagnostico_usam_a_mensagem_de_reinstalacao | Preflight e diagnostico usam a mesma mensagem de reinstalacao, sem o remedio antigo | RF-204; TC-B42-20 |
 | teste_preflight_exige_os_utilitarios_do_diagnostico_do_config | O preflight exige os utilitarios usados pelo diagnostico do `config` | |
@@ -4135,7 +4186,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_todo_comando_externo_de_lib_e_exigido_pelo_preflight | Todo comando externo usado em `lib/*.sh` e exigido pelo preflight | |
 | teste_todo_utilitario_ausente_reprova_e_e_nomeado | Todo utilitario exigido que falte reprova e e nomeado | |
 | teste_utilitario_de_resumo_ausente_e_recusado | Ausencia de qualquer utilitario de resumo SHA-256 e recusada | |
-| teste_versao_de_bash_abaixo_do_piso_e_recusada | Versao do bash abaixo do piso e recusada | |
+| teste_versao_de_bash_abaixo_do_piso_e_recusada | Versao do bash abaixo do piso 4.2 e recusada (4.1, 3.2); 4.2 e 4.3 aceitas | RF-198 |
 | teste_xdg_invalido_e_recusado | Variavel XDG invalida (relativa ou inutilizavel) e recusada | |
 
 
@@ -4709,3 +4760,24 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_identidade_publicada_coincide_com_a_da_travessia | A identidade publicada coincide com a calculada na travessia | |
 
 
+
+## `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh`
+
+- **Alvo:** `sync` (`--receber` e `--enviar` com `--espelhar --confirmar`) com filtros e nomes com byte nao ASCII, na maquina sem a localidade `C.UTF-8` (CentOS 7, bash 4.2)
+- **Modulo:** `qa_exclusao_sem_localidade` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `suporte-bash-42`, ciclo 2)
+- **Regras de origem:** QA-B42-01; RF-54(f2); RF-80; DIV-391; protocolo-tdd Regra 6; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md`; validacao `docs/reviews/2026-11-01-1200-validacao-qa-porte-bash-42.md`
+- **Aceite do solicitante:** pendente; sha256 submetido `953ca74613973a89f35a7da19289cd7d746c4e405f4f2feaed027f7bcbdaec89`
+- **Dados e precondicoes:** arvore local e listagem remota falsas criadas por caso (nomes `lixo\xff.bin`, `cafe`, `E`/`e` acentuados, euro, emoji, ramos de pasta); rodam sem pulo em qualquer localidade
+- **Comando:** `bash tests/run.sh tests/integracao/qa_exclusao_sem_localidade_b42_test.sh`
+- **Observacoes:** vermelho contra `lib/filtro.sh`, `lib/sync.sh` e `commands/sync.sh` do ciclo 1 (confirmado no CentOS).
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_b42_receber_incluir_impreciso_preserva_todo_nome_nao_ascii | `--incluir '[!a]*'` nao apaga nenhum nome nao ASCII ou nao UTF-8 | RF-80; QA-B42-01 |
+| teste_qa_b42_receber_incluir_preciso_nao_ascii_preserva | `--incluir` com literal, `?` e prefixo nao ASCII nao apaga | RF-80 |
+| teste_qa_b42_receber_excluir_com_acento_preserva | `--excluir` com acento, conjunto e `?` nao apaga | RF-80 |
+| teste_qa_b42_receber_ramo_de_pasta_nao_ascii_preserva | ramos de pasta com nome nao ASCII preservados com `--incluir '*'` e `'[!a]*/'` | RF-80 |
+| teste_qa_b42_receber_sem_filtro_preserva | sem filtro, nomes nao ASCII so locais nao sao apagados | RF-54(f2) |
+| teste_qa_b42_enviar_espelhar_remoto_nao_ascii_nao_e_apagado | `--enviar --espelhar` nao emite delete de caminho nao ASCII | RF-54(f2); DIV-391 |

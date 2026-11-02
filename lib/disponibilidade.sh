@@ -331,7 +331,7 @@ dbx_disp_oferecer_config() {
   esac
   [[ $causa == 'invalida' ]] && substituir=(--substituir)
   # O resultado do config sai em stderr: stdout fica para o comando original.
-  dbx_iniciar_config "${substituir[@]}" >&2
+  dbx_iniciar_config ${substituir[@]+"${substituir[@]}"} >&2
 }
 
 # dbx_disp_ao_falhar_token <codigo> — gancho de falha do token (RF-151(c)(d),
@@ -373,7 +373,7 @@ dbx_disp_ao_falhar_token() {
 _dbx_disp_classe_de() {
   local candidata
   classe=''
-  for candidata in "${DBX_ERRORS_CLASSES[@]}"; do
+  for candidata in ${DBX_ERRORS_CLASSES[@]+"${DBX_ERRORS_CLASSES[@]}"}; do
     if [[ ${DBX_ERRORS_CODIGO[$candidata]} == "$1" ]]; then
       classe=$candidata
       break

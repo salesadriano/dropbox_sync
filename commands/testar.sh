@@ -170,7 +170,7 @@ _dbx_cmd_testar_servicos() {
 # _dbx_cmd_testar_resultado_de <id> — resultado da linha pelo id, nao pela posicao.
 _dbx_cmd_testar_resultado_de() {
   local i
-  for i in "${!DBX_CMD_TESTAR_IDS[@]}"; do
+  for i in ${DBX_CMD_TESTAR_IDS[@]+"${!DBX_CMD_TESTAR_IDS[@]}"}; do
     [[ ${DBX_CMD_TESTAR_IDS[i]} == "$1" ]] && { printf '%s' "${DBX_CMD_TESTAR_RESULTADOS[i]}"; return 0; }
   done
   return 1
@@ -257,7 +257,7 @@ dbx_cmd_testar_executar() {
 
   local indice texto ok=0 avisos=0 falhas=0
   dbx_cmd_iniciar_saida
-  for indice in "${!DBX_CMD_TESTAR_IDS[@]}"; do
+  for indice in ${DBX_CMD_TESTAR_IDS[@]+"${!DBX_CMD_TESTAR_IDS[@]}"}; do
     case ${DBX_CMD_TESTAR_RESULTADOS[indice]} in
       ok) ok=$((ok + 1)) ;;
       aviso) avisos=$((avisos + 1)) ;;

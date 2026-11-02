@@ -95,7 +95,7 @@ _ciclos() {
   done
   dbx_sync_blocos_planejar nomes contagens "$n"
   assert_igual 0 "$?" 'planeja'
-  printf '%s ' "${DBX_SYNC_BLOCOS_CICLOS[@]}"
+  printf '%s ' ${DBX_SYNC_BLOCOS_CICLOS[@]+"${DBX_SYNC_BLOCOS_CICLOS[@]}"}
 }
 
 teste_planejador_arvore_que_cabe_forma_um_ciclo() {
@@ -127,7 +127,7 @@ teste_planejador_cada_diretorio_em_exatamente_um_ciclo() {
   done
   dbx_sync_blocos_planejar nomes contagens 17
   local ciclo cobertos='' esperado=''
-  for ciclo in "${DBX_SYNC_BLOCOS_CICLOS[@]}"; do
+  for ciclo in ${DBX_SYNC_BLOCOS_CICLOS[@]+"${DBX_SYNC_BLOCOS_CICLOS[@]}"}; do
     for ((i = ${ciclo%-*}; i < ${ciclo#*-}; i++)); do cobertos+="$i "; done
   done
   for i in {0..39}; do esperado+="$i "; done
@@ -206,8 +206,8 @@ teste_listar_diretorio_acumula_entre_chamadas_e_segue_continue() {
   dbx_sync_listar_diretorio /r /r/e
   assert_igual 0 "$?" 'diretorio e lista sem zerar a tabela'
   local _chaves_ordenadas _chave _lista=
-  mapfile -t _chaves_ordenadas < <(printf '%s\n' "${!DBX_SYNC_TAB[@]}" | LC_ALL=C sort)
-  for _chave in "${_chaves_ordenadas[@]}"; do _lista+="$_chave "; done
+  mapfile -t _chaves_ordenadas < <(printf '%s\n' ${DBX_SYNC_TAB[@]+"${!DBX_SYNC_TAB[@]}"} | LC_ALL=C sort)
+  for _chave in ${_chaves_ordenadas[@]+"${_chaves_ordenadas[@]}"}; do _lista+="$_chave "; done
   assert_igual '/r/d/a.txt /r/d/b.txt /r/e/c.txt ' "$_lista" 'tabela acumulada'
 }
 

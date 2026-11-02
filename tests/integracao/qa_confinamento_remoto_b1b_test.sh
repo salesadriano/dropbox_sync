@@ -105,18 +105,18 @@ _qa_forma() {
   rm -f "$b/eh_pasta"
   [[ $forma == download_pasta ]] && : >"$b/eh_pasta"
   case $forma in
-    upload) _qa_dbx "${loc[@]}" upload "$b/arvore/um.txt" "$r" ;;
-    upload_fluxo) _qa_dbx "${loc[@]}" upload - "$r" ;;
-    upload_dir) _qa_dbx "${loc[@]}" upload "$b/arvore" "$r" ;;
-    download) _qa_dbx "${loc[@]}" download "$r" "$b/baixado" ;;
-    download_pasta) _qa_dbx "${loc[@]}" download "$r" "$b/rec" ;;
-    list) _qa_dbx "${loc[@]}" list "$r" ;;
-    delete) _qa_dbx "${loc[@]}" delete --yes "$r" ;;
-    info) _qa_dbx "${loc[@]}" info "$r" ;;
-    sync_enviar) _qa_dbx "${loc[@]}" sync --enviar --origem "$b/arvore" --destino "$r" ;;
-    sync_receber) _qa_dbx "${loc[@]}" sync --receber --origem "$r" --destino "$b/rec" ;;
-    verificar_enviar) _qa_dbx "${loc[@]}" verificar --enviar --origem "$b/arvore" --destino "$r" ;;
-    verificar_receber) _qa_dbx "${loc[@]}" verificar --receber --origem "$r" --destino "$b/arvore" ;;
+    upload) _qa_dbx ${loc[@]+"${loc[@]}"} upload "$b/arvore/um.txt" "$r" ;;
+    upload_fluxo) _qa_dbx ${loc[@]+"${loc[@]}"} upload - "$r" ;;
+    upload_dir) _qa_dbx ${loc[@]+"${loc[@]}"} upload "$b/arvore" "$r" ;;
+    download) _qa_dbx ${loc[@]+"${loc[@]}"} download "$r" "$b/baixado" ;;
+    download_pasta) _qa_dbx ${loc[@]+"${loc[@]}"} download "$r" "$b/rec" ;;
+    list) _qa_dbx ${loc[@]+"${loc[@]}"} list "$r" ;;
+    delete) _qa_dbx ${loc[@]+"${loc[@]}"} delete --yes "$r" ;;
+    info) _qa_dbx ${loc[@]+"${loc[@]}"} info "$r" ;;
+    sync_enviar) _qa_dbx ${loc[@]+"${loc[@]}"} sync --enviar --origem "$b/arvore" --destino "$r" ;;
+    sync_receber) _qa_dbx ${loc[@]+"${loc[@]}"} sync --receber --origem "$r" --destino "$b/rec" ;;
+    verificar_enviar) _qa_dbx ${loc[@]+"${loc[@]}"} verificar --enviar --origem "$b/arvore" --destino "$r" ;;
+    verificar_receber) _qa_dbx ${loc[@]+"${loc[@]}"} verificar --receber --origem "$r" --destino "$b/arvore" ;;
     *) _harness_falhar "forma desconhecida: $forma" ;;
   esac
 }
@@ -155,7 +155,7 @@ teste_qa_b1b_fuga_de_raiz_recusada_em_toda_forma_sem_chamada() {
     $'/Raíz/x' $'/Ｒaiz/x'
   )
   for forma in $QA_FORMAS; do
-    for r in "${vetores[@]}"; do
+    for r in ${vetores[@]+"${vetores[@]}"}; do
       _qa_forma "$forma" "$r"
       _qa_recusa "$forma [$r]"
     done
@@ -176,7 +176,7 @@ teste_qa_b1b_dentro_da_raiz_aceito_e_enviado_literal() {
     '/Raiz/id:abc|/Raiz/id:abc'
   )
   for forma in $QA_FORMAS; do
-    for par in "${pares[@]}"; do
+    for par in ${pares[@]+"${pares[@]}"}; do
       r=${par%%|*}
       trecho=${par#*|}
       _qa_forma "$forma" "$r"
@@ -225,7 +225,7 @@ teste_qa_b1b_dobra_especial_nao_casa_com_a_raiz_em_nenhuma_localidade() {
     $'/fi|/\ufb01/x' $'/Raiz|/Raiz\uff0fx' $'/Raiz|/Raiz\uff0e/x' $'/Raiz|/\uff32aiz/x'
     "$nfc|$nfd/x" "$nfd|$nfc/x" $'/A\u00e7\u00e3o|/A\u00c7\u00c3O/x' $'/A\u00e7\u00e3o|/ACAO/x'
   )
-  for par in "${pares[@]}"; do
+  for par in ${pares[@]+"${pares[@]}"}; do
     raiz=${par%%|*}
     r=${par#*|}
     _qa_cenario "$raiz"
@@ -246,7 +246,7 @@ teste_qa_b1b_raiz_com_acento_identica_ou_so_ascii_em_outra_caixa_e_aceita() {
     "$nfd|$nfd/x" $'/Stra\u00dfe|/STRA\u00dfE/x' $'/Raiz|/RAIZ/\uff0e\uff0e\uff0f\uff0e\uff0e\uff0ffora'
     $'/Kit|/KIT/\u212a'
   )
-  for par in "${pares[@]}"; do
+  for par in ${pares[@]+"${pares[@]}"}; do
     raiz=${par%%|*}
     r=${par#*|}
     _qa_cenario "$raiz"

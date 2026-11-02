@@ -337,8 +337,10 @@ teste_part_trocado_por_outro_inode_com_dubles_bsd_nao_recebe_anexo() {
   _qa_baixar_interrompido "$base"
   part=$(_qa_partes "$base")
   part=${part% }
-  rm -f "$part"
-  printf 'arquivo do usuario' >"$part"
+  # Novo inode criado com o antigo ainda vivo: `rm` antes de criar deixa o
+  # sistema de arquivos reaproveitar o numero (visto no overlay do CentOS 7).
+  printf 'arquivo do usuario' >"$part.novo"
+  mv -f "$part.novo" "$part"
   _qa_rodar "$base" '' download /g.iso "$base/local/g.iso"
   assert_igual 0 "$DBX_ESTADO" "recomeca em vez de anexar: $DBX_ERRO"
   assert_igual 'arquivo do usuario' "$(cat "$part")" 'o arquivo trocado fica intacto: nada anexado'

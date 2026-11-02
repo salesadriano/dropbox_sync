@@ -76,7 +76,7 @@ teste_upload_nao_reaproveita_quando_qualquer_campo_da_identidade_difere() {
   for campo in 0 1 2 3 4 5; do
     IFS='|' read -r -a partes <<<"$IDENT"
     partes[campo]="9${partes[campo]}"
-    printf -v alterada '%s|' "${partes[@]}"
+    printf -v alterada '%s|' ${partes[@]+"${partes[@]}"}
     alterada=${alterada%|}
     dbx_state_upload_consultar /c/a.txt "$alterada"
     assert_igual 1 $? "campo $campo da identidade divergente nao pode reaproveitar"

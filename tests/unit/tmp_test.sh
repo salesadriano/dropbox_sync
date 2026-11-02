@@ -66,7 +66,7 @@ _rodar_e_sinalizar() {
   local -a sinais=()
   while [[ $1 != '--' ]]; do sinais+=("$1"); shift; done
   shift
-  _sinalizar_quando "$BASE/pronto" "${sinais[@]}" &
+  _sinalizar_quando "$BASE/pronto" ${sinais[@]+"${sinais[@]}"} &
   local remetente=$!
   TMP_SAIDA=$(TMPDIR="$BASE/tmp" BASE="$BASE" RAIZ="$DBX_HARNESS_RAIZ" \
     setsid -w bash -c '. "$RAIZ/lib/tmp.sh" || exit 99
@@ -364,7 +364,7 @@ teste_nenhum_mktemp_nem_trap_fora_de_lib_tmp() {
     [[ ${arquivo##*/} == tmp.sh ]] && continue
     alvos+=("$arquivo")
   done
-  assert_igual '' "$(_fora_do_tmp "${alvos[@]}")" 'mktemp ou trap fora de lib/tmp'
+  assert_igual '' "$(_fora_do_tmp ${alvos[@]+"${alvos[@]}"})" 'mktemp ou trap fora de lib/tmp'
 }
 
 teste_auditoria_reprova_a_forma_reintroduzida() {

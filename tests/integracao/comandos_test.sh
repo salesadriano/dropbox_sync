@@ -1509,7 +1509,7 @@ teste_upload_com_falha_na_consulta_do_metadado_envia() {
     "{\"error_summary\":\"other/\",\"content_hash\":\"$hash\"}"
   )
   local esperado=0
-  for variante in "${!codigos[@]}"; do
+  for variante in ${codigos[@]+"${!codigos[@]}"}; do
     _metadado "$base" "${codigos[$variante]}" "${corpos[$variante]}"
     _rodar "$base" upload "$origem" /r/a.txt
     esperado=$((esperado + 1))
