@@ -1528,13 +1528,8 @@ teste_div161_chave_unicode_nas_barreiras_da_listagem() {
   return 0
 }
 
-# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
-# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
-# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
-# (RF-54(f)) e o caso, que exige a dobra, e pulado.
-_localidade_disponivel() {
-  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
-}
+# shellcheck source=tests/support/localidade.sh
+. "$DBX_HARNESS_RAIZ/tests/support/localidade.sh"
 
 teste_div161_mutantes_reprovam() {
   _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'

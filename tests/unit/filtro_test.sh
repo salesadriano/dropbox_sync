@@ -233,13 +233,8 @@ teste_qa_b4_01_queda_para_bytes_usa_a_mesma_dobra_do_padrao() {
   assert_igual nao "$(_exclui $'\xc3\xa9x' $'x\xff/\xc3\xa9y')" 'e nao casa o que e diferente'
 }
 
-# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
-# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
-# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
-# (RF-54(f)) e o caso, que exige a dobra, e pulado.
-_localidade_disponivel() {
-  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
-}
+# shellcheck source=tests/support/localidade.sh
+. "$DBX_HARNESS_RAIZ/tests/support/localidade.sh"
 
 teste_div103_incluir_impreciso_em_bytes_nunca_casa_a_mais() {
   # DIV-103 revisada: em bytes, conjunto negado, conjunto com membro fora do
