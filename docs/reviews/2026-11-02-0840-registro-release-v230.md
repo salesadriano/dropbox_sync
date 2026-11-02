@@ -72,3 +72,10 @@ Validacao independente em `docs/reviews/2026-11-02-0840-validacao-qa-release-v23
 ## 8. Proximos passos da demanda
 
 Release: versao 2.3.0 e notas (`chore/release-v230`), PR `develop` -> `master`, publicacao de `v2.3.0` (Latest) e de `v2.3.0-bash42` (nao Latest) a partir de `support/bash-4.2`.
+
+## 9. Merge do retorno e releases
+
+- PR #76 (`feature/falha-fechada-sem-localidade` -> `develop`) mesclada em `0c80a1e` por pedido explicito do solicitante ("merge PR") antes do fim da suite completa oficial sobre `d2cc010`; o resultado dessa suite e registrado abaixo quando concluir.
+- Linha principal: `chore/release-v230` (versao 2.3.0 em `lib/cli.sh` e `install.sh`, pacote no README, notas em `docs/releases/v2.3.0.md`) -> `develop` -> `master`; publicacao de `v2.3.0` (Latest) a partir da `master` com `bash scripts/empacotar.sh --publicar`.
+- Linha legada: `chore/release-v230-bash42` (notas `docs/releases/v2.3.0-bash42.md`, pacote no README, reaceite das suites `qa_docs_aliases_p4` e `qa_exclusao_sem_localidade_b42`) -> `support/bash-4.2`; publicacao de `v2.3.0-bash42` (nao Latest) a partir de `support/bash-4.2`.
+- Aceite dos 4 casos `qa_rel230_03_*` de `tests/unit/json_test.sh` (sha256 `183c16f2...db4e`): solicitante, 2026-11-02 (AskUserQuestion, "Accept (Recommended)"); entrada de memoria `2026-11-02-0840-aceite-testes-qa-release-v230`.
