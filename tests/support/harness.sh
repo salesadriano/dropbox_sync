@@ -206,6 +206,16 @@ _agora_ms() {
     printf '%s' "$(((${partes%.*} * 1000) + (10#${partes#*.} / 1000)))"
     return 0
   fi
+  # Linha legada (bash 4.2 nao tem EPOCHREALTIME): `SECONDS` tem resolucao de
+  # 1 s, e a razao entre um caso abaixo de 1 s (lido como 1 ms) e outro logo
+  # acima (1000 ms) reprovava a linearidade por arredondamento. `date +%s%N`
+  # (GNU) da nanossegundos; o custo do processo e constante e cai dos dois lados.
+  local ns
+  ns=$(date +%s%N 2>/dev/null)
+  if [[ $ns =~ ^[0-9]{13,}$ ]]; then
+    printf '%s' "$((ns / 1000000))"
+    return 0
+  fi
   printf '%s' "$((SECONDS * 1000))"
 }
 
