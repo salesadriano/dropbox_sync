@@ -87,6 +87,7 @@
 |---|---|
 | Piso e versao | `lib/preflight.sh` (piso 4.2), `lib/cli.sh` e `install.sh` (`2.3.0-bash42`), `scripts/suite-completa.cmd` (`sh scripts/suite-bash42.sh`) |
 | Recursos 4.3+/4.4 | `lib/ref.sh` (novo) e 28 namerefs; `dbx_par_aguardar_algum` e 4 `wait -n`; 2 `${x@a}`; 114 expansoes de vetor protegidas; 4 vetores globais com valores separados |
+| Desempenho achado pela suite oficial | `lib/json.sh`: trocas do tokenizador em pedacos de 4096 caracteres (`${s//p/t}` e quadratico no bash 4.2 e no 5; 1600 entradas: 4369 ms -> 527 ms no 4.2); `tests/support/harness.sh`: relogio em ms sem `EPOCHREALTIME` |
 | Defeitos do 4.2 / CentOS 7 achados pela suite | eco do terminal apos sinal (`lib/cli.sh`, `lib/tmp.sh`); acumulador quadratico (`lib/hash.sh`); corpo ilegivel com curl 7.29 (`lib/http.sh`) |
 | Seguranca de dados | `QA-B42-01`: `lib/filtro.sh` (modo bytes e padrao nao ASCII sem localidade), `lib/sync.sh` `dbx_sync_reter_nao_ascii`, `commands/sync.sh` |
 | Testes | `tests/run.sh` (calco de `setsid -w`); `tests/unit/ref_test.sh` (novo, 8); `tests/unit/bash42_auditoria_test.sh` (novo, 7); `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh` (novo, QA, 6); casos novos em `sync_test.sh`, `filtro_test.sh`, `http_test.sh`; construcoes 4.4 trocadas (`mapfile -d`, `@Q`, `EPOCHSECONDS`, subscrito negativo); terminal com fifo e `stty sane`; troca de inode por create+mv; `qa_instalador_linha_b22` simula a arvore da linha principal |

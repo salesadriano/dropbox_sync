@@ -47,7 +47,7 @@ Funcao identica duplicada (`filtros_test`, `sync_test`, `filtro_test`, `progress
 | qa_consulta_diagnostico_b1_test.sh | 45ebf4dc751a3d30ada66e4e92fab297e55e53d057846fe28b8dd90827154312 |
 | qa_cursor_b7b_test.sh | e762c6837d92258d6ffe9b0145b5c727f2c2daf458155e8d83307061b3436588 |
 | qa_debug_transferencias_b12_test.sh | 12ba9c02cc5909f3e54e8dbd540808c7f4dc7d6a4f2140604a15b0441ec50a14 |
-| qa_docs_aliases_p4_test.sh | 74c8dceff3c1557fc25e7b83f808651f0b8f0ee5ece0d03f4baa789c89cbae91 |
+| qa_docs_aliases_p4_test.sh | 7336a61b80f1fdf0411ddadc2598d99ea959cfb4caae3459c72ef31ea431800e |
 | qa_filtros_banda_b4_test.sh | cb09104cad84bb330a72448f7d092119f526329be732e3d46d984b867ed63dbd (ciclo 2; era 6759e6cc...) |
 | qa_freebsd_b13_test.sh | 06206b91b87f2107604b95f917ea03bd82b5a5d4bf046b202581611cd662adf3 |
 | qa_instalador_linha_b22_test.sh | 59486514e44cd4cc64778e6dab1311947cc09c27225a215ce73495fd1f2b4e98 |
@@ -93,6 +93,8 @@ Reexecutei sem pulo no CentOS os que o nome sugere protecao: `qa_filtros_banda_b
 
 ### sha256 do ciclo 2
 
-Unica suite `qa_*` pre-existente alterada no ciclo 2: `qa_filtros_banda_b4_test.sh` = `cb09104cad84bb330a72448f7d092119f526329be732e3d46d984b867ed63dbd` (diff verificado: so pulos removidos e protecao `${v[@]+...}`; nenhuma assert removida). Suite nova: `qa_exclusao_sem_localidade_b42_test.sh` = `649577d9dd49cda804016b18d931ff6ca55b5b44168da0360d7f631e9e816c3b`. As demais 19 suites alteradas mantem o sha256 da tabela acima (reconferido: identicos).
+Unica suite `qa_*` pre-existente alterada no ciclo 2: `qa_filtros_banda_b4_test.sh` = `cb09104cad84bb330a72448f7d092119f526329be732e3d46d984b867ed63dbd` (diff verificado: so pulos removidos e protecao `${v[@]+...}`; nenhuma assert removida). Suite nova: `qa_exclusao_sem_localidade_b42_test.sh` = `7654cd1a2c966e00aa6d51519962bf3195c2ce76df62b56db809ba4c91e0d033`. As demais 19 suites alteradas mantem o sha256 da tabela acima (reconferido: identicos).
 
 > Nota do Tech Lead (2026-11-02): `qa_exclusao_sem_localidade_b42_test.sh` recebeu do TL so a simulacao da ausencia (`DBX_SYNC_LOCALIDADE=xx_XX.UTF-8` em `_rodar`), para valer tambem no host com `C.UTF-8`; nenhum assert mudou. Verde no host e no CentOS 7. sha256 atualizado acima.
+
+> Nota do Tech Lead (2026-11-02, suite oficial): `qa_docs_aliases_p4_test.sh` caso `[C]` ajustado a `RF-54(f2)` e `qa_exclusao_sem_localidade_b42_test.sh` sem `$(printf %q)` (auditoria do `json_test`); sha256 atualizados acima, novo aceite pedido ao solicitante.

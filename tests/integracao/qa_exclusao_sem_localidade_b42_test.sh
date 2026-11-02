@@ -198,7 +198,8 @@ _qa_receber() { # <base> <opcoes...> — receber espelhando; remoto so tem k.txt
 _qa_intactos() { # <base> <relativos...>
   local base=$1 r
   shift
-  for r in "$@"; do assert_arquivo_existe "$base/local/$r" "preservado: $(printf '%q' "$r")"; done
+  local _q
+  for r in "$@"; do printf -v _q '%q' "$r"; assert_arquivo_existe "$base/local/$r" "preservado: $_q"; done
 }
 _qa_nomes() { printf '%s\n' $'lixo\xff.bin' $'caf\xc3\xa9.txt' $'\xc3\xa9a.txt' $'\xc3\x89a.txt' $'a\xe2\x82\xac.txt' $'\xf0\x9f\x98\x80.txt'; }
 

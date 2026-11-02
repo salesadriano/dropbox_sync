@@ -546,18 +546,36 @@ dbx_json_analisar() {
   # Caractere de controle cru e invalido dentro de cadeia JSON e, alem disso,
   # colidiria com o separador usado na marcacao — mesma classe de defeito
   # corrigida em `dbx_errors_redigir` (R-01).
-  sem_quebras=${texto//[$'\t\n\r']/}
-  if [[ $sem_quebras == *[[:cntrl:]]* ]]; then
-    _dbx_json_falhar controle 'caractere de controle cru na entrada'
-    return $?
-  fi
-
-  marcado=$texto
-  for delimitador in ${DBX_JSON_DELIMITADORES[@]+"${DBX_JSON_DELIMITADORES[@]}"}; do
-    marcado=${marcado//"$delimitador"/$separador$delimitador$separador}
+  #
+  # CUSTO LINEAR: `${s//padrao/troca}` do bash e QUADRATICO no tamanho da cadeia
+  # (medido no 4.2 e no 5.3: dobrar a cadeia quadruplica o tempo), e a analise
+  # fazia 13 dessas passadas sobre o documento inteiro. As mesmas trocas rodam
+  # agora em pedacos de 4096 caracteres: controle e delimitadores tem um
+  # caractere so, entao nenhum fica partido entre pedacos e o resultado e
+  # identico, byte a byte, ao da passada unica.
+  local -a _dbx_json_pedacos=()
+  local _dbx_json_tam=${#texto} _dbx_json_i
+  for ((_dbx_json_i = 0; _dbx_json_i < _dbx_json_tam; _dbx_json_i += 4096)); do
+    marcado=${texto:_dbx_json_i:4096}
+    sem_quebras=${marcado//[$'\t\n\r']/}
+    if [[ $sem_quebras == *[[:cntrl:]]* ]]; then
+      _dbx_json_falhar controle 'caractere de controle cru na entrada'
+      return $?
+    fi
+    for delimitador in ${DBX_JSON_DELIMITADORES[@]+"${DBX_JSON_DELIMITADORES[@]}"}; do
+      marcado=${marcado//"$delimitador"/$separador$delimitador$separador}
+    done
+    _dbx_json_pedacos+=("$marcado")
   done
+  # Junta FORA da linha do `read`: no bash 4.2 o `IFS=$'\x01'` temporario do
+  # `read` vale tambem para a expansao da substituicao de processo, e `\x01` e
+  # o marcador interno de citacao do bash (os pedacos saiam partidos).
+  printf -v marcado '%s' ${_dbx_json_pedacos[@]+"${_dbx_json_pedacos[@]}"}
+  _dbx_json_pedacos=()
+  sem_quebras=''
   _dbx_json_e=()
   IFS=$separador read -r -d '' -a _dbx_json_e < <(printf '%s' "$marcado") || true
+  marcado=''
   _dbx_json_total=${#_dbx_json_e[@]}
   _dbx_json_pos=0
 
