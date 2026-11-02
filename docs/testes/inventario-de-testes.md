@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
 Atualizado em: 2026-10-31, demanda `investigar-retomada-download` (`docs/prompts/2026-10-31_1900_investigar-retomada-download.md`), pelo Tech Lead (Fluxo P: linhas do `harness_test.sh`); antes, demanda `sync-em-blocos`, por QA Expert.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 114 arquivos, 2887 casos, 0 divergencias.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 115 arquivos, 2897 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -53,6 +53,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_freebsd_b13_test.sh` | `bin/dbx` (config, upload, download, sync, retomada) com os dubles BSD de `chmod`, `stat`, `find` e `sha256` a frente do `PATH` | `qa_freebsd` | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-166..172; RNF-39; TC-FBSD-*; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; protocolo-tdd Regra 6 |
 | `tests/integracao/qa_instalador_linha_b22_test.sh` | `install.sh` (`--canal` hostil, troca de linha, fonte invalida, bordas de `escolher_linha`) e `scripts/empacotar.sh` (`--latest=false`, `--target`) | `qa_instalador_linha` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`) | 17 | F-102; RF-201..RF-205; TC-B42-09..22; DIV-385; DIV-389; protocolo-tdd Regra 6; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md` |
 | `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh` | `sync --receber/--enviar --espelhar` com `--incluir`/`--excluir` e nomes com byte nao ASCII sem `C.UTF-8` (nada apagado) | `qa_exclusao_sem_localidade` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`, ciclo 2) | 6 | QA-B42-01; RF-54(f2); RF-80; DIV-391; protocolo-tdd Regra 6 |
+| `tests/integracao/qa_cdpath_test.sh` | `upload`/`download` de pasta, `verificar` e `sync` (enviar/receber, `--espelhar`, `--bloco`, `--paralelo`) com `CDPATH` hostil no ambiente | `qa_cdpath` | integracao | QA Expert (suite independente da demanda `ignorar-cdpath`) | 8 | defeito em producao 2026-11-02; protocolo-tdd Regras 6 e 8 |
 | `tests/integracao/qa_integridade_p1_test.sh` | `bin/dbx` (download de arquivo e de pasta, sync, upload) com `lib/transfer.sh`, `lib/hash.sh`, `lib/walk.sh`: integridade de dados no rec... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `integridade-de-dados-p1`) | 27 | RF-49, RF-54, RF-55, RF-56, RF-57, RNF-29, RNF-04 (emendado); log `docs/prompts/2026-10-18_1745_integridade-de-dados-p1.md` |
 | `tests/integracao/qa_leitura_exata_b14_test.sh` | `lib/atributos.sh` (`dbx_ler_exato`), calculo do `content_hash` em `lib/hash.sh` e upload em sessao de `bin/dbx` sob o duble `head` do Fr... | qa_leitura_exata (sem linha propria no mapa de modulos; ver observacoes) | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-173, TC-FBSD-25..27; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada de aceite](../../.github/agents/memoria/entradas/... |
 | `tests/integracao/qa_paralelo_download_b20_test.sh` | `bin/dbx download` de arquivo grande em faixas simultaneas (`commands/download.sh`, `lib/transfer.sh`, `lib/http.sh`) | `qa_paralelo_download` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 21 | F-100 etapa 2b; RF-180 a RF-184; RF-104(c)(d); RF-106(a); DIV-369 a DIV-371; DIV-373 a DIV-376; log `docs/prompts/2026-10-26_1900_paralel... |
@@ -74,7 +75,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/retomada_download_test.sh` | `bin/dbx download` retomado entre execucoes (`Range`), `--no-resume`, `diagnostico` e `unlink`; `commands/download.sh`, `lib/cmd.sh`, `li... | retomada_download | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 32 | F-03; RF-102, RF-104 a RF-108; TC-RMD-01..15, TC-RMO-01, 02, 04, 05, TC-RMC-01, 06, TC-RML-05..07, TC-RMS-06, TC-DBG-13..15; DIV-176 a DI... |
 | `tests/integracao/retomada_upload_test.sh` | `bin/dbx upload` retomado entre execucoes (`commands/upload.sh`, `lib/transfer.sh`, `lib/state.sh`, registro `retomada-*`) | retomada_upload | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 43 | F-03; RF-101..RF-109; DIV-171..DIV-190; TC-RMU-01..16; TC-RME-02, 12, 14; TC-RMO-01..03, 05..11; TC-RMC-01, 04, 05; TC-RMS-01..06; TC-DBG... |
 | `tests/integracao/sync_blocos_test.sh` | `bin/dbx sync` e `download` de pasta em ciclos por diretorio | `sync_blocos_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 23 | F-101; RF-187..RF-197; TC-BLC-nn |
-| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 89 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
+| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 90 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
 | `tests/integracao/testar_test.sh` | `bin/dbx testar` (alias `check`) e a sonda de disponibilidade (`commands/testar.sh`, `lib/disponibilidade.sh`) | `commands/testar.sh` | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 29 | RF-148; RF-149; RF-150; RF-154; TC-DSP-01..25; TC-DSP-55; TC-DSP-57; TC-DSP-58; DIV-326; log `docs/prompts/2026-10-23_0900_teste-de-dispo... |
 | `tests/integracao/trava_test.sh` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help) com `lib/state.sh` e `lib/tmp.sh`: tr... | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 31 | RF-69, RF-70, RF-71, RNF-35; TC-TRV, TC-ESR, TC-DIA-11..14, TC-TMP-02, 05, 06; DIV-50, DIV-51; F-12, F-31; log `docs/prompts/2026-10-19_1... |
 | `tests/integracao/upload_pasta_test.sh` | `bin/dbx` (`upload` de arquivo para destino que e pasta) com `commands/upload.sh`: grava em `<pasta>/<nome>` sem falhar com `path/conflic... | `commands/upload.sh` | integracao | Senior Developer (TDD da demanda `upload-arquivo-para-pasta`) | 13 | RF-174; log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
@@ -2790,6 +2791,8 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_sem_localidade_o_espelhar_nao_apaga_o_recem_enviado_fora_do_ascii | Sem a localidade o espelhar nao apaga o recem-enviado fora do ASCII (QA-B42-01) | RF-54 |
 | teste_sem_localidade_ramo_de_pasta_fora_do_ascii_so_no_destino_nao_e_apagado | Sem a localidade o ramo de pasta fora do ASCII so no destino nao e apagado (QA-B42-01) | RF-54 |
 | teste_aviso_de_localidade_e_so_do_sync | O aviso de localidade ausente e emitido apenas pelo sync | RF-54 |
+| teste_cdpath_do_ambiente_nao_suja_nem_desvia_a_enumeracao | Com `CDPATH=.`, `CDPATH=<outra arvore>` e `CDPATH=<outra>:.` no ambiente, o `sync --enviar` conclui, a lista de diretorios fica intacta e so a arvore da origem e lida (nunca a pasta homonima do CDPATH) | defeito em producao 2026-11-02 |
+| teste_bash_env_e_opcoes_exportadas_nao_mudam_o_plano | `BASH_ENV`, `ENV`, `SHELLOPTS` e `BASHOPTS` exportados nao mudam o plano do `sync` (recomeco unico em ambiente limpo) | defeito 2026-11-02 |
 
 
 ## `tests/integracao/testar_test.sh`
@@ -4740,3 +4743,26 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_qa_b42_receber_ramo_de_pasta_nao_ascii_preserva | ramos de pasta com nome nao ASCII preservados com `--incluir '*'` e `'[!a]*/'` | RF-80 |
 | teste_qa_b42_receber_sem_filtro_preserva | sem filtro, nomes nao ASCII so locais nao sao apagados | RF-54(f2) |
 | teste_qa_b42_enviar_espelhar_remoto_nao_ascii_nao_e_apagado | `--enviar --espelhar` nao emite delete de caminho nao ASCII | RF-54(f2); DIV-391 |
+
+## `tests/integracao/qa_cdpath_test.sh`
+
+- **Alvo:** comandos que descem por `cd` relativo (`upload` e `download` de pasta, `verificar`, `sync` nos dois sentidos com `--espelhar --confirmar`, em blocos e em paralelo) com `CDPATH` hostil (`.`, outra arvore com pastas homonimas, e combinacoes com `:` vazio)
+- **Modulo:** `qa_cdpath` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `ignorar-cdpath`)
+- **Regras de origem:** defeito em producao de 2026-11-02; protocolo-tdd Regras 6 e 8; parecer `docs/reviews/2026-11-02-1115-validacao-qa-ignorar-cdpath.md`
+- **Aceite do solicitante:** pendente; sha256 `57be5d41d9c76c6a76561d6b75d08b2e28deb8abab75814d2a3419424fb1326d`
+- **Dados e precondicoes:** arvores local, destino e isca (homonimas) e listagem remota falsas criadas por caso; desfecho com CDPATH hostil comparado ao da linha de base sem CDPATH; `QA_EXTRA` e `QA_ESTADO` opcionais para investigacao
+- **Comando:** `bash tests/run.sh tests/integracao/qa_cdpath_test.sh`
+- **Observacoes:** com `bin/dbx` de HEAD (sem o `unset CDPATH`) o caso `sync_enviar_em_blocos_e_paralelo` fica vermelho; o `download_de_pasta` passa nos dois (nao desce por `cd` relativo).
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_download_de_pasta | `download` de pasta igual a linha de base e isca intacta | defeito 2026-11-02 |
+| teste_sync_enviar_em_blocos_e_paralelo | `sync --enviar --espelhar` com `--bloco 1` e `--paralelo 2` | defeito 2026-11-02 |
+| teste_sync_enviar_espelhar | `sync --enviar --espelhar --confirmar` | defeito 2026-11-02 |
+| teste_sync_receber_espelhar_apaga_so_o_excedente_da_destino | exclusao local so do excedente do destino, origem e isca intactas | defeito 2026-11-02; RF-80 |
+| teste_sync_receber_espelhar_em_blocos_e_paralelo | `sync --receber --espelhar` com `--bloco 1` e `--paralelo 2` | defeito 2026-11-02 |
+| teste_upload_de_pasta | `upload` de pasta nunca le a isca | defeito 2026-11-02 |
+| teste_upload_de_pasta_paralelo | `upload --paralelo 2` de pasta | defeito 2026-11-02 |
+| teste_verificar | `verificar` nos dois sentidos | defeito 2026-11-02 |
