@@ -270,7 +270,7 @@ dbx_cmd_download_executar() {
       return $?
     }
     dbx_progress_mensagem "[download] o caminho remoto e uma pasta: recebendo conteudo recursivamente..."
-    # shellcheck source=commands/sync.sh
+    # shellcheck source=/dev/null  # o mesmo commands/sync.sh ja seguido acima; seguir de novo dobra a analise e passa do teto do lint
     . "${BASH_SOURCE[0]%/*}/sync.sh"
     # DIV-205: download de pasta nunca usa o cursor de listagem.
     # shellcheck disable=SC2034  # lida por commands/sync, no escopo dinamico

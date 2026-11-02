@@ -6,7 +6,7 @@
 # Sem argumentos, analisa lib/*.sh commands/*.sh bin/* scripts/*.sh. Com `external-sources=true` no
 # `.shellcheckrc`, cada arquivo reanalisa a cadeia de `source`: `bin/dbx` sozinho chega a 4,5 GB, e um
 # processo unico sobre todos os arquivos passou de 18 GB e travou a maquina (OOM em 2026-10-21).
-# LINT_PARALELO (padrao 1, porque `commands/download.sh` sozinho chega a 9 GB) limita os processos simultaneos;
+# LINT_PARALELO (padrao 1, porque `commands/download.sh` sozinho chega perto do teto) limita os processos simultaneos;
 # LINT_MEMORIA_MB (padrao 12288) e o teto de cada um, por `systemd-run --user` ou, sem ele, `ulimit -v`.
 # Saida: 0 sem achados; 1 com achado ou processo morto pelo teto; 2 sem shellcheck ou variavel invalida.
 
