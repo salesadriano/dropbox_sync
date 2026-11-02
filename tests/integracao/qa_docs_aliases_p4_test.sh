@@ -541,7 +541,9 @@ teste_qa_p4_localidade_valor_fora_do_alfabeto_cai_no_padrao_e_c_puro_avisa() {
   _qa_rodar DBX_SYNC_LOCALIDADE=C -- --json --dry-run sync --push --source "$BASE/local" --dest /r --mirror --yes
   assert_igual 0 "$ESTADO" "[C]: o aviso nao recusa; diagnostico: $ERRO"
   assert_igual 1 "$(_harness_contar 'comparacao sem caixa' "$BASE/err")" '[C]: um aviso'
-  assert_contem "apagar=$nome_remoto" "$SAIDA" '[C]: so ASCII, o par vira dois caminhos'
+  # RF-54(f2) (DIV-391, QA-B42-01): so ASCII, o par vira dois caminhos, mas o
+  # nao ASCII nao entra no plano de exclusao sem a localidade.
+  assert_nao_contem "apagar=$nome_remoto" "$SAIDA" '[C]: so ASCII; o nao ASCII nao e apagado (RF-54(f2))'
 }
 
 teste_qa_p4_localidade_ausente_aviso_unico_fora_do_stdout_sem_segredo() {

@@ -919,4 +919,78 @@ teste_qa_b3_05_chave_duplicada_e_contada_sem_mudar_a_analise() {
   assert_igual 0 "$DBX_JSON_DUPLICADAS" 'a analise seguinte zera o canal'
 }
 
+# QA-REL230-03 — o tokenizador em pedacos de 4096 caracteres e identico ao da
+# passada unica: delimitador, escape e multibyte exatamente nas posicoes 4095,
+# 4096 e 4097 do documento (indice 0), e controle cru depois da 4096 recusado.
+# O esperado vem de literais montados a mao, nunca da propria analise.
+_qa230_pad() { local r; printf -v r '%*s' "$1" ''; _QA230=${r// /x}; }
+
+teste_qa_rel230_03_fronteira_4096_escape_e_multibyte_no_valor() {
+  local pos pre carga doc esperado cargas c
+  # carga | valor esperado depois da decodificacao
+  cargas=('\n|'$'\n' '\u00e9|é' 'é|é' '\"|"' '\\|'"\\" '{[,:]}|{[,:]}')
+  for pos in 4094 4095 4096 4097 4098; do
+    for c in "${cargas[@]}"; do
+      carga=${c%%|*}
+      esperado=${c#*|}
+      # prefixo `{"a":"` tem 6 caracteres: a carga comeca no indice $pos
+      _qa230_pad $((pos - 6)); pre=$_QA230
+      doc="{\"a\":\"${pre}${carga}yy\",\"b\":\"fim\"}"
+      dbx_json_analisar "$doc" || { assert_igual ok falha "analise em $pos: $carga"; continue; }
+      dbx_json_valor a >/dev/null
+      assert_igual "${pre}${esperado}yy" "$DBX_JSON_RESULTADO" "valor a, carga '$carga' em $pos"
+      dbx_json_valor b >/dev/null
+      assert_igual fim "$DBX_JSON_RESULTADO" "valor b depois da fronteira, carga '$carga' em $pos"
+    done
+  done
+}
+
+teste_qa_rel230_03_fronteira_4096_delimitador_estrutural() {
+  local pos pad doc
+  # espacos entre fichas: `[`, `,`, `]`, `{`, `:` caem na fronteira
+  for pos in 4094 4095 4096 4097 4098; do
+    printf -v pad '%*s' $((pos - 6)) ''
+    doc="{\"a\":${pad}[1,2,3],\"o\":{\"k\":true},\"s\":\"é\"}"
+    dbx_json_analisar "$doc" || { assert_igual ok falha "analise estrutural em $pos"; continue; }
+    dbx_json_valor a 1 >/dev/null
+    assert_igual 2 "$DBX_JSON_RESULTADO" "a[1] com '[' em $pos"
+    dbx_json_valor o k >/dev/null
+    assert_igual true "$DBX_JSON_RESULTADO" "o.k depois da fronteira ($pos)"
+    dbx_json_valor s >/dev/null
+    assert_igual é "$DBX_JSON_RESULTADO" "multibyte final ($pos)"
+    # a chave logo apos a fronteira
+    printf -v pad '%*s' $((pos - 6)) ''
+    doc="{\"a\":1,${pad}\"é\":\"v\"}"
+    dbx_json_analisar "$doc" && { dbx_json_valor é >/dev/null; assert_igual v "$DBX_JSON_RESULTADO" "chave multibyte em $pos"; }
+  done
+}
+
+teste_qa_rel230_03_documento_longo_com_muitos_pedacos() {
+  local pre doc
+  _qa230_pad 20000; pre=$_QA230
+  doc="{\"a\":\"${pre}é\\n${pre}\",\"l\":[\"${pre}\",\"z\"]}"
+  dbx_json_analisar "$doc"
+  dbx_json_valor a >/dev/null
+  assert_igual "${pre}é"$'\n'"${pre}" "$DBX_JSON_RESULTADO" 'valor longo atravessando 5 pedacos'
+  dbx_json_valor l 1 >/dev/null
+  assert_igual z "$DBX_JSON_RESULTADO" 'elemento depois de 20000 caracteres'
+}
+
+teste_qa_rel230_03_controle_cru_depois_da_4096_continua_recusado() {
+  local pos pre doc ctl
+  for pos in 4095 4096 4097 4100 9000 12288; do
+    for ctl in $'\001' $'\037' $'\177'; do
+      _qa230_pad $((pos - 6)); pre=$_QA230
+      doc="{\"a\":\"${pre}${ctl}y\"}"
+      assert_status "$DBX_JSON_ERRO_REMOTO" dbx_json_analisar "$doc"
+      dbx_json_analisar "$doc" >/dev/null 2>&1
+      assert_igual controle "$DBX_JSON_MOTIVO" "controle cru em $pos"
+    done
+  done
+  # tab e quebra crus continuam tolerados na fronteira, como antes
+  _qa230_pad 4090; pre=$_QA230
+  doc="{\"a\":1,"$'\n\t'"\"b\":\"${pre}\"}"
+  assert_status 0 dbx_json_analisar "$doc"
+}
+
 harness_executar "$@"

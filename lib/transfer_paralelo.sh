@@ -166,6 +166,17 @@ _dbx_transfer_par_encerrar() {
     [[ -n $pid ]] || continue
     kill -KILL -- "-$pid" 2>/dev/null || kill -KILL -- "$pid" 2>/dev/null || :
   done
+  # O membro do grupo (curl, sleep) que recebeu o SIGKILL ainda aparece por um
+  # instante; sair antes dele deixava processo vivo apos o termino do `dbx`
+  # (qa_paralelo_upload_b19 caso 5, sob carga). Espera o grupo sumir, ate 1 s.
+  for ((k = 0; k < 20; k++)); do
+    vivo='nao'
+    for pid in ${_DBX_TRANSFER_PAR_PIDS[@]+"${_DBX_TRANSFER_PAR_PIDS[@]}"}; do
+      [[ -n $pid ]] && kill -0 -- "-$pid" 2>/dev/null && vivo='sim'
+    done
+    [[ $vivo == 'sim' ]] || break
+    sleep 0.05
+  done
   _DBX_TRANSFER_PAR_PIDS=()
 }
 

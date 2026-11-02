@@ -140,14 +140,23 @@ teste_flt10_sem_caixa_unicode_sob_lc_all_c_sem_vazar_a_localidade() {
     printf "%s|%s|%s" "$r" "$LC_ALL" "${#v}"
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
   assert_igual 'fora|C|2' "$obtido" 'E* casa ea.txt; LC_ALL do processo intacto; contagem em bytes intacta'
-  # Prova de discriminacao: sem a fixacao (localidade `C` na comparacao), o
-  # mesmo par deixa de casar — e a fixacao que faz o caso passar.
-  obtido=$(LC_ALL=C DBX_SYNC_LOCALIDADE=C bash -c '
+  # Prova de discriminacao pelo --incluir: com a fixacao, `É*` inclui `éa.txt`;
+  # sem ela (localidade `C` na comparacao) nao ha dobra fora do ASCII e o
+  # padrao nao ASCII nao inclui (falha fechada, QA-B42-01). No --excluir os dois
+  # casos dao `fora` (sem a fixacao o padrao protege a mais), por isso a prova
+  # passou a usar a inclusao.
+  obtido=$(LC_ALL=C bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/filtro.sh"
-    dbx_filtro_adicionar excluir --excluir $'"'"'\xc3\x89*'"'"'
+    dbx_filtro_adicionar incluir --incluir $'"'"'\xc3\x89*'"'"'
     if dbx_filtro_classificar $'"'"'\xc3\xa9a.txt'"'"' nao; then printf dentro; else printf fora; fi
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
-  assert_igual dentro "$obtido" 'sem a fixacao a caixa acentuada nao dobra'
+  assert_igual dentro "$obtido" 'com a fixacao a caixa acentuada dobra'
+  obtido=$(LC_ALL=C DBX_SYNC_LOCALIDADE=C bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/filtro.sh"
+    dbx_filtro_adicionar incluir --incluir $'"'"'\xc3\x89*'"'"'
+    if dbx_filtro_classificar $'"'"'\xc3\xa9a.txt'"'"' nao; then printf dentro; else printf fora; fi
+  ' _ "$DBX_HARNESS_RAIZ" 2>&1)
+  assert_igual fora "$obtido" 'sem a fixacao a caixa acentuada nao dobra'
 }
 
 teste_flt11_localidade_ausente_vale_so_o_ascii_e_interrogacao_e_um_byte() {
@@ -165,7 +174,33 @@ teste_flt11_localidade_ausente_vale_so_o_ascii_e_interrogacao_e_um_byte() {
     dbx_filtro_classificar $'"'"'a\xc3\xa9.txt'"'"' nao || r+="dois-bytes"
     printf "%s" "$r"
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
-  assert_igual 'ascii acento-distinto um-byte dois-bytes' "$obtido" 'sem a localidade: so ASCII, ? casa um byte'
+  # QA-B42-01 (linha legada): sem a localidade, nome com byte >= 0x80 vai para
+  # o modo de bytes; ali `?` e padrao com letra nao ASCII sao imprecisos e, no
+  # --excluir, CASAM (protegem a mais). Antes, `É*` deixava `éa` no escopo e
+  # `a?.txt` deixava `aé.txt` no escopo: com o --espelhar, apagaveis.
+  assert_igual 'ascii dois-bytes' "$obtido" 'sem a localidade: so ASCII dobra; nome nao ASCII so sai do escopo a mais'
+}
+
+# QA-B42-01: sem a localidade UTF-8, nenhuma combinacao de padrao com nome nao
+# ASCII poe no escopo o que deveria ficar fora, nem tira do --excluir o que ele
+# nomeia em outra caixa. Roda nos dois ambientes (ausencia simulada).
+teste_qa_b42_01_sem_localidade_padrao_e_nome_nao_ascii_falham_fechado() {
+  local obtido
+  obtido=$(LC_ALL=C DBX_SYNC_LOCALIDADE=xx_YY.inexistente bash -c '
+    . "$1/lib/errors.sh"; . "$1/lib/filtro.sh"
+    r=""
+    dbx_filtro_adicionar excluir --excluir $'"'"'a\xc3\xa7\xc3\xa3o/'"'"'
+    dbx_filtro_classificar $'"'"'A\xc3\x87\xc3\x83O/f'"'"' nao || r+="excluir-outra-caixa "
+    dbx_filtro_limpar; dbx_filtro_adicionar incluir --incluir $'"'"'a\xc3\xa7\xc3\xa3o*'"'"'
+    dbx_filtro_classificar $'"'"'a\xc3\xa7\xc3\xa3o.txt'"'"' nao || r+="incluir-nao-ascii-fora "
+    dbx_filtro_limpar; dbx_filtro_adicionar incluir --incluir "[!a]*"
+    dbx_filtro_classificar $'"'"'x\xff'"'"' nao || r+="negado-fora "
+    dbx_filtro_limpar; dbx_filtro_adicionar incluir --incluir "*.txt"
+    dbx_filtro_classificar "a.txt" nao && r+="ascii-segue"
+    printf "%s" "$r"
+  ' _ "$DBX_HARNESS_RAIZ" 2>/dev/null)
+  assert_igual 'excluir-outra-caixa incluir-nao-ascii-fora negado-fora ascii-segue' "$obtido" \
+    'sem localidade: excluir protege a mais, incluir nao ASCII fica fora, ASCII inalterado'
 }
 
 teste_flt12_nfc_e_nfd_sao_distintos() {

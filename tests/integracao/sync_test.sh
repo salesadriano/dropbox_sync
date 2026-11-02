@@ -1624,6 +1624,50 @@ teste_comparacao_sem_caixa_nao_muda_medida_em_bytes() {
   assert_igual '7|7|7|igual' "$saida" 'medidas em bytes antes e depois da comparacao, e json intacto'
 }
 
+# CDPATH exportado no ambiente do operador (producao, 2026-11-02): `cd` de nome
+# relativo passava pelo CDPATH. Com `CDPATH=.` o `cd` imprimia o caminho absoluto
+# DENTRO da lista de diretorios (erro aritmetico em commands/sync.sh); com o
+# CDPATH apontando outra arvore, o `cd sub` entrava na pasta homonima de la e a
+# enumeracao lia a arvore errada (com --espelhar, exclusao do que existe na
+# origem). O `dbx` ignora o CDPATH do ambiente.
+teste_cdpath_do_ambiente_nao_suja_nem_desvia_a_enumeracao() {
+  local base valor
+  base=$(_cenario)
+  mkdir -p "$base/local/sub" "$base/isca/sub"
+  printf 'a' >"$base/local/sub/a.txt"
+  printf 'c' >"$base/isca/sub/c.txt"
+  for valor in . "$base/isca" "$base/isca:."; do
+    _rodar_com_ambiente "$base" "CDPATH=$valor" --json --dry-run sync --enviar \
+      --origem "$base/local" --destino /r
+    assert_igual 0 "$DBX_ESTADO" "CDPATH=[$valor]: conclui; diagnostico: $DBX_ERRO"
+    assert_nao_contem 'arithmetic' "$DBX_ERRO" "CDPATH=[$valor]: lista de diretorios intacta"
+    assert_contem 'transferir=sub/a.txt' "$DBX_SAIDA" "CDPATH=[$valor]: le a arvore da origem"
+    assert_nao_contem 'c.txt' "$DBX_SAIDA" "CDPATH=[$valor]: nunca a pasta homonima do CDPATH"
+  done
+}
+
+# BASH_ENV/ENV e SHELLOPTS/BASHOPTS exportados mudam o proprio bash antes da
+# primeira linha do `dbx` (QA da demanda ignorar-cdpath): com `set -f` o glob da
+# travessia nao expande e a enumeracao sai errada. O `dbx` recomeca uma vez sem
+# essas variaveis; o plano tem de ser IDENTICO ao do ambiente limpo.
+teste_bash_env_e_opcoes_exportadas_nao_mudam_o_plano() {
+  local base base_plano valor
+  base=$(_cenario)
+  mkdir -p "$base/local/sub"
+  printf 'a' >"$base/local/sub/a.txt"
+  printf 'b' >"$base/local/b.txt"
+  printf 'set -f\nshopt -s nullglob\nset -o noclobber\n' >"$base/bash_env"
+  _rodar_com_ambiente "$base" '' --json --dry-run sync --enviar --origem "$base/local" --destino /r
+  assert_igual 0 "$DBX_ESTADO" "ambiente limpo; diagnostico: $DBX_ERRO"
+  base_plano=$DBX_SAIDA
+  assert_contem 'transferir=sub/a.txt' "$base_plano" 'linha de base le a arvore'
+  for valor in "BASH_ENV=$base/bash_env" "ENV=$base/bash_env" SHELLOPTS=noglob BASHOPTS=nullglob; do
+    _rodar_com_ambiente "$base" "$valor" --json --dry-run sync --enviar --origem "$base/local" --destino /r
+    assert_igual 0 "$DBX_ESTADO" "[$valor]: conclui; diagnostico: $DBX_ERRO"
+    assert_igual "$base_plano" "$DBX_SAIDA" "[$valor]: plano identico ao do ambiente limpo"
+  done
+}
+
 teste_localidade_ausente_avisa_uma_vez_e_compara_so_no_ascii() {
   # TC-CX-05 (RF-54(f)): a ausencia e simulada pelo nome da localidade, sem
   # depender da maquina do teste.
@@ -1642,7 +1686,69 @@ teste_localidade_ausente_avisa_uma_vez_e_compara_so_no_ascii() {
   assert_contem 'so no ASCII' "$DBX_ERRO" 'e o efeito'
   assert_nao_contem 'comparacao sem caixa' "$DBX_SAIDA" 'a saida padrao nao recebe o aviso'
   assert_contem "transferir=$local_nome" "$DBX_SAIDA" 'fora do ASCII as chaves sao distintas'
-  assert_contem "apagar=$remoto_nome" "$DBX_SAIDA" 'e o remoto vira candidato a exclusao'
+  assert_nao_contem "apagar=$remoto_nome" "$DBX_SAIDA" 'QA-B42-01: o remoto nao e apagado sem a localidade'
+}
+
+teste_sem_localidade_o_espelhar_nao_apaga_o_recem_enviado_fora_do_ascii() {
+  # QA-B42-01: sem a localidade, `Éa.txt` e `éa.txt` sao chaves distintas aqui e o
+  # mesmo arquivo na Dropbox; apagar o "extra" apagaria o que acabou de ser enviado.
+  local base local_nome="${E_AGUDO_MAIUSCULO}a.txt" remoto_nome="${E_AGUDO_MINUSCULO}a.txt"
+  base=$(_cenario)
+  printf 'novo' >"$base/local/$local_nome"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota "/r/$remoto_nome" "$RESUMO_ZERADO" 4)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C DBX_SYNC_LOCALIDADE=xx_XX.UTF-8' --json sync --enviar \
+    --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "o aviso nao muda o codigo; diagnostico: $DBX_ERRO"
+  assert_contem "transferir=$local_nome" "$DBX_SAIDA" 'a transferencia nao muda'
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'a contagem reflete o que realmente sai'
+  assert_igual 0 "$(_exclusoes "$base")" 'nenhuma exclusao de caminho fora do ASCII'
+  assert_igual 1 "$(_harness_contar 'mantido(s) sem apagar' "$base/err")" 'um aviso so'
+  assert_contem 'ausente' "$DBX_ERRO" 'o aviso nomeia o motivo'
+}
+
+teste_sem_localidade_ramo_de_pasta_fora_do_ascii_so_no_destino_nao_e_apagado() {
+  local base
+  base=$(_cenario)
+  printf 'novo' >"$base/local/${E_AGUDO_MAIUSCULO}fotos.txt"
+  printf '{"entries":[%s,%s],"has_more":false}' \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}fotos/um.txt" "$RESUMO_ZERADO" 4)" \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}fotos/sub/dois.txt" "$RESUMO_ZERADO" 4)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C DBX_SYNC_LOCALIDADE=xx_XX.UTF-8' --json sync --enviar \
+    --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_exclusoes "$base")" 'o ramo fora do ASCII nao e apagado'
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'a contagem reflete o que realmente sai'
+  assert_igual 1 "$(_harness_contar 'mantido(s) sem apagar' "$base/err")" 'um aviso so'
+  assert_contem '2 ' "$DBX_ERRO" 'o aviso diz quantos foram mantidos'
+}
+
+teste_sem_localidade_caminho_ascii_so_no_destino_continua_sendo_apagado() {
+  local base
+  base=$(_cenario)
+  printf 'novo' >"$base/local/novo.txt"
+  printf '{"entries":[%s,%s],"has_more":false}' \
+    "$(_entrada_remota '/r/orfao.txt' 'ff' 1)" \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}x.txt" 'ff' 1)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C DBX_SYNC_LOCALIDADE=xx_XX.UTF-8' --json sync --enviar \
+    --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_exclusoes "$base")" 'so o ASCII sai; o --espelhar continua ligado'
+  assert_contem 'a_apagar=1' "$DBX_SAIDA" 'contagem do que sai'
+  assert_contem '1 caminho' "$DBX_ERRO" 'o aviso conta o mantido'
+}
+
+teste_com_localidade_o_espelhar_fora_do_ascii_nao_muda() {
+  local base
+  base=$(_cenario)
+  printf 'novo' >"$base/local/novo.txt"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}x.txt" 'ff' 1)" >"$base/listagem"
+  _rodar_com_ambiente "$base" '' --json sync --enviar --origem "$base/local" --destino /r \
+    --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_exclusoes "$base")" 'com a localidade o extra fora do ASCII e apagado'
+  assert_nao_contem 'sem apagar' "$DBX_ERRO" 'sem aviso'
 }
 
 teste_localidade_ausente_nao_muda_saida_nem_codigo_no_ascii() {

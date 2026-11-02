@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
 Atualizado em: 2026-10-31, demanda `investigar-retomada-download` (`docs/prompts/2026-10-31_1900_investigar-retomada-download.md`), pelo Tech Lead (Fluxo P: linhas do `harness_test.sh`); antes, demanda `sync-em-blocos`, por QA Expert.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 111 arquivos, 2833 casos, 0 divergencias.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 115 arquivos, 2897 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -51,6 +51,9 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_download_curl_real_b16_test.sh` | `dbx_http_conteudo_receber` de `lib/http.sh` com destino `fd:<n>` e `-`, usando curl real contra servidor HTTP local real | qa_download_curl_real | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 7 | RF-171; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada de aceite](../../.github/agents/memoria/entradas/2026-10-24-1153-... |
 | `tests/integracao/qa_filtros_banda_b4_test.sh` | `bin/dbx` com filtros de caminho, data e tamanho (`--incluir`, `--excluir`, `--espelhar`) e limite de banda, no sync nos dois sentidos, u... | qa_filtros_banda | integracao | QA Expert (suite independente da demanda `backlog-fase-4-filtros-e-banda`) | 21 | F-13; F-17; RF-79..RF-82; RF-80(d); DIV-79..DIV-102; DIV-99; DIV-103; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e-banda.md` |
 | `tests/integracao/qa_freebsd_b13_test.sh` | `bin/dbx` (config, upload, download, sync, retomada) com os dubles BSD de `chmod`, `stat`, `find` e `sha256` a frente do `PATH` | `qa_freebsd` | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-166..172; RNF-39; TC-FBSD-*; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; protocolo-tdd Regra 6 |
+| `tests/integracao/qa_instalador_linha_b22_test.sh` | `install.sh` (`--canal` hostil, troca de linha, fonte invalida, bordas de `escolher_linha`) e `scripts/empacotar.sh` (`--latest=false`, `--target`) | `qa_instalador_linha` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`) | 17 | F-102; RF-201..RF-205; TC-B42-09..22; DIV-385; DIV-389; protocolo-tdd Regra 6; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md` |
+| `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh` | `sync --receber/--enviar --espelhar` com `--incluir`/`--excluir` e nomes com byte nao ASCII sem `C.UTF-8` (nada apagado) | `qa_exclusao_sem_localidade` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`, ciclo 2) | 6 | QA-B42-01; RF-54(f2); RF-80; DIV-391; protocolo-tdd Regra 6 |
+| `tests/integracao/qa_cdpath_test.sh` | `upload`/`download` de pasta, `verificar` e `sync` (enviar/receber, `--espelhar`, `--bloco`, `--paralelo`) com `CDPATH` hostil no ambiente | `qa_cdpath` | integracao | QA Expert (suite independente da demanda `ignorar-cdpath`) | 8 | defeito em producao 2026-11-02; protocolo-tdd Regras 6 e 8 |
 | `tests/integracao/qa_integridade_p1_test.sh` | `bin/dbx` (download de arquivo e de pasta, sync, upload) com `lib/transfer.sh`, `lib/hash.sh`, `lib/walk.sh`: integridade de dados no rec... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `integridade-de-dados-p1`) | 27 | RF-49, RF-54, RF-55, RF-56, RF-57, RNF-29, RNF-04 (emendado); log `docs/prompts/2026-10-18_1745_integridade-de-dados-p1.md` |
 | `tests/integracao/qa_leitura_exata_b14_test.sh` | `lib/atributos.sh` (`dbx_ler_exato`), calculo do `content_hash` em `lib/hash.sh` e upload em sessao de `bin/dbx` sob o duble `head` do Fr... | qa_leitura_exata (sem linha propria no mapa de modulos; ver observacoes) | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-173, TC-FBSD-25..27; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada de aceite](../../.github/agents/memoria/entradas/... |
 | `tests/integracao/qa_paralelo_download_b20_test.sh` | `bin/dbx download` de arquivo grande em faixas simultaneas (`commands/download.sh`, `lib/transfer.sh`, `lib/http.sh`) | `qa_paralelo_download` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 21 | F-100 etapa 2b; RF-180 a RF-184; RF-104(c)(d); RF-106(a); DIV-369 a DIV-371; DIV-373 a DIV-376; log `docs/prompts/2026-10-26_1900_paralel... |
@@ -72,7 +75,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/retomada_download_test.sh` | `bin/dbx download` retomado entre execucoes (`Range`), `--no-resume`, `diagnostico` e `unlink`; `commands/download.sh`, `lib/cmd.sh`, `li... | retomada_download | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 32 | F-03; RF-102, RF-104 a RF-108; TC-RMD-01..15, TC-RMO-01, 02, 04, 05, TC-RMC-01, 06, TC-RML-05..07, TC-RMS-06, TC-DBG-13..15; DIV-176 a DI... |
 | `tests/integracao/retomada_upload_test.sh` | `bin/dbx upload` retomado entre execucoes (`commands/upload.sh`, `lib/transfer.sh`, `lib/state.sh`, registro `retomada-*`) | retomada_upload | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 43 | F-03; RF-101..RF-109; DIV-171..DIV-190; TC-RMU-01..16; TC-RME-02, 12, 14; TC-RMO-01..03, 05..11; TC-RMC-01, 04, 05; TC-RMS-01..06; TC-DBG... |
 | `tests/integracao/sync_blocos_test.sh` | `bin/dbx sync` e `download` de pasta em ciclos por diretorio | `sync_blocos_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 23 | F-101; RF-187..RF-197; TC-BLC-nn |
-| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 85 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
+| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 90 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
 | `tests/integracao/testar_test.sh` | `bin/dbx testar` (alias `check`) e a sonda de disponibilidade (`commands/testar.sh`, `lib/disponibilidade.sh`) | `commands/testar.sh` | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 29 | RF-148; RF-149; RF-150; RF-154; TC-DSP-01..25; TC-DSP-55; TC-DSP-57; TC-DSP-58; DIV-326; log `docs/prompts/2026-10-23_0900_teste-de-dispo... |
 | `tests/integracao/trava_test.sh` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help) com `lib/state.sh` e `lib/tmp.sh`: tr... | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 31 | RF-69, RF-70, RF-71, RNF-35; TC-TRV, TC-ESR, TC-DIA-11..14, TC-TMP-02, 05, 06; DIV-50, DIV-51; F-12, F-31; log `docs/prompts/2026-10-19_1... |
 | `tests/integracao/upload_pasta_test.sh` | `bin/dbx` (`upload` de arquivo para destino que e pasta) com `commands/upload.sh`: grava em `<pasta>/<nome>` sem falhar com `path/conflic... | `commands/upload.sh` | integracao | Senior Developer (TDD da demanda `upload-arquivo-para-pasta`) | 13 | RF-174; log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
@@ -90,14 +93,15 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/descritor_portavel_test.sh` | `lib/atributos.sh` (`dbx_atributo_fd`) e os chamadores em `lib/state.sh`, `lib/transfer.sh`, `lib/hash.sh`: conferencia de arquivo aberto... | `lib/atributos.sh` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 11 | RF-171(a); TC-FBSD-20; DIV-352; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/disponibilidade_test.sh` | `lib/disponibilidade.sh` e `dbx_http_sondar` em `lib/http.sh` (sonda de disponibilidade, reserva compartilhada entre processos, classific... | disponibilidade_test | unitario | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 19 | RF-149, RF-150, RF-152(a); TC-DSP-13..21, 22..25, 27; DIV-331; log `docs/prompts/2026-10-23_0900_teste-de-disponibilidade.md` |
 | `tests/unit/errors_test.sh` | `lib/errors.sh` (taxonomia de erro, codigos de saida, politica de retentativa, redacao de segredos, idempotencia) | `errors` | unitario | Senior Developer (TDD; commit `a03d2c0` "first commit", sem log de prompt) | 82 | RF-29; RF-35 (contrato congelado dos codigos); RNF-08; DIV-58 (tags da recuperacao); `docs/testes/mapa-modulos.md` (Regra 1: `errors` e c... |
-| `tests/unit/filtro_test.sh` | `lib/filtro.sh`: casamento de padroes estilo gitignore sem diferenca de caixa, validacao de padroes, filtros de data e de tamanho | `filtro_test` | unitario | Senior Developer (TDD da demanda `backlog-fase-4-filtros-e-banda`) | 34 | RF-79; RF-80(a); RF-81; TC-FLT; TC-FES-01; TC-FES-03; TC-FDT; DIV-94; DIV-103; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e... |
+| `tests/unit/filtro_test.sh` | `lib/filtro.sh`: casamento de padroes estilo gitignore sem diferenca de caixa, validacao de padroes, filtros de data e de tamanho | `filtro_test` | unitario | Senior Developer (TDD da demanda `backlog-fase-4-filtros-e-banda`) | 35 | RF-79; RF-80(a); RF-81; TC-FLT; TC-FES-01; TC-FES-03; TC-FDT; DIV-94; DIV-103; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e... |
 | `tests/unit/harness_test.sh` | `tests/support/harness.sh` e `tests/run.sh`: assercoes e executor do arcabouco de teste | `harness_test` | unitario | Senior Developer (commit `64e6139`, `test: fixa todas as assercoes do arcabouco nos dois sentidos`; sem log de prompt) | 28 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste (commit `64e6139`); protocolo-tdd Regra 9 (parad... |
 | `tests/unit/hash_test.sh` | `lib/hash.sh`: `content_hash` da Dropbox (blocos de 4 MiB), API incremental, comparacao e identidade do arquivo | `hash` | unitario | Senior Developer (commit `a03d2c0`, `first commit`; sem log de prompt) | 44 | RF-33; RF-34; `docs/registros/vetores-content-hash.md` (vetores derivados de oraculo independente em Python); log de prompt: Nao aplicave... |
 | `tests/unit/hash_vetor_oficial_test.sh` | `lib/hash.sh` (`content_hash` da Dropbox) contra o arquivo de exemplo oficial da Dropbox | hash_vetor_oficial | unitario | Senior Developer (TDD da demanda `first commit`) | 2 | RF-34 (criterio de aceite: vetor oficial da Dropbox); Nao aplicavel como log de prompt: anterior a trilha do protocolo |
 | `tests/unit/http_fd_curl_real_test.sh` | `lib/http.sh`: destino `fd:n` e saida padrao do download, com o `curl` real do sistema (URL `file://`) | `http_fd_curl_real` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 4 | RF-171; RF-166..172; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/http_test.sh` | `lib/http.sh` (ponto unico de saida de rede: paginacao, retentativa, recuo, `Retry-After`, classificacao de erro, canal do segredo) | http | unitario | Senior Developer (TDD da demanda `feat(http): cliente com paginacao, retentativa e contexto isolado`) | 53 | RNF-14 (a suite padrao nao usa rede); Nao aplicavel como log de prompt: anterior a trilha do protocolo; comportamento inferido do codigo ... |
 | `tests/unit/identidade_gnustat_test.sh` | `lib/hash.sh` (identidade forte do arquivo lida com `stat -c`) sob o GNU coreutils | `identidade_gnustat` | unitario | Senior Developer (TDD da demanda `backlog-fase-0-pendencias`) | 7 | RSK-43; log `docs/prompts/2026-10-19_1023_backlog-fase-0-pendencias.md` |
-| `tests/unit/json_test.sh` | `lib/json.sh` (interpretador JSON proprio, sem `jq`) | json | unitario | Senior Developer (TDD da demanda `feat(json): interpretador JSON proprio sem dependencia externa`; sem log de prompt) | 62 | RNF-11; DIV-04 (citados no cabecalho do teste); sem log de prompt (commit de criacao `edfd8ad`, anterior a trilha do protocolo) |
+| `tests/unit/instalador_linha_test.sh` | `install.sh` (escolha da linha pelo bash do host, piso lido da fonte, troca de linha), `scripts/empacotar.sh` (`--target`, `--latest=false`) e `scripts/suite-bash42.sh` | `install.sh` | unitario | Senior Developer (TDD da demanda `suporte-bash-42`) | 19 | RF-198; RF-201 a RF-206; TC-B42-09..22; DIV-385; DIV-389; DIV-390; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md` |
+| `tests/unit/json_test.sh` | `lib/json.sh` (interpretador JSON proprio, sem `jq`) | json | unitario | Senior Developer (TDD da demanda `feat(json): interpretador JSON proprio sem dependencia externa`; sem log de prompt) | 66 | RNF-11; DIV-04; +4 casos `qa_rel230_03_*` do QA Expert (demanda `release-v230`: fronteira de 4096 do tokenizador) (citados no cabecalho do teste); sem log de prompt (commit de criacao `edfd8ad`, anterior a trilha do protocolo) |
 | `tests/unit/leitura_exata_portavel_test.sh` | `lib/atributos.sh` (`dbx_ler_exato`, sobre `dd`), `lib/hash.sh` e `lib/transfer.sh` na leitura em partes do mesmo descritor | `leitura_exata_portavel` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 7 | RF-173; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/output_test.sh` | `lib/output.sh`: modelo de resultado unico com duas apresentacoes (texto e estruturada), terminador nulo, restricao de linha e mascaramen... | `output` | unitario | Senior Developer (commit `74b3567`, `feat(output): apresentacao dupla com terminador selecionavel`; sem log de prompt) | 31 | RF-28; RF-35; RNF-19; RNF-22; log de prompt: Nao aplicavel: anterior a trilha do protocolo |
 | `tests/unit/path_test.sh` | `lib/path.sh`: normalizacao, confinamento a raiz (remoto sem distincao de caixa, local com distincao), recusa de travessia, vinculos simb... | `lib/path.sh` | unitario | Senior Developer (TDD; commit de criacao `a03d2c0`, "first commit") | 58 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
@@ -105,7 +109,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/perfis_config_test.sh` | `lib/config.sh`: perfis nomeados de credencial (nome, selecao, resolucao, permissoes, gravacao, remocao, identidade e listagem) | `perfis_config` | unitario | Senior Developer (TDD da demanda `backlog-fase-8-perfis`) | 38 | F-18; RF-120..122; RF-125; RF-126; RNF-37; TC-PFN; TC-PFC; TC-PFS; TC-PFG; TC-PFU; TC-PFL; log `docs/prompts/2026-10-21_1735_backlog-fase... |
 | `tests/unit/plataforma_freebsd_test.sh` | `lib/state.sh` (`dbx_state_host_id`): identificador do host sem `/proc`, como no FreeBSD | `lib/state.sh` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 1 | RF-171(b); TC-FBSD-21; DIV-353 (opcao A); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/poda_portavel_test.sh` | `lib/state.sh` (`_dbx_state_retomada_podar` e poda equivalente de `cursor-*`): poda por teto sem `find -printf` | `lib/state.sh` | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 5 | RF-168; TC-FBSD-03; TC-FBSD-19 (parte `find`); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
-| `tests/unit/preflight_test.sh` | `lib/preflight.sh`: verificacao de ambiente (utilitarios, versao do bash, permissao da credencial, area temporaria, XDG), auditorias de `... | `lib/preflight.sh` | unitario | Senior Developer (TDD; commit de criacao `ebec9ae`, "test: preflight, config e composicao dos caminhos gemeos") | 35 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
+| `tests/unit/preflight_test.sh` | `lib/preflight.sh`: verificacao de ambiente (utilitarios, versao do bash, permissao da credencial, area temporaria, XDG), auditorias de `... | `lib/preflight.sh` | unitario | Senior Developer (TDD; commit de criacao `ebec9ae`, "test: preflight, config e composicao dos caminhos gemeos") | 38 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
 | `tests/unit/progress_test.sh` | `lib/progress.sh` (formatacao de bytes, barra, etapa e transferencia de progresso em stderr) | progress | unitario | Senior Developer (TDD da demanda `progresso-operacoes`) | 16 | log `docs/prompts/2026-10-08_1015_progresso-operacoes.md` (parametros de progresso para operacoes) |
 | `tests/unit/progresso_linha_test.sh` | `lib/progress.sh`: progresso por arquivo (`dbx_progress_arquivo_*`), linha com percentual, terminal simulado, observador do `.part` e can... | `progresso_linha` | unitario | Senior Developer (TDD da demanda `progresso-por-arquivo`) | 18 | F-49; RF-140..147; TC-PRG-01; TC-PRG-03; TC-PRG-04; TC-PRG-10..13; TC-PRG-15; TC-PRG-27; TC-PRG-29..32; log `docs/prompts/2026-10-22_1600... |
 | `tests/unit/qa_rede_p2_test.sh` | `lib/http.sh` (timeouts, retentativas, `Retry-After`), `lib/transfer.sh` (retomada em partes, `correct_offset`) e o executor de testes `t... | `qa_rede` | unitario | QA Expert (suite independente da demanda `robustez-de-rede-p2`) | 27 | RNF-07; RNF-30; RF-09; RF-58; RNF-32(a); log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md`; protocolo-tdd Regra 9 (parada no prim... |
@@ -1682,6 +1686,38 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_nenhum_caminho_do_produto_monta_dev_fd_com_variavel | Auditoria: nenhum arquivo de `bin/`, `lib/` ou `commands/` monta `/dev/fd` com variavel | |
 
 
+## `tests/integracao/qa_instalador_linha_b22_test.sh`
+
+- **Alvo:** `install.sh` (`--canal` hostil, troca de linha com credencial intacta, fonte invalida, `escolher_linha` nas bordas) e `scripts/empacotar.sh` (`--latest=false`, `--target`)
+- **Modulo:** `qa_instalador_linha` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `suporte-bash-42`)
+- **Regras de origem:** F-102; RF-201..RF-205; TC-B42-09..22; DIV-385; DIV-389; protocolo-tdd Regra 6; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md`; validacao `docs/reviews/2026-11-01-1200-validacao-qa-suporte-bash-42.md`
+- **Aceite do solicitante:** pendente; sha256 submetido `46ce2a6cb21eb1a2cedd6fb6ea8766e601ec7d04c82d48985d3e6fad91f0902b`
+- **Dados e precondicoes:** `git` e `gh` falsos no PATH da area do caso; `FUNCAO_BAIXAR` substituida; arvores de fonte, credencial 0600 e estado sinteticos por caso; sem rede
+- **Comando:** `bash tests/run.sh tests/integracao/qa_instalador_linha_b22_test.sh`
+- **Observacoes:** escrita como adversario; o QA nao reaproveita os casos de `tests/unit/instalador_linha_test.sh`. Mutantes mortos: 4.4 invertido, piso apos o download removido, `--latest=false` removido, `--target` removido, aviso invertido, recusa de 4.1 removida.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_b22_canal_hostil_e_recusado_sem_chamar_git_nem_escrever | Nove canais hostis (metacaracteres, espaco, `--upload-pack=`, inicio com `-`) sao recusados com status 1 e "Canal invalido"; git nao e chamado, nada e executado nem escrito. | protocolo-tdd Regra 6; RF-202 |
+| teste_qa_b22_canal_com_ponto_ponto_nao_escreve_fora_do_destino | `--canal ../../../escape` falha sem rede, nao cria destino nem arquivo fora dele e diz que nada foi instalado. | protocolo-tdd Regra 6; RF-202b |
+| teste_qa_b22_canal_vazio_e_recusado_antes_de_qualquer_acao | `--canal` vazio e recusado sem chamar o git nem escrever. | RF-202c |
+| teste_qa_b22_escolher_linha_em_entradas_limite | `escolher_linha` em 0.0, 3.99, 4.0, 4.1 (recusa), 4.2, 4.3 (legada), 4.4, 4.5, 4.10, 5.0, 10.0 (principal). | RF-201a; TC-B42-10, 11 |
+| teste_qa_b22_fonte_baixada_com_piso_acima_do_host_e_recusada_com_ou_sem_canal_explicito | Fonte baixada com piso 4.4 em host 4.2 e recusada, com e sem `--canal`, nomeando o canal certo e sem escrever no destino. | RF-202c; DIV-385; TC-B42-15 |
+| teste_qa_b22_fonte_baixada_sem_piso_e_recusada_antes_de_escrever | Fonte baixada sem `lib/preflight.sh` e recusada como invalida antes de qualquer escrita. | RF-201b |
+| teste_qa_b22_fonte_local_com_piso_ilegivel_por_modo_e_recusada_sem_escrever | Fonte local com `lib/preflight.sh` de modo 000 e recusada sem escrever (pulado como root). | RF-201b |
+| teste_qa_b22_fonte_local_com_piso_malformado_e_recusada_sem_escrever | Piso vazio, so com o maior ou nao numerico na fonte local: recusa sem escrever. | RF-201b |
+| teste_qa_b22_fonte_local_sem_preflight_e_recusada_sem_escrever | Fonte local sem `lib/preflight.sh` e recusada sem escrever e sem virar download. | RF-201b; RF-202d |
+| teste_qa_b22_instalacao_nova_sem_linha_anterior_nao_emite_aviso | Instalacao nova nao emite aviso de troca de linha e instala o executavel. | RF-203c |
+| teste_qa_b22_promocao_avisa_preserva_credencial_e_nao_baixa | Legada para principal avisa a troca, sobrescreve, nao baixa (fonte local compativel) e deixa credencial e estado com o mesmo hash e modo 0600. | RF-203a/b; RF-202d; TC-B42-17, 18 |
+| teste_qa_b22_rebaixamento_avisa_e_preserva_credencial_0600 | Principal para legada (host 4.2) avisa a troca, baixa so a legada, sobrescreve e deixa credencial e estado com o mesmo hash e modo 0600, sem arquivo novo no HOME. | RF-203b/c; DIV-389; TC-B42-18, 19 |
+| teste_qa_b22_recusa_abaixo_do_piso_absoluto_nao_escreve_e_nomeia_versao_e_minimo | Host 4.1 recusa com status 1, nomeia 4.1 e 4.2, sem escrita nem download. | RF-201a; TC-B42-11 |
+| teste_qa_b22_reinstalar_a_mesma_linha_nao_emite_aviso_de_troca | Reinstalar a mesma linha nao emite o aviso de troca. | RF-203c |
+| teste_qa_b22_release_da_legada_passa_latest_false_e_target_do_head | `empacotar.sh --publicar` com `gh` falso numa copia: versao `-bash42` passa `--latest=false` e `--target <sha do HEAD>`, tag `v<versao>`; `lib/cli.sh` do worktree intacto. | RF-205b; TC-B42-22 |
+| teste_qa_b22_release_da_principal_tem_target_e_nao_tem_latest_false | Versao da principal passa `--target <sha>` e nenhum `--latest`. | RF-205b |
+| teste_qa_b22_release_existente_edita_e_nao_cria_outra | Release ja existente: faz upload e edit com `--latest=false`, sem `release create`; sufixo `-bash42-rc1` tambem e legada. | RF-205 |
+
 ## `tests/integracao/qa_integridade_p1_test.sh`
 
 - **Alvo:** `bin/dbx` (download de arquivo e de pasta, sync, upload) com `lib/transfer.sh`, `lib/hash.sh`, `lib/walk.sh`: integridade de dados no recebimento atomico, envio com `rev` e colisao de caixa
@@ -2750,7 +2786,13 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_comparacao_sem_caixa_nao_muda_medida_em_bytes | A comparacao sem caixa nao altera a medida de tamanho em bytes | RF-54 |
 | teste_localidade_ausente_avisa_uma_vez_e_compara_so_no_ascii | Localidade ausente avisa uma unica vez e compara a caixa so no ASCII | RF-54 |
 | teste_localidade_ausente_nao_muda_saida_nem_codigo_no_ascii | Localidade ausente nao muda saida nem codigo para nomes ASCII | RF-54 |
+| teste_com_localidade_o_espelhar_fora_do_ascii_nao_muda | Com a localidade presente o espelhar fora do ASCII segue apagando como antes | RF-54 |
+| teste_sem_localidade_caminho_ascii_so_no_destino_continua_sendo_apagado | Sem a localidade o caminho ASCII so no destino continua sendo apagado | RF-54 |
+| teste_sem_localidade_o_espelhar_nao_apaga_o_recem_enviado_fora_do_ascii | Sem a localidade o espelhar nao apaga o recem-enviado fora do ASCII (QA-B42-01) | RF-54 |
+| teste_sem_localidade_ramo_de_pasta_fora_do_ascii_so_no_destino_nao_e_apagado | Sem a localidade o ramo de pasta fora do ASCII so no destino nao e apagado (QA-B42-01) | RF-54 |
 | teste_aviso_de_localidade_e_so_do_sync | O aviso de localidade ausente e emitido apenas pelo sync | RF-54 |
+| teste_cdpath_do_ambiente_nao_suja_nem_desvia_a_enumeracao | Com `CDPATH=.`, `CDPATH=<outra arvore>` e `CDPATH=<outra>:.` no ambiente, o `sync --enviar` conclui, a lista de diretorios fica intacta e so a arvore da origem e lida (nunca a pasta homonima do CDPATH) | defeito em producao 2026-11-02 |
+| teste_bash_env_e_opcoes_exportadas_nao_mudam_o_plano | `BASH_ENV`, `ENV`, `SHELLOPTS` e `BASHOPTS` exportados nao mudam o plano do `sync` (recomeco unico em ambiente limpo) | defeito 2026-11-02 |
 
 
 ## `tests/integracao/testar_test.sh`
@@ -3434,6 +3476,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_flt11_localidade_ausente_vale_so_o_ascii_e_interrogacao_e_um_byte | Sem localidade UTF-8 vale so o ASCII e `?` casa um byte | TC-FLT-11 |
 | teste_flt12_nfc_e_nfd_sao_distintos | Formas NFC e NFD do mesmo texto sao tratadas como nomes distintos (limitacao declarada) | TC-FLT-12 |
 | teste_flt_nome_que_nao_e_utf8_valido_ainda_casa_por_bytes | Nome com byte invalido em UTF-8 ainda casa, por bytes | |
+| teste_qa_b42_01_sem_localidade_padrao_e_nome_nao_ascii_falham_fechado | Sem a localidade, padrao e nome fora do ASCII falham fechado no escopo dos filtros (QA-B42-01) | RF-54; RF-80 |
 | teste_qa_b4_01_queda_para_bytes_usa_a_mesma_dobra_do_padrao | A queda para bytes usa a mesma dobra de caixa aplicada ao padrao | QA-B4-01 |
 | teste_div103_incluir_impreciso_em_bytes_nunca_casa_a_mais | Em bytes, padrao de inclusao impreciso nunca inclui a mais | DIV-103 |
 | teste_qa_b4_01_interrogacao_e_conjunto_negado_casam_um_caractere_inteiro_em_bytes | Em bytes, `?` e conjunto negado casam um caractere acentuado inteiro | QA-B4-01 |
@@ -3687,6 +3730,39 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_gnu_troca_de_inode_muda_a_identidade | Trocar o inode do arquivo muda a identidade | RSK-43 |
 
 
+## `tests/unit/instalador_linha_test.sh`
+
+- **Alvo:** `install.sh` (escolha da linha pelo bash do host, piso da fonte, troca de linha), `scripts/empacotar.sh` e `scripts/suite-bash42.sh`
+- **Modulo:** `install.sh`
+- **Camada:** unitario
+- **Autoria:** Senior Developer (TDD da demanda `suporte-bash-42`)
+- **Regras de origem:** RF-198; RF-201 a RF-206; TC-B42-09..22; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** arvores de fonte fabricadas por caso, bash do host simulado por variavel, `baixar_fonte`, `gh` e `docker` substituidos por duplos; sem rede
+- **Comando:** `bash tests/run.sh tests/unit/instalador_linha_test.sh`
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_bash_41_recusa_com_a_versao_e_o_minimo | Bash 4.1 recusa com exit 1, versao e minimo, sem escrever | RF-201a; TC-B42-11 |
+| teste_canais_da_linha_tem_nome_fixo | Canais fixos master e support/bash-4.2 | RF-201 |
+| teste_canal_com_trecho_de_shell_e_recusado_antes_de_qualquer_acao | `--canal` fora do padrao de nome de ref (ex.: com `;`) sai com 1 e "Canal invalido" antes de qualquer acao, sem ecoar o trecho como comando nem criar o destino. | Achado menor do QA, ciclo 1 |
+| teste_canal_incompativel_e_recusado_nomeando_o_canal_certo_sem_escrever | --canal incompativel recusado nomeando o canal certo, nada escrito | RF-202c; DIV-385; TC-B42-15 |
+| teste_escolha_da_linha_por_versao_do_bash | Escolha da linha para 3.2, 4.1, 4.2, 4.3, 4.4 e 5.2 | RF-201a; TC-B42-09, TC-B42-10 |
+| teste_fonte_local_compativel_nao_baixa_nada | Fonte local compativel nao baixa nada | RF-202d; TC-B42-16 |
+| teste_fonte_local_incompativel_cai_no_remoto_com_o_canal_da_linha | Fonte local incompativel cai no remoto com o canal da linha | RF-202a; TC-B42-13 |
+| teste_fonte_sem_piso_legivel_e_invalida | Fonte sem piso legivel e invalida | RF-201b |
+| teste_instalador_nao_copia_piso_nem_detecta_so_por_uname | Instalador sem uname nem OSTYPE e lendo o piso da fonte | RF-201d; RNF-39; TC-B42-12 |
+| teste_linha_instalada_reconhece_so_o_sufixo_bash42_exato | `linha_instalada` reconhece a legada por `-bash42` seguido de fim, `-`, `.` ou `+` (`-bash42-rc1`, `-bash42.1`) e nao por `-bash420`. | RF-203c; achado menor do QA, ciclo 1 |
+| teste_mesma_linha_ou_primeira_instalacao_nao_avisa_troca | Primeira instalacao ou mesma linha nao avisa troca | RF-203c |
+| teste_piso_e_lido_do_preflight_da_propria_fonte | Piso lido do preflight da fonte fabricada | RF-201b; TC-B42-12 |
+| teste_rebaixamento_de_linha_avisa_de_forma_destacada | Rebaixamento da principal para a legada avisa em destaque | RF-203c; DIV-389; TC-B42-19 |
+| teste_release_aponta_a_tag_para_o_commit_de_head | Release usa --target no HEAD e a principal nao sai de Latest | RF-205; TC-B42-22 |
+| teste_release_da_legada_nao_e_marcada_latest | Versao com sufixo -bash42 publica com --latest=false | RF-205b; DIV-390; TC-B42-21, TC-B42-22 |
+| teste_sem_rede_falha_com_o_comando_manual_do_canal_certo_e_nada_escrito | Sem rede falha com o comando manual e nada escrito | RF-202b; TC-B42-14 |
+| teste_subida_da_legada_para_a_principal_informa_a_troca | Subida da legada para a principal informa a troca | RF-203a; TC-B42-17 |
+| teste_suite_bash42_monta_o_comando_do_container_com_a_imagem_por_digest | Comando do container usa a imagem centos:7 por digest e repassa o filtro | RF-206a, RF-206c |
+| teste_suite_bash42_sem_docker_falha_dizendo_como_obter | Sem docker a suite do CentOS 7 falha dizendo como obter a imagem | RF-206 |
+
 ## `tests/unit/json_test.sh`
 
 - **Alvo:** `lib/json.sh` (interpretador JSON proprio, sem `jq`)
@@ -3752,6 +3828,10 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_profundidade_excessiva_e_recusada | Profundidade acima do teto e recusada. | |
 | teste_qa_b3_04_escape_u0000_e_malformado_em_todo_documento | O escape `\u0000` e tratado como malformado em qualquer posicao do documento. | |
 | teste_qa_b3_05_chave_duplicada_e_contada_sem_mudar_a_analise | Chave duplicada e contada sem alterar o resultado da analise. | |
+| teste_qa_rel230_03_fronteira_4096_escape_e_multibyte_no_valor | Escape, multibyte e delimitadores nas posicoes 4094 a 4098 devolvem o valor exato | RNF-11 |
+| teste_qa_rel230_03_fronteira_4096_delimitador_estrutural | Delimitadores estruturais e chave multibyte na fronteira de 4096 resolvem iguais | RNF-11 |
+| teste_qa_rel230_03_documento_longo_com_muitos_pedacos | Valor e lista atravessando varios pedacos de 4096 resolvem iguais | RNF-11 |
+| teste_qa_rel230_03_controle_cru_depois_da_4096_continua_recusado | Controle cru depois da posicao 4096 e recusado (motivo controle); tab e quebra seguem tolerados | RNF-11 |
 | teste_quebra_de_linha_no_valor_e_preservada_byte_a_byte | Quebra de linha dentro de valor e preservada byte a byte. | |
 | teste_reanalise_no_mesmo_contexto_libera_os_nos_anteriores | Reanalise no mesmo contexto libera os nos anteriores. | |
 | teste_sentinela_de_documento_em_chave_nao_sequestra_a_raiz | Chave igual ao marcador interno de documento nao sequestra a raiz. | |
@@ -4051,6 +4131,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_jq_nao_e_exigido | `jq` nao e exigido | |
 | teste_lib_db_e_suas_chamadas_nao_existem_mais | `lib/db` e suas chamadas nao existem mais | |
 | teste_lista_de_utilitarios_do_readme_e_a_do_preflight | A lista de utilitarios do README coincide com a do preflight | |
+| teste_mensagem_de_bash_antigo_indica_a_reinstalacao_pelo_instalador | Mensagem de bash abaixo do piso nomeia versao e piso e indica a reinstalacao pelo install.sh | RF-204; TC-B42-20 |
 | teste_nenhum_codigo_do_produto_invoca_sqlite3_nem_python3 | Nenhum codigo do produto invoca `sqlite3` nem `python3` | |
 | teste_nivel_ambiente_nao_recusa_por_permissao_de_credencial | No nivel ambiente a permissao da credencial nao reprova | |
 | teste_nivel_credencial_continua_recusando_permissao_larga | No nivel credencial permissao larga continua sendo recusada | |
@@ -4059,6 +4140,8 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_palavras_que_abrem_comando_vem_da_gramatica_do_shell | As palavras que abrem comando seguem a gramatica do shell | |
 | teste_permissao_da_credencial_e_verificada_no_preflight | A permissao do arquivo de credencial e verificada pelo preflight | |
 | teste_piso_declarado_e_o_verificado | O piso de versao do bash declarado e o verificado | |
+| teste_ponto_de_entrada_recusa_bash_antigo_antes_de_carregar_as_bibliotecas | `bin/dbx` confere o piso de bash (pelo `lib/preflight.sh`) antes de carregar qualquer outra biblioteca e recusa com o codigo de configuracao, para a mensagem de reinstalacao chegar no bash 4.2/4.3. | RF-204 |
+| teste_preflight_e_diagnostico_usam_a_mensagem_de_reinstalacao | Preflight e diagnostico usam a mesma mensagem de reinstalacao, sem o remedio antigo | RF-204; TC-B42-20 |
 | teste_preflight_exige_os_utilitarios_do_diagnostico_do_config | O preflight exige os utilitarios usados pelo diagnostico do `config` | |
 | teste_preflight_nao_lista_nem_sonda_sqlite3_e_python3 | O preflight nao lista nem sonda `sqlite3` e `python3` | |
 | teste_status_segue_a_taxonomia_de_erro | O status de saida do preflight segue a taxonomia de erros | |
@@ -4639,3 +4722,47 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_identidade_publicada_coincide_com_a_da_travessia | A identidade publicada coincide com a calculada na travessia | |
 
 
+
+## `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh`
+
+- **Alvo:** `sync` (`--receber` e `--enviar` com `--espelhar --confirmar`) com filtros e nomes com byte nao ASCII, na maquina sem a localidade `C.UTF-8`
+- **Modulo:** `qa_exclusao_sem_localidade` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `suporte-bash-42`, ciclo 2)
+- **Regras de origem:** QA-B42-01; RF-54(f2); RF-80; DIV-391; protocolo-tdd Regra 6; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md`; validacao `docs/reviews/2026-11-01-1200-validacao-qa-porte-bash-42.md`
+- **Aceite do solicitante:** suite aceita pelo solicitante na linha legada (demanda `suporte-bash-42`), copiada sem alteracao para a principal; sha256 `7654cd1a2c966e00aa6d51519962bf3195c2ce76df62b56db809ba4c91e0d033`
+- **Dados e precondicoes:** arvore local e listagem remota falsas criadas por caso (nomes `lixo\xff.bin`, `cafe`, `E`/`e` acentuados, euro, emoji, ramos de pasta); rodam sem pulo em qualquer localidade
+- **Comando:** `bash tests/run.sh tests/integracao/qa_exclusao_sem_localidade_b42_test.sh`
+- **Observacoes:** vermelho contra `lib/filtro.sh`, `lib/sync.sh` e `commands/sync.sh` sem o retorno do QA-B42-01 (confirmado na linha legada).
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_b42_receber_incluir_impreciso_preserva_todo_nome_nao_ascii | `--incluir '[!a]*'` nao apaga nenhum nome nao ASCII ou nao UTF-8 | RF-80; QA-B42-01 |
+| teste_qa_b42_receber_incluir_preciso_nao_ascii_preserva | `--incluir` com literal, `?` e prefixo nao ASCII nao apaga | RF-80 |
+| teste_qa_b42_receber_excluir_com_acento_preserva | `--excluir` com acento, conjunto e `?` nao apaga | RF-80 |
+| teste_qa_b42_receber_ramo_de_pasta_nao_ascii_preserva | ramos de pasta com nome nao ASCII preservados com `--incluir '*'` e `'[!a]*/'` | RF-80 |
+| teste_qa_b42_receber_sem_filtro_preserva | sem filtro, nomes nao ASCII so locais nao sao apagados | RF-54(f2) |
+| teste_qa_b42_enviar_espelhar_remoto_nao_ascii_nao_e_apagado | `--enviar --espelhar` nao emite delete de caminho nao ASCII | RF-54(f2); DIV-391 |
+
+## `tests/integracao/qa_cdpath_test.sh`
+
+- **Alvo:** comandos que descem por `cd` relativo (`upload` e `download` de pasta, `verificar`, `sync` nos dois sentidos com `--espelhar --confirmar`, em blocos e em paralelo) com `CDPATH` hostil (`.`, outra arvore com pastas homonimas, e combinacoes com `:` vazio)
+- **Modulo:** `qa_cdpath` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `ignorar-cdpath`)
+- **Regras de origem:** defeito em producao de 2026-11-02; protocolo-tdd Regras 6 e 8; parecer `docs/reviews/2026-11-02-1115-validacao-qa-ignorar-cdpath.md`
+- **Aceite do solicitante:** pendente; sha256 `57be5d41d9c76c6a76561d6b75d08b2e28deb8abab75814d2a3419424fb1326d`
+- **Dados e precondicoes:** arvores local, destino e isca (homonimas) e listagem remota falsas criadas por caso; desfecho com CDPATH hostil comparado ao da linha de base sem CDPATH; `QA_EXTRA` e `QA_ESTADO` opcionais para investigacao
+- **Comando:** `bash tests/run.sh tests/integracao/qa_cdpath_test.sh`
+- **Observacoes:** com `bin/dbx` de HEAD (sem o `unset CDPATH`) o caso `sync_enviar_em_blocos_e_paralelo` fica vermelho; o `download_de_pasta` passa nos dois (nao desce por `cd` relativo).
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_download_de_pasta | `download` de pasta igual a linha de base e isca intacta | defeito 2026-11-02 |
+| teste_sync_enviar_em_blocos_e_paralelo | `sync --enviar --espelhar` com `--bloco 1` e `--paralelo 2` | defeito 2026-11-02 |
+| teste_sync_enviar_espelhar | `sync --enviar --espelhar --confirmar` | defeito 2026-11-02 |
+| teste_sync_receber_espelhar_apaga_so_o_excedente_da_destino | exclusao local so do excedente do destino, origem e isca intactas | defeito 2026-11-02; RF-80 |
+| teste_sync_receber_espelhar_em_blocos_e_paralelo | `sync --receber --espelhar` com `--bloco 1` e `--paralelo 2` | defeito 2026-11-02 |
+| teste_upload_de_pasta | `upload` de pasta nunca le a isca | defeito 2026-11-02 |
+| teste_upload_de_pasta_paralelo | `upload --paralelo 2` de pasta | defeito 2026-11-02 |
+| teste_verificar | `verificar` nos dois sentidos | defeito 2026-11-02 |

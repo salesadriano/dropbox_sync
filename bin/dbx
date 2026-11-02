@@ -5,6 +5,29 @@
 # que o comando declarou precisar e despacha. Nenhuma regra de negocio mora
 # aqui.
 set -u
+# AMBIENTE DO SHELL QUE MUDA O PROPRIO BASH (QA, demanda ignorar-cdpath): o bash
+# executa o arquivo de BASH_ENV (ou ENV) e aplica SHELLOPTS/BASHOPTS exportados
+# ANTES desta linha — `set -f`, `shopt -s dotglob nullglob` e afins mudavam o
+# resultado do sync. Nada aqui desfaz isso com seguranca; o remedio e recomecar
+# UMA vez sem essas variaveis. Sem marca contra laco, de proposito: o processo
+# novo nasce sem as quatro e nao recomeca; uma marca herdada do ambiente
+# desligaria a protecao (QA, ciclo 2).
+_dbx_reexecutar='nao'
+[[ -n ${BASH_ENV+x} || -n ${ENV+x} ]] && _dbx_reexecutar='sim'
+# Exportadas (nao so definidas, como sempre estao): `compgen -e` e embutido,
+# sem processo, e vale no bash 4.2.
+for _dbx_var in SHELLOPTS BASHOPTS; do
+  compgen -e -X "!$_dbx_var" -- "$_dbx_var" >/dev/null && _dbx_reexecutar='sim'
+done
+if [[ $_dbx_reexecutar == 'sim' ]]; then
+  exec env -u BASH_ENV -u ENV -u SHELLOPTS -u BASHOPTS -u CDPATH "$BASH" "$0" "$@"
+fi
+unset _dbx_reexecutar _dbx_var
+# CDPATH do ambiente nao vale aqui: com ele, `cd` de nome relativo imprime o
+# destino no stdout (sujando listas como a de diretorios do sync) e pode entrar
+# numa pasta homonima de OUTRA arvore, desviando a enumeracao do `--espelhar`
+# (producao, 2026-11-02). Removido antes de qualquer biblioteca.
+unset CDPATH
 
 # RAIZ DO PROJETO ANTES DO DESPACHO, SO COM O SHELL (RF-66(e), RNF-02)
 #
@@ -45,6 +68,20 @@ _dbx_dir=${_dbx_fonte%/*}
 DBX_CLI_RAIZ=$(cd -P -- "${_dbx_dir:-/}/.." && pwd -P)
 export DBX_CLI_RAIZ
 unset _dbx_fonte _dbx_dir _dbx_saltos
+
+# PISO DE BASH ANTES DE QUALQUER OUTRA BIBLIOTECA (RF-204)
+#
+#   As bibliotecas usam recursos de bash 4.3/4.4 (nameref, vetor vazio sob
+#   `set -u`) que quebram EM EXECUCAO no 4.2, antes do preflight do comando;
+#   a recusa sai aqui, so com printf, para chegar ao usuario com o remedio
+#   (reinstalar pelo install.sh, que escolhe a linha legada).
+# shellcheck source=lib/preflight.sh
+. "$DBX_CLI_RAIZ/lib/preflight.sh"
+if ! dbx_preflight_versao_de_bash_suficiente "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"; then
+  dbx_preflight_mensagem_bash_antigo "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"
+  printf "dbx: %s\n" "$DBX_PREFLIGHT_MENSAGEM" >&2
+  exit "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
+fi
 
 # shellcheck source=lib/errors.sh
 . "$DBX_CLI_RAIZ/lib/errors.sh"
