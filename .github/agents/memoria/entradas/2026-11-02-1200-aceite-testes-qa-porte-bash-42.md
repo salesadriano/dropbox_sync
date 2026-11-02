@@ -41,3 +41,5 @@ sha256 (arvore aceita):
 - `tests/integracao/qa_trava_tmp_b2_test.sh`: `4e414ac5d52218976ff921bd5b6649100f79556dc6699efc6b12cdb31d9e12ba`
 
 Revisao de 2026-11-02 (depois do aceite, antes da PR): duas suites mudaram e dependem de novo aceite do solicitante pelos sha256 acima: `qa_docs_aliases_p4_test.sh` (caso `[C]` passa a afirmar `RF-54(f2)`: o nao ASCII nao e apagado sem a localidade) e `qa_exclusao_sem_localidade_b42_test.sh` (`$(printf %q)` trocado por `printf -v`, exigido pela auditoria de massa por substituicao de comando). Nenhum assert removido.
+
+Reaceite do solicitante pela regra 12 (AskUserQuestion, 2026-11-02, "Accept both (Recommended)"): as duas suites acima, pelos sha256 da revisao (`7336a61b...800e` e `7654cd1a...d033`). Registrado depois do merge da PR #75 para nao invalidar a suite oficial do commit `42c2e89`.
