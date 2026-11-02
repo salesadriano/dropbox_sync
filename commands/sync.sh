@@ -1062,7 +1062,7 @@ dbx_cmd_sync_executar() {
   if [[ $DBX_CMD_SYNC_VARREDURA != 'incremental' ]]; then
     modo_ciclos='sim'
   fi
-  local dirs_arq="$area/dirs" vazia_global='nao' podadas_dirs=0 total_origem=0 extras_arquivos=0
+  local dirs_arq="$area/dirs" vazia_global='nao' podadas_dirs=0 total_origem=0 extras_arquivos=0 retidos_total=0
   local so_destino='nao' ciclo ci_ini ci_fim ciclo_i=0 ciclo_falho=0 codigo_parada=0
   local enviados=0 recebidos=0 apagados=0 falhas=0 alvo rev antes
   local omitidos_total=0 fo_total=0 fd_total=0 antes_total=0 depois_total=0 kk
@@ -1200,6 +1200,7 @@ dbx_cmd_sync_executar() {
           dbx_sync_planejar ordem_remota mapa_remoto ordem_local mapa_local
         fi
         _dbx_cmd_sync_sem_protegidos
+        _dbx_cmd_sync_reter_nao_ascii
         # RF-190(b): o ramo so do destino e lido inteiro NO ciclo que o encontra.
       else
   # QA-P3-03: o status e capturado ANTES do teste. Lido dentro de `if ! …`, ele
@@ -1238,6 +1239,7 @@ dbx_cmd_sync_executar() {
       # o escopo; esta e a segunda barreira, SEM ESTADO: refaz a conta pelos
       # padroes desta linha de comando, e nada da memoria entra nela.
       _dbx_cmd_sync_sem_protegidos
+      _dbx_cmd_sync_reter_nao_ascii
 
       # RF-114 (decisao do solicitante; C5): no modo incremental, TODA candidata a
       # exclusao — `deleted` do delta ou ausencia no retrato — e confirmada no
@@ -1582,6 +1584,11 @@ dbx_cmd_sync_executar() {
     fi
   done
 
+  # QA-B42-01: UM aviso por execucao, com o total dos ciclos.
+  if [[ $retidos_total -gt 0 ]]; then
+    dbx_cmd_avisar "$retidos_total caminho(s) fora do ASCII mantido(s) sem apagar: $DBX_SYNC_LOCALIDADE ausente, a comparacao sem caixa so vale no ASCII e o par poderia ser o mesmo arquivo na Dropbox; nada foi apagado por isso"
+  fi
+
   if [[ $ciclo_falho -gt 0 ]]; then
     : # RF-193: falha sistemica nesta execucao em ciclos: nenhuma exclusao
   elif [[ $espelhar == 'sim' && $sentido == 'enviar' ]]; then
@@ -1750,6 +1757,15 @@ _dbx_cmd_sync_sem_protegidos() {
     manter+=("$caminho")
   done
   DBX_SYNC_APAGAR=(${manter[@]+"${manter[@]}"})
+}
+
+# _dbx_cmd_sync_reter_nao_ascii — falha fechada (QA-B42-01): so com `--espelhar`,
+# tira do plano de exclusao o caminho fora do ASCII quando a localidade falta, e
+# soma o que reteve em `retidos_total` (variavel do executor) para o aviso unico.
+_dbx_cmd_sync_reter_nao_ascii() {
+  [[ $espelhar == 'sim' ]] || return 0
+  dbx_sync_reter_nao_ascii
+  retidos_total=$((retidos_total + DBX_SYNC_RETIDOS))
 }
 
 # _dbx_cmd_sync_ler_tamanhos <arquivo> <nome_do_mapa> — `size` por caminho remoto,

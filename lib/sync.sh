@@ -229,6 +229,30 @@ dbx_sync_localidade_disponivel() {
   return 1
 }
 
+# dbx_sync_reter_nao_ascii — falha fechada da exclusao sem a localidade.
+#
+# Sem a localidade, a comparacao sem caixa so dobra o ASCII (RF-54(f)): `Éa.txt` e
+# `éa.txt` viram chaves distintas aqui e o mesmo arquivo na Dropbox, e o plano
+# apagaria o recem-enviado. Nesse caso nenhum caminho com byte >= 0x80 sai de
+# DBX_SYNC_APAGAR (arquivos e ramos so do destino, que chegam como arquivos).
+# Com a localidade presente nao faz nada. Devolve em DBX_SYNC_RETIDOS quantos
+# ficaram; a soma entre chamadas fica a cargo de quem chama.
+dbx_sync_reter_nao_ascii() {
+  DBX_SYNC_RETIDOS=0
+  dbx_sync_localidade_disponivel && return 0
+  local caminho
+  local -a manter=()
+  for caminho in "${DBX_SYNC_APAGAR[@]}"; do
+    if [[ $caminho == *[$'\x80'-$'\xff']* ]]; then
+      DBX_SYNC_RETIDOS=$((DBX_SYNC_RETIDOS + 1))
+      continue
+    fi
+    manter+=("$caminho")
+  done
+  DBX_SYNC_APAGAR=("${manter[@]}")
+  return 0
+}
+
 # dbx_sync_colisao_de_caixa <nome_do_vetor> — 1 quando dois caminhos do vetor
 # so diferem na caixa; o par vai nomeado em DBX_SYNC_MOTIVO.
 #
