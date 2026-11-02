@@ -1566,6 +1566,7 @@ dbx_cmd_limite_banda() {
 # como opcao, para a variavel nao ser relida la (RF-176(a)).
 DBX_CMD_PARALELO=1
 DBX_CMD_PARALELO_ORIGEM='padrao'
+# shellcheck disable=SC2153  # DBX_CLI_PARALELO e definida em lib/cli.sh (carregada antes)
 dbx_cmd_paralelo() {
   local tem_opcao=$1 nome_opcao=$2 valor=${3-}
   DBX_CMD_PARALELO=1
@@ -1591,6 +1592,7 @@ dbx_cmd_paralelo() {
 # (padrao|opcao|ambiente); motivo da recusa em DBX_CLI_MOTIVO.
 DBX_CMD_BLOCO=${DBX_CLI_BLOCO_PADRAO:-50000}
 DBX_CMD_BLOCO_ORIGEM='padrao'
+# shellcheck disable=SC2153  # DBX_CLI_BLOCO e definida em lib/cli.sh (carregada antes)
 dbx_cmd_bloco() {
   local tem_opcao=$1 nome_opcao=$2 valor=${3-}
   DBX_CMD_BLOCO=${DBX_CLI_BLOCO_PADRAO:-50000}

@@ -70,6 +70,7 @@ readonly DBX_PREFLIGHT_ERRO_USO DBX_PREFLIGHT_ERRO_CONFIGURACAO
 # fora.
 readonly DBX_PREFLIGHT_BASH_MAIOR=4
 readonly DBX_PREFLIGHT_BASH_MENOR=4
+readonly DBX_PREFLIGHT_COMANDO_INSTALAR='curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/master/install.sh | bash'
 
 # Dependencia externa unica do PROJETO e o cURL (DP-08). A lista abaixo, porem,
 # e a dos utilitarios efetivamente invocados pela biblioteca — os de instalacao
@@ -90,6 +91,14 @@ _dbx_preflight_falhar() {
   DBX_PREFLIGHT_MOTIVO=$1
   DBX_PREFLIGHT_DETALHE=$2
   return "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
+}
+
+# dbx_preflight_mensagem_bash_antigo <maior> <menor> — texto de recusa, em DBX_PREFLIGHT_MENSAGEM, por bash
+# abaixo do piso (RF-204): nomeia a versao detectada e o piso e manda reinstalar
+# pelo install.sh, que escolhe a linha legada para bash 4.2/4.3.
+dbx_preflight_mensagem_bash_antigo() {
+  printf -v DBX_PREFLIGHT_MENSAGEM 'bash %s.%s abaixo do piso %s.%s; reinstale pelo instalador, que escolhe a linha adequada: %s' \
+    "${1-}" "${2-}" "$DBX_PREFLIGHT_BASH_MAIOR" "$DBX_PREFLIGHT_BASH_MENOR" "$DBX_PREFLIGHT_COMANDO_INSTALAR"
 }
 
 # dbx_preflight_versao_de_bash_suficiente <maior> <menor>
@@ -167,7 +176,8 @@ dbx_preflight_verificar() {
   DBX_PREFLIGHT_DETALHE=''
 
   dbx_preflight_versao_de_bash_suficiente "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" ||
-    { _dbx_preflight_falhar bash "shell abaixo do piso ${DBX_PREFLIGHT_BASH_MAIOR}.${DBX_PREFLIGHT_BASH_MENOR}"; return $?; }
+    { dbx_preflight_mensagem_bash_antigo "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"
+      _dbx_preflight_falhar bash "$DBX_PREFLIGHT_MENSAGEM"; return $?; }
 
   for utilitario in $DBX_PREFLIGHT_UTILITARIOS; do
     command -v "$utilitario" >/dev/null 2>&1 ||

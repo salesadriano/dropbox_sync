@@ -58,6 +58,13 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 
 ## Instalação e Configuração
 
+### Plataformas e linhas do produto
+
+- **Linha principal** (canal `master`, bash 4.4+): a versão completa, em Linux e FreeBSD.
+- **Linha legada** (canal `support/bash-4.2`, bash 4.2 e 4.3, versão `2.3.0-bash42`): mesmos comandos, para hosts com bash antigo (por exemplo CentOS 7).
+
+O `install.sh` escolhe a linha pelo bash do host, sem opção a informar; bash abaixo de 4.2 é recusado. **Atualizar é rodar o `install.sh` de novo** (credencial, configuração e estado são preservados); se o bash do host mudou, a linha muda junto, com aviso.
+
 ### 1. Instalação no Linux (Recomendado)
 
 #### Opção A: Instalação Rápida via cURL (One-liner)

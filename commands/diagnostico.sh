@@ -189,8 +189,9 @@ dbx_cmd_diagnostico_executar() {
   local dependencias_ok='sim' utilitario remedio_dependencias=''
   if ! dbx_preflight_versao_de_bash_suficiente "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"; then
     dependencias_ok='nao'
-    _dbx_cmd_diag dependencias falha "bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]} abaixo do piso 4.4" \
-      'atualize o bash para 4.4 ou superior'
+    dbx_preflight_mensagem_bash_antigo "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"
+    _dbx_cmd_diag dependencias falha "$DBX_PREFLIGHT_MENSAGEM" \
+      "reinstale pelo instalador: $DBX_PREFLIGHT_COMANDO_INSTALAR"
   fi
   if ! dbx_preflight_ausentes; then
     dependencias_ok='nao'
@@ -211,7 +212,7 @@ dbx_cmd_diagnostico_executar() {
   fi
   [[ $dependencias_ok == 'sim' ]] &&
     _dbx_cmd_diag dependencias ok "bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}, curl e utilitarios presentes (vinculo de instalacao resolvido por readlink, ou find na falta dele)${DBX_HASH_BACKEND:+; resumo SHA-256 via $DBX_HASH_BACKEND}"
-  [[ -n $remedio_dependencias ]] || remedio_dependencias='atualize o bash para 4.4 ou superior'
+  [[ -n $remedio_dependencias ]] || remedio_dependencias="reinstale pelo instalador (linha adequada ao bash): $DBX_PREFLIGHT_COMANDO_INSTALAR"
 
   # 2. credencial — por nome de campo, nunca por valor.
   # Fase 8 (RF-127): com selecao explicita, a linha `perfil`; com perfil nomeado,
