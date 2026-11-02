@@ -46,6 +46,20 @@ DBX_CLI_RAIZ=$(cd -P -- "${_dbx_dir:-/}/.." && pwd -P)
 export DBX_CLI_RAIZ
 unset _dbx_fonte _dbx_dir _dbx_saltos
 
+# PISO DE BASH ANTES DE QUALQUER OUTRA BIBLIOTECA (RF-204)
+#
+#   As bibliotecas usam recursos de bash 4.3/4.4 (nameref, vetor vazio sob
+#   `set -u`) que quebram EM EXECUCAO no 4.2, antes do preflight do comando;
+#   a recusa sai aqui, so com printf, para chegar ao usuario com o remedio
+#   (reinstalar pelo install.sh, que escolhe a linha legada).
+# shellcheck source=lib/preflight.sh
+. "$DBX_CLI_RAIZ/lib/preflight.sh"
+if ! dbx_preflight_versao_de_bash_suficiente "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"; then
+  dbx_preflight_mensagem_bash_antigo "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"
+  printf "dbx: %s\n" "$DBX_PREFLIGHT_MENSAGEM" >&2
+  exit "$DBX_PREFLIGHT_ERRO_CONFIGURACAO"
+fi
+
 # shellcheck source=lib/errors.sh
 . "$DBX_CLI_RAIZ/lib/errors.sh"
 # shellcheck source=lib/path.sh

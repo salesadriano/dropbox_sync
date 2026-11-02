@@ -152,6 +152,24 @@ teste_piso_declarado_e_o_verificado() {
   assert_igual '4' "$DBX_PREFLIGHT_BASH_MENOR"
 }
 
+# RF-204 (TC-B42-20): a principal recusa bash 4.2/4.3 como antes, e a mensagem
+# manda reinstalar pelo install.sh, que escolhe a linha legada.
+teste_mensagem_de_bash_antigo_indica_a_reinstalacao_pelo_instalador() {
+  local msg
+  dbx_preflight_mensagem_bash_antigo 4 2
+  msg=$DBX_PREFLIGHT_MENSAGEM
+  assert_contem '4.2' "$msg" 'nomeia a versao detectada'
+  assert_contem '4.4' "$msg" 'nomeia o piso'
+  assert_contem 'install.sh | bash' "$msg" 'indica a reinstalacao pelo instalador'
+  assert_contem 'master/install.sh' "$msg" 'comando do README'
+}
+
+teste_preflight_e_diagnostico_usam_a_mensagem_de_reinstalacao() {
+  assert_contem 'dbx_preflight_mensagem_bash_antigo' "$(cat "$DBX_HARNESS_RAIZ/lib/preflight.sh")"
+  assert_contem 'dbx_preflight_mensagem_bash_antigo' "$(cat "$DBX_HARNESS_RAIZ/commands/diagnostico.sh")"
+  assert_nao_contem 'atualize o bash para 4.4' "$(cat "$DBX_HARNESS_RAIZ/commands/diagnostico.sh")"
+}
+
 # ---------------------------------------------------------------------------
 # Area temporaria
 # ---------------------------------------------------------------------------
@@ -766,6 +784,21 @@ teste_preflight_exige_os_utilitarios_do_diagnostico_do_config() {
       *) _harness_falhar "commands/config.sh invoca $utilitario e o preflight nao o exige" ;;
     esac
   done
+}
+
+# RF-204: no bash 4.2/4.3 as bibliotecas quebram em execucao (nameref em
+# lib/output.sh) antes do preflight do comando; o ponto de entrada recusa pelo
+# piso ANTES de carregar qualquer outra biblioteca, para a mensagem chegar.
+teste_ponto_de_entrada_recusa_bash_antigo_antes_de_carregar_as_bibliotecas() {
+  local dbx="$DBX_HARNESS_RAIZ/bin/dbx" linha_piso linha_primeira_lib ordem='depois'
+  linha_piso=$(grep -n 'dbx_preflight_versao_de_bash_suficiente' "$dbx" | head -n 1 | cut -d: -f1)
+  linha_primeira_lib=$(grep -nE '^\. "\$DBX_CLI_RAIZ/lib/(errors|path|output|progress|cli)\.sh"' "$dbx" | head -n 1 | cut -d: -f1)
+  assert_diferente '' "$linha_piso" 'bin/dbx precisa conferir o piso de bash'
+  assert_diferente '' "$linha_primeira_lib" 'bin/dbx carrega as bibliotecas'
+  ((linha_piso < linha_primeira_lib)) && ordem='antes'
+  assert_igual 'antes' "$ordem" 'a conferencia do piso vem antes da primeira biblioteca alem do preflight'
+  assert_contem 'DBX_PREFLIGHT_ERRO_CONFIGURACAO' "$(sed -n "${linha_piso},$((linha_piso + 4))p" "$dbx")" \
+    'a recusa sai com o codigo de configuracao, sem passar por lib/output'
 }
 
 harness_executar "$@"

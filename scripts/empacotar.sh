@@ -95,15 +95,22 @@ if [[ $PUBLICAR == "sim" ]]; then
   tail -n +2 -- "$NOTAS" > "$CORPO_NOTAS"
 
   TAG="v${VERSAO}"
+  # Versao com sufixo `-bash42` e da linha legada e nunca vira Latest (RF-205b),
+  # nem ao criar nem ao reeditar a release.
+  LATEST_ARG=""
+  [[ $VERSAO =~ -bash42($|[-.+]) ]] && LATEST_ARG="--latest=false"
   printf '==> Publicando Release %s no GitHub via gh release...\n' "$TAG"
   if gh release view "$TAG" >/dev/null 2>&1; then
     printf '==> Release %s ja existe, enviando artefatos atualizados...\n' "$TAG"
     gh release upload "$TAG" "$ARQUIVO_TAR" "$ARQUIVO_SHA" --clobber
-    gh release edit "$TAG" --title "$TITULO_RELEASE" --notes-file "$CORPO_NOTAS"
+    gh release edit "$TAG" --title "$TITULO_RELEASE" --notes-file "$CORPO_NOTAS" ${LATEST_ARG:+"$LATEST_ARG"}
   else
     printf '==> Criando nova Release %s no GitHub...\n' "$TAG"
+    # --target: a tag nasce no commit que foi empacotado, nao no ramo padrao
+    # (a legada seria publicada com o codigo da master).
     gh release create "$TAG" "$ARQUIVO_TAR" "$ARQUIVO_SHA" \
-      --title "$TITULO_RELEASE" --notes-file "$CORPO_NOTAS"
+      --title "$TITULO_RELEASE" --notes-file "$CORPO_NOTAS" \
+      --target "$(git rev-parse HEAD)" ${LATEST_ARG:+"$LATEST_ARG"}
   fi
   printf '[ok] Release %s publicada com sucesso no GitHub!\n' "$TAG"
 fi

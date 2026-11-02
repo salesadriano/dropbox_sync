@@ -10,15 +10,32 @@
 #   --system, -s        Instala em nivel de sistema (/usr/local) [padrao para root]
 #   --prefix <dir>      Define prefixo customizado de instalacao
 #   --uninstall         Remove uma instalacao existente do dbx
-#   --canal <ref>       Define o branch ou tag a baixar se executado via pipe (padrao: master)
+#   --canal <ref>       Define o branch ou tag a baixar (padrao: o da linha que o bash do host suporta)
 #   --help, -h          Exibe esta mensagem de ajuda
 #   --version, -v       Exibe versao do instalador
+#
+# Duas linhas de produto (RF-198, RF-201): a principal (canal master, bash 4.4+) e
+# a legada (canal support/bash-4.2, bash 4.2 e 4.3). O instalador escolhe pelo
+# BASH_VERSINFO do host; atualizar e rodar o instalador de novo. Este arquivo
+# precisa rodar em bash 4.2: sem nameref, `wait -n`, `${x@op}` nem vetor vazio
+# sob `set -u`.
 #
 set -euo pipefail
 
 VERSAO_INSTALADOR="2.2.0"
 REPO_URL="https://github.com/salesadriano/dropbox_sync.git"
-CANAL_PADRAO="master"
+CANAL_PRINCIPAL="master"
+CANAL_LEGADO="support/bash-4.2"
+# Piso absoluto do produto (RNF-40): abaixo dele nenhuma linha roda. O piso de
+# cada fonte NAO e copiado aqui: vem do lib/preflight.sh da propria fonte.
+PISO_ABSOLUTO_MAIOR=4
+PISO_ABSOLUTO_MENOR=2
+LINHA=""
+CANAL_EXPLICITO=""
+# Unico ponto de download; os testes apontam para um duplo.
+FUNCAO_BAIXAR=baixar_fonte
+HOST_MAIOR=${BASH_VERSINFO[0]}
+HOST_MENOR=${BASH_VERSINFO[1]}
 
 # Cores e formatacao
 if [[ -t 1 ]]; then
@@ -49,7 +66,7 @@ Opcoes:
   --system, -s        Instalar em nivel de sistema (/usr/local) [requer root/sudo]
   --prefix <DIR>      Instalar com prefixo customizado (<DIR>/bin e <DIR>/share/dropbox_sync)
   --uninstall         Desinstalar o dbx e seus componentes instalados
-  --canal <REF>       Branch ou tag remota a utilizar em execucao remota via pipe (padrao: ${CANAL_PADRAO})
+  --canal <REF>       Branch ou tag remota a utilizar (padrao: o da linha que o bash do host suporta)
   --help, -h          Exibir esta mensagem de ajuda
   --version, -v       Exibir versao do instalador
 
@@ -72,14 +89,74 @@ sugerir_instalacao() {
   fi
 }
 
+# escolher_linha <maior> <menor> -> principal (>= 4.4) | legada (4.2, 4.3) | recusa (< 4.2)
+escolher_linha() {
+  local maior=$1 menor=$2
+  if [[ $maior -lt $PISO_ABSOLUTO_MAIOR || ($maior -eq $PISO_ABSOLUTO_MAIOR && $menor -lt $PISO_ABSOLUTO_MENOR) ]]; then
+    printf 'recusa'
+  elif [[ $maior -gt 4 || ($maior -eq 4 && $menor -ge 4) ]]; then
+    printf 'principal'
+  else
+    printf 'legada'
+  fi
+}
+
+canal_da_linha() {
+  if [[ $1 == legada ]]; then printf '%s' "$CANAL_LEGADO"; else printf '%s' "$CANAL_PRINCIPAL"; fi
+}
+
+# piso_da_fonte <raiz> -> "<maior> <menor>" lidos de <raiz>/lib/preflight.sh;
+# ausente ou ilegivel = fonte invalida (status 1).
+piso_da_fonte() {
+  local arq="$1/lib/preflight.sh" maior menor
+  [[ -r $arq ]] || return 1
+  maior=$(sed -n 's/^readonly DBX_PREFLIGHT_BASH_MAIOR=\([0-9][0-9]*\)$/\1/p' "$arq" | head -n 1)
+  menor=$(sed -n 's/^readonly DBX_PREFLIGHT_BASH_MENOR=\([0-9][0-9]*\)$/\1/p' "$arq" | head -n 1)
+  [[ -n $maior && -n $menor ]] || return 1
+  printf '%s %s' "$maior" "$menor"
+}
+
+# piso_atende_ao_host <maior> <menor>: o bash do host serve a fonte com esse piso?
+piso_atende_ao_host() {
+  [[ $HOST_MAIOR -gt $1 || ($HOST_MAIOR -eq $1 && $HOST_MENOR -ge $2) ]]
+}
+
+comando_manual() {
+  printf 'curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/%s/install.sh | bash -s -- --canal %s' "$1" "$1"
+}
+
+# linha_instalada <dir_share> -> principal | legada | (vazio se nao ha instalacao)
+linha_instalada() {
+  local arq="$1/lib/cli.sh" versao
+  [[ -r $arq ]] || return 0
+  versao=$(sed -n "s/^readonly DBX_CLI_VERSAO='\([^']*\)'.*/\1/p" "$arq" | head -n 1)
+  [[ -n $versao ]] || return 0
+  if [[ $versao =~ -bash42($|[-.+]) ]]; then printf 'legada'; else printf 'principal'; fi
+}
+
+# RF-203c e DIV-389: troca de linha sobre instalacao existente e avisada, sem recusa.
+avisar_troca_de_linha() {
+  local anterior
+  anterior=$(linha_instalada "$DIR_SHARE")
+  [[ -n $anterior && $anterior != "$LINHA" ]] || return 0
+  if [[ $LINHA == legada ]]; then
+    aviso "TROCA DE LINHA: a instalacao existente e da linha principal e sera substituida pela linha legada (bash ${HOST_MAIOR}.${HOST_MENOR}). Recursos novos da principal deixam de estar disponiveis; atualize o bash para 4.4+ e rode o instalador de novo para voltar a principal."
+  else
+    aviso "TROCA DE LINHA: a instalacao existente e da linha legada e sera substituida pela linha principal (bash ${HOST_MAIOR}.${HOST_MENOR}). Credencial, configuracao e estado sao mantidos."
+  fi
+}
+
 # 1. Verificacao de pre-requisitos de ambiente (Linux e FreeBSD)
 verificar_prerequisitos() {
   info "Verificando pre-requisitos do sistema..."
 
-  # Bash 4.4+
-  if [[ ${BASH_VERSINFO[0]} -lt 4 || (${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -lt 4) ]]; then
-    erro "Bash 4.4 ou superior e necessario. Versao detectada: ${BASH_VERSION}. $(sugerir_instalacao bash)"
+  # Linha de produto pelo bash do host (RF-201)
+  LINHA=$(escolher_linha "$HOST_MAIOR" "$HOST_MENOR")
+  if [[ $LINHA == recusa ]]; then
+    erro "Bash ${PISO_ABSOLUTO_MAIOR}.${PISO_ABSOLUTO_MENOR} ou superior e necessario. Versao detectada: ${HOST_MAIOR}.${HOST_MENOR}. $(sugerir_instalacao bash)"
   fi
+  [[ -n $CANAL_EXPLICITO ]] || CANAL=$(canal_da_linha "$LINHA")
+  info "Linha ${LINHA} (canal ${CANAL}): bash ${HOST_MAIOR}.${HOST_MENOR} detectado."
 
   # cURL
   if ! command -v curl >/dev/null 2>&1; then
@@ -103,45 +180,64 @@ verificar_prerequisitos() {
   ok "Pre-requisitos validados com sucesso."
 }
 
-# 2. Localizacao da fonte dos arquivos
+# baixar_fonte <canal>: obtem a fonte do repositorio oficial e define RAIZ_ORIGEM
+# e ORIGEM_TEMPORARIA; falha (status 1) sem rede. Unico ponto de download: os
+# testes o substituem.
+baixar_fonte() {
+  local canal=$1 area_tmp
+  area_tmp=$(mktemp -d "${TMPDIR:-/tmp}/dbx-install.XXXXXXXX")
+  ORIGEM_TEMPORARIA="$area_tmp"
+  if command -v git >/dev/null 2>&1; then
+    info "Clonando versao '${canal}'..."
+    git clone --depth 1 --branch "$canal" "$REPO_URL" "$area_tmp/repo" >/dev/null 2>&1 || return 1
+    RAIZ_ORIGEM="$area_tmp/repo"
+  else
+    info "Baixando arquivo do repositorio via cURL..."
+    curl -fsSL "https://github.com/salesadriano/dropbox_sync/archive/${canal}.tar.gz" -o "$area_tmp/fonte.tar.gz" || return 1
+    tar -xzf "$area_tmp/fonte.tar.gz" -C "$area_tmp" || return 1
+    local dir_extraido
+    dir_extraido=$(find "$area_tmp" -maxdepth 1 -type d -name "dropbox_sync*" | head -n 1)
+    [[ -n $dir_extraido && -f "$dir_extraido/bin/dbx" ]] || return 1
+    RAIZ_ORIGEM="$dir_extraido"
+  fi
+}
+
+# 2. Localizacao da fonte dos arquivos. <dir_script> e o diretorio do proprio
+# install.sh (vazio quando executado via pipe).
 obter_raiz_origem() {
-  local dir_script
-  dir_script=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P || echo "")
+  local dir_script=${1-} piso=""
+  RAIZ_ORIGEM=""
+  ORIGEM_TEMPORARIA=""
 
   if [[ -n $dir_script && -f "$dir_script/bin/dbx" && -d "$dir_script/lib" && -d "$dir_script/commands" ]]; then
-    # Executado diretamente a partir do repositorio ou pacote descompactado
-    RAIZ_ORIGEM="$dir_script"
-    ORIGEM_TEMPORARIA=""
-  else
-    # Executado via pipe (ex: curl ... | bash) ou arquivo isolado
-    info "Origem local completa nao detectada; obtendo arquivos do repositorio oficial..."
-    local area_tmp
-    area_tmp=$(mktemp -d "${TMPDIR:-/tmp}/dbx-install.XXXXXXXX")
-    ORIGEM_TEMPORARIA="$area_tmp"
-
-    if command -v git >/dev/null 2>&1; then
-      info "Clonando versao '${CANAL}'..."
-      git clone --depth 1 --branch "$CANAL" "$REPO_URL" "$area_tmp/repo" >/dev/null 2>&1 || {
-        rm -rf -- "$area_tmp"
-        erro "Nao foi possivel clonar o repositorio via git."
-      }
-      RAIZ_ORIGEM="$area_tmp/repo"
-    else
-      info "Baixando arquivo do repositorio via cURL..."
-      local tarball_url="https://github.com/salesadriano/dropbox_sync/archive/refs/heads/${CANAL}.tar.gz"
-      curl -fsSL "$tarball_url" -o "$area_tmp/fonte.tar.gz" || {
-        rm -rf -- "$area_tmp"
-        erro "Nao foi possivel baixar o pacote fonte de: $tarball_url"
-      }
-      tar -xzf "$area_tmp/fonte.tar.gz" -C "$area_tmp"
-      local dir_extraido
-      dir_extraido=$(find "$area_tmp" -maxdepth 1 -type d -name "dropbox_sync*" | head -n 1)
-      [[ -n $dir_extraido && -f "$dir_extraido/bin/dbx" ]] || {
-        rm -rf -- "$area_tmp"
-        erro "Estrutura do pacote baixado e invalida."
-      }
-      RAIZ_ORIGEM="$dir_extraido"
+    # Executado a partir do repositorio ou pacote descompactado
+    if [[ -z $CANAL_EXPLICITO ]]; then
+      # shellcheck disable=SC2086  # intencional: $piso e "<maior> <menor>", dois argumentos
+      if piso=$(piso_da_fonte "$dir_script") && ! piso_atende_ao_host $piso; then
+        info "A fonte local exige bash ${piso% *}.${piso#* } e o host tem ${HOST_MAIOR}.${HOST_MENOR}; obtendo a linha ${LINHA} (canal ${CANAL}) do repositorio oficial."
+      else
+        RAIZ_ORIGEM="$dir_script"
+      fi
     fi
+  fi
+
+  if [[ -z $RAIZ_ORIGEM ]]; then
+    info "Obtendo arquivos do repositorio oficial (canal ${CANAL})..."
+    "$FUNCAO_BAIXAR" "$CANAL" || {
+      limpar_origem_temporaria
+      erro "Nao foi possivel obter o canal '${CANAL}' (sem rede?). Nada foi instalado. Comando manual: $(comando_manual "$CANAL")"
+    }
+  fi
+
+  # Confere o piso da fonte obtida antes de qualquer escrita (RF-202c, DIV-385 A)
+  piso=$(piso_da_fonte "$RAIZ_ORIGEM") || {
+    limpar_origem_temporaria
+    erro "Fonte invalida: lib/preflight.sh ausente ou sem o piso de bash."
+  }
+  # shellcheck disable=SC2086  # intencional: $piso e "<maior> <menor>", dois argumentos
+  if ! piso_atende_ao_host $piso; then
+    limpar_origem_temporaria
+    erro "A fonte do canal '${CANAL}' exige bash ${piso% *}.${piso#* } e o host tem ${HOST_MAIOR}.${HOST_MENOR}. Use o canal $(canal_da_linha "$LINHA"): $(comando_manual "$(canal_da_linha "$LINHA")")"
   fi
 }
 
@@ -188,8 +284,11 @@ executar_desinstalacao() {
 # 4. Rotina principal de instalacao
 executar_instalacao() {
   verificar_prerequisitos
-  obter_raiz_origem
+  local dir_script
+  dir_script=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P || echo "")
   trap limpar_origem_temporaria EXIT
+  obter_raiz_origem "$dir_script"
+  avisar_troca_de_linha
 
   info "Instalando dropbox_sync (dbx) em:"
   printf "     Executavel : %s/dbx\n" "$DIR_BIN"
@@ -265,7 +364,13 @@ executar_instalacao() {
 MODO_ESCOLHIDO=""
 PREFIXO_CUSTOMIZADO=""
 DESINSTALAR="nao"
-CANAL="$CANAL_PADRAO"
+CANAL="$CANAL_PRINCIPAL"
+
+# Carga para testes unitarios: so as funcoes, nenhuma acao.
+if [[ ${DBX_INSTALL_SO_FUNCOES:-} == 1 ]]; then
+  # shellcheck disable=SC2317  # `exit` vale quando o arquivo e executado, nao carregado
+  return 0 2>/dev/null || exit 0
+fi
 
 while [[ $# -gt 0 ]]; do
   case ${1-} in
@@ -284,6 +389,10 @@ while [[ $# -gt 0 ]]; do
       shift
       CANAL="${1-}"
       [[ -n $CANAL ]] || erro "Informe o branch/tag para --canal."
+      # So nome de ref (branch ou tag): o canal vai a URL, ao git e ao comando
+      # manual sugerido ao usuario, que nao pode carregar trecho de shell.
+      [[ $CANAL =~ ^[A-Za-z0-9._/-]+$ && $CANAL != -* ]] || erro "Canal invalido: use so letras, digitos, ponto, hifen, sublinhado e barra (branch ou tag)."
+      CANAL_EXPLICITO="$CANAL"
       ;;
     --uninstall)
       DESINSTALAR="sim"
