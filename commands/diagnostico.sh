@@ -63,7 +63,7 @@ _dbx_cmd_diag_remedio_da_classe() {
 _dbx_cmd_diag_cursores() {
   local indice arquivo texto
   dbx_state_cursor_listar
-  for indice in "${!DBX_STATE_CURSORES_ARQUIVO[@]}"; do
+  for indice in ${DBX_STATE_CURSORES_ARQUIVO[@]+"${!DBX_STATE_CURSORES_ARQUIVO[@]}"}; do
     arquivo=${DBX_STATE_CURSORES_ARQUIVO[indice]}
     if [[ ${DBX_STATE_CURSORES_ESTADO[indice]} == 'ilegivel' ]]; then
       _dbx_cmd_diag cursor aviso "ilegivel: $arquivo" \
@@ -88,7 +88,7 @@ _dbx_cmd_diag_cursores() {
 _dbx_cmd_diag_retomadas() {
   local indice arquivo sentido texto bytes
   dbx_state_retomada_listar
-  for indice in "${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"; do
+  for indice in ${DBX_STATE_RETOMADAS_ARQUIVO[@]+"${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"}; do
     arquivo=${DBX_STATE_RETOMADAS_ARQUIVO[indice]}
     sentido=${DBX_STATE_RETOMADAS_SENTIDO[indice]}
     if [[ ${DBX_STATE_RETOMADAS_ESTADO[indice]} == 'ilegivel' ]]; then
@@ -122,7 +122,7 @@ _dbx_cmd_diag_travas() {
   if [[ ${#DBX_STATE_TRAVAS_ARQUIVO[@]} -eq 0 ]]; then
     _dbx_cmd_diag trava ok 'sem travas'
   fi
-  for indice in "${!DBX_STATE_TRAVAS_ARQUIVO[@]}"; do
+  for indice in ${DBX_STATE_TRAVAS_ARQUIVO[@]+"${!DBX_STATE_TRAVAS_ARQUIVO[@]}"}; do
     arquivo=${DBX_STATE_TRAVAS_ARQUIVO[indice]}
     dbx_state_trava_descrever "$indice"
     quem=$DBX_STATE_RESULTADO
@@ -195,7 +195,7 @@ dbx_cmd_diagnostico_executar() {
   fi
   if ! dbx_preflight_ausentes; then
     dependencias_ok='nao'
-    for utilitario in "${DBX_PREFLIGHT_AUSENTES[@]}"; do
+    for utilitario in ${DBX_PREFLIGHT_AUSENTES[@]+"${DBX_PREFLIGHT_AUSENTES[@]}"}; do
       case $utilitario in
         # Limite aceito do D-1: pelo vinculo de instalacao o ponto de entrada
         # le o alvo com readlink, recua para find e, sem os dois, recusa com 3.
@@ -433,7 +433,7 @@ dbx_cmd_diagnostico_executar() {
 
   local indice texto ok=0 avisos=0 falhas=0
   dbx_cmd_iniciar_saida
-  for indice in "${!DBX_CMD_DIAG_IDS[@]}"; do
+  for indice in ${DBX_CMD_DIAG_IDS[@]+"${!DBX_CMD_DIAG_IDS[@]}"}; do
     case ${DBX_CMD_DIAG_RESULTADOS[indice]} in
       ok) ok=$((ok + 1)) ;;
       aviso) avisos=$((avisos + 1)) ;;

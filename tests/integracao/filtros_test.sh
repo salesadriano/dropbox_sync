@@ -412,6 +412,14 @@ teste_div95_chamada_json_depois_de_um_envio_leva_o_proprio_corpo() {
   assert_igual '{"entries":[{"path":"/r/z.txt","parent_rev":"1"}]}' "$corpo_lote" 'o corpo do delete_batch e o JSON dele'
 }
 
+# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
+# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
+# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
+# (RF-54(f)) e o caso, que exige a dobra, e pulado.
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
+}
+
 teste_div103_receber_espelhar_incluir_impreciso_nao_apaga_nome_nao_utf8() {
   # DIV-103 revisada: `--incluir '[!e]*'` (conjunto negado, impreciso em bytes)
   # sobre nome local que nao e UTF-8 valido, ausente no remoto: o item NAO

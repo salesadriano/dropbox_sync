@@ -18,6 +18,8 @@ DBX_CMD_CARREGADO=1
 _dbx_cmd_diretorio=${BASH_SOURCE[0]%/*}
 [[ $_dbx_cmd_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_cmd_diretorio=.
 _dbx_cmd_diretorio=$(cd -P -- "$_dbx_cmd_diretorio" && pwd -P)
+# shellcheck source=lib/ref.sh
+. "$_dbx_cmd_diretorio/ref.sh"
 # shellcheck source=lib/hash.sh
 . "$_dbx_cmd_diretorio/hash.sh"
 # shellcheck source=lib/tmp.sh
@@ -180,7 +182,7 @@ dbx_cmd_ler_corpo_silencioso() {
       done
       segmentos+=("$resto")
       # shellcheck disable=SC2034  # canal publico lido pelos comandos
-      dbx_json_valor "${segmentos[@]}" >/dev/null 2>&1 && DBX_CMD_CAMPOS[indice]=$DBX_JSON_RESULTADO
+      dbx_json_valor ${segmentos[@]+"${segmentos[@]}"} >/dev/null 2>&1 && DBX_CMD_CAMPOS[indice]=$DBX_JSON_RESULTADO
       indice=$((indice + 1))
     done
   fi
@@ -1421,7 +1423,10 @@ dbx_cmd_bytes_legiveis() {
 DBX_CMD_FILTRO_MOTIVO=''
 # shellcheck disable=SC2034  # DBX_CMD_FILTRO_MOTIVO: canal publico, lido pelos comandos
 dbx_cmd_filtros_preparar() {
-  local -n _fp_caminho=$1 _fp_meta=$2
+  dbx_ref_valido "${1-}" && dbx_ref_valido "${2-}" || return "$DBX_CLI_ERRO_USO"
+  local -a _fp_caminho=() _fp_meta=()
+  dbx_ref_copiar _fp_caminho "$1"
+  dbx_ref_copiar _fp_meta "$2"
   local i opcao tipo
   local -A ultimo=() valores=()
   DBX_CMD_FILTRO_MOTIVO=''
@@ -1489,7 +1494,7 @@ dbx_cmd_campos_de_filtro() {
   else
     dbx_output_campo filtros nao
   fi
-  for i in "${!DBX_FILTRO_PADROES[@]}"; do
+  for i in ${DBX_FILTRO_PADROES[@]+"${!DBX_FILTRO_PADROES[@]}"}; do
     dbx_output_campo "${DBX_FILTRO_TIPOS[i]}" "${DBX_FILTRO_PADROES[i]}"
   done
   [[ -n $DBX_FILTRO_DESDE ]] && dbx_output_campo modificado_desde "$DBX_FILTRO_DESDE"
@@ -1506,7 +1511,7 @@ dbx_cmd_avisos_de_filtro() {
   local aviso
   [[ ${#DBX_SYNC_AVISOS[@]} -gt 0 ]] || return 0
   dbx_cmd_iniciar_saida
-  for aviso in "${DBX_SYNC_AVISOS[@]}"; do
+  for aviso in ${DBX_SYNC_AVISOS[@]+"${DBX_SYNC_AVISOS[@]}"}; do
     dbx_output_diagnostico aviso "$aviso"
   done
   dbx_output_render_diagnostico >&2

@@ -150,7 +150,7 @@ _rodar_tty() {
   linha+='; printf "\nESTADO=%s\n" "$?"'
   rm -f "$base/fifo"
   mkfifo "$base/fifo"
-  printf -v arg '%q' "$linha; true"
+  printf -v arg '%q' "stty sane 2>/dev/null; $linha; true"
   linha="bash -c $arg"
   command -v timeout >/dev/null 2>&1 || pular 'timeout ausente'
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" XDG_STATE_HOME="$base/estado" \
@@ -171,7 +171,7 @@ _rodar_tty() {
   # Dialogo seguinte (DBX_T_EXTRAS: "prompt|resposta"...), cada resposta so depois
   # do seu prompt; DBX_T_EOF=sim encerra a entrada com Ctrl-D.
   local par esperado
-  for par in "${DBX_T_EXTRAS[@]}"; do
+  for par in ${DBX_T_EXTRAS[@]+"${DBX_T_EXTRAS[@]}"}; do
     esperado=${par%%|*}
     espera=0
     while [[ $espera -lt 200 ]]; do

@@ -198,13 +198,17 @@ dbx_cmd_baixar_faixas() {
     if ((vivos == 0)); then
       if ((escrever >= m)) || [[ $falhou == 'sim' ]]; then break; fi
     else
-      wait -n 2>/dev/null || sleep 0.05
+      local _pv=() _pj
+      for ((_pj = escrever; _pj < proximo; _pj++)); do
+        [[ ${est[_pj]:-} == v ]] && _pv+=("${_DBX_TRANSFER_PAR_PIDS[_pj]:-}")
+      done
+      dbx_par_aguardar_algum ${_pv[@]+"${_pv[@]}"}
     fi
   done
   # So os auxiliares: `wait` sem argumento esperaria tambem outros filhos do
   # principal, como o observador de progresso do `.part` (`-p`), que so para
   # depois desta funcao, e o download pendurava em 99%.
-  for j in "${!_DBX_TRANSFER_PAR_PIDS[@]}"; do
+  for j in ${_DBX_TRANSFER_PAR_PIDS[@]+"${!_DBX_TRANSFER_PAR_PIDS[@]}"}; do
     [[ -n ${_DBX_TRANSFER_PAR_PIDS[j]} ]] && wait "${_DBX_TRANSFER_PAR_PIDS[j]}" 2>/dev/null
   done
   set +m

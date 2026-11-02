@@ -131,7 +131,7 @@ _qa_campos_ler() {
   QA_C=()
   while IFS= read -r -d '' f; do QA_C+=("$f"); done <"$1"
 }
-_qa_campos_gravar() { printf '%s\0' "${QA_C[@]}" >"$1"; }
+_qa_campos_gravar() { printf '%s\0' ${QA_C[@]+"${QA_C[@]}"} >"$1"; }
 
 _qa_impressao() { # <arquivo> — conteudo e metadados que nao podem mudar
   local h
@@ -161,7 +161,7 @@ _qa_fixture_up() {
 # caso cria o primeiro dele; um caso com dois ambientes mantem os dois. As fixtures ficam.
 _qa_limpar_ambientes_de_outro_caso() {
   local caso='' f marca="$DBX_TESTES_TMP/qa7.caso" anterior=''
-  for f in "${FUNCNAME[@]}"; do
+  for f in ${FUNCNAME[@]+"${FUNCNAME[@]}"}; do
     [[ $f == teste_* ]] && { caso=$f; break; }
   done
   [[ -n $caso ]] || return 0
@@ -1358,8 +1358,8 @@ teste_qa_d16_descarte_por_cabecalho_so_apaga_pela_barreira_e_so_do_proprio_alvo(
     esac
     _qa_campos_gravar "$reg"
     if [[ $forma == usuario ]]; then
-      rm -f "$part"
-      printf 'do usuario\n' >"$part"
+      printf 'do usuario\n' >"$part.novo"
+      mv -f "$part.novo" "$part"
     fi
     antes=$(_qa_impressao "$part")
     _qa_down "$base"

@@ -630,8 +630,8 @@ teste_upload_em_sessao_com_erro_na_parte_2_para_no_percentual_da_parte_1() {
   assert_diferente 0 "$DBX_ESTADO" 'a parte recusada e falha do comando'
   assert_nao_contem '100%' "$DBX_ERRO" 'TC-PRG-07: sem 100% numa falha'
   mapfile -t linhas < <(grep 'enviando:' "$base/err")
-  ultima=${linhas[-1]}
-  anterior=${linhas[-2]}
+  ultima=${linhas[${#linhas[@]}-1]}
+  anterior=${linhas[${#linhas[@]}-2]}
   assert_contem ' falhou' "$ultima" 'TC-PRG-07: a ultima linha termina em falhou'
   assert_nao_contem ' 0% ' "$ultima" 'TC-PRG-07: a parte 1 ja tinha avancado'
   assert_igual "$anterior" "${ultima% falhou}" 'RF-141(b): a falha fica no maior percentual emitido (o da parte 1)'

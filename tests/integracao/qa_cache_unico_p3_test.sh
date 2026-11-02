@@ -621,7 +621,7 @@ teste_qa_skip_remoto_pasta_ou_hash_malformado_nao_dispensa() {
     "{\"name\":\"a.txt\",\"content_hash\":\"$hash\"}"
     "{\".tag\":\"deleted\",\"name\":\"a.txt\",\"content_hash\":\"$hash\"}"
   )
-  for corpo in "${corpos[@]}"; do
+  for corpo in ${corpos[@]+"${corpos[@]}"}; do
     _qa_metadado 200 "$corpo"
     _qa_rodar upload "$origem" /r/a.txt
     esperado=$((esperado + 1))
@@ -658,7 +658,7 @@ teste_qa_skip_cache_envenenado_nao_leva_a_dispensa_indevida() {
   lista=("$BASE/estado/dbx"/upload-*)
   shopt -u nullglob
   local registro_b
-  for registro_b in "${lista[@]}"; do [[ $registro_b != "$REGISTRO" ]] && break; done
+  for registro_b in ${lista[@]+"${lista[@]}"}; do [[ $registro_b != "$REGISTRO" ]] && break; done
   cp -- "$registro_b" "$REGISTRO"
   _qa_metadado 200 "{\".tag\":\"file\",\"name\":\"a.txt\",\"content_hash\":\"$QA_HASH_FALSO\"}"
   _qa_rodar --progresso upload "$origem" /r/a.txt

@@ -154,7 +154,9 @@ DBX_JSON_PROCESSO_ANALISE=''
 # anterior e o sequestro de raiz que ele permitia.
 readonly DBX_JSON_SEP_INDICE=$'\x1f'
 
-readonly DBX_JSON_DELIMITADORES=('{' '}' '[' ']' ':' ',' '"' $'\\' ' ' $'\t' $'\n' $'\r')
+# bash 4.2: `readonly X=(...)` dentro de funcao cria LOCAL; atribui e depois marca.
+DBX_JSON_DELIMITADORES=('{' '}' '[' ']' ':' ',' '"' $'\\' ' ' $'\t' $'\n' $'\r')
+readonly DBX_JSON_DELIMITADORES
 
 # suite; o analisador nao enxerga o uso porque ele esta em outro arquivo.
 DBX_JSON_ERRO=''
@@ -551,7 +553,7 @@ dbx_json_analisar() {
   fi
 
   marcado=$texto
-  for delimitador in "${DBX_JSON_DELIMITADORES[@]}"; do
+  for delimitador in ${DBX_JSON_DELIMITADORES[@]+"${DBX_JSON_DELIMITADORES[@]}"}; do
     marcado=${marcado//"$delimitador"/$separador$delimitador$separador}
   done
   _dbx_json_e=()

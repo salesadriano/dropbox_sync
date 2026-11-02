@@ -446,7 +446,12 @@ teste_qa_json_com_null_emite_os_pares_terminados_em_nul() {
   done <"$base/out"
   assert_igual 2 "$registros" 'um par caminho e classe'
   assert_sucesso grep -qz $'^falha_caminho=linha\nquebrada.txt$' "$base/out"
-  assert_igual 1 "$(_qa_linhas_de_falha "$DBX_ERRO" | wc -l | tr -d ' ')" \
+  # Com `--null` o stderr tambem sai em registros terminados em NUL: o aviso de
+  # localidade ausente (so em host sem C.UTF-8) vira o primeiro registro e o
+  # `read -d ''` de _qa_rodar pararia ali. Le-se o arquivo inteiro.
+  local erro_inteiro
+  erro_inteiro=$(tr '\0' '\n' <"$base/err")
+  assert_igual 1 "$(_qa_linhas_de_falha "$erro_inteiro" | wc -l | tr -d ' ')" \
     'a linha de falha no stderr continua uma so'
 }
 

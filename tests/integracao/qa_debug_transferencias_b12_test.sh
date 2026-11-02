@@ -226,7 +226,7 @@ _qd_verificar_formato() { # <arquivo_err> <rotulo>
 _qd_sem_segredo() { # <base> <rotulo>
   local s tudo
   tudo="$QD_OUT"$'\n'"$QD_ERR"
-  for s in "${QD_SENTINELAS[@]}"; do
+  for s in ${QD_SENTINELAS[@]+"${QD_SENTINELAS[@]}"}; do
     assert_nao_contem "$s" "$tudo" "$2: segredo $s vazou para stdout/stderr"
   done
 }
@@ -268,12 +268,12 @@ _qd_par() {
   local -a args_s=() args_c=()
   bs=$("$cenario")
   for arg in "$@"; do args_s+=("${arg//@B@/$bs}"); done
-  _qd_exec "$bs" "${args_s[@]}"
+  _qd_exec "$bs" ${args_s[@]+"${args_s[@]}"}
   cs=$DBX_ESTADO os=$QD_OUT es=$QD_ERR ns=$(_qd_n_linhas "$bs/chamadas")
   assert_nao_contem 'debug:' "$es" 'sem --debug nenhuma linha debug (RF-156(e))'
   bc=$("$cenario")
   for arg in "$@"; do args_c+=("${arg//@B@/$bc}"); done
-  _qd_exec "$bc" --debug "${args_c[@]}"
+  _qd_exec "$bc" --debug ${args_c[@]+"${args_c[@]}"}
   cc=$DBX_ESTADO oc=$QD_OUT ec=$QD_ERR nc=$(_qd_n_linhas "$bc/chamadas")
   assert_igual "$cs" "$cc" "codigo de saida igual com e sem --debug; stderr: $ec"
   assert_igual "${os//"$bs"/@B@}" "${oc//"$bc"/@B@}" 'stdout byte a byte igual'
@@ -493,6 +493,7 @@ _qd_primeira() { # <arquivo> <prefixo>
 }
 
 teste_qa_sync_com_arquivo_de_nome_hostil_uma_linha_por_evento() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local base nome linha nao_debug=0
   base=$(_qd_cenario_sync)
   printf -v nome 'q "x"\ny\002.txt'
@@ -508,7 +509,16 @@ teste_qa_sync_com_arquivo_de_nome_hostil_uma_linha_por_evento() {
 
 # ------------------------------------------------------------ progresso
 
+# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
+# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
+# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
+# (RF-54(f)) e o caso, que exige a dobra, e pulado.
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
+}
+
 teste_qa_debug_com_progresso_sem_carriage_return_e_sem_mistura() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local base linha
   base=$(_qd_cenario)
   _qd_exec "$base" --debug --progresso upload "$base/arq.bin" /arq.bin
@@ -533,11 +543,14 @@ teste_qa_debug_com_progresso_sem_carriage_return_e_sem_mistura() {
 _qd_sinal() {
   local sinal=$1 trecho=$2 debug=$3 base pid espera=0 vivo=0 prefixo=() estado
   shift 3
+  # Linha legada: `env --default-signal` so existe no coreutils >= 8.31 (o
+  # CentOS 7 tem 8.22); sem ele o filho em segundo plano herda INT ignorado.
+  env --default-signal=INT true 2>/dev/null || pular 'env sem --default-signal (coreutils < 8.31)'
   if [[ $1 == sync ]]; then base=$(_qd_cenario_sync); else base=$(_qd_cenario_sessao); fi
   _qd_pendurar "$base" "$trecho"
   [[ $debug == sim ]] && prefixo=(--debug)
   setsid env --default-signal=INT -i PATH="$base/bin" HOME="$base" XDG_CONFIG_HOME="$base/config" XDG_STATE_HOME="$base/estado" \
-    TMPDIR="$base/tmp" DBX_HTTP_TENTATIVAS_MAXIMAS=1 "$BASH_ABSOLUTO" "$DBX_EXEC" "${prefixo[@]}" "${@//@B@/$base}" \
+    TMPDIR="$base/tmp" DBX_HTTP_TENTATIVAS_MAXIMAS=1 "$BASH_ABSOLUTO" "$DBX_EXEC" ${prefixo[@]+"${prefixo[@]}"} "${@//@B@/$base}" \
     >"$base/out" 2>"$base/err" <"$base/stdin_sessao" &
   pid=$!
   while ((espera < 100)); do

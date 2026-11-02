@@ -370,7 +370,7 @@ _dbx_auth_classe_de() {
   local candidata
   # shellcheck disable=SC2034  # canal publico, lido por dbx_auth_falhar_com
   DBX_AUTH_CLASSE='desconhecido'
-  for candidata in "${DBX_ERRORS_CLASSES[@]}"; do
+  for candidata in ${DBX_ERRORS_CLASSES[@]+"${DBX_ERRORS_CLASSES[@]}"}; do
     if [[ ${DBX_ERRORS_CODIGO[$candidata]} == "$1" ]]; then
       # shellcheck disable=SC2034  # canal publico, lido por commands/upload, commands/sync e lib/cmd
       DBX_AUTH_CLASSE=$candidata

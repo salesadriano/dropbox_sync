@@ -134,7 +134,7 @@ teste_forma_aprendida_por_sonda_unica_uma_leitura_uma_chamada() {
   dbx_atributo modo "$area/nao-existe"
   assert_igual 1 $? 'arquivo ausente falha'
   mapfile -t chamadas <"$area/chamadas"
-  for linha in "${chamadas[@]}"; do
+  for linha in ${chamadas[@]+"${chamadas[@]}"}; do
     [[ $linha == -f\ * ]] && _harness_falhar "RF-167(d): arquivo ausente no GNU disparou a forma -f: $linha"
   done
   : >"$area/chamadas"

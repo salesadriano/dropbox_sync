@@ -250,7 +250,7 @@ dbx_cmd_restaurar_executar() {
   [[ $situacao == 'file' ]] && vigente=${DBX_RESTAURAR_REVS[0]:-}
   if [[ $tem_rev == 'sim' || $tem_antes == 'sim' ]]; then
     while :; do
-      for indice in "${!DBX_RESTAURAR_REVS[@]}"; do
+      for indice in ${DBX_RESTAURAR_REVS[@]+"${!DBX_RESTAURAR_REVS[@]}"}; do
         if [[ $tem_rev == 'sim' && ${DBX_RESTAURAR_REVS[indice]} == "$rev" ]] ||
           { [[ $tem_antes == 'sim' ]] &&
             _dbx_cmd_restaurar_ate "${DBX_RESTAURAR_MODIFICADOS[indice]}" "$limite_data"; }; then
@@ -356,10 +356,10 @@ _dbx_cmd_restaurar_pasta() {
       nao_percorridas+=("$DBX_CMD_EXIBIDO: $DBX_CMD_FALHA_CLASSE")
       continue
     fi
-    tags=("${DBX_CMD_NIVEL_TAGS[@]}")
-    caminhos=("${DBX_CMD_NIVEL_CAMINHOS[@]}")
-    restauraveis=("${DBX_CMD_NIVEL_RESTAURAVEIS[@]}")
-    for indice in "${!tags[@]}"; do
+    tags=(${DBX_CMD_NIVEL_TAGS[@]+"${DBX_CMD_NIVEL_TAGS[@]}"})
+    caminhos=(${DBX_CMD_NIVEL_CAMINHOS[@]+"${DBX_CMD_NIVEL_CAMINHOS[@]}"})
+    restauraveis=(${DBX_CMD_NIVEL_RESTAURAVEIS[@]+"${DBX_CMD_NIVEL_RESTAURAVEIS[@]}"})
+    for indice in ${tags[@]+"${!tags[@]}"}; do
       item=${caminhos[indice]}
       [[ -n $item && ${tags[indice]} != 'file' ]] || continue
       # DIV-78: dentro da raiz remota E da pasta pedida, por componente.
@@ -404,18 +404,18 @@ _dbx_cmd_restaurar_pasta() {
   # shellcheck source=lib/sync.sh
   . "$DBX_CLI_RAIZ/lib/sync.sh"
   dbx_sync_ordem_sem_caixa itens
-  local -a ordem=("${DBX_SYNC_ORDEM[@]}")
+  local -a ordem=(${DBX_SYNC_ORDEM[@]+"${DBX_SYNC_ORDEM[@]}"})
 
   DBX_RESTAURAR_FEITOS=0 DBX_RESTAURAR_FALHAS=${#falhas[@]} DBX_RESTAURAR_TOTAL=$total
   DBX_RESTAURAR_POSICAO=0 DBX_RESTAURAR_FILA=()
-  for indice in "${ordem[@]}"; do
+  for indice in ${ordem[@]+"${ordem[@]}"}; do
     DBX_RESTAURAR_FILA+=("${itens[indice]}")
   done
   local acao=''
   dbx_tmp_acao_registrar _dbx_cmd_restaurar_parcial && acao=$DBX_TMP_ID
 
   local restaurados=0 simulado='nao' corpo resultado motivo
-  for indice in "${ordem[@]}"; do
+  for indice in ${ordem[@]+"${ordem[@]}"}; do
     item=${itens[indice]}
     dbx_json_escapar_cadeia "$item"
     corpo="{\"path\":\"$DBX_JSON_ESCAPADO\""

@@ -257,19 +257,18 @@ dbx_walk_local() {
 # ponto de chamada.
 dbx_walk_ler() {
   [[ $# -eq 4 ]] || return "$DBX_WALK_ERRO_USO"
-  local arquivo=$1
-  local -n _caminhos=$2 _tamanhos=$3 _identidades=$4
-  local registro resto
-  _caminhos=()
-  _tamanhos=()
-  _identidades=()
-  [[ -r $arquivo ]] || return 0
-  while IFS= read -r -d '' registro; do
-    _tamanhos+=("${registro%%$'\t'*}")
-    resto=${registro#*$'\t'}
-    _identidades+=("${resto%%$'\t'*}")
-    _caminhos+=("${resto#*$'\t'}")
-  done <"$arquivo"
+  local _wl_arquivo=$1 _wl_registro _wl_resto
+  dbx_ref_valido "$2" && dbx_ref_valido "$3" && dbx_ref_valido "$4" || return "$DBX_WALK_ERRO_USO"
+  dbx_ref_limpar "$2"
+  dbx_ref_limpar "$3"
+  dbx_ref_limpar "$4"
+  [[ -r $_wl_arquivo ]] || return 0
+  while IFS= read -r -d '' _wl_registro; do
+    dbx_ref_anexar "$3" "${_wl_registro%%$'\t'*}"
+    _wl_resto=${_wl_registro#*$'\t'}
+    dbx_ref_anexar "$4" "${_wl_resto%%$'\t'*}"
+    dbx_ref_anexar "$2" "${_wl_resto#*$'\t'}"
+  done <"$_wl_arquivo"
   return 0
 }
 
@@ -434,8 +433,6 @@ dbx_walk_diretorios() {
 # existe e vazio legitimo (destino ainda nao criado), nunca parcialidade.
 _dbx_walk_ciclo_dir() {
   local dir=$1 resto=$1 comp prefixo='' nome relativo tamanho identidade
-  local -A _conj_vazio=()
-  local -n _conj=${_dbx_walk_conjunto:-_conj_vazio}
   while [[ -n $resto ]]; do
     comp=${resto%%/*}
     if [[ $resto == */* ]]; then resto=${resto#*/}; else resto=''; fi
@@ -465,7 +462,7 @@ _dbx_walk_ciclo_dir() {
       printf '%s\0' "$relativo" >&5
       # Ramo SO DO DESTINO (fora do conjunto de diretorios da origem): lido inteiro
       # aqui, pela descida de sempre, para o ciclo planejar a exclusao dele (RF-190(b)).
-      if [[ -n $_dbx_walk_conjunto && -z ${_conj["k:${relativo,,}"]+definido} ]]; then
+      if [[ -n $_dbx_walk_conjunto ]] && ! dbx_ref_existe "$_dbx_walk_conjunto" "k:${relativo,,}"; then
         if [[ ! -r $nome || ! -x $nome ]]; then
           printf 'diretorio ilegivel: %s\n' "$relativo" >&3
         elif ! (cd -- "$nome" 2>/dev/null && _dbx_walk_descer 2 "$relativo/"); then

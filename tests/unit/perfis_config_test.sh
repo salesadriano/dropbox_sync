@@ -416,8 +416,8 @@ teste_pfl_listar_padrao_primeiro_e_ordem_de_bytes() {
   _perfil_seguro "$area" 0z AK rt
   _escrever "$area/config/dbx/credencial.json" PAD rtp
   dbx_config_perfis_listar
-  assert_igual 'padrao 0z a b' "${DBX_CONFIG_PERFIS_NOME[*]}" 'ordem'
-  assert_igual 'completa completa completa completa' "${DBX_CONFIG_PERFIS_CREDENCIAL[*]}" 'veredito'
+  assert_igual 'padrao 0z a b' ${DBX_CONFIG_PERFIS_NOME[@]+"${DBX_CONFIG_PERFIS_NOME[*]}"} 'ordem'
+  assert_igual 'completa completa completa completa' ${DBX_CONFIG_PERFIS_CREDENCIAL[@]+"${DBX_CONFIG_PERFIS_CREDENCIAL[*]}"} 'veredito'
 }
 
 teste_pfl03_padrao_so_aparece_se_existir() {
@@ -426,7 +426,7 @@ teste_pfl03_padrao_so_aparece_se_existir() {
   _xdg "$area"
   _perfil_seguro "$area" a AK rt
   dbx_config_perfis_listar
-  assert_igual 'a' "${DBX_CONFIG_PERFIS_NOME[*]}" 'sem credencial.json'
+  assert_igual 'a' ${DBX_CONFIG_PERFIS_NOME[@]+"${DBX_CONFIG_PERFIS_NOME[*]}"} 'sem credencial.json'
 }
 
 teste_pfl05_vocabulario_do_veredito() {
@@ -445,7 +445,7 @@ teste_pfl05_vocabulario_do_veredito() {
   chmod 600 "$d/semsegredo.json"
   dbx_config_perfis_listar
   local i mapa=''
-  for i in "${!DBX_CONFIG_PERFIS_NOME[@]}"; do
+  for i in ${DBX_CONFIG_PERFIS_NOME[@]+"${!DBX_CONFIG_PERFIS_NOME[@]}"}; do
     mapa+="${DBX_CONFIG_PERFIS_NOME[i]}=${DBX_CONFIG_PERFIS_CREDENCIAL[i]} "
   done
   assert_igual 'aberto=permissao completa=completa semrefresh=incompleta semsegredo=incompleta simb=ligacao_simbolica vazio=ilegivel ' "$mapa" 'vocabulario'
@@ -465,7 +465,7 @@ teste_pfl08_entradas_anomalas_nao_viram_registro() {
   mkdir "$d/subdir.json"
   printf x >"$d/.credencial.1.XXXX"
   dbx_config_perfis_listar
-  assert_igual 'ok' "${DBX_CONFIG_PERFIS_NOME[*]}" 'so o valido'
+  assert_igual 'ok' ${DBX_CONFIG_PERFIS_NOME[@]+"${DBX_CONFIG_PERFIS_NOME[*]}"} 'so o valido'
   assert_igual 5 "${#DBX_CONFIG_PERFIS_IGNORADAS[@]}" 'cinco anomalias, temporarios ocultos em silencio'
 }
 

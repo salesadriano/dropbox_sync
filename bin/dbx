@@ -197,7 +197,7 @@ _dbx_ajuda_retomada() {
 dbx_cli_analisar "$@" || _dbx_falhar uso_invalido "$DBX_CLI_MOTIVO"
 
 if [[ ${#DBX_CLI_ARGS[@]} -gt 0 ]]; then
-  for _dbx_arg in "${DBX_CLI_ARGS[@]}"; do
+  for _dbx_arg in ${DBX_CLI_ARGS[@]+"${DBX_CLI_ARGS[@]}"}; do
     if [[ $_dbx_arg == '--help' || $_dbx_arg == '-h' ]]; then
       DBX_CLI_ARGS=("$DBX_CLI_COMANDO")
       DBX_CLI_COMANDO='help'

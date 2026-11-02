@@ -224,7 +224,7 @@ teste_qa_p34_classe_politica_e_codigo_iguais_a_referencia() {
     '500||nao|erro_remoto|indeterminado'
   )
   local linha http resumo idem classe politica saida
-  for linha in "${tabela[@]}"; do
+  for linha in ${tabela[@]+"${tabela[@]}"}; do
     IFS='|' read -r http resumo idem classe politica <<<"$linha"
     saida=$(dbx_errors_classificar "$http" "$resumo")
     assert_igual "$classe" "$saida" "classe pela saida: $linha"

@@ -73,7 +73,7 @@ DBX_CLI_CARREGADO=1
 
 DBX_CLI_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 
-readonly DBX_CLI_VERSAO='2.2.0'
+readonly DBX_CLI_VERSAO='2.3.0-bash42'
 
 DBX_CLI_COMANDO=''
 DBX_CLI_ARGS=()
@@ -300,16 +300,26 @@ dbx_cli_validar_taxa() {
 # ECO DO TERMINAL: `read -s` desliga o eco so durante a leitura e o religa ao
 # terminar, inclusive quando INT, TERM ou HUP chegam durante a leitura e o
 # tratador de `lib/tmp` encerra o processo (o `read` e desfeito antes do
-# tratador rodar; medido, TC-SNH-13). Por isso nao ha `stty` aqui: ele nao esta
-# entre os utilitarios do preflight (RNF-02) e nao acrescentaria garantia.
+# tratador rodar; medido, TC-SNH-13) no bash >= 4.3.
+# LINHA LEGADA: no bash 4.2 o `read -s` interrompido por sinal deixa o eco
+# DESLIGADO (medido no CentOS 7, 4.2.46). Ali, com a entrada num terminal e
+# `stty` presente, a leitura marca DBX_TMP_ECO_PENDENTE e o finalizador de
+# `lib/tmp` religa o eco (`stty echo`) se o processo terminar durante ela.
+# `stty` segue fora dos utilitarios exigidos (RNF-02): sem ele, nada muda.
 # Status: o do `read` (nao zero no fim da entrada); quem chama decide pelo valor.
 dbx_cli_ler_oculto() {
-  local _dbx_cli_pergunta=$1 _dbx_cli_destino=$2 _dbx_cli_estado
+  local _dbx_cli_pergunta=$1 _dbx_cli_destino=$2 _dbx_cli_estado _dbx_cli_eco=nao
   [[ $_dbx_cli_destino =~ ^[a-z_][a-z0-9_]*$ ]] || return "$DBX_CLI_ERRO_USO"
+  if ((BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3)) && [[ -t 0 ]] &&
+    command -v stty >/dev/null 2>&1; then
+    _dbx_cli_eco=sim
+    DBX_TMP_ECO_PENDENTE=$BASHPID
+  fi
   printf '%s' "$_dbx_cli_pergunta" >&2
   # shellcheck disable=SC2229  # o nome e o mecanismo: o valor volta ao chamador
   IFS= read -r -s "$_dbx_cli_destino"
   _dbx_cli_estado=$?
+  [[ $_dbx_cli_eco == sim ]] && DBX_TMP_ECO_PENDENTE=''
   # Sob `-s` o terminal nao mostra a quebra de linha digitada.
   printf '\n' >&2
   return "$_dbx_cli_estado"

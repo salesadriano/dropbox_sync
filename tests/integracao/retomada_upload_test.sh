@@ -493,7 +493,7 @@ teste_rmu08_confirmado_mais_4_mib_sem_parte_em_voo_gravada_recomeca() {
     while IFS= read -r -d '' f; do c+=("$f"); done <"$r"
     c[8]=0
     c[9]=-
-    printf '%s\0' "${c[@]}" >"$r"
+    printf '%s\0' ${c[@]+"${c[@]}"} >"$r"
   done
   _up "$base"
   assert_igual 0 "$DBX_ESTADO" "do zero: $DBX_ERRO"
@@ -721,7 +721,12 @@ teste_rmo08_campos_em_texto_json_e_null_e_resto_da_saida_igual() {
   printf 'cd %q && exec env -i PATH=%q HOME=%q XDG_CONFIG_HOME=%q XDG_STATE_HOME=%q TMPDIR=%q bash %q upload grande.iso /Grande.iso 2>/dev/null\n' \
     "$base/trabalho" "$base/bin:$PATH" "$base" "$base/config" "$base/estado" "$base/tmp" "$DBX_EXEC_PADRAO" >"$base/texto.sh"
   printf '%s' "$$" >"$base/pid"
-  timeout -k 2 120 script -qec "bash $base/texto.sh" /dev/null </dev/null >"$base/out_texto" 2>&1
+  # Entrada ABERTA (fifo lido e escrito): o `script` do util-linux 2.23 encerra no
+  # fim da entrada e perderia a saida do filho que ainda roda.
+  mkfifo "$base/entrada_texto"
+  exec 8<>"$base/entrada_texto"
+  timeout -k 2 120 script -qec "bash $base/texto.sh" /dev/null <&8 >"$base/out_texto" 2>&1
+  exec 8>&-
   local texto
   texto=$(tr -d '\r' <"$base/out_texto")
   assert_contem $'retomada: nao\nretomado_de: 0' "$texto" 'texto'
@@ -800,7 +805,7 @@ _outra_conta() {
     c=()
     while IFS= read -r -d '' f; do c+=("$f"); done <"$r"
     c[3]=cred-ffffffffffffffffffffffffffffffff
-    printf '%s\0' "${c[@]}" >"$r"
+    printf '%s\0' ${c[@]+"${c[@]}"} >"$r"
   done
 }
 
@@ -995,7 +1000,7 @@ teste_rmo10_ajuda_e_autocompletar_trazem_a_opcao_e_as_frases() {
     lista=$(env -i PATH="$PATH" HOME="$DBX_TESTES_TMP" bash -c '
       . "$1"; f=$(complete -p dbx); f=${f#*-F }; f=${f%% *}
       COMP_WORDS=(dbx "$2" --); COMP_CWORD=2; COMP_LINE="dbx $2 --"; COMP_POINT=${#COMP_LINE}; COMPREPLY=()
-      "$f" dbx -- "$2"; printf "%s\n" "${COMPREPLY[@]}"' _ "$DBX_HARNESS_RAIZ/completions/dbx.bash" "$cmd")
+      "$f" dbx -- "$2"; printf "%s\n" ${COMPREPLY[@]+"${COMPREPLY[@]}"}' _ "$DBX_HARNESS_RAIZ/completions/dbx.bash" "$cmd")
     assert_contem '--sem-retomada' "$lista" "$cmd: completado"
     assert_contem '--no-resume' "$lista" "$cmd: alias completado"
   done

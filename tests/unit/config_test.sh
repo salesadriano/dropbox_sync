@@ -582,7 +582,7 @@ teste_remocao_integral_leva_junto_temporario_orfao() {
   # Sem substituicao de comando na montagem da massa: o vetor recebe a expansao
   # do proprio shell e a cadeia e montada por `printf -v`.
   local -a achados=("$diretorio"/.credencial.*)
-  printf -v restos '%s ' "${achados[@]}"
+  printf -v restos '%s ' ${achados[@]+"${achados[@]}"}
   assert_nao_contem 'ABCDEFGH' "$restos" 'temporario orfao precisa sair junto'
 }
 

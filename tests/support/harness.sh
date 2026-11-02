@@ -304,7 +304,7 @@ harness_executar() {
 
   if [[ -n $filtro ]]; then
     local -a filtrados=()
-    for nome in "${casos[@]}"; do
+    for nome in ${casos[@]+"${casos[@]}"}; do
       [[ $nome == *"$filtro"* ]] && filtrados+=("$nome")
     done
     casos=("${filtrados[@]:-}")
@@ -345,7 +345,7 @@ harness_executar() {
 
   saida_do_caso="${DBX_TESTES_TMP:-${TMPDIR:-/tmp}}/dbx-caso.$$"
 
-  for nome in "${casos[@]}"; do
+  for nome in ${casos[@]+"${casos[@]}"}; do
     indice=$((indice + 1))
     : >"$DBX_HARNESS_ARQ_PULAR"
     # A saida do caso e desviada para arquivo e reemitida em seguida: sem isso

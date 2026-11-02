@@ -1410,7 +1410,7 @@ teste_cada_alias_do_sync_produz_o_mesmo_plano_que_o_nome_em_portugues() {
     '--confirmar|--yes' '--permitir-origem-vazia|--allow-empty-source'
   )
   local par pt en vazia esperado obtido base
-  for par in "${pares[@]}"; do
+  for par in ${pares[@]+"${pares[@]}"}; do
     pt=${par%|*} en=${par#*|}
     vazia=nao
     [[ $pt == --permitir-origem-vazia ]] && vazia=sim
@@ -1418,7 +1418,7 @@ teste_cada_alias_do_sync_produz_o_mesmo_plano_que_o_nome_em_portugues() {
     [[ $vazia == sim ]] && comando+=(--permitir-origem-vazia)
     base=$(_cenario_de_plano "$vazia")
     comando=("${comando[@]/#LOCAL/$base/local}")
-    esperado=$(_plano_de "$base" "${comando[@]}")
+    esperado=$(_plano_de "$base" ${comando[@]+"${comando[@]}"})
     obtido=$(_plano_de "$base" "${comando[@]/#$pt/$en}")
     assert_contem '0|' "${esperado:0:2}" "$pt: o plano de referencia sai com 0 ($esperado)"
     assert_igual "$esperado" "$obtido" "$en: mesmo plano que $pt"
@@ -1574,6 +1574,7 @@ readonly E_AGUDO_MAIUSCULO=$'\xc3\x89'
 readonly E_AGUDO_MINUSCULO=$'\xc3\xa9'
 
 teste_caixa_fora_do_ascii_e_um_caminho_mesmo_com_lc_all_c() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   # TC-CX-04 (RF-54(e), DIV-32): `LC_ALL=C` no ambiente nao anula a fixacao,
   # que vale so dentro da comparacao.
   local base local_nome remoto_nome
@@ -1593,7 +1594,16 @@ teste_caixa_fora_do_ascii_e_um_caminho_mesmo_com_lc_all_c() {
   assert_nao_contem 'C.UTF-8' "$DBX_ERRO" 'com a localidade presente nao ha aviso'
 }
 
+# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
+# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
+# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
+# (RF-54(f)) e o caso, que exige a dobra, e pulado.
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
+}
+
 teste_caixa_fora_do_ascii_com_conteudo_igual_e_omitida_com_lc_all_c() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local base resumo
   base=$(_cenario)
   printf 'igual' >"$base/local/${E_AGUDO_MAIUSCULO}.txt"
@@ -1642,7 +1652,70 @@ teste_localidade_ausente_avisa_uma_vez_e_compara_so_no_ascii() {
   assert_contem 'so no ASCII' "$DBX_ERRO" 'e o efeito'
   assert_nao_contem 'comparacao sem caixa' "$DBX_SAIDA" 'a saida padrao nao recebe o aviso'
   assert_contem "transferir=$local_nome" "$DBX_SAIDA" 'fora do ASCII as chaves sao distintas'
-  assert_contem "apagar=$remoto_nome" "$DBX_SAIDA" 'e o remoto vira candidato a exclusao'
+  assert_nao_contem "apagar=$remoto_nome" "$DBX_SAIDA" 'QA-B42-01: o remoto nao e apagado sem a localidade'
+}
+
+teste_sem_localidade_o_espelhar_nao_apaga_o_recem_enviado_fora_do_ascii() {
+  # QA-B42-01: sem a localidade, `Éa.txt` e `éa.txt` sao chaves distintas aqui e o
+  # mesmo arquivo na Dropbox; apagar o "extra" apagaria o que acabou de ser enviado.
+  local base local_nome="${E_AGUDO_MAIUSCULO}a.txt" remoto_nome="${E_AGUDO_MINUSCULO}a.txt"
+  base=$(_cenario)
+  printf 'novo' >"$base/local/$local_nome"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota "/r/$remoto_nome" "$RESUMO_ZERADO" 4)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C DBX_SYNC_LOCALIDADE=xx_XX.UTF-8' --json sync --enviar \
+    --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "o aviso nao muda o codigo; diagnostico: $DBX_ERRO"
+  assert_contem "transferir=$local_nome" "$DBX_SAIDA" 'a transferencia nao muda'
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'a contagem reflete o que realmente sai'
+  assert_igual 0 "$(_exclusoes "$base")" 'nenhuma exclusao de caminho fora do ASCII'
+  assert_igual 1 "$(_harness_contar 'mantido(s) sem apagar' "$base/err")" 'um aviso so'
+  assert_contem 'ausente' "$DBX_ERRO" 'o aviso nomeia o motivo'
+}
+
+teste_sem_localidade_ramo_de_pasta_fora_do_ascii_so_no_destino_nao_e_apagado() {
+  local base
+  base=$(_cenario)
+  printf 'novo' >"$base/local/${E_AGUDO_MAIUSCULO}fotos.txt"
+  printf '{"entries":[%s,%s],"has_more":false}' \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}fotos/um.txt" "$RESUMO_ZERADO" 4)" \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}fotos/sub/dois.txt" "$RESUMO_ZERADO" 4)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C DBX_SYNC_LOCALIDADE=xx_XX.UTF-8' --json sync --enviar \
+    --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_exclusoes "$base")" 'o ramo fora do ASCII nao e apagado'
+  assert_contem 'a_apagar=0' "$DBX_SAIDA" 'a contagem reflete o que realmente sai'
+  assert_igual 1 "$(_harness_contar 'mantido(s) sem apagar' "$base/err")" 'um aviso so'
+  assert_contem '2 ' "$DBX_ERRO" 'o aviso diz quantos foram mantidos'
+}
+
+teste_sem_localidade_caminho_ascii_so_no_destino_continua_sendo_apagado() {
+  local base
+  base=$(_cenario)
+  printf 'novo' >"$base/local/novo.txt"
+  printf '{"entries":[%s,%s],"has_more":false}' \
+    "$(_entrada_remota '/r/orfao.txt' 'ff' 1)" \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}x.txt" 'ff' 1)" >"$base/listagem"
+  _rodar_com_ambiente "$base" 'LC_ALL=C DBX_SYNC_LOCALIDADE=xx_XX.UTF-8' --json sync --enviar \
+    --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_exclusoes "$base")" 'so o ASCII sai; o --espelhar continua ligado'
+  assert_contem 'a_apagar=1' "$DBX_SAIDA" 'contagem do que sai'
+  assert_contem '1 caminho' "$DBX_ERRO" 'o aviso conta o mantido'
+}
+
+teste_com_localidade_o_espelhar_fora_do_ascii_nao_muda() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
+  local base
+  base=$(_cenario)
+  printf 'novo' >"$base/local/novo.txt"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota "/r/${E_AGUDO_MINUSCULO}x.txt" 'ff' 1)" >"$base/listagem"
+  _rodar_com_ambiente "$base" '' --json sync --enviar --origem "$base/local" --destino /r \
+    --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "diagnostico: $DBX_ERRO"
+  assert_igual 1 "$(_exclusoes "$base")" 'com a localidade o extra fora do ASCII e apagado'
+  assert_nao_contem 'sem apagar' "$DBX_ERRO" 'sem aviso'
 }
 
 teste_localidade_ausente_nao_muda_saida_nem_codigo_no_ascii() {

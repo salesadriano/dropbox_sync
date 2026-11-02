@@ -30,7 +30,7 @@ _sem() {
   # PATH reduzido, senao a sonda mede a si mesma em vez do componente.
   for alvo in bash curl sha256sum shasum sha256 openssl timeout env head dd wc mktemp stat \
     readlink find tr grep cat chmod mv rm mkdir dirname basename sed seq awk od tail df sleep ln rmdir; do
-    for faltante in "${ausentes[@]}"; do
+    for faltante in ${ausentes[@]+"${ausentes[@]}"}; do
       [[ $alvo == "$faltante" ]] && continue 2
     done
     local origem
@@ -129,7 +129,7 @@ teste_deteccao_de_plataforma_so_no_ponto_unico() {
 }
 
 # ---------------------------------------------------------------------------
-# Piso de bash 4.4 (DP-07, RNF-01 descongelado)
+# Piso de bash 4.2 (linha legada support/bash-4.2; RF-198)
 # ---------------------------------------------------------------------------
 
 teste_versao_de_bash_abaixo_do_piso_e_recusada() {
@@ -138,28 +138,28 @@ teste_versao_de_bash_abaixo_do_piso_e_recusada() {
     . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_versao_de_bash_suficiente 4 1 && printf "aceitou-4.1"
     dbx_preflight_versao_de_bash_suficiente 3 2 && printf "aceitou-3.2"
-    dbx_preflight_versao_de_bash_suficiente 4 3 && printf "aceitou-4.3"
-    dbx_preflight_versao_de_bash_suficiente 4 4 || printf "recusou-4.4"
+    dbx_preflight_versao_de_bash_suficiente 4 2 || printf "recusou-4.2"
+    dbx_preflight_versao_de_bash_suficiente 4 3 || printf "recusou-4.3"
     dbx_preflight_versao_de_bash_suficiente 5 3 || printf "recusou-5.3"
     printf "ok"
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
   assert_igual 'ok' "$saida" \
-    'o piso e 4.4: RHEL 6 com 4.1 fica fora, e 4.3 nao tem nameref'
+    'o piso e 4.2: 4.2 e 4.3 sao aceitos, 4.1 e 3.2 recusados'
 }
 
 teste_piso_declarado_e_o_verificado() {
   assert_igual '4' "$DBX_PREFLIGHT_BASH_MAIOR"
-  assert_igual '4' "$DBX_PREFLIGHT_BASH_MENOR"
+  assert_igual '2' "$DBX_PREFLIGHT_BASH_MENOR"
 }
 
 # RF-204 (TC-B42-20): a principal recusa bash 4.2/4.3 como antes, e a mensagem
 # manda reinstalar pelo install.sh, que escolhe a linha legada.
 teste_mensagem_de_bash_antigo_indica_a_reinstalacao_pelo_instalador() {
   local msg
-  dbx_preflight_mensagem_bash_antigo 4 2
+  dbx_preflight_mensagem_bash_antigo 4 1
   msg=$DBX_PREFLIGHT_MENSAGEM
-  assert_contem '4.2' "$msg" 'nomeia a versao detectada'
-  assert_contem '4.4' "$msg" 'nomeia o piso'
+  assert_contem '4.1' "$msg" 'nomeia a versao detectada'
+  assert_contem 'piso 4.2' "$msg" 'nomeia o piso'
   assert_contem 'install.sh | bash' "$msg" 'indica a reinstalacao pelo instalador'
   assert_contem 'master/install.sh' "$msg" 'comando do README'
 }
@@ -280,7 +280,7 @@ teste_inspecao_sem_parada_nomeia_cada_ausente() {
   saida=$(PATH="$caminho" timeout 30 bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_ausentes
-    printf "%s|%s" "$?" "${DBX_PREFLIGHT_AUSENTES[*]}"
+    printf "%s|%s" "$?" ${DBX_PREFLIGHT_AUSENTES[@]+"${DBX_PREFLIGHT_AUSENTES[*]}"}
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
   assert_igual "$DBX_PREFLIGHT_ERRO_CONFIGURACAO|mktemp stat readlink" "$saida" \
     'cada ausente nomeado, na ordem da lista do preflight'
@@ -288,7 +288,7 @@ teste_inspecao_sem_parada_nomeia_cada_ausente() {
   saida=$(PATH="$caminho" timeout 30 bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_ausentes
-    printf "%s|%s" "$?" "${DBX_PREFLIGHT_AUSENTES[*]}"
+    printf "%s|%s" "$?" ${DBX_PREFLIGHT_AUSENTES[@]+"${DBX_PREFLIGHT_AUSENTES[*]}"}
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
   assert_igual '0|' "$saida" 'ambiente completo: nada ausente'
 }
@@ -299,7 +299,7 @@ teste_inspecao_sem_parada_inclui_o_resumo_sha256() {
   saida=$(PATH="$caminho" timeout 30 bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_ausentes
-    printf "%s" "${DBX_PREFLIGHT_AUSENTES[*]}"
+    printf "%s" ${DBX_PREFLIGHT_AUSENTES[@]+"${DBX_PREFLIGHT_AUSENTES[*]}"}
   ' _ "$DBX_HARNESS_RAIZ" 2>&1)
   assert_contem 'sha256sum' "$saida" 'a falta do utilitario de resumo e nomeada'
 }
@@ -433,7 +433,11 @@ _nao_e_comando_externo() {
   # presenca e
   # verificada em conjunto por `dbx_hash_verificar_dependencias`, e nao
   # individualmente: exigir os tres reprovaria ambiente que tem apenas um.
-  local excecoes=' sudo env sha256sum openssl shasum sha256 '
+  #
+  # `stty` (linha legada): so religa o eco apos leitura oculta interrompida no
+  # bash 4.2, condicionado a `command -v stty` (lib/cli.sh, lib/tmp.sh); a
+  # ausencia nao impede operacao alguma, entao nao e exigido (RNF-02).
+  local excecoes=' sudo env sha256sum openssl shasum sha256 stty '
   [[ $excecoes == *" $palavra "* ]] && return 0
   return 1
 }

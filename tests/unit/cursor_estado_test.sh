@@ -124,12 +124,12 @@ dbx_state_cursor_gravar C1 1 0 1000001 CORPO; printf "c=%s;\n" "$?"'
 
 _corromper() { # <caso> — sobre o registro valido REG
   local -a c=()
-  mapfile -d '' -t c <"$REG"
+  c=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do c+=("$_m"); done <"$REG"
   case $1 in
     vazio) : >"$REG" ;;
     truncado) head -c 120 -- "$REG" >"$AREA/t" && cat "$AREA/t" >"$REG" ;;
-    sha) c[${#c[@]} - 1]=$H64 && printf '%s\0' "${c[@]}" >"$REG" ;;
-    sem_rodape) unset 'c[${#c[@]}-1]' 'c[${#c[@]}-1]' && printf '%s\0' "${c[@]}" >"$REG" ;;
+    sha) c[${#c[@]} - 1]=$H64 && printf '%s\0' ${c[@]+"${c[@]}"} >"$REG" ;;
+    sem_rodape) unset 'c[${#c[@]}-1]' 'c[${#c[@]}-1]' && printf '%s\0' ${c[@]+"${c[@]}"} >"$REG" ;;
     lixo_depois) printf 'x' >>"$REG" ;;
     sem_nul) printf '%s' 'dbx-cursor sem nul' >"$REG" ;;
   esac
@@ -157,9 +157,9 @@ teste_rodape_e_conferido_antes_do_uso_mutante() {
   _area
   _gravar_valido
   local -a c=()
-  mapfile -d '' -t c <"$REG"
+  c=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do c+=("$_m"); done <"$REG"
   c[13]=/fotos/p/b.txt
-  printf '%s\0' "${c[@]}" >"$REG"
+  printf '%s\0' ${c[@]+"${c[@]}"} >"$REG"
   _filho 'CTX; dbx_state_cursor_carregar COLETAR; printf "e=%s motivo=%s\n" "$?" "$DBX_STATE_MOTIVO"'
   assert_contem 'e=2 motivo=registro de listagem com rodape de integridade divergente' "$FILHO_SAIDA" 'sha256 divergente'
 }
@@ -170,9 +170,9 @@ teste_cabecalho_divergente_e_descartado() {
     _area
     _gravar_valido
     local -a c=()
-    mapfile -d '' -t c <"$REG"
+    c=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do c+=("$_m"); done <"$REG"
     unset 'c[${#c[@]}-1]' 'c[${#c[@]}-1]'
-    c=("${c[@]}")
+    c=(${c[@]+"${c[@]}"})
     case $indice in
       0) valor=dbx-retomada ;;
       1) valor=2 ;;
@@ -183,7 +183,7 @@ teste_cabecalho_divergente_e_descartado() {
       6) valor=/home/u/outra ;;
     esac
     c[indice]=$valor
-    printf '%s\0' "${c[@]}" >"$REG"
+    printf '%s\0' ${c[@]+"${c[@]}"} >"$REG"
     local resumo
     resumo=$(sha256sum <"$REG")
     printf 'fim\0%s\0' "${resumo%% *}" >>"$REG"
@@ -246,7 +246,7 @@ teste_listagem_le_so_o_cabecalho_e_nao_cria_nada() {
   _gravar_valido
   printf 'lixo' >"$ESTADO/cursor-ffffffffffffffffffffffffffffffff"
   _filho 'dbx_state_cursor_listar
-for i in "${!DBX_STATE_CURSORES_ARQUIVO[@]}"; do
+for i in ${DBX_STATE_CURSORES_ARQUIVO[@]+"${!DBX_STATE_CURSORES_ARQUIVO[@]}"}; do
   printf "%s|%s|%s|%s\n" "${DBX_STATE_CURSORES_ESTADO[i]}" "${DBX_STATE_CURSORES_REMOTO[i]}" "${DBX_STATE_CURSORES_LOCAL[i]}" "${DBX_STATE_CURSORES_ENTRADAS[i]}"
 done'
   assert_contem 'vencido|/Fotos|/home/u/l|2' "$FILHO_SAIDA" 'completa de 2023: vencido'

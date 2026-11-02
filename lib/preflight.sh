@@ -64,12 +64,10 @@ DBX_PREFLIGHT_ERRO_USO=$(dbx_errors_codigo_saida uso_invalido)
 DBX_PREFLIGHT_ERRO_CONFIGURACAO=$(dbx_errors_codigo_saida configuracao)
 readonly DBX_PREFLIGHT_ERRO_USO DBX_PREFLIGHT_ERRO_CONFIGURACAO
 
-# Piso tecnico (DP-07). 4.2 seria exigido por `declare -g`; 4.3 por nameref;
-# 4.4 pela expansao de vetor vazio sob `set -u`, usada na propria suite. O piso
-# real e portanto 4.4, e a consequencia material e que RHEL 6, com 4.1, fica
-# fora.
+# Piso tecnico da linha legada support/bash-4.2 (RF-198): 4.2, o bash do CentOS 7.
+# A principal exige 4.4; o instalador escolhe a linha pela versao detectada.
 readonly DBX_PREFLIGHT_BASH_MAIOR=4
-readonly DBX_PREFLIGHT_BASH_MENOR=4
+readonly DBX_PREFLIGHT_BASH_MENOR=2
 readonly DBX_PREFLIGHT_COMANDO_INSTALAR='curl -fsSL https://raw.githubusercontent.com/salesadriano/dropbox_sync/master/install.sh | bash'
 
 # Dependencia externa unica do PROJETO e o cURL (DP-08). A lista abaixo, porem,

@@ -117,11 +117,11 @@ dbx_cmd_lixeira_executar() {
       dbx_cmd_falhar "$DBX_CMD_FALHA_CLASSE" "$DBX_CMD_FALHA_MOTIVO"
       return $?
     fi
-    tags=("${DBX_CMD_NIVEL_TAGS[@]}")
-    nomes=("${DBX_CMD_NIVEL_NOMES[@]}")
-    caminhos=("${DBX_CMD_NIVEL_CAMINHOS[@]}")
-    restauraveis=("${DBX_CMD_NIVEL_RESTAURAVEIS[@]}")
-    for indice in "${!tags[@]}"; do
+    tags=(${DBX_CMD_NIVEL_TAGS[@]+"${DBX_CMD_NIVEL_TAGS[@]}"})
+    nomes=(${DBX_CMD_NIVEL_NOMES[@]+"${DBX_CMD_NIVEL_NOMES[@]}"})
+    caminhos=(${DBX_CMD_NIVEL_CAMINHOS[@]+"${DBX_CMD_NIVEL_CAMINHOS[@]}"})
+    restauraveis=(${DBX_CMD_NIVEL_RESTAURAVEIS[@]+"${DBX_CMD_NIVEL_RESTAURAVEIS[@]}"})
+    for indice in ${tags[@]+"${!tags[@]}"}; do
       dbx_cmd_remoto_confinado "${caminhos[indice]}" || continue
       case ${tags[indice]} in
         deleted)
@@ -227,7 +227,7 @@ _dbx_cmd_lixeira_excluir() {
   # fica sem contagem).
   local detalhe='' indice apagados=0
   if dbx_cmd_listar_nivel "$alvo" "$limite"; then
-    for indice in "${!DBX_CMD_NIVEL_TAGS[@]}"; do
+    for indice in ${DBX_CMD_NIVEL_TAGS[@]+"${!DBX_CMD_NIVEL_TAGS[@]}"}; do
       [[ ${DBX_CMD_NIVEL_TAGS[indice]} == 'deleted' ]] && apagados=$((apagados + 1))
     done
     detalhe=" (pasta com $apagados item(ns) apagado(s) encontrado(s))"

@@ -254,7 +254,7 @@ _upp() { _rodar "$1" upload "${@:2}" grande.iso /Grande.iso; } # <base> [opcoes 
 _conta() {
   local alt total=0 alts
   IFS='|' read -ra alts <<<"$2"
-  for alt in "${alts[@]}"; do total=$((total + $(_harness_contar "$alt" "$1/ev"))); done
+  for alt in ${alts[@]+"${alts[@]}"}; do total=$((total + $(_harness_contar "$alt" "$1/ev"))); done
   printf '%s' "$total"
 }
 # _ini_offsets <base> — deslocamentos dos appends iniciados, ordenados.
@@ -574,7 +574,7 @@ _forjar() { # <base> <indice> <valor> — reescreve um campo do registro (NUL)
   while IFS= read -r -d '' f; do c+=("$f"); done <"$r"
   c[$2]=$3
   : >"$r"
-  for f in "${c[@]}"; do printf '%s\0' "$f" >>"$r"; done
+  for f in ${c[@]+"${c[@]}"}; do printf '%s\0' "$f" >>"$r"; done
 }
 _caso_hostil() { # <indice> <valor>
   local base tam=$T_LIMIAR_MAIS_1

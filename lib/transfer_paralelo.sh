@@ -48,6 +48,28 @@ readonly _DBX_TRANSFER_SEQUENCIAL=199
 DBX_TRANSFER_PARALELO=1
 
 _DBX_TRANSFER_PAR_PIDS=()
+
+# dbx_par_aguardar_algum <pid...> — substitui `wait -n` (bash 4.3, ausente no
+# 4.2). Retorna assim que QUALQUER dos PIDs informados nao estiver vivo,
+# inclusive ja na entrada: como `wait -n`, que retorna de imediato quando ha
+# filho terminado e ainda nao colhido. Ignorar o morto na entrada segurava o
+# laco pelo filho mais lento e atrasava a gravacao do prefixo ja pronto (falha
+# intermitente de qa_paralelo_download_b20). Sonda com `kill -0` e pausa de
+# 0,05 s (System Design, eixo 4). Nao colhe: o chamador colhe com `wait <pid>`
+# e tira o PID da lista. Passe so PIDs ainda nao colhidos; lista vazia retorna.
+dbx_par_aguardar_algum() {
+  local _pa_p _pa_algum
+  while :; do
+    _pa_algum=nao
+    for _pa_p in "$@"; do
+      [[ -n $_pa_p ]] || continue
+      _pa_algum=sim
+      kill -0 "$_pa_p" 2>/dev/null || return 0
+    done
+    [[ $_pa_algum == sim ]] || return 0
+    sleep 0.05
+  done
+}
 _DBX_TRANSFER_PAR_CONF=()
 _DBX_TRANSFER_PAR_PASTA=''
 _DBX_TRANSFER_PAR_SESSAO=''
@@ -455,13 +477,17 @@ _dbx_transfer_par_conduzir() {
       if ((vivos == 0)); then
         if ((pendentes == 0)) || [[ $falhou == 'sim' ]]; then break; fi
       else
-        wait -n 2>/dev/null || sleep 0.05
+        local _pv=() _pi
+        for ((_pi = 0; _pi < partes; _pi++)); do
+          [[ ${_DBX_TRANSFER_PAR_CONF[_pi]:-} == v ]] && _pv+=("${_DBX_TRANSFER_PAR_PIDS[_pi]:-}")
+        done
+        dbx_par_aguardar_algum ${_pv[@]+"${_pv[@]}"}
       fi
     done
     # So os auxiliares: `wait` sem argumento esperaria qualquer outro filho do
     # principal (ex.: observador de progresso), e o envio pendurava no fim.
     local pid_aux
-    for pid_aux in "${_DBX_TRANSFER_PAR_PIDS[@]}"; do
+    for pid_aux in ${_DBX_TRANSFER_PAR_PIDS[@]+"${_DBX_TRANSFER_PAR_PIDS[@]}"}; do
       [[ -n $pid_aux ]] && wait "$pid_aux" 2>/dev/null
     done
     set +m

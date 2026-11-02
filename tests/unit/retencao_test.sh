@@ -155,6 +155,7 @@ teste_rta07_padrao_com_barra_ou_malformado_e_recusado_citado() {
 }
 
 teste_rta07_casa_o_nome_inteiro_sem_caixa_e_sem_normalizacao() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   assert_igual sim "$(_casa 'db-*.tar.gz' db-2026.tar.gz)" 'curinga'
   assert_igual nao "$(_casa 'db-*.tar.gz' db-2026.tar.gz.bak)" 'ancorado no fim'
   assert_igual nao "$(_casa 'db-*.tar.gz' xdb-2026.tar.gz)" 'ancorado no inicio'
@@ -225,7 +226,7 @@ _planejar() {
     printf 'FALHOU'
     return 0
   }
-  for i in "${DBX_RETENCAO_ORDEM[@]}"; do
+  for i in ${DBX_RETENCAO_ORDEM[@]+"${DBX_RETENCAO_ORDEM[@]}"}; do
     printf '%s:%s ' "${nome[i]}" "${DBX_RETENCAO_ACAO[i]}"
   done
   printf 'minimo=%s' "$DBX_RETENCAO_MINIMO"
@@ -239,7 +240,7 @@ teste_rtp01_manter_dois_dos_cinco_mais_novos() {
   dbx_retencao_planejar manter 2 "$AGORA" sm chave pl || _harness_falhar 'planejar'
   assert_igual 2 "$DBX_RETENCAO_FICAM" 'ficam'
   assert_igual 1 "$DBX_RETENCAO_SAEM" 'saem'
-  assert_igual '1 2 0' "${DBX_RETENCAO_ORDEM[*]}" 'ordem do mais novo ao mais velho'
+  assert_igual '1 2 0' ${DBX_RETENCAO_ORDEM[@]+"${DBX_RETENCAO_ORDEM[*]}"} 'ordem do mais novo ao mais velho'
 }
 
 teste_rtp02_ordem_de_entrada_nao_muda_o_plano() {
@@ -259,7 +260,7 @@ teste_rtp03_empate_fica_antes_o_maior_nome_sem_caixa() {
   # aqui a mesma chave em dois caminhos): bytes de path_lower, decrescente.
   local -a sm=(2026-10-20T00:00:00Z 2026-10-20T00:00:00Z) chave=(x x) pl=(/b/x1 /b/x2)
   dbx_retencao_planejar manter 1 "$AGORA" sm chave pl || _harness_falhar 'planejar'
-  assert_igual '1 0' "${DBX_RETENCAO_ORDEM[*]}" 'desempate pelos bytes de path_lower'
+  assert_igual '1 0' ${DBX_RETENCAO_ORDEM[@]+"${DBX_RETENCAO_ORDEM[*]}"} 'desempate pelos bytes de path_lower'
 }
 
 teste_rtp05_carimbo_invalido_derruba_o_plano() {
@@ -320,7 +321,7 @@ teste_rtp11_zero_candidatos_plano_vazio() {
 _lib_mutante() {
   local dir arquivo
   dir=$(mktemp -d "$DBX_TESTES_TMP/lib.XXXXXX")
-  for arquivo in errors path filtro; do
+  for arquivo in ref errors path filtro; do
     cp "$DBX_HARNESS_RAIZ/lib/$arquivo.sh" "$dir/"
   done
   grep -v "MUTACAO:$1\$" "$DBX_HARNESS_RAIZ/lib/retencao.sh" >"$dir/retencao.sh"
@@ -332,7 +333,7 @@ _lib_mutante() {
 _lib_mutante_troca() {
   local dir arquivo
   dir=$(mktemp -d "$DBX_TESTES_TMP/lib.XXXXXX")
-  for arquivo in errors path filtro; do
+  for arquivo in ref errors path filtro; do
     cp "$DBX_HARNESS_RAIZ/lib/$arquivo.sh" "$dir/"
   done
   sed -e "$2" "$DBX_HARNESS_RAIZ/lib/retencao.sh" >"$dir/retencao.sh"
@@ -366,7 +367,7 @@ _propriedade_corpo() {
       dbx_retencao_planejar "$politica" "$valor" "$AGORA_T" sm chave pl || exit 1
       [[ ${#DBX_RETENCAO_ORDEM[@]} -eq $n ]] || exit 2
       ficam=0 saem=0
-      for i in "${DBX_RETENCAO_ORDEM[@]}"; do
+      for i in ${DBX_RETENCAO_ORDEM[@]+"${DBX_RETENCAO_ORDEM[@]}"}; do
         case ${DBX_RETENCAO_ACAO[i]} in fica) ficam=$((ficam + 1)) ;; sai) saem=$((saem + 1)) ;; *) exit 3 ;; esac
       done
       ((ficam + saem == n)) || exit 4
@@ -435,6 +436,7 @@ teste_rtg03_guarda_recusa_item_incoerente() {
 }
 
 teste_rtg04_fora_do_ascii_a_pasta_falha_fechada() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   dbx_filtro_nome_preparar --padrao '*.tar' || _harness_falhar 'padrao'
   assert_igual sim "$(_guarda file $'/b\xc3\xa4ck/a.tar' a.tar $'/B\xc3\xa4ck' / sai nao)" 'so ASCII difere'
   assert_igual nao "$(_guarda file $'/b\xc3\xa4ck/a.tar' a.tar $'/B\xc3\x84CK' / sai nao)" \
@@ -442,6 +444,7 @@ teste_rtg04_fora_do_ascii_a_pasta_falha_fechada() {
 }
 
 teste_rtg05_name_tem_de_ser_o_ultimo_componente_pela_chave() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   dbx_filtro_nome_preparar --padrao '*.tar' || _harness_falhar 'padrao'
   assert_igual nao "$(_guarda file /bk/a.tar b.tar /bk / sai nao)" 'name diferente'
   assert_igual sim "$(_guarda file $'/bk/\xc3\xa9.tar' $'\xc3\x89.TAR' /bk / sai nao)" 'mesma chave sem caixa'
@@ -515,7 +518,16 @@ teste_div158_mutantes_da_lib_reprovam() {
 # ---------------------------------------------------------------------------
 
 # DIV-161: a chave de comparacao de caminho e a de RF-54 (Unicode sem caixa).
+# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
+# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
+# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
+# (RF-54(f)) e o caso, que exige a dobra, e pulado.
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
+}
+
 teste_div161_chave_unicode_de_rf54() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   dbx_retencao_chave $'/bk/\xc3\x89.TAR' || _harness_falhar 'chave recusada com C.UTF-8'
   assert_igual $'/bk/\xc3\xa9.tar' "$DBX_RETENCAO_CHAVE" 'E acentuado dobrado'
   dbx_retencao_chave /BK/A.TAR || _harness_falhar 'ASCII'
@@ -523,6 +535,7 @@ teste_div161_chave_unicode_de_rf54() {
 }
 
 teste_div161_plano_recusa_duplicata_em_caixa_nao_ascii() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local -a sm=(2026-10-05T00:00:00Z 2026-10-01T00:00:00Z) chave=(x x) pl=($'/bk/\xc3\xa9.tar' $'/bk/\xc3\x89.tar')
   dbx_retencao_planejar manter 1 "$AGORA" sm chave pl && _harness_falhar 'plano com o mesmo caminho em outra caixa'
   assert_contem 'path_lower repetido' "$DBX_RETENCAO_MOTIVO" 'motivo'
@@ -567,6 +580,7 @@ _guarda_sem_lista() {
 export -f _guarda_sem_lista
 
 teste_div161_div162_mutantes_da_lib_reprovam() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   _em_processo "$DBX_HARNESS_RAIZ/lib" _guarda_unicode
   assert_igual 0 "$?" 'a lib compara pela chave Unicode'
   _em_processo "$(_lib_mutante_troca unicode 's/^\(.*\)# MUTACAO:unicode$/  _dbx_retencao_ascii "$1"; DBX_RETENCAO_CHAVE=$_dbx_retencao_k/')" _guarda_unicode
@@ -625,6 +639,7 @@ _guarda_sai_combinante() {
 export -f _guarda_sai_combinante
 
 teste_div164_div165_guarda_e_mutantes() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   _em_processo "$DBX_HARNESS_RAIZ/lib" _guarda_lista_canonica
   assert_igual 0 "$?" 'a guarda recusa lista com elemento fora do formato'
   _em_processo "$(_lib_mutante formato)" _guarda_lista_canonica

@@ -82,7 +82,9 @@ readonly DBX_HTTP_AJUSTES='DBX_HTTP_TENTATIVAS_MAXIMAS DBX_HTTP_ESPERA_BASE_MS
 
 # Valores em vigor, publicados pela ultima validacao. Canal publico: `lib/transfer`
 # le daqui o limite de tentativas que cada retomada consome (RF-58).
-declare -gA DBX_HTTP_EFETIVO=(
+# bash 4.2: `declare -g` com valores dentro de funcao nao cria o global.
+declare -gA DBX_HTTP_EFETIVO
+DBX_HTTP_EFETIVO=(
   [DBX_HTTP_TENTATIVAS_MAXIMAS]=$DBX_HTTP_TENTATIVAS_MAXIMAS_PADRAO
   [DBX_HTTP_ESPERA_BASE_MS]=$DBX_HTTP_ESPERA_BASE_MS_PADRAO
   [DBX_HTTP_ESPERA_TETO_MS]=$DBX_HTTP_ESPERA_TETO_MS_PADRAO
@@ -325,7 +327,7 @@ _dbx_http_debug_preparar() {
 _dbx_http_debug_emitir() {
   [[ ${#_DBX_HTTP_LINHA_DEBUG[@]} -gt 0 ]] || return 0
   [[ -n ${1-} ]] && _DBX_HTTP_LINHA_DEBUG+=("espera_ms=$1")
-  dbx_debug_linha http "${_DBX_HTTP_LINHA_DEBUG[@]}"
+  dbx_debug_linha http ${_DBX_HTTP_LINHA_DEBUG[@]+"${_DBX_HTTP_LINHA_DEBUG[@]}"}
   _DBX_HTTP_LINHA_DEBUG=()
 }
 
@@ -444,9 +446,10 @@ _dbx_http_opcoes() {
   case $_DBX_HTTP_MODO in
     formulario)
       printf 'header = "Content-Type: application/x-www-form-urlencoded"\n'
-      local -n _campos=$_DBX_HTTP_CAMPOS_NOME
+      local -a _campos=()
+      dbx_ref_copiar _campos "$_DBX_HTTP_CAMPOS_NOME" || return 1
       local campo escapado
-      for campo in "${_campos[@]}"; do
+      for campo in ${_campos[@]+"${_campos[@]}"}; do
         escapado=${campo//\\/\\\\}
         escapado=${escapado//\"/\\\"}
         printf 'data-urlencode = "%s"\n' "$escapado"
@@ -843,6 +846,12 @@ _dbx_http_conduzir() {
             curl -K - --fail -X "$metodo" \
               -o "$destino" -D "$area/cabecalhos" -w "$formato_w" "$url"
           fi
+        elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO && ! -r $_DBX_HTTP_ARQUIVO_CORPO ]]; then
+          # curl 7.29 (CentOS 7) nao falha com 26 ao ler um corpo ilegivel: envia
+          # corpo VAZIO (com servidor) ou sai 7 (sem ele). A conferencia previa
+          # da o mesmo status 26 dos clientes modernos, sem chamar o cliente.
+          printf 'curl: (26) arquivo de corpo ilegivel\n' >&2
+          (exit 26)
         elif [[ -n $_DBX_HTTP_ARQUIVO_CORPO ]]; then
           curl -K - -X "$metodo" --data-binary "@$_DBX_HTTP_ARQUIVO_CORPO" \
             -o "$area/resposta" -D "$area/cabecalhos" -w "$formato_w" "$url"

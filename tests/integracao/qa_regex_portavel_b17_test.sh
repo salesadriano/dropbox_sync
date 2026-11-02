@@ -122,7 +122,7 @@ _qa_campos_ler() {
   QA_C=()
   while IFS= read -r -d '' f; do QA_C+=("$f"); done <"$1"
 }
-_qa_campos_gravar() { printf '%s\0' "${QA_C[@]}" >"$1"; }
+_qa_campos_gravar() { printf '%s\0' ${QA_C[@]+"${QA_C[@]}"} >"$1"; }
 
 _qa_impressao() { # <arquivo> — conteudo e metadados que nao podem mudar
   local h
@@ -152,7 +152,7 @@ _qa_fixture_up() {
 # caso cria o primeiro dele; um caso com dois ambientes mantem os dois. As fixtures ficam.
 _qa_limpar_ambientes_de_outro_caso() {
   local caso='' f marca="$DBX_TESTES_TMP/qa7.caso" anterior=''
-  for f in "${FUNCNAME[@]}"; do
+  for f in ${FUNCNAME[@]+"${FUNCNAME[@]}"}; do
     [[ $f == teste_* ]] && { caso=$f; break; }
   done
   [[ -n $caso ]] || return 0
@@ -533,7 +533,7 @@ _q_filhos() {
     fi
     [[ $e == *'".tag":"folder"'* ]] && existe[d$caminho]=1
   done
-  for dir in "${!existe[@]}"; do
+  for dir in ${existe[@]+"${!existe[@]}"}; do
     printf -v Q_P '{"entries":[%s],"cursor":"%s","has_more":false}' "${filhos[$dir]:-}" "$cursor"
     _q_regra files/list_folder "*\"path\":\"${dir#d}\",\"recursive\":false*" 200 "$Q_P"
   done
@@ -578,7 +578,7 @@ _q_registro() { # o unico cursor-* em Q_REG
 
 _q_campos() { # <arquivo> — campos NUL em Q_CAMPOS
   Q_CAMPOS=()
-  mapfile -d '' -t Q_CAMPOS <"$1"
+  Q_CAMPOS=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do Q_CAMPOS+=("$_m"); done <"$1"
 }
 
 # _q_reescrever <arquivo> <campos...> — campos e rodape VALIDO recalculado (o
@@ -595,9 +595,9 @@ _q_reescrever() {
 _q_sem_rodape() {
   _q_registro
   _q_campos "$Q_REG"
-  Q_C=("${Q_CAMPOS[@]}")
+  Q_C=(${Q_CAMPOS[@]+"${Q_CAMPOS[@]}"})
   unset 'Q_C[${#Q_C[@]}-1]' 'Q_C[${#Q_C[@]}-1]'
-  Q_C=("${Q_C[@]}")
+  Q_C=(${Q_C[@]+"${Q_C[@]}"})
 }
 
 _q_impressao() { # <arquivo> — modo e conteudo
@@ -652,7 +652,7 @@ _q_base() {
   _q_pasta q && ent+=("$Q_E")
   _q_pasta q/r && ent+=("$Q_E")
   _q_arq q/r/z.txt && ent+=("$Q_E")
-  Q_BASE=("${ent[@]}")
+  Q_BASE=(${ent[@]+"${ent[@]}"})
 }
 
 # _q_primeira — primeira execucao real (com --espelhar --confirmar,
@@ -660,7 +660,7 @@ _q_base() {
 _q_primeira() {
   _q_cen
   _q_base
-  _q_servidor "${Q_SENT}C1" "${Q_BASE[@]}"
+  _q_servidor "${Q_SENT}C1" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar sync --receber --origem /r --destino "$B/l" --espelhar --confirmar
   assert_igual 0 "$ESTADO" "primeira execucao: $ERRO"
   _q_registro
@@ -705,7 +705,7 @@ _qr_auditar() {
       resto=${resto#*"${BASH_REMATCH[0]}"}
     done
     [[ $achou == sim ]] && printf '%s\n' "$linha"
-  done < <(cd "$raiz" && grep -rnE -- '\{[0-9]*,?[0-9]*\\?\}' "${alvos[@]}" 2>/dev/null)
+  done < <(cd "$raiz" && grep -rnE -- '\{[0-9]*,?[0-9]*\\?\}' ${alvos[@]+"${alvos[@]}"} 2>/dev/null)
   return 0
 }
 
@@ -717,7 +717,7 @@ _qr_dinamicos() {
   for alvo in lib commands bin install.sh uninstall.sh; do
     [[ -e $raiz/$alvo ]] && alvos+=("$alvo")
   done
-  (cd "$raiz" && grep -rnE -- '\{[0-9]*,\$[{A-Za-z_(][^}]*\}' "${alvos[@]}" 2>/dev/null) || true
+  (cd "$raiz" && grep -rnE -- '\{[0-9]*,\$[{A-Za-z_(][^}]*\}' ${alvos[@]+"${alvos[@]}"} 2>/dev/null) || true
 }
 
 _qr_numeros() { # linhas `arq:n:txt` -> "n n n"
@@ -863,7 +863,7 @@ _qr_cursor() {
 _qr_primeira() {
   _q_cen
   _q_base
-  _q_servidor "$1" "${Q_BASE[@]}"
+  _q_servidor "$1" ${Q_BASE[@]+"${Q_BASE[@]}"}
   _q_rodar sync --receber --origem /r --destino "$B/l"
   assert_igual 0 "$ESTADO" "primeira execucao: $ERRO"
 }

@@ -49,7 +49,7 @@ _ausentes_em() {
     . "$1/lib/errors.sh"; . "$1/lib/hash.sh"; . "$1/lib/preflight.sh"
     dbx_preflight_ausentes
     estado=$?
-    printf "%s|%s" "$estado" "${DBX_PREFLIGHT_AUSENTES[*]}"
+    printf "%s|%s" "$estado" ${DBX_PREFLIGHT_AUSENTES[@]+"${DBX_PREFLIGHT_AUSENTES[*]}"}
   ' _ "$DBX_HARNESS_RAIZ" 2>&1
 }
 
@@ -81,6 +81,7 @@ teste_so_openssl_confere_o_content_hash_no_formato_do_openssl_3() {
   local area caminho
   area=$(_area)
   caminho=$(_caminho "$area")
+  command -v openssl >/dev/null 2>&1 || pular 'openssl ausente'
   ln -s "$(command -v openssl)" "$caminho/openssl"
   printf 'A' >"$area/um"
   assert_contem 'SHA2-256(stdin)=' "$(_openssl_de "$caminho")" \
@@ -93,7 +94,7 @@ teste_so_openssl_confere_o_content_hash_no_formato_do_openssl_1() {
   local area caminho real
   area=$(_area)
   caminho=$(_caminho "$area")
-  real=$(command -v openssl)
+  real=$(command -v openssl) || pular 'openssl ausente: o duble de formato 1.x o encapsula'
   {
     printf '#!%s\n' "$BASH"
     printf 'saida=$(%s dgst -sha256) || exit 1\n' "$real"

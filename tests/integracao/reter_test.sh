@@ -235,7 +235,7 @@ _ordem_dos_deletes() {
 
 # _carimbo_ha <segundos> — server_modified de agora menos <segundos>.
 _carimbo_ha() {
-  dbx_filtro_carimbo_de_epoca $((EPOCHSECONDS - $1))
+  dbx_filtro_carimbo_de_epoca $(($(date +%s) - $1))
   printf '%s' "$DBX_FILTRO_CARIMBO"
 }
 
@@ -572,6 +572,7 @@ teste_rts09_mutante_que_pula_o_item_incoerente_reprova() {
 }
 
 teste_rts10_sem_caixa_e_licao_da_fase_4() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local base
   base=$(_ambiente)
   _listagem "$base" "$(_arq nota.txt 2000-01-01T00:00:00Z 0000000000a),$(_arq a.TAR 2026-10-01T00:00:00Z 0000000001a),$(_arq $'\xc3\xa9a.tar' 2026-10-02T00:00:00Z 0000000002a)"
@@ -793,11 +794,19 @@ teste_rtc05_com_terminal_nao_pergunta() {
   _apagar_ok "$base"
   local exec_citado
   printf -v exec_citado '%q' "$DBX_EXEC_PADRAO"
+  # Entrada por fifo mantida aberta: o `script` da util-linux 2.23 (CentOS 7)
+  # encerra o filho no fim da entrada; `stty sane` porque ali o pty nasce com
+  # termios zerado.
+  local estado
+  mkfifo "$base/fifo_tty"
+  exec 8<>"$base/fifo_tty"
   env -i PATH="$base/bin:$PATH" HOME="$base" XDG_CONFIG_HOME="$base/config" \
     XDG_STATE_HOME="$base/estado" TMPDIR="$base/tmp" \
-    timeout -k 2 30 script -qec "bash $exec_citado reter /bk --padrao 'db-*.tar' --manter 2 --confirmar" /dev/null \
-    </dev/null >"$base/out" 2>&1
-  assert_igual 0 "$?" 'nao bloqueia nem pergunta'
+    timeout -k 2 30 script -qec "stty sane 2>/dev/null; bash $exec_citado reter /bk --padrao 'db-*.tar' --manter 2 --confirmar" /dev/null \
+    <&8 >"$base/out" 2>&1
+  estado=$?
+  exec 8>&-
+  assert_igual 0 "$estado" 'nao bloqueia nem pergunta'
   assert_igual 3 "$(_deletes "$base")" 'apagou com o --confirmar'
 }
 
@@ -895,6 +904,7 @@ teste_rtg03_mutante_sem_a_conferencia_da_listagem_ainda_e_barrado_pela_guarda() 
 }
 
 teste_rtg04_pasta_fora_do_ascii_com_dobra_diferente_falha_fechada() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local base
   base=$(_ambiente)
   _regra "$base" files/list_folder '*' 200 "{\"entries\":[$(_arq db-1.tar 2026-10-01T00:00:00Z 0000000001a $'/b\xc3\xa4ck' $'/B\xc3\xa4ck'),$(_arq db-2.tar 2026-10-02T00:00:00Z 0000000002a $'/b\xc3\xa4ck' $'/B\xc3\xa4ck')],\"cursor\":\"c\",\"has_more\":false}"
@@ -1518,7 +1528,16 @@ teste_div161_chave_unicode_nas_barreiras_da_listagem() {
   return 0
 }
 
+# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
+# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
+# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
+# (RF-54(f)) e o caso, que exige a dobra, e pulado.
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
+}
+
 teste_div161_mutantes_reprovam() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local m falhou
   m=$(_copia_mutante commands/reter.sh '/# MUTACAO:minusculo$/d' commands/reter.sh '/# MUTACAO:identidade$/d' lib/retencao.sh '/# MUTACAO:identidade_guarda$/d')
   falhou=$(_qa161 "$m") && _harness_falhar 'sem exigir path_lower minusculo, o caso deveria pegar'
@@ -1557,6 +1576,7 @@ teste_div164_marca_combinante_derruba_a_listagem() {
 }
 
 teste_div164_mutantes_reprovam() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local m falhou
   # Sem a conferencia da listagem: a guarda segura o NFD que sai (zero delete),
   # mas a pasta nao candidata passa (b).
@@ -1604,6 +1624,7 @@ teste_div167_id_e_rev_unicos_na_listagem() {
 # cenarios de duplicata (zero delete, 10 pela guarda); sem as duas, o delete
 # aparece.
 teste_div167_mutantes_a_guarda_segura_sozinha() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local m base ga=$'\xe3\x81\x8c' kad=$'\xe3\x81\x8b\xe3\x82\x99'
   m=$(_copia_mutante commands/reter.sh '/# MUTACAO:identidade$/d')
   base=$(_ambiente)
@@ -1646,6 +1667,7 @@ teste_div168_utf8_invalido_derruba_a_listagem() {
 }
 
 teste_div168_mutante_sem_a_validacao_reprova() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local m
   m=$(_copia_mutante commands/reter.sh '/# MUTACAO:utf8$/d')
   _qa168 "$m" >/dev/null && _harness_falhar 'sem a validacao de UTF-8, o caso deveria pegar'

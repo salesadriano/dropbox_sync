@@ -343,11 +343,14 @@ _e_id='' _e_t_id=''
 
 # _dbx_cmd_reter_ler <indice> <campo> <var_valor> <var_tipo>
 _dbx_cmd_reter_ler() {
-  local -n _rl_v=$3 _rl_t=$4
-  _rl_v='' _rl_t=''
+  local _rl_tipo=''
+  dbx_ref_valido "${3-}" && dbx_ref_valido "${4-}" || return 2
+  printf -v "$3" '%s' ''
+  printf -v "$4" '%s' ''
   dbx_json_valor entries "$1" "$2" >/dev/null 2>&1 || return 0
-  _rl_v=$DBX_JSON_RESULTADO
-  _rl_t=$(dbx_json_tipo entries "$1" "$2" 2>/dev/null) || _rl_t=''
+  printf -v "$3" '%s' "$DBX_JSON_RESULTADO"
+  _rl_tipo=$(dbx_json_tipo entries "$1" "$2" 2>/dev/null) || _rl_tipo=''
+  printf -v "$4" '%s' "$_rl_tipo"
 }
 
 # _dbx_cmd_reter_pagina <pasta_api> — percorre as entradas da pagina analisada.
@@ -548,7 +551,7 @@ _dbx_cmd_reter_aplicar() {
   # RF-98(h): sinal entre dois `delete_v2` encerra com 14 e este resumo.
   dbx_tmp_acao_registrar _dbx_cmd_reter_ao_sinal
   local acao_id=$DBX_TMP_ID
-  for i in "${sai[@]}"; do
+  for i in ${sai[@]+"${sai[@]}"}; do
     if [[ -n $parada ]]; then
       _DBX_RETER_RESULTADO[i]='nao_tentado'
       nao_tentados=$((nao_tentados + 1))
@@ -652,7 +655,7 @@ _dbx_cmd_reter_resposta_coerente() {
 # sinal encerra a execucao entre exclusoes (RF-98(h)).
 _dbx_cmd_reter_ao_sinal() {
   local i apagados=0 resto=''
-  for i in "${!_DBX_RETER_RESULTADO[@]}"; do
+  for i in ${_DBX_RETER_RESULTADO[@]+"${!_DBX_RETER_RESULTADO[@]}"}; do
     [[ ${_DBX_RETER_RESULTADO[i]} == 'apagado' ]] && apagados=$((apagados + 1))
     if [[ ${_DBX_RETER_RESULTADO[i]} == 'sai' && $i != "$_DBX_RETER_EM_CURSO" ]]; then
       dbx_cmd_caminho_exibivel "${_DBX_RETER_PL[i]}"

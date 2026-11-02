@@ -716,7 +716,7 @@ teste_lot13_montagem_do_lote_barra_o_protegido_mesmo_se_o_plano_falhar() {
     . "$DBX_HARNESS_RAIZ/lib/progress.sh"
     . "$DBX_HARNESS_RAIZ/lib/lote.sh"
     . "$DBX_HARNESS_RAIZ/commands/sync.sh"
-    dbx_lote_excluir() { printf '%s\n' "${DBX_LOTE_CAMINHOS[@]}" >"$base/recebido"; DBX_LOTE_RESULTADO=(); local i; for i in "${!DBX_LOTE_CAMINHOS[@]}"; do DBX_LOTE_RESULTADO[i]=ok; done; }
+    dbx_lote_excluir() { printf '%s\n' ${DBX_LOTE_CAMINHOS[@]+"${DBX_LOTE_CAMINHOS[@]}"} >"$base/recebido"; DBX_LOTE_RESULTADO=(); local i; for i in ${DBX_LOTE_CAMINHOS[@]+"${!DBX_LOTE_CAMINHOS[@]}"}; do DBX_LOTE_RESULTADO[i]=ok; done; }
     dbx_progress_etapa() { :; }
     dbx_filtro_limpar
     dbx_filtro_adicionar excluir --excluir 'protegido/*' || exit 90

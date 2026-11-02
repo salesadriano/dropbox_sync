@@ -432,9 +432,9 @@ teste_pfe01_leitores_expoem_cred_lendo_so_o_cabecalho() {
   resultado=$(env -i PATH="$PATH" HOME="$base" XDG_STATE_HOME="$base/estado" bash -c '
     . "$1/lib/errors.sh"; . "$1/lib/hash.sh"; . "$1/lib/tmp.sh"; . "$1/lib/json.sh"; . "$1/lib/config.sh"; . "$1/lib/state.sh"
     dbx_state_cursor_listar
-    printf "cursor:%s\n" "${DBX_STATE_CURSORES_CRED[*]}"
+    printf "cursor:%s\n" ${DBX_STATE_CURSORES_CRED[@]+"${DBX_STATE_CURSORES_CRED[*]}"}
     dbx_state_retomada_listar
-    for i in "${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"; do printf "retomada:%s:%s\n" "${DBX_STATE_RETOMADAS_ARQUIVO[i]##*/}" "${DBX_STATE_RETOMADAS_CRED[i]}"; done
+    for i in ${DBX_STATE_RETOMADAS_ARQUIVO[@]+"${!DBX_STATE_RETOMADAS_ARQUIVO[@]}"}; do printf "retomada:%s:%s\n" "${DBX_STATE_RETOMADAS_ARQUIVO[i]##*/}" "${DBX_STATE_RETOMADAS_CRED[i]}"; done
   ' _ "$DBX_HARNESS_RAIZ")
   assert_contem "cursor:$ia" "$resultado" 'cursor expoe o cred-'
   assert_contem "retomada:retomada-aaa:$ia" "$resultado" 'retomada expoe o cred-'

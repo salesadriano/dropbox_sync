@@ -158,6 +158,12 @@ _dbx_tmp_saida() {
 _dbx_tmp_finalizar() {
   [[ $_dbx_tmp_finalizado == "$BASHPID" ]] && return 0
   _dbx_tmp_finalizado=$BASHPID
+  # Linha legada (bash 4.2): leitura oculta interrompida deixa o eco desligado;
+  # `dbx_cli_ler_oculto` marca e aqui o eco volta (TC-SNH-13).
+  if [[ ${DBX_TMP_ECO_PENDENTE:-} == "$BASHPID" ]]; then
+    DBX_TMP_ECO_PENDENTE=''
+    stty echo 2>/dev/null || :
+  fi
   _dbx_tmp_critico=$BASHPID
   _dbx_tmp_profundidade=1
   local indice tipo gancho
@@ -168,7 +174,7 @@ _dbx_tmp_finalizar() {
     _dbx_tmp_gancho_alvo=''
     "$gancho" || :
   fi
-  local -a indices=("${!_dbx_tmp_tipo[@]}")
+  local -a indices=(${_dbx_tmp_tipo[@]+"${!_dbx_tmp_tipo[@]}"})
   for tipo in acao area; do
     for ((indice = ${#indices[@]} - 1; indice >= 0; indice--)); do
       _dbx_tmp_processar "${indices[indice]}" "$tipo"
@@ -242,7 +248,7 @@ _dbx_tmp_criar() {
   [[ $1 == '-d' ]] && opcao=(-d)
   _dbx_tmp_armar
   _dbx_tmp_critico_inicio
-  caminho=$(mktemp "${opcao[@]}" -- "$2" 2>/dev/null) || {
+  caminho=$(mktemp ${opcao[@]+"${opcao[@]}"} -- "$2" 2>/dev/null) || {
     _dbx_tmp_critico_fim
     return "$DBX_TMP_ERRO_CONFIGURACAO"
   }
@@ -258,7 +264,7 @@ _dbx_tmp_criar() {
 dbx_tmp_esquecer() {
   local indice
   _dbx_tmp_critico_inicio
-  for indice in "${!_dbx_tmp_tipo[@]}"; do
+  for indice in ${_dbx_tmp_tipo[@]+"${!_dbx_tmp_tipo[@]}"}; do
     [[ ${_dbx_tmp_tipo[indice]} == 'area' && ${_dbx_tmp_dono[indice]} == "$BASHPID" &&
       ${_dbx_tmp_alvo[indice]} == "$1" ]] && _dbx_tmp_tirar "$indice"
   done

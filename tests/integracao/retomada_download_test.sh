@@ -304,8 +304,8 @@ _troca_part() { # <base> <como> — troca o .part registrado
       ln -s "$1/alheio" "$part"
       ;;
     inode)
-      rm -f "$part"
-      printf 'arquivo do usuario' >"$part"
+      printf 'arquivo do usuario' >"$part.novo"
+      mv -f "$part.novo" "$part"
       ;;
   esac
   printf '%s' "$part"
@@ -688,8 +688,11 @@ teste_rml05_unlink_apaga_o_part_que_passa_e_lista_o_que_nao_passa() {
   _rodar "$base" download /Grande.iso outro/grande.iso
   assert_igual 9 "$DBX_ESTADO" 'segundo alvo interrompido'
   for nome2 in "$base"/trabalho/outro/.grande.iso.dbx-part.*; do p2=$nome2; done
-  rm -f "$p2"
-  printf 'trocado' >"$p2"
+  # Outro inode com o antigo ainda vivo: `rm` seguido de criar pode reciclar o
+  # numero do inode (overlayfs do CentOS 7) e o arquivo "trocado" passaria a
+  # ter a identidade registrada.
+  printf 'trocado' >"$p2.novo"
+  mv -f -- "$p2.novo" "$p2"
   _rodar "$base" unlink --confirmar
   assert_arquivo_ausente "$p1" 'o .part que passa a barreira sai'
   assert_igual 'trocado' "$(cat "$p2")" 'o que nao passa fica'

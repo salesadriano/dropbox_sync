@@ -270,7 +270,7 @@ teste_qa_e01_enviar_espelhar_filtro_de_pasta_ancorado_e_caixa() {
   _qa_arq q/tmp && ent+=("$QA_E")
   _qa_arq Rel.LOG && ent+=("$QA_E")
   _qa_arq solto.txt && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --enviar --espelhar --confirmar --origem "$B/l" --destino /r \
     --excluir 'fotos/' --excluir '/BUILD' --exclude '**/tmp' --excluir '*.log'
   _qa_estado 0 'conclui'
@@ -300,7 +300,7 @@ teste_qa_e02_receber_espelhar_filtrado_local_intacto() {
   _qa_local x/raiz.txt 'some'
   _qa_local solto.txt 'some'
   _qa_arq mantido.txt "$QA_HASH" && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --receber --espelhar --confirmar --origem /r --destino "$B/l" \
     --incluir '*.TXT' --excluir 'cache/' --excluir 'privado/**' --excluir '/raiz.txt'
   _qa_estado 0 'conclui'
@@ -326,7 +326,16 @@ teste_qa_e02_receber_espelhar_filtrado_local_intacto() {
 # UTF-8 em algum ponto do caminho. `--excluir 'Éfoto.jpg'` (a MESMA grafia do
 # arquivo) e `--excluir '?eu.txt'` precisam proteger `lixo\xff/Éfoto.jpg` e
 # `lixo\xff/éeu.txt` no `--receber --espelhar`, e o `--enviar` nao os envia.
+# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
+# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
+# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
+# (RF-54(f)) e o caso, que exige a dobra, e pulado.
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
+}
+
 teste_qa_e03_div99_nome_nao_utf8_com_caractere_nao_ascii_e_protegido() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local -a ent=()
   local pasta=$'lixo\xff'
   _qa_cenario
@@ -337,7 +346,7 @@ teste_qa_e03_div99_nome_nao_utf8_com_caractere_nao_ascii_e_protegido() {
   _qa_local "$pasta/éeu.txt" 'eu'
   _qa_local "$pasta/solto.bin" 'some'
   _qa_arq mantido.txt "$QA_HASH" && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --receber --espelhar --confirmar --origem /r --destino "$B/l" \
     --excluir 'Éfoto.jpg' --excluir '?eu.txt'
   _qa_estado 0 'conclui'
@@ -356,7 +365,7 @@ teste_qa_e04_origem_toda_filtrada_e_vazia_para_a_guarda() {
   _qa_basicas
   _qa_local a.txt
   _qa_arq x.pdf && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --enviar --espelhar --confirmar --origem "$B/l" --destino /r --incluir '*.pdf'
   _qa_estado "$QA_NAO_CONCLUIDA" 'enviar: recusa integral'
   assert_contem 'origem vazia depois dos filtros' "$QA_ERRO" 'mensagem'
@@ -397,7 +406,7 @@ teste_qa_e05_filtro_novo_com_memoria_que_conhece_o_item() {
   _qa_hash 'B1'
   _qa_local b/1.txt 'B1'
   _qa_arq b/1.txt "$QA_HASH" && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --enviar --espelhar --confirmar --origem "$B/l" --destino /r
   _qa_estado 0 'primeira execucao sem filtro'
   _qa_deletes_sao '' 'nada a apagar na primeira'
@@ -423,12 +432,12 @@ teste_qa_e06_pasta_excluida_na_segunda_pagina_da_listagem() {
   _qa_hash 'K'
   _qa_local keep.txt 'K'
   _qa_arq keep.txt "$QA_HASH" && p1+=("$QA_E")
-  _qa_listagem files/list_folder true 'C1' "${p1[@]}"
+  _qa_listagem files/list_folder true 'C1' ${p1[@]+"${p1[@]}"}
   _qa_pasta Velho && p2+=("$QA_E")
   _qa_arq Velho/a && p2+=("$QA_E")
   _qa_arq Velho/sub/b && p2+=("$QA_E")
   _qa_arq solto && p2+=("$QA_E")
-  _qa_listagem files/list_folder/continue false 'C2' "${p2[@]}"
+  _qa_listagem files/list_folder/continue false 'C2' ${p2[@]+"${p2[@]}"}
   _qa_rodar sync --enviar --espelhar --confirmar --origem "$B/l" --destino /r --excluir 'velho/'
   _qa_estado 0 'conclui'
   _qa_contar files/list_folder/continue
@@ -456,7 +465,7 @@ teste_qa_e07_vinculo_e_especial_filtrados_e_so_pasta() {
   _qa_arq lnk && ent+=("$QA_E")
   _qa_arq fila/x && ent+=("$QA_E")
   _qa_arq solto && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --enviar --espelhar --confirmar --origem "$B/l" --destino /r \
     --excluir lnk --excluir fila
   _qa_estado 0 'filtrados como arquivo e pasta: sem parcial'
@@ -478,7 +487,7 @@ teste_qa_e08_data_e_tamanho_com_espelhar_saem_2_antes_de_tudo() {
   _qa_cenario
   _qa_basicas
   "$QA_RM_REAL" -rf -- "$B/estado"
-  for par in "${pares[@]}"; do
+  for par in ${pares[@]+"${pares[@]}"}; do
     # shellcheck disable=SC2086  # o par e opcao e valor, separados de proposito
     _qa_rodar sync --enviar $par --espelhar --origem "$B/l" --destino /r
     _qa_estado "$QA_USO" "enviar [$par]"
@@ -506,7 +515,7 @@ teste_qa_e09_server_modified_nunca_decide_transferencia() {
   _qa_local igual.txt 'igual'
   _qa_arq igual.txt "$QA_HASH" '2099-12-31T23:59:59Z' && ent+=("$QA_E")
   _qa_arq antigo.txt "$QA_H0" '2020-01-01T00:00:00Z' && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --receber --origem /r --destino "$B/l" --modificado-desde 2026-01-01
   _qa_estado 0 'conclui'
   _qa_contar files/download
@@ -565,7 +574,7 @@ teste_qa_e11_padrao_e_dado_nunca_codigo_nem_regex() {
   _qa_arq a && ent+=("$QA_E")
   _qa_arq 'x.y' && ent+=("$QA_E")
   _qa_arq 'xzy' && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --enviar --espelhar --confirmar --origem "$B/l" --destino /r \
     --excluir '(a|b)' --excluir 'x.y' --excluir "\$(touch $B/PWN1)" --excluir "\`touch $B/PWN2\`" \
     --excluir "q;touch $B/PWN3" --excluir '$HOME' --excluir '~' --excluir 'a{1}'
@@ -588,11 +597,11 @@ teste_qa_e12_limites_de_padroes_em_quantidade_e_bytes() {
   _qa_local keep.txt
   _qa_remoto
   for ((i = 1; i <= 64; i++)); do args+=(--excluir "p$i"); done
-  _qa_rodar --dry-run sync --enviar --origem "$B/l" --destino /r "${args[@]}"
+  _qa_rodar --dry-run sync --enviar --origem "$B/l" --destino /r ${args[@]+"${args[@]}"}
   _qa_estado 0 '64 padroes'
   : >"$B/chamadas"
   "$QA_RM_REAL" -f -- "$B/chamadas"
-  _qa_rodar --dry-run sync --enviar --origem "$B/l" --destino /r "${args[@]}" --incluir p65
+  _qa_rodar --dry-run sync --enviar --origem "$B/l" --destino /r ${args[@]+"${args[@]}"} --incluir p65
   _qa_estado "$QA_USO" '65 padroes (soma das duas opcoes)'
   _qa_sem_chamada '65 padroes'
   printf -v p '%*s' 1024 ''
@@ -624,6 +633,7 @@ teste_qa_e12_limites_de_padroes_em_quantidade_e_bytes() {
 # multibyte e `a/**/b` atravessando componente invalido. Tudo filtrado fica,
 # sem `rm`; o que a ancora NAO alcanca e o solto nao UTF-8 no escopo saem.
 teste_qa_e13_div99_variacoes_niveis_curingas_ancora_e_nfd() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local -a ent=() fica=()
   local f
   local nfd=$'CAFE\xcc\x81.TXT'
@@ -633,17 +643,18 @@ teste_qa_e13_div99_variacoes_niveis_curingas_ancora_e_nfd() {
   _qa_local mantido.txt 'igual'
   fica=($'n\xfe/sub/AÇÃO/f' $'ÜBER/x\xff.txt' $'d\xff/'"$nfd" $'a\xff/b\xfe/É/c'
     $'q\xff/éx' $'s\xff/Éy' $'w/\xff/Ñ/b')
-  for f in "${fica[@]}"; do _qa_local "$f" 'do operador'; done
+  for f in ${fica[@]+"${fica[@]}"}; do _qa_local "$f" 'do operador'; done
   _qa_local $'y/ÜBER/x\xff.txt' 'some'
   _qa_local $'v\xff/solto.bin' 'some'
   _qa_arq mantido.txt "$QA_HASH" && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --receber --espelhar --confirmar --origem /r --destino "$B/l" \
     --excluir '**/ação/' --excluir '/über/' --excluir $'cafe\xcc\x81.txt' --excluir 'é/' \
     --excluir '?x' --excluir '[é]y' --excluir 'w/**/b'
   _qa_estado 0 'conclui'
-  for f in "${fica[@]}"; do
-    assert_arquivo_existe "$B/l/$f" "filtrado nao UTF-8 fica: ${f@Q}"
+  for f in ${fica[@]+"${fica[@]}"}; do
+    printf -v _q '%q' "$f"
+    assert_arquivo_existe "$B/l/$f" "filtrado nao UTF-8 fica: $_q"
   done
   assert_arquivo_ausente "$B/l/y/ÜBER/x"$'\xff'.txt 'a ancora /über/ nao alcanca y/ÜBER'
   assert_arquivo_ausente "$B/l/v"$'\xff'/solto.bin 'o nao UTF-8 no escopo sai (o espelho funciona)'
@@ -665,7 +676,7 @@ teste_qa_e14_div99_enviar_nao_envia_nem_apaga_filtrado() {
   _qa_arq keep.txt "$QA_HASH" && ent+=("$QA_E")
   _qa_arq 'über/remoto.txt' && ent+=("$QA_E")
   _qa_arq 'solto' && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --enviar --espelhar --confirmar --origem "$B/l" --destino /r \
     --excluir 'éFOTO.jpg' --excluir '/Über/'
   _qa_estado 0 'conclui'
@@ -681,6 +692,7 @@ teste_qa_e14_div99_enviar_nao_envia_nem_apaga_filtrado() {
 # ASCII com `*`, `*.dat`, conjunto so ASCII) continua casando, e o item no
 # escopo sem par no remoto sai.
 teste_qa_e15_div103_incluir_impreciso_nunca_apaga_nome_nao_utf8() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local -a ent=() fica=() sai=()
   local f
   _qa_cenario
@@ -689,19 +701,22 @@ teste_qa_e15_div103_incluir_impreciso_nunca_apaga_nome_nao_utf8() {
   _qa_local mantido.dat 'igual'
   fica=($'\xffq.bin' $'é\xff.bin' $'éx\xff.bin' $'é/\xff.bin')
   sai=($'Ée\xff.txt' $'z\xff.dat' $'b\xff.k')
-  for f in "${fica[@]}" "${sai[@]}"; do _qa_local "$f" 'do operador'; done
+  for f in ${fica[@]+"${fica[@]}"} ${sai[@]+"${sai[@]}"}; do _qa_local "$f" 'do operador'; done
   _qa_arq mantido.dat "$QA_HASH" && ent+=("$QA_E")
-  _qa_remoto "${ent[@]}"
+  _qa_remoto ${ent[@]+"${ent[@]}"}
   _qa_rodar sync --receber --espelhar --confirmar --origem /r --destino "$B/l" \
     --incluir '[!é]*' --incluir '[é]*' --incluir '?x*' --incluir '?/' \
     --incluir 'ée*' --incluir '*.dat' --incluir '[a-c]*.k'
   _qa_estado 0 'conclui'
-  for f in "${fica[@]}"; do
-    assert_arquivo_existe "$B/l/$f" "inclusao imprecisa nao poe no escopo: ${f@Q}"
-    _qa_rm_tocou "$f" && _harness_falhar "rm sobre ${f@Q}"
+  for f in ${fica[@]+"${fica[@]}"}; do
+    printf -v _q '%q' "$f"
+    assert_arquivo_existe "$B/l/$f" "inclusao imprecisa nao poe no escopo: $_q"
+    printf -v _q '%q' "$f"
+    _qa_rm_tocou "$f" && _harness_falhar "rm sobre $_q"
   done
-  for f in "${sai[@]}"; do
-    assert_arquivo_ausente "$B/l/$f" "inclusao precisa casa e o espelho apaga: ${f@Q}"
+  for f in ${sai[@]+"${sai[@]}"}; do
+    printf -v _q '%q' "$f"
+    assert_arquivo_ausente "$B/l/$f" "inclusao precisa casa e o espelho apaga: $_q"
   done
   assert_arquivo_existe "$B/l/mantido.dat" 'identico fica'
 }
@@ -711,6 +726,7 @@ teste_qa_e15_div103_incluir_impreciso_nunca_apaga_nome_nao_utf8() {
 # `[]`, `[!]` e `[^]` recusados (2); `ü/` NAO casa a pasta `Ü\xfe` (outro
 # nome), e casa `Ü/\xfea` (a pasta `Ü`).
 teste_qa_e16_conjunto_com_fecha_literal_e_leitura_da_pasta() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local linha obtido=''
   _qa_cenario
   bash -c '
@@ -807,14 +823,17 @@ teste_qa_b02_taxa_invalida_ou_hostil_sai_2_sem_rede() {
   _qa_cenario
   _qa_basicas
   _qa_local a.txt
-  for v in "${ruins[@]}"; do
+  for v in ${ruins[@]+"${ruins[@]}"}; do
     _qa_rodar upload --limite-banda "$v" "$B/l/a.txt" /r/a.txt
-    _qa_estado "$QA_USO" "upload [${v@Q}]"
+    printf -v _q '%q' "$v"
+    _qa_estado "$QA_USO" "upload [$_q]"
     assert_nao_contem $'\n url' "$QA_ERRO" 'sem quebra crua na mensagem'
     _qa_rodar sync --enviar --origem "$B/l" --destino /r --bwlimit "$v"
-    _qa_estado "$QA_USO" "sync [${v@Q}]"
+    printf -v _q '%q' "$v"
+    _qa_estado "$QA_USO" "sync [$_q]"
     _qa_rodar download /r/a.txt "$B/baixado" --limite-banda "$v"
-    _qa_estado "$QA_USO" "download [${v@Q}]"
+    printf -v _q '%q' "$v"
+    _qa_estado "$QA_USO" "download [$_q]"
   done
   _qa_sem_chamada 'taxas invalidas'
   assert_arquivo_ausente "$B/baixado" 'nada escrito'

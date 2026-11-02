@@ -33,7 +33,7 @@ _dbg_executar() {
   shift
   env -i PATH="$base/bin" HOME="$base" XDG_CONFIG_HOME="$base/config" XDG_STATE_HOME="$base/estado" \
     TMPDIR="$base/tmp" DBX_HTTP_TENTATIVAS_MAXIMAS=1 DBX_HTTP_ESPERA_BASE_MS=1 DBX_HTTP_ESPERA_TETO_MS=2 \
-    "${DBX_T_EXTRAS[@]}" "$BASH_ABSOLUTO" "$DBX_EXEC" "$@" >"$base/out" 2>"$base/err" </dev/null
+    ${DBX_T_EXTRAS[@]+"${DBX_T_EXTRAS[@]}"} "$BASH_ABSOLUTO" "$DBX_EXEC" "$@" >"$base/out" 2>"$base/err" </dev/null
   DBX_ESTADO=$?
   DBX_SAIDA='' DBX_ERRO=''
   IFS= read -r -d '' DBX_SAIDA <"$base/out"

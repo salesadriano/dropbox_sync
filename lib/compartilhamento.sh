@@ -24,6 +24,8 @@ DBX_COMPARTILHAMENTO_CARREGADO=1
 _dbx_compartilhamento_diretorio=${BASH_SOURCE[0]%/*}
 [[ $_dbx_compartilhamento_diretorio == "${BASH_SOURCE[0]}" ]] && _dbx_compartilhamento_diretorio=.
 _dbx_compartilhamento_diretorio=$(cd -P -- "$_dbx_compartilhamento_diretorio" && pwd -P)
+# shellcheck source=lib/ref.sh
+. "$_dbx_compartilhamento_diretorio/ref.sh"
 # shellcheck source=lib/filtro.sh
 . "$_dbx_compartilhamento_diretorio/filtro.sh"
 unset _dbx_compartilhamento_diretorio
@@ -232,7 +234,7 @@ dbx_compartilhamento_visibilidade_esperada() {
 # A senha e lida pelo NOME da variavel do chamador e serializada pelo escape de
 # lib/json; o canal de escape e esvaziado aqui (RF-86(e)).
 dbx_compartilhamento_corpo() {
-  local -n _dbx_cc_destino=$1
+  dbx_ref_valido "${1-}" || return "$DBX_COMPARTILHAMENTO_ERRO_USO"
   local _dbx_cc_chave=$2 _dbx_cc_alvo=$3 _dbx_cc_modo=$4 _dbx_cc_expira=${5-} _dbx_cc_nome=${6-}
   local _dbx_cc_settings
   case $_dbx_cc_chave in path | url) ;; *) return "$DBX_COMPARTILHAMENTO_ERRO_USO" ;; esac
@@ -241,8 +243,8 @@ dbx_compartilhamento_corpo() {
     equipe) _dbx_cc_settings='"audience":"team","require_password":false' ;;
     senha)
       [[ $_dbx_cc_nome =~ ^[a-z_][a-z0-9_]*$ ]] || return "$DBX_COMPARTILHAMENTO_ERRO_USO"
-      local -n _dbx_cc_senha=$_dbx_cc_nome
-      dbx_json_escapar_cadeia "$_dbx_cc_senha"
+      # Escalar de nome validado acima: a senha nunca vai a argumento de processo, log ou texto avaliado.
+      dbx_json_escapar_cadeia "${!_dbx_cc_nome}"
       _dbx_cc_settings="\"audience\":\"public\",\"require_password\":true,\"link_password\":\"$DBX_JSON_ESCAPADO\""
       # shellcheck disable=SC2034  # canal publico de lib/json, esvaziado aqui
       DBX_JSON_ESCAPADO=''
@@ -251,7 +253,7 @@ dbx_compartilhamento_corpo() {
   esac
   [[ -n $_dbx_cc_expira ]] && _dbx_cc_settings+=",\"expires\":\"$_dbx_cc_expira\""
   dbx_json_escapar_cadeia "$_dbx_cc_alvo"
-  _dbx_cc_destino="{\"$_dbx_cc_chave\":\"$DBX_JSON_ESCAPADO\",\"settings\":{$_dbx_cc_settings}}"
+  printf -v "$1" '%s' "{\"$_dbx_cc_chave\":\"$DBX_JSON_ESCAPADO\",\"settings\":{$_dbx_cc_settings}}"
   DBX_JSON_ESCAPADO=''
   _dbx_cc_settings=''
   return 0
@@ -261,10 +263,10 @@ dbx_compartilhamento_corpo() {
 # escapado: o `path` do link temporario e da listagem do alvo, a `url` da
 # guarda e da revogacao. A chave e literal do chamador.
 dbx_compartilhamento_corpo_simples() {
-  local -n _dbx_cs_destino=$1
+  dbx_ref_valido "${1-}" || return "$DBX_COMPARTILHAMENTO_ERRO_USO"
   [[ $2 =~ ^[a-z_]+$ ]] || return "$DBX_COMPARTILHAMENTO_ERRO_USO"
   dbx_json_escapar_cadeia "${3-}"
-  _dbx_cs_destino="{\"$2\":\"$DBX_JSON_ESCAPADO\"}"
+  printf -v "$1" '%s' "{\"$2\":\"$DBX_JSON_ESCAPADO\"}"
   DBX_JSON_ESCAPADO=''
   return 0
 }

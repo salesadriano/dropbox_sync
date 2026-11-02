@@ -180,10 +180,10 @@ _qa_rodar() {
   local pedaco
   local -a pedacos=()
   QA_SAIDA='' QA_ERRO=''
-  mapfile -d '' pedacos <"$B/out"
-  for pedaco in ${pedacos[@]+"${pedacos[@]}"}; do QA_SAIDA+="${pedaco%$'\0'}"$'\n'; done
-  mapfile -d '' pedacos <"$B/err"
-  for pedaco in ${pedacos[@]+"${pedacos[@]}"}; do QA_ERRO+="${pedaco%$'\0'}"$'\n'; done
+  pedacos=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do pedacos+=("$_m"); done <"$B/out"
+  for pedaco in ${pedacos[@]+"${pedacos[@]}"}; do QA_SAIDA+="$pedaco"$'\n'; done
+  pedacos=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do pedacos+=("$_m"); done <"$B/err"
+  for pedaco in ${pedacos[@]+"${pedacos[@]}"}; do QA_ERRO+="$pedaco"$'\n'; done
   if ((QA_ESTADO < 0 || QA_ESTADO > 15)); then
     _harness_falhar 'codigo de saida fora de 0..15 (124/137: pendurou)' "obtido: [$QA_ESTADO]" "argv: [$*]" "stderr: [${QA_ERRO:0:300}]"
   fi
@@ -250,7 +250,7 @@ _qa_identidade() {
   local n=1 k
   if [[ ${1-} =~ ^qa_[a-z0-9_]+$|^fica_[a-z]$ ]] && declare -p -- "$1" >/dev/null 2>&1; then
     local -n _qa_id_ref=$1
-    [[ ${_qa_id_ref@a} == *[aA]* ]] && n=${#_qa_id_ref[@]}
+    [[ $(declare -p _qa_id_ref 2>/dev/null) == "declare -a"* ]] && n=${#_qa_id_ref[@]}
   fi
   ((n > 0)) || n=1
   QA_G_REVS=() QA_G_IDS=()
@@ -350,7 +350,7 @@ teste_qa_c01_sem_confirmar_nenhum_delete_em_qualquer_ordem() {
     _qa_cenario
     _qa_pagina_unica "$QA_CINCO"
     _qa_apagar_ok
-    _qa_rodar "${args[@]}"
+    _qa_rodar ${args[@]+"${args[@]}"}
     _qa_estado 0 "plano: $forma"
     _qa_zero_delete "$forma"
     assert_contem 'modo=plano' "$QA_SAIDA" "modo plano: $forma"
@@ -376,7 +376,7 @@ teste_qa_c02_dry_run_vence_confirmar_em_toda_combinacao() {
     _qa_cenario
     _qa_pagina_unica "$QA_CINCO"
     _qa_apagar_ok
-    _qa_rodar "${args[@]}"
+    _qa_rodar ${args[@]+"${args[@]}"}
     _qa_estado 0 "simulado: $forma"
     _qa_zero_delete "$forma"
     assert_contem 'simulado' "$QA_SAIDA" "modo simulado: $forma"
@@ -541,9 +541,9 @@ QA_NOMES=''
 _qa_nomes_do_plano() {
   local campo
   local -a campos=() nomes=()
-  mapfile -d '' campos <"$B/out"
+  campos=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do campos+=("$_m"); done <"$B/out"
   for campo in ${campos[@]+"${campos[@]}"}; do
-    campo=${campo%$'\0'}
+    campo=$campo
     [[ $campo == name=* ]] && nomes+=("${campo#name=}")
   done
   # ordenacao por insercao, LC_ALL=C (sem utilitario externo)
@@ -593,7 +593,7 @@ teste_qa_s08_padroes_ardilosos_nao_alargam_o_casamento() {
     padrao=${caso%%#*} nomes=${caso#*#} esperado=${nomes#*#} nomes=${nomes%%#*}
     IFS=';' read -ra ns <<<"$nomes"
     lista=''
-    for nome in "${ns[@]}"; do
+    for nome in ${ns[@]+"${ns[@]}"}; do
       _qa_arq "$nome" 2026-10-01T00:00:00Z AUTO
       lista+="${lista:+,}$QA_ARQ"
     done
@@ -612,7 +612,16 @@ teste_qa_s08_padroes_ardilosos_nao_alargam_o_casamento() {
 # metades: (a) nome NFD com padrao NFC que o casaria se houvesse normalizacao:
 # 10 e zero delete_v2, mesmo sendo o mais velho; (b) padrao NFD contra nome
 # NFC: sem normalizacao, nada casa (0, candidatos 0).
+# 0 quando a localidade C.UTF-8 existe e o bash dobra a caixa fora do ASCII
+# (a mesma sonda de diagnostico_test.sh). No CentOS 7 nao ha C.UTF-8 e o bash 4.2
+# nao dobra `${x,,}` fora do ASCII nem em en_US.utf8; o produto degrada com aviso
+# (RF-54(f)) e o caso, que exige a dobra, e pulado.
+_localidade_disponivel() {
+  LC_ALL=C.UTF-8 "${BASH:-bash}" -c 'x=$'"'"'\xc3\x89'"'"'; [[ ${x,,} == $'"'"'\xc3\xa9'"'"' ]]' 2>/dev/null
+}
+
 teste_qa_s09_nfc_nao_casa_nfd() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local nfd=$'e\xcc\x81-1.tar' nfc_padrao=$'\xc3\xa9-*.tar' nfd_padrao=$'e\xcc\x81-*.tar'
   local e2
   _qa_arq $'\xc3\xa9-2.tar' 2026-10-02T00:00:00Z 0000000002a
@@ -829,12 +838,12 @@ _qa_plano() {
   local dias=$1 agora=$2 i
   shift 2
   local -a sm=("$@") chave=() pl=()
-  for i in "${!sm[@]}"; do
+  for i in ${sm[@]+"${!sm[@]}"}; do
     chave[i]="n$i" pl[i]="/bk/n$i"
   done
   dbx_retencao_planejar dias "$dias" "$agora" sm chave pl || _harness_falhar "planejar recusou: $DBX_RETENCAO_MOTIVO"
   QA_TEXTO=''
-  for i in "${!sm[@]}"; do QA_TEXTO+="$i=${DBX_RETENCAO_ACAO[i]} "; done
+  for i in ${sm[@]+"${!sm[@]}"}; do QA_TEXTO+="$i=${DBX_RETENCAO_ACAO[i]} "; done
   QA_TEXTO=${QA_TEXTO% }
 }
 
@@ -913,7 +922,7 @@ teste_qa_p08_dias_pelo_executavel() {
   export TZ
   for d in 2 6 8 30; do
     n=$((n + 1))
-    printf -v sm '%(%Y-%m-%dT%H:%M:%SZ)T' $((EPOCHSECONDS - d * 86400))
+    printf -v sm '%(%Y-%m-%dT%H:%M:%SZ)T' $(($(date +%s) - d * 86400))
     _qa_arq "db-$d.tar" "$sm" "000000000${n}a"
     lista+="${lista:+,}$QA_ARQ"
   done
@@ -1041,7 +1050,7 @@ teste_qa_l06_date_com_dias() {
     _qa_cenario
     case $texto in
       AUSENTE) : >"$B/sem_data" ;;
-      [+-]*) printf '%(%a, %d %b %Y %H:%M:%S GMT)T\n' $((EPOCHSECONDS + texto)) >"$B/data" ;;
+      [+-]*) printf '%(%a, %d %b %Y %H:%M:%S GMT)T\n' $(($(date +%s) + texto)) >"$B/data" ;;
       *) printf '%s\n' "$texto" >"$B/data" ;;
     esac
     _qa_pagina_unica "$QA_CINCO"
@@ -1177,13 +1186,13 @@ teste_qa_d06_saidas_coerentes() {
       null) _qa_rodar --null reter /bk --padrao 'db-*.tar' --manter 2 ;;
     esac
     _qa_estado 0 "$modo"
-    mapfile -d '' campos <"$B/out"
+    campos=(); while IFS= read -r -d '' _m || [[ -n $_m ]]; do campos+=("$_m"); done <"$B/out"
     local resumo=''
     for campo in ${campos[@]+"${campos[@]}"}; do
       local linha
       while IFS= read -r linha; do
         case $linha in acao=* | candidatos=* | ficam=* | saem=*) resumo+="$linha;" ;; esac
-      done <<<"${campo%$'\0'}"
+      done <<<"$campo"
     done
     case $modo in texto) texto=$resumo ;; json) json=$resumo ;; null) nulo=$resumo ;; esac
   done
@@ -1338,7 +1347,7 @@ teste_qa_s17_guarda_7_compara_caminho_e_falha_fechada() {
   obtido=0
   dbx_retencao_guarda file $'/bk/\xc3\xa9.tar' $'\xc3\xa9.tar' /bk / sai nao fica_u e00000000a1 id:qa-sai QA_G_REVS QA_G_IDS || obtido=1
   assert_igual 1 "$obtido" 'mesmo caminho em outra caixa nao ASCII: recusa'
-  : "${fica_v[@]}"
+  : ${fica_v[@]+"${fica_v[@]}"}
 }
 
 # QA-B6-S18 — ACHADO (ciclo 2): a guarda (7) falha ABERTA. Sem a lista de quem
@@ -1415,6 +1424,7 @@ teste_qa_s19_path_lower_fora_da_minuscula_unicode_e_10() {
 # U+10000) e de 3 bytes no limite (U+FFFD, U+E000) nao dao falso 10; DIV-169:
 # rev e id unicos por arquivo (AUTO).
 teste_qa_s20_minusculas_unicode_legitimas_sem_falso_10() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local c lista=''
   for c in $'\xc3\x9f' $'\xcf\x82' $'\xcf\x83' $'\xef\xac\x81' $'\xef\xbd\x81' $'\xc3\xa9' $'\xc7\x86' \
     $'\xf0\x9f\x98\x80' $'\xf4\x8f\xbf\xbf' $'\xf0\x90\x80\x80' $'\xef\xbf\xbd' $'\xee\x80\x80'; do
@@ -1432,6 +1442,7 @@ teste_qa_s20_minusculas_unicode_legitimas_sem_falso_10() {
 # LC_ALL=C: ASCII segue funcionando; fora do ASCII falha fechada (10) em
 # qualquer entrada; a duplicata nao ASCII nunca e apagada.
 teste_qa_s21_falha_fechada_sem_localidade_e_com_lc_all_c() {
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local a b pasta_e
   _qa_arq $'\xc3\xa9.tar' 2026-10-05T00:00:00Z 0000000005a $'/bk/\xc3\xa9.tar'
   a=$QA_ARQ
@@ -1768,7 +1779,7 @@ _qa_data_de() {
   case $2 in
     AGORA) ;;
     AUSENTE) : >"$B/sem_data.$1" ;;
-    [+-][0-9]*) printf '%(%a, %d %b %Y %H:%M:%S GMT)T\n' $((EPOCHSECONDS + $2)) >"$B/data.$1" ;;
+    [+-][0-9]*) printf '%(%a, %d %b %Y %H:%M:%S GMT)T\n' $(($(date +%s) + $2)) >"$B/data.$1" ;;
     *) printf '%s\n' "$2" >"$B/data.$1" ;;
   esac
 }

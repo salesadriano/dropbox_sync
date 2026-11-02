@@ -64,3 +64,43 @@
 - PR: a abrir (PARTE A -> `develop`).
 - Tech Lead: **Aprovado** (PARTE A), 2026-11-01 - condicionado a suite completa oficial verde sobre o commit.
 - Solicitante: suite do QA aceita, 2026-11-01.
+
+## 8. PARTE B - linha legada `support/bash-4.2` (versao `2.3.0-bash42`)
+
+| Campo | Valor |
+|---|---|
+| Branch | `feature/porte-bash-42` (de `26f2452`) -> PR para `support/bash-4.2` |
+| Agents | Tech Lead; Senior Developer (B1, B2, B3a, B3b, B4, B5 x3, QA-B42-01); QA Expert (2 ciclos) |
+| Parecer de conformidade | `docs/reviews/2026-11-01-1200-parecer-conformidade-porte-bash-42.md` |
+| Validacao do QA | `docs/reviews/2026-11-01-1200-validacao-qa-porte-bash-42.md` (ciclo 1 reprovado por `QA-B42-01`; ciclo 2 aprovado com ressalvas) |
+| Aceite do solicitante | `.github/agents/memoria/entradas/2026-11-02-1200-aceite-testes-qa-porte-bash-42.md` (21 suites `qa_*` por sha256) |
+| Requisitos | v1.35: `RF-54(f2)`, `DIV-391` |
+
+### 8.1 Decisoes
+
+- Solicitante (2026-11-02): suites do QA aceitas; retorno da correcao `QA-B42-01` a linha principal em demanda propria, depois da PARTE B, na release 2.3.0.
+- Tech Lead: auxiliar unico `lib/ref.sh` (eval so do nome validado); espera por sondagem `kill -0` que retorna quando qualquer PID nao esta vivo; protecao mecanica de toda expansao de vetor; falha fechada sem localidade (`DIV-391`); pulos de localidade so onde o caso exige a dobra Unicode para resultado positivo, nunca onde prova ausencia de efeito destrutivo.
+
+### 8.2 Arquivos
+
+| Grupo | Alteracao |
+|---|---|
+| Piso e versao | `lib/preflight.sh` (piso 4.2), `lib/cli.sh` e `install.sh` (`2.3.0-bash42`), `scripts/suite-completa.cmd` (`sh scripts/suite-bash42.sh`) |
+| Recursos 4.3+/4.4 | `lib/ref.sh` (novo) e 28 namerefs; `dbx_par_aguardar_algum` e 4 `wait -n`; 2 `${x@a}`; 114 expansoes de vetor protegidas; 4 vetores globais com valores separados |
+| Defeitos do 4.2 / CentOS 7 achados pela suite | eco do terminal apos sinal (`lib/cli.sh`, `lib/tmp.sh`); acumulador quadratico (`lib/hash.sh`); corpo ilegivel com curl 7.29 (`lib/http.sh`) |
+| Seguranca de dados | `QA-B42-01`: `lib/filtro.sh` (modo bytes e padrao nao ASCII sem localidade), `lib/sync.sh` `dbx_sync_reter_nao_ascii`, `commands/sync.sh` |
+| Testes | `tests/run.sh` (calco de `setsid -w`); `tests/unit/ref_test.sh` (novo, 8); `tests/unit/bash42_auditoria_test.sh` (novo, 7); `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh` (novo, QA, 6); casos novos em `sync_test.sh`, `filtro_test.sh`, `http_test.sh`; construcoes 4.4 trocadas (`mapfile -d`, `@Q`, `EPOCHSECONDS`, subscrito negativo); terminal com fifo e `stty sane`; troca de inode por create+mv; `qa_instalador_linha_b22` simula a arvore da linha principal |
+| Inventario | `docs/testes/inventario-de-testes.md`: 116 arquivos, 2899 casos, 0 divergencias |
+
+### 8.3 Testes e gates
+
+- Mapa por arquivo no CentOS 7 (bash 4.2.46, curl 7.29, util-linux 2.23, coreutils 8.22, sem `C.UTF-8`): 30 -> 24 -> 4 -> 0 arquivos reprovados; host (bash 5.3): 116 arquivos verdes.
+- Lint: sem achado (`LINT_MEMORIA_MB=15360`). `verificar-remocao-de-casos.sh`: sem reducao.
+- Gates: conformidade aprovado; QA aprovado com ressalvas no ciclo 2.
+- Suite completa oficial (`sh scripts/suite-completa.sh`, no CentOS 7): sobre o commit da PARTE B, resultado no corpo da PR.
+
+### 8.4 Riscos, limites e rollback
+
+- Comparacao sem caixa so no ASCII sem `C.UTF-8` (bash 4.2 nao dobra fora do ASCII nem com `en_US.UTF-8`); com `--espelhar`, caminho nao ASCII nao e apagado e ha aviso (`RF-54(f2)`).
+- Acompanhamentos: retorno do `QA-B42-01` a principal (demanda propria); `QA-B42-03`; teto de memoria do lint em `commands/download.sh`.
+- Rollback: apagar a release `v2.3.0-bash42`; o branch de suporte fica sem efeito para bash >= 4.4.

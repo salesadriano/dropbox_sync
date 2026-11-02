@@ -39,7 +39,7 @@ teste_percorre_a_arvore_inteira_com_caminhos_relativos() {
   local -a caminhos=() tamanhos=() mtimes=()
   dbx_walk_ler "$base/reg" caminhos tamanhos mtimes
   local juntos
-  printf -v juntos '%s|' "${caminhos[@]}"
+  printf -v juntos '%s|' ${caminhos[@]+"${caminhos[@]}"}
   assert_contem 'um.txt|' "$juntos" 'arquivo na raiz'
   assert_contem 'sub/dois.txt|' "$juntos" 'caminho relativo em profundidade 1'
   assert_contem 'sub/fundo/tres.txt|' "$juntos" 'caminho relativo em profundidade 2'
@@ -69,7 +69,7 @@ teste_nome_com_quebra_de_linha_sobrevive_a_travessia() {
   local -a caminhos=() tamanhos=() mtimes=()
   dbx_walk_ler "$base/reg" caminhos tamanhos mtimes
   local achou='nao' c
-  for c in "${caminhos[@]}"; do [[ $c == "$nome" ]] && achou='sim'; done
+  for c in ${caminhos[@]+"${caminhos[@]}"}; do [[ $c == "$nome" ]] && achou='sim'; done
   assert_igual 'sim' "$achou" 'o nome precisa voltar byte a byte'
 }
 
@@ -100,7 +100,7 @@ teste_ligacao_simbolica_nao_e_seguida_e_marca_a_travessia() {
   local -a caminhos=() tamanhos=() mtimes=()
   dbx_walk_ler "$base/reg" caminhos tamanhos mtimes
   local juntos
-  printf -v juntos '%s|' "${caminhos[@]}"
+  printf -v juntos '%s|' ${caminhos[@]+"${caminhos[@]}"}
   assert_nao_contem 'alvo.txt' "$juntos" 'nada de fora da raiz pode ser alcancado'
 }
 
@@ -203,7 +203,7 @@ teste_registro_da_travessia_traz_a_identidade_forte() {
   local -a caminhos=() tamanhos=() identidades=()
   dbx_walk_ler "$base/reg" caminhos tamanhos identidades
   local indice achada=''
-  for indice in "${!caminhos[@]}"; do
+  for indice in ${caminhos[@]+"${!caminhos[@]}"}; do
     [[ ${caminhos[$indice]} == 'um.txt' ]] && achada=${identidades[$indice]}
   done
   local esperada
@@ -220,7 +220,7 @@ teste_identidade_publicada_coincide_com_a_da_travessia() {
   local -a caminhos=() tamanhos=() identidades=()
   dbx_walk_ler "$base/reg" caminhos tamanhos identidades
   local indice
-  for indice in "${!caminhos[@]}"; do
+  for indice in ${caminhos[@]+"${!caminhos[@]}"}; do
     dbx_hash_identidade "$base/raiz/${caminhos[$indice]}"
     assert_igual 0 $? 'identidade de arquivo legivel'
     assert_igual "${identidades[$indice]}" "$DBX_HASH_IDENTIDADE" \

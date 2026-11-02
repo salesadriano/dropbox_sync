@@ -726,7 +726,7 @@ teste_nenhum_desfecho_de_analise_vaza_nos() {
     'nao_e_json'
     '{"a":tru}'
   )
-  for documento in "${documentos[@]}"; do
+  for documento in ${documentos[@]+"${documentos[@]}"}; do
     dbx_json_analisar "$documento" >/dev/null 2>&1
     antes=$(_dbx_nos_vivos)
     for _ in 1 2 3 4 5; do
