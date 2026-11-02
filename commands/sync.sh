@@ -324,6 +324,17 @@ _dbx_cmd_sync_aux_encerrar() {
     [[ -n $pid ]] || continue
     kill -KILL -- "-$pid" 2>/dev/null || kill -KILL -- "$pid" 2>/dev/null || :
   done
+  # O membro do grupo que recebeu o SIGKILL ainda aparece por um instante; sair
+  # antes dele deixava processo vivo apos o termino (mesma correcao de
+  # `_dbx_transfer_par_encerrar`). Espera o grupo sumir, ate 1 s.
+  for ((indice = 0; indice < 20; indice++)); do
+    vivo='nao'
+    for pid in ${_DBX_CMD_SYNC_AUX_PIDS[@]+"${_DBX_CMD_SYNC_AUX_PIDS[@]}"}; do
+      [[ -n $pid ]] && kill -0 -- "-$pid" 2>/dev/null && vivo='sim'
+    done
+    [[ $vivo == 'sim' ]] || break
+    sleep 0.05
+  done
   _DBX_CMD_SYNC_AUX_PIDS=()
 }
 
