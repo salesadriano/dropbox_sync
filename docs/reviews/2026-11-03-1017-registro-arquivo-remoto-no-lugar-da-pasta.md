@@ -44,6 +44,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **69**.
 - Barreiras estaticas: `shellcheck -x -s bash lib/sync.sh commands/sync.sh tests/integracao/sync_test.sh` sem aviso.
 - Testes de seguranca e acesso (Regra 6): a guarda destrutiva do `--espelhar` e o cenario do teste (o orfao apagado e o que a listagem do pai mostrou; nada e apagado por inferencia); nenhuma rota, sessao ou segredo tocado.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: CLI sem formulario.
+- Linha legada (bash 4.2.46 real, CentOS 7, `sh scripts/suite-bash42.sh <filtro>` em `feature/arquivo-remoto-no-lugar-da-pasta-bash42`, cherry-pick `88d5599`, `f3097e3`, `249630a`; conflito so no cabecalho e na linha do `sync_test.sh` do inventario, resolvido com as contagens da linha legada, 119 arquivos e 2928 casos): `qa_pasta_ocupada_test.sh` 6 aprovados, 0 reprovados; `sync_test.sh` 99 aprovados, 0 reprovados. No bash do host, na mesma branch: `sync_test.sh` 102/0, `qa_pasta_ocupada_test.sh` 6/0, `json_test.sh` 62/0, `harness_test.sh` 23/0, `qa_sync_blocos` 25/0; shellcheck sem aviso.
 - Suite completa local no push para a PR: verde para `546efb4` (117 arquivos, 2900 aprovados, 0 reprovados, 4 pulados, 3467s); reexecutada para o commit de aceite (secao 8).
 
 ## 5. Gates
