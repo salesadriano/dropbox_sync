@@ -1265,9 +1265,18 @@ dbx_cmd_sync_executar() {
         estado_remoto=$formacao_falhou
         if [[ $sentido == 'enviar' ]]; then
           dbx_sync_tabela_zerar
+          DBX_SYNC_PASTAS_OCUPADAS=()
           for ((kk = ci_ini; kk < ci_fim; kk++)); do
             dbx_sync_listar_diretorio "$remoto" "$remoto${dirs_v[kk]:+/${dirs_v[kk]}}" "$lado_remoto" || estado_remoto=$?
             [[ $estado_remoto -eq 0 ]] || break
+          done
+          # DIV-394: UM aviso por pasta ocupada, sempre (a mensagem de progresso
+          # so sai com -p). Sob `--espelhar` o arquivo homonimo e orfao e sai no
+          # plano; os envios para dentro da pasta podem falhar por item neste
+          # ciclo (`path/conflict/file`) e completam na execucao seguinte.
+          local ocupada
+          for ocupada in ${DBX_SYNC_PASTAS_OCUPADAS[@]+"${DBX_SYNC_PASTAS_OCUPADAS[@]}"}; do
+            dbx_cmd_avisar "$ocupada e um arquivo na Dropbox, nao uma pasta: tratado como pasta vazia; com --espelhar o arquivo e apagado como orfao e os envios para dentro dela podem falhar nesta execucao e completar na seguinte"
           done
         fi
         if [[ $estado_remoto -eq 0 && $sentido == 'enviar' ]]; then
