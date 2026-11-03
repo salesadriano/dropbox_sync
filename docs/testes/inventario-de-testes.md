@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
-Atualizado em: 2026-11-02, demanda `diretorio-chamado-hifen` (`docs/prompts/2026-11-02_2100_diretorio-chamado-hifen.md`), pelo QA Expert (suite `qa_diretorio_hifen` e casos do `walk_test`/`sync_test`); antes, 2026-10-31, demanda `investigar-retomada-download` (`docs/prompts/2026-10-31_1900_investigar-retomada-download.md`), pelo Tech Lead (Fluxo P: linhas do `harness_test.sh`); antes, demanda `sync-em-blocos`, por QA Expert.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 118 arquivos, 2920 casos, 0 divergencias.
+Atualizado em: 2026-11-03, demanda `arquivo-remoto-no-lugar-da-pasta` (`docs/prompts/2026-11-03_1017_arquivo-remoto-no-lugar-da-pasta.md`), pelo QA Expert (suite `qa_pasta_ocupada` e casos do `sync_test`)
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 119 arquivos, 2928 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -56,6 +56,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh` | `sync --receber/--enviar --espelhar` com `--incluir`/`--excluir` e nomes com byte nao ASCII sem `C.UTF-8` (nada apagado) | `qa_exclusao_sem_localidade` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`, ciclo 2) | 6 | QA-B42-01; RF-54(f2); RF-80; DIV-391; protocolo-tdd Regra 6 |
 | `tests/integracao/qa_cdpath_test.sh` | `upload`/`download` de pasta, `verificar` e `sync` (enviar/receber, `--espelhar`, `--bloco`, `--paralelo`) com `CDPATH` hostil no ambiente | `qa_cdpath` | integracao | QA Expert (suite independente da demanda `ignorar-cdpath`) | 8 | defeito em producao 2026-11-02; protocolo-tdd Regras 6 e 8 |
 | `tests/integracao/qa_diretorio_hifen_test.sh` | `sync --dry-run` com pasta ou arquivo chamado `-`, `--` e `-x` (raiz, primeiro e ultimo irmao, aninhada, so do destino sob `--espelhar`) | `qa_diretorio_hifen` | integracao | QA Expert (suite independente da demanda `diretorio-chamado-hifen`) | 8 | defeito em producao 2.3.1; DIV-393; protocolo-tdd Regras 6 e 8 |
+| `tests/integracao/qa_pasta_ocupada_test.sh` | `sync --enviar` com um ARQUIVO remoto no lugar de subpasta local (`path/not_folder`): espelhar, aviso, sem espelhar, raiz do destino, dry-run e ciclo posterior | `qa_pasta_ocupada` | integracao | QA Expert (suite independente da demanda `arquivo-remoto-no-lugar-da-pasta`) | 6 | defeito em producao 2.3.2; DIV-394; RF-47; protocolo-tdd Regras 8 e 9 |
 | `tests/integracao/qa_integridade_p1_test.sh` | `bin/dbx` (download de arquivo e de pasta, sync, upload) com `lib/transfer.sh`, `lib/hash.sh`, `lib/walk.sh`: integridade de dados no rec... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `integridade-de-dados-p1`) | 27 | RF-49, RF-54, RF-55, RF-56, RF-57, RNF-29, RNF-04 (emendado); log `docs/prompts/2026-10-18_1745_integridade-de-dados-p1.md` |
 | `tests/integracao/qa_leitura_exata_b14_test.sh` | `lib/atributos.sh` (`dbx_ler_exato`), calculo do `content_hash` em `lib/hash.sh` e upload em sessao de `bin/dbx` sob o duble `head` do Fr... | qa_leitura_exata (sem linha propria no mapa de modulos; ver observacoes) | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-173, TC-FBSD-25..27; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada de aceite](../../.github/agents/memoria/entradas/... |
 | `tests/integracao/qa_paralelo_download_b20_test.sh` | `bin/dbx download` de arquivo grande em faixas simultaneas (`commands/download.sh`, `lib/transfer.sh`, `lib/http.sh`) | `qa_paralelo_download` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 21 | F-100 etapa 2b; RF-180 a RF-184; RF-104(c)(d); RF-106(a); DIV-369 a DIV-371; DIV-373 a DIV-376; log `docs/prompts/2026-10-26_1900_paralel... |
@@ -77,7 +78,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/retomada_download_test.sh` | `bin/dbx download` retomado entre execucoes (`Range`), `--no-resume`, `diagnostico` e `unlink`; `commands/download.sh`, `lib/cmd.sh`, `li... | retomada_download | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 32 | F-03; RF-102, RF-104 a RF-108; TC-RMD-01..15, TC-RMO-01, 02, 04, 05, TC-RMC-01, 06, TC-RML-05..07, TC-RMS-06, TC-DBG-13..15; DIV-176 a DI... |
 | `tests/integracao/retomada_upload_test.sh` | `bin/dbx upload` retomado entre execucoes (`commands/upload.sh`, `lib/transfer.sh`, `lib/state.sh`, registro `retomada-*`) | retomada_upload | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 43 | F-03; RF-101..RF-109; DIV-171..DIV-190; TC-RMU-01..16; TC-RME-02, 12, 14; TC-RMO-01..03, 05..11; TC-RMC-01, 04, 05; TC-RMS-01..06; TC-DBG... |
 | `tests/integracao/sync_blocos_test.sh` | `bin/dbx sync` e `download` de pasta em ciclos por diretorio | `sync_blocos_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 23 | F-101; RF-187..RF-197; TC-BLC-nn |
-| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 91 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
+| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 93 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
 | `tests/integracao/testar_test.sh` | `bin/dbx testar` (alias `check`) e a sonda de disponibilidade (`commands/testar.sh`, `lib/disponibilidade.sh`) | `commands/testar.sh` | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 29 | RF-148; RF-149; RF-150; RF-154; TC-DSP-01..25; TC-DSP-55; TC-DSP-57; TC-DSP-58; DIV-326; log `docs/prompts/2026-10-23_0900_teste-de-dispo... |
 | `tests/integracao/trava_test.sh` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help) com `lib/state.sh` e `lib/tmp.sh`: tr... | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 31 | RF-69, RF-70, RF-71, RNF-35; TC-TRV, TC-ESR, TC-DIA-11..14, TC-TMP-02, 05, 06; DIV-50, DIV-51; F-12, F-31; log `docs/prompts/2026-10-19_1... |
 | `tests/integracao/upload_pasta_test.sh` | `bin/dbx` (`upload` de arquivo para destino que e pasta) com `commands/upload.sh`: grava em `<pasta>/<nome>` sem falhar com `path/conflic... | `commands/upload.sh` | integracao | Senior Developer (TDD da demanda `upload-arquivo-para-pasta`) | 13 | RF-174; log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
@@ -2766,6 +2767,8 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_memoria_descartada_desabilita_a_exclusao_e_a_seguinte_volta_ao_normal | Memoria descartada desabilita a exclusao e a execucao seguinte volta ao normal | RF-38; RF-41 |
 | teste_enumeracao_remota_que_falha_sai_com_o_codigo_da_classe | Falha na enumeracao remota sai com o codigo da classe do erro | RF-52 |
 | teste_sync_com_segredo_vazio_recusa_antes_da_rede_na_classe_de_rf03 | Segredo vazio recusa antes da rede na classe de erro de RF-03 | RF-03 |
+| teste_arquivo_remoto_com_o_nome_de_uma_pasta_local_nao_encerra_o_sync | `path/not_folder` em subpasta do ciclo (arquivo remoto com o nome da pasta local): sync segue, plano traz `transferir=` do conteudo e `apagar=` do homonimo, aviso nomeia o caminho, uma exclusao executada | DIV-394; RF-47 |
+| teste_destino_remoto_que_e_um_arquivo_falha_nomeando_o_caminho | Destino (raiz) que e arquivo continua falha da enumeracao com a classe de `not_folder`, motivo `recusada em /r:` e nenhuma escrita | DIV-394 |
 | teste_origem_vazia_com_algo_a_apagar_e_recusada_em_toda_combinacao | Origem vazia com algo a apagar e recusada em toda combinacao de opcoes | RF-41(b) |
 | teste_origem_vazia_com_algo_a_apagar_traz_o_motivo_mesmo_com_confirmar | A recusa por origem vazia traz o motivo mesmo com --confirmar | RF-41(b) |
 | teste_permitir_origem_vazia_libera_a_exclusao_nos_dois_sentidos | --permitir-origem-vazia libera a exclusao nos dois sentidos | RF-41(b) |
@@ -4835,3 +4838,24 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_pasta_hifen_nao_desvia_a_enumeracao_de_diretorios | `sl/-` e `sl/SL` sob `--espelhar`: o irmao `SL` nao e lido como `-` | DIV-393 |
 | teste_pasta_hifen_so_do_destino_sob_espelhar | `-/x.txt` so no remoto: exclusao planejada uma vez, local intacto | DIV-393 |
 | teste_pastas_chamadas_hifen_hifen_e_hifen_x | Pastas `--`, `-x` e `-` lidas pelo nome | DIV-393 |
+
+## `tests/integracao/qa_pasta_ocupada_test.sh`
+
+- **Alvo:** `sync --enviar` (enumeracao remota por diretorio do ciclo, `lib/sync.sh` e `commands/sync.sh`) quando a Dropbox responde `path/not_folder` para uma subpasta local
+- **Modulo:** `qa_pasta_ocupada` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `arquivo-remoto-no-lugar-da-pasta`)
+- **Regras de origem:** defeito em producao 2.3.2 (`erro=enumeracao remota recusada: path/not_folder/`); DIV-394; RF-47; protocolo-tdd Regras 8 e 9; parecer `docs/reviews/2026-11-03-1017-validacao-qa-arquivo-remoto-no-lugar-da-pasta.md`
+- **Aceite do solicitante:** pendente; sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`
+- **Dados e precondicoes:** arvore local, credencial e listagem remota falsas criadas por caso; duplo de `curl` proprio por regras de endpoint, com `tests/support/lote_duplo.sh` para a exclusao em lote; `DBX_QA_EXEC` aponta outro `bin/dbx` (prova do vermelho)
+- **Comando:** `bash tests/run.sh tests/integracao/qa_pasta_ocupada_test.sh`
+- **Observacoes:** contra `bin lib commands` de `origin/develop`, os 6 casos reprovam.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_ocupada_espelhar_nao_encerra_planeja_o_conteudo_e_apaga_o_arquivo_homonimo | Com `--espelhar --confirmar` o sync termina 0, planeja o conteudo da pasta, apaga o arquivo homonimo e tenta o envio | DIV-394; RF-47 |
+| teste_qa_ocupada_aviso_sai_em_stderr_sem_progresso_e_nomeia_o_caminho | Aviso em stderr, sem `-p`, nomeia `/r/sub` e diz que e um arquivo | DIV-394 |
+| teste_qa_ocupada_sem_espelhar_o_arquivo_homonimo_fica_e_nada_e_apagado | Sem `--espelhar` o homonimo e so-no-destino e nenhuma exclusao ocorre | DIV-394 |
+| teste_qa_ocupada_raiz_do_destino_que_e_arquivo_continua_falha_nomeando_o_caminho | Raiz do destino que e arquivo sai 2 com `recusada em /r:` e sem escrita | DIV-394 |
+| teste_qa_ocupada_dry_run_nao_escreve_nada | `--dry-run` mostra `apagar=sub` e nao envia nem apaga | DIV-394 |
+| teste_qa_ocupada_em_ciclo_posterior_o_orfao_sai_no_ciclo_do_pai_e_o_conteudo_e_enviado | Com `--bloco 1`, orfao apagado no ciclo do pai, conteudo da pasta enviado e ciclo seguinte segue | DIV-394 |

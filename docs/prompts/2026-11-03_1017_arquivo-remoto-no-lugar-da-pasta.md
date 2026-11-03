@@ -42,3 +42,7 @@ Sanitizado: nenhum segredo no log; caminhos de origem e destino mantidos (necess
 **Contorno imediato:** na Dropbox, apagar ou renomear o arquivo que tem o mesmo nome de uma das subpastas de `/mnt/c/Unimake/UniNFe` (a 7a pasta na ordem da travessia, contando a raiz); `dbx listar /ASJ/ASJASS/UniNFe` mostra os arquivos diretos da raiz remota para a comparacao.
 
 **Inferencias adotadas:** (a) na listagem de um subdiretorio do ciclo, `path/not_folder` passa a valer como pasta remota vazia, com aviso em stderr nomeando o caminho; sob `--espelhar` o arquivo homonimo ja e orfao pela regra existente (`RF-47`: so no destino) e e apagado ao fim do ciclo em que o pai foi lido; os envios para dentro da pasta nesse mesmo ciclo podem falhar por item (`path/conflict/file`) e completam na execucao seguinte; (b) na raiz do destino, `not_folder` continua falha (destino e um arquivo), com mensagem propria; (c) toda recusa de enumeracao passa a nomear o caminho remoto.
+
+## Andamento — 2026-11-03
+
+Correcao em `047cbd3`; validacao independente do QA aprovada (suite `qa_pasta_ocupada_test.sh`, 6 casos, sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`), aguardando o aceite do solicitante (regra 12).

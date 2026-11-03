@@ -58,7 +58,11 @@ Total de linhas de codigo (producao e teste, sem documentacao): **69**.
 
 ## 6. QA
 
-- (pendente: validacao independente do QA Expert, ciclo 1)
+- Validacao independente (QA Expert, ciclo 1): `docs/reviews/2026-11-03-1017-validacao-qa-arquivo-remoto-no-lugar-da-pasta.md`. Suite propria `tests/integracao/qa_pasta_ocupada_test.sh`, 6 casos (sub-pasta ocupada com e sem `--espelhar`, aviso sem `-p`, raiz que e arquivo, `--dry-run`, pasta ocupada em ciclo posterior com `--bloco 1`), sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`; `bash tests/run.sh qa_pasta_ocupada_test.sh` -> 6 aprovados, 0 reprovados (reexecutado pelo Tech Lead).
+- Vermelho da suite do QA: contra `bin lib commands` de `origin/develop` reprovam 6 de 6 (5 pela mensagem do log de producao, 1 pelo motivo sem o caminho).
+- Achados: nenhum bloqueante ou maior; 2 menores informativos (o duble nao reproduz `path/conflict/file` do envio para dentro da pasta ocupada, o caso prova que o envio e tentado; o aviso so existe no `--enviar`, o `--receber` nao passa por esse caminho).
+- Inventario de testes (regra 51): linha e secao da suite nova e 2 linhas em `sync_test.sh` (90 -> 92) em `docs/testes/inventario-de-testes.md`; `sh scripts/inventario-de-testes.sh --check` -> 117 arquivos, 2916 casos, 0 divergencias (reexecutado pelo Tech Lead). Auditorias `json_test` (66) e `harness_test` (23) verdes com a suite nova.
+- Veredito do QA: Aprovado, 2026-11-03.
 
 ## 7. Riscos e rollback
 
@@ -70,7 +74,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **69**.
 
 - Entradas de memoria: (pendente: aceite da suite do QA, regra 12)
 - Documentacao sincronizada: `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (v1.38); inventario de testes pelo QA.
-- Commit(s): (pendente)
+- Commit(s): `047cbd3` - fix(sync): arquivo remoto com o nome de uma pasta local nao encerra o sync; seguido do commit de documentacao e da suite do QA
 - PR: (pendente) para `develop`
-- Tech Lead: gates verdes; aprovacao condicionada ao QA
-- Solicitante: (pendente)
+- Tech Lead: **Aprovado**, 2026-11-03 - gates e QA verdes; merge condicionado a suite completa registrada e ao aceite da suite do QA (regra 12)
+- Solicitante: (pendente) aceite da suite `qa_pasta_ocupada_test.sh`, sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`
