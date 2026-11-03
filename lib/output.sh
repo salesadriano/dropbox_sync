@@ -120,6 +120,34 @@ _dbx_output_chave_valida() {
   dbx_path_seguro_para_linha "$chave"
 }
 
+# dbx_output_tamanho_humano <bytes> [var_destino] — RF-208: tamanho legivel em
+# unidades DECIMAIS (1 KB = 1000 B), uma casa decimal a partir de KB, bytes
+# inteiros abaixo de 1 KB, teto em TB. E a unidade do relatorio final, pedida
+# pelo solicitante; a barra de progresso segue em KiB/MiB (lib/progress).
+# Valor que nao e numero vira vazio (o relatorio omite o parenteses).
+DBX_OUTPUT_TAMANHO_HUMANO=''
+dbx_output_tamanho_humano() {
+  local valor=${1-} unidade=0 divisor=1 decimos
+  local -a nomes=(B KB MB GB TB)
+  if [[ ! $valor =~ ^[0-9]+$ ]]; then
+    DBX_OUTPUT_TAMANHO_HUMANO=''
+  elif ((valor < 1000)); then
+    DBX_OUTPUT_TAMANHO_HUMANO="$valor B"
+  else
+    while ((valor / divisor >= 1000 && unidade < 4)); do
+      divisor=$((divisor * 1000))
+      unidade=$((unidade + 1))
+    done
+    decimos=$((valor * 10 / divisor))
+    DBX_OUTPUT_TAMANHO_HUMANO="$((decimos / 10)).$((decimos % 10)) ${nomes[unidade]}"
+  fi
+  if [[ $# -ge 2 && -n $2 ]]; then
+    printf -v "$2" '%s' "$DBX_OUTPUT_TAMANHO_HUMANO"
+  else
+    printf '%s' "$DBX_OUTPUT_TAMANHO_HUMANO"
+  fi
+}
+
 # dbx_output_campo <chave> <valor> — alimenta o modelo de resultado.
 #
 # ASSIMETRIA DELIBERADA em relacao a `dbx_output_diagnostico`: o campo de
