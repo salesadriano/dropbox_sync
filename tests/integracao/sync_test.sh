@@ -1673,6 +1673,24 @@ teste_bash_env_e_opcoes_exportadas_nao_mudam_o_plano() {
   done
 }
 
+# Subdiretorio chamado `-` (demanda diretorio-chamado-hifen): `cd -- -` vai ao
+# OLDPWD e imprime o destino no stdout, que e a lista de diretorios do sync. O
+# plano precisa ler a pasta pelo nome e o irmao visitado antes dela nao pode
+# ser lido duas vezes.
+teste_subdiretorio_chamado_hifen_nao_suja_nem_desvia_a_enumeracao() {
+  local base
+  base=$(_cenario)
+  mkdir -p "$base/local/sl/SL" "$base/local/sl/-"
+  printf 'a' >"$base/local/sl/SL/a.txt"
+  printf 'h' >"$base/local/sl/-/h.txt"
+  _rodar_com_ambiente "$base" '' --json --dry-run sync --enviar --origem "$base/local" --destino /r --espelhar
+  assert_igual 0 "$DBX_ESTADO" "conclui; diagnostico: $DBX_ERRO"
+  assert_nao_contem 'arithmetic' "$DBX_ERRO" 'lista de diretorios intacta'
+  assert_contem 'transferir=sl/SL/a.txt' "$DBX_SAIDA" 'le o irmao visitado antes da pasta `-`'
+  assert_contem 'transferir=sl/-/h.txt' "$DBX_SAIDA" 'le a pasta `-` pelo nome'
+  assert_nao_contem 'sl/SL/SL' "$DBX_SAIDA" 'o irmao nao e lido de novo como se fosse a pasta `-`'
+}
+
 teste_localidade_ausente_avisa_uma_vez_e_compara_so_no_ascii() {
   # TC-CX-05 (RF-54(f)): a ausencia e simulada pelo nome da localidade, sem
   # depender da maquina do teste.

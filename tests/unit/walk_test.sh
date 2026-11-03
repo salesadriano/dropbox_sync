@@ -73,6 +73,52 @@ teste_nome_com_quebra_de_linha_sobrevive_a_travessia() {
   assert_igual 'sim' "$achou" 'o nome precisa voltar byte a byte'
 }
 
+teste_diretorio_chamado_hifen_e_um_nome_e_nao_o_oldpwd() {
+  # Defeito em producao (demanda diretorio-chamado-hifen): `cd -- -` NAO trata
+  # `-` como nome, mesmo apos `--`: o bash volta ao OLDPWD e IMPRIME o destino,
+  # que cai no fluxo de registros. Um subdiretorio chamado `-` precisa ser
+  # descido como qualquer outro, e nada alem de registros pode sair no stdout.
+  local base
+  base=$(_arvore)
+  mkdir -p "$base/raiz/-"
+  printf 'h' >"$base/raiz/-/hifen.txt"
+  _registros "$base/raiz" "$base/reg"
+  assert_igual 0 $? 'a travessia deve concluir'
+  assert_igual 4 "$DBX_WALK_TOTAL" 'o arquivo dentro de `-` entra na travessia'
+  assert_igual 'nao' "$DBX_WALK_PARCIAL" 'nada e ilegivel ou vinculo aqui'
+  local -a caminhos=() tamanhos=() mtimes=()
+  dbx_walk_ler "$base/reg" caminhos tamanhos mtimes
+  local juntos
+  printf -v juntos '%s|' "${caminhos[@]}"
+  assert_contem '-/hifen.txt|' "$juntos" 'caminho relativo sob a pasta `-`'
+  assert_contem 'sub/fundo/tres.txt|' "$juntos" 'a travessia nao desvia depois da pasta `-`'
+  assert_nao_contem "$base" "$juntos" 'o destino do cd nunca entra no fluxo'
+}
+
+teste_enumeracao_de_diretorios_com_pasta_hifen_mantem_as_contagens_numericas() {
+  # Forma exata do erro de producao: `n<TAB>caminho\0` com uma linha impressa
+  # pelo `cd` colada no inicio do registro seguinte vira operando aritmetico
+  # invalido no `sync`. Aqui a lista inteira precisa ter contagem inteira.
+  local base reg contagem
+  base=$(_arvore)
+  mkdir -p "$base/raiz/sub/-" "$base/raiz/sub/SL"
+  printf 'h' >"$base/raiz/sub/-/hifen.txt"
+  dbx_walk_diretorios "$base/raiz" "$base/dirs"
+  assert_igual 0 $? 'a enumeracao deve concluir'
+  assert_igual 'nao' "$DBX_WALK_PARCIAL" 'enumeracao completa'
+  assert_igual 5 "$DBX_WALK_TOTAL" 'raiz, sub, sub/-, sub/SL e sub/fundo'
+  local -a nomes=()
+  while IFS= read -r -d '' reg; do
+    contagem=${reg%%$'\t'*}
+    [[ $contagem =~ ^[0-9]+$ ]] || assert_igual 'inteiro' "$contagem" 'contagem corrompida pelo cd'
+    nomes+=("${reg#*$'\t'}")
+  done <"$base/dirs"
+  local juntos
+  printf -v juntos '%s|' "${nomes[@]}"
+  assert_contem '|sub/-|' "$juntos" 'a pasta `-` e enumerada pelo nome'
+  assert_nao_contem "$base" "$juntos" 'nenhum caminho absoluto na lista'
+}
+
 teste_diretorio_vazio_nao_produz_registro_literal() {
   # Sem `nullglob`, o laco veria a cadeia `*` como se fosse um arquivo chamado
   # asterisco — e o `sync` tentaria transferi-lo.
