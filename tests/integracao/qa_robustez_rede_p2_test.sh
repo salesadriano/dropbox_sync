@@ -423,8 +423,11 @@ teste_qa_json_com_tres_falhas_de_classes_distintas_mantem_a_ordem() {
     esperado+="falha_caminho=${linha%%:*};"
     linha=${linha#*: }
     esperado+="falha_classe=${linha%% *};"
+    # RF-208(d): motivo igual ao resumo da linha de stderr e tamanho em bytes
+    # (todos os arquivos deste caso tem 1 byte).
+    esperado+="falha_motivo=${linha#* };falha_tamanho=1;"
   done < <(_qa_linhas_de_falha "$DBX_ERRO")
-  assert_igual "$esperado" "$obtido" 'os pares seguem a ordem e a classe das linhas de falha'
+  assert_igual "$esperado" "$obtido" 'os blocos seguem a ordem, a classe e o motivo das linhas de falha'
   assert_contem 'falha_caminho=a.txt;' "$obtido" 'o primeiro item falho esta presente'
   # As tres classes seguem distintas pelo lote (nenhuma colapsa em "erro_remoto").
   local classes
@@ -444,7 +447,10 @@ teste_qa_json_com_null_emite_os_pares_terminados_em_nul() {
   while IFS= read -r -d '' registro; do
     [[ $registro == falha_* ]] && registros=$((registros + 1))
   done <"$base/out"
-  assert_igual 2 "$registros" 'um par caminho e classe'
+  # RF-208(d): ao par caminho e classe de RF-59(b) somam-se motivo e tamanho,
+  # ainda um bloco por item falho (4 registros `falha_*`).
+  assert_igual 4 "$registros" 'um bloco caminho, classe, motivo e tamanho'
+  assert_sucesso grep -qz '^falha_motivo=path/conflict/file$' "$base/out"
   assert_sucesso grep -qz $'^falha_caminho=linha\nquebrada.txt$' "$base/out"
   # Com `--null` o stderr tambem sai em registros terminados em NUL: o aviso de
   # localidade ausente (so em host sem C.UTF-8) vira o primeiro registro e o
