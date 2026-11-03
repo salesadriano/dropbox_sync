@@ -85,6 +85,12 @@ fi
 if [[ $url == *list_folder* && -f "$base/listagem_codigo" ]]; then
   codigo=$(cat "$base/listagem_codigo")
 fi
+# DIV-394: o `list_folder` cujo `path` e o caminho marcado recebe `path/not_folder`
+# (na Dropbox, aquele caminho e um ARQUIVO); os demais seguem a listagem comum.
+if [[ $url == *files/list_folder && -f "$base/nao_pasta" && -n $corpo_arquivo ]] \
+  && grep -qF "\"path\":\"$(cat "$base/nao_pasta")\"" "$corpo_arquivo"; then
+  codigo=409; corpo='{"error_summary":"path/not_folder/..","error":{".tag":"path","path":{".tag":"not_folder"}}}'
+fi
 for tipo in upload:files/upload download:files/download delete:files/delete_v2; do
   if [[ $url == *"${tipo#*:}" && -f "$base/${tipo%%:*}_erro" ]]; then
     codigo=$(cat "$base/${tipo%%:*}_erro")
@@ -1159,6 +1165,40 @@ teste_enumeracao_remota_que_falha_sai_com_o_codigo_da_classe() {
   assert_diferente 0 "$DBX_ESTADO" "enumeracao recusada nunca sai com sucesso; diagnostico: $DBX_ERRO"
   assert_igual "$(dbx_errors_codigo_saida "$(dbx_errors_classificar 403 'no_permission/..')")" "$DBX_ESTADO" \
     "enumeracao recusada sai com o codigo da classe; diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_escritas "$base")" 'nada escrito sem a listagem remota'
+}
+
+teste_arquivo_remoto_com_o_nome_de_uma_pasta_local_nao_encerra_o_sync() {
+  # DIV-394 (producao, 2.3.2): no ciclo, a listagem do subdiretorio `sub` recebe
+  # `path/not_folder` porque na Dropbox `sub` e um ARQUIVO. Isso e pasta remota
+  # vazia com aviso, nao falha da enumeracao: o arquivo homonimo e orfao (RF-47)
+  # e o conteudo local da pasta entra no plano.
+  local base
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  mkdir -p "$base/local/sub"
+  printf 'b' >"$base/local/sub/b.txt"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/sub' 'ff' 1)" >"$base/listagem"
+  printf '%s' '/r/sub' >"$base/nao_pasta"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "path/not_folder num subdiretorio nao encerra o sync; diagnostico: $DBX_ERRO"
+  assert_contem 'transferir=sub/b.txt' "$DBX_SAIDA" 'o conteudo da pasta local e planejado'
+  assert_contem 'apagar=sub' "$DBX_SAIDA" 'RF-47: o arquivo que ocupa o nome da pasta e orfao do espelhamento'
+  assert_contem '/r/sub' "$DBX_ERRO" 'o aviso nomeia o caminho remoto recusado'
+  assert_contem 'arquivo na Dropbox' "$DBX_ERRO" 'o aviso diz que ha um arquivo no lugar da pasta'
+  assert_igual 1 "$(_exclusoes "$base")" 'o arquivo homonimo e apagado ao fim do ciclo'
+}
+
+teste_destino_remoto_que_e_um_arquivo_falha_nomeando_o_caminho() {
+  # DIV-394: na RAIZ do destino, `path/not_folder` continua falha da enumeracao
+  # (o destino inteiro e um arquivo), e o motivo nomeia o caminho remoto.
+  local base
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  printf '%s' '/r' >"$base/nao_pasta"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" "destino que e arquivo sai com a classe de not_folder; diagnostico: $DBX_ERRO"
+  assert_contem 'recusada em /r:' "$DBX_ERRO" 'o motivo nomeia o caminho remoto recusado'
   assert_igual 0 "$(_escritas "$base")" 'nada escrito sem a listagem remota'
 }
 
