@@ -41,7 +41,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **226**.
 | `tests/unit/output_test.sh` | `lib/output.sh` | `bash tests/run.sh output_test.sh < /dev/null` | 32 | 32 | 0 | idem |
 | `json_test`, `http_test`, `preflight_test`, `composicao_test` | auditorias de `lib/` inteiro | idem | - | todos | 0 | idem |
 | `cursor_test`, `verificar_test`, `qa_sync_blocos`, `progresso_linha_test` | saida e ciclos do `sync` | idem | - | todos | 0 | idem |
-| `tests/integracao/qa_*` (todas) | saida do `sync` lida pelas suites do QA | `bash tests/run.sh qa_ < /dev/null` | (secao 6) | | | |
+| `tests/integracao/qa_*` (todas) | saida do `sync` lida pelas suites do QA | `bash tests/run.sh qa_ < /dev/null` | (resultado na secao 8, execucao em segundo plano) | | | |
 
 - Red observado: `teste_tamanho_humano_*` reprovou sem a funcao (`Bail out!`); `teste_relatorio_final_do_recebimento_*` reprovou sem a correcao (`trecho ausente: [recebido...]`), interrompendo o arquivo (parada no primeiro erro, Regra 9). Execucao final sem interrupcao.
 - Barreiras estaticas: `shellcheck -x -s bash` nos quatro arquivos sem aviso.
@@ -61,7 +61,12 @@ Total de linhas de codigo (producao e teste, sem documentacao): **226**.
 
 ## 6. QA
 
-- (pendente: validacao independente do QA Expert e parecer do UX Expert, ciclo 1)
+- Validacao independente (QA Expert, ciclo 1): `docs/reviews/2026-11-03-1203-validacao-qa-relatorio-com-tamanho-e-motivo.md`. Suite propria `tests/integracao/qa_relatorio_final_test.sh`, 8 casos (fronteiras de unidade de 999 B a 10^15 B pelo `--receber` com download falho, `--receber` com falha e `recebido_*` no `--json`, ciclos `--bloco 1`, `--paralelo 3`, `--dry-run` com controle, nome com caractere de controle, pares de RF-59(b) inalterados, contagem linhas = contadores), sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`; `bash tests/run.sh qa_relatorio_final_test.sh` -> 8 aprovados, 0 reprovados (reexecutado pelo Tech Lead).
+- Vermelho da suite do QA: contra `bin lib commands` de `origin/develop` reprovam 8 de 8.
+- Achados do QA: nenhum bloqueante ou maior; informativo: a casa decimal e truncada, nao arredondada (`999999 B` = `999.9 KB`), acolhido no `RF-208(c)` e no README.
+- Parecer do UX Expert: `docs/reviews/2026-11-03-1203-parecer-ux-relatorio-com-tamanho-e-motivo.md`, Aprovado com ressalvas, nenhuma bloqueante: `enviado=`/`falha=` a uma letra de `enviados=`/`falhas=` (ancorar o grep), caminho com espaco ou parentese torna a linha legivel ambigua para script (contrato para script e o `--json`), decimal no relatorio vs KiB/MiB na barra, falha duplicada no `nohup` com `2>&1`. As tres notas de README recomendadas foram acolhidas nesta demanda; o renome do prefixo (mudaria contrato) nao foi adotado.
+- Inventario de testes (regra 51): suite nova, 4 linhas em `sync_test.sh` (90 -> 94) e 1 em `output_test.sh` (31 -> 32); `sh scripts/inventario-de-testes.sh --check` -> 117 arquivos, 2921 casos, 0 divergencias (reexecutado pelo Tech Lead). Auditorias `json_test` (66) e `harness_test` (23) verdes com a suite nova.
+- Veredito do QA: Aprovado, 2026-11-03. Veredito do UX: Aprovado com ressalvas, 2026-11-03.
 
 ## 7. Riscos e rollback
 
@@ -73,7 +78,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **226**.
 
 - Entradas de memoria: (pendente: aceite da suite do QA, regra 12)
 - Documentacao sincronizada: `README.md`, `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (v1.39); inventario de testes pelo QA.
-- Commit(s): (pendente)
+- Commit(s): `a509422` - feat(sync): relatorio final lista cada arquivo com o tamanho e cada falha com o motivo; seguido do commit de documentacao, pareceres e suite do QA
 - PR: (pendente) para `develop`; integrar apos a PR #86 (mesmo arquivo `commands/sync.sh`, regioes distintas).
-- Tech Lead: gates verdes; aprovacao condicionada ao QA e ao UX
-- Solicitante: (pendente)
+- Tech Lead: **Aprovado**, 2026-11-03 - gates, QA e UX verdes; merge condicionado a suite completa registrada e ao aceite da suite do QA (regra 12)
+- Solicitante: (pendente) aceite da suite `qa_relatorio_final_test.sh`, sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`
