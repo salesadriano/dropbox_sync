@@ -47,6 +47,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **226**.
 - Barreiras estaticas: `shellcheck -x -s bash` nos quatro arquivos sem aviso.
 - Testes de seguranca e acesso (Regra 6): motivo mascarado pelo valor dos segredos em memoria (mesma guarda da linha de stderr); caminho pela exibicao segura de `RF-59(d)`; nenhuma rota, sessao ou segredo tocado.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: CLI sem formulario.
+- Linha legada (bash 4.2.46 real, CentOS 7, `sh scripts/suite-bash42.sh <filtro>` em `feature/relatorio-com-tamanho-e-motivo-bash42`, cherry-pick `4533c8a`, `2689045`, `2c27e51`; conflito so no cabecalho e na linha do `sync_test.sh` do inventario, resolvido com as contagens da linha legada, 119 arquivos e 2933 casos): `qa_relatorio_final_test.sh` 8 aprovados, 0 reprovados; `output_test.sh` 32/0; `sync_test.sh` 101/0. No bash do host, na mesma branch: `sync_test.sh` 104/0, `output_test.sh` 32/0, `qa_relatorio_final_test.sh` 8/0, `json_test.sh` 62/0, `harness_test.sh` 23/0, `qa_sync_blocos` 25/0; shellcheck sem aviso nos cinco arquivos.
 - Suite completa local no push para a PR: ver secao 8.
 
 ## 5. Gates
