@@ -8,7 +8,7 @@
 | Porte | M - defeito critico em producao e guarda destrutiva (enumeracao da arvore errada sob `--espelhar`); `sh scripts/porte.sh`: 83 linhas de codigo, `porte: M` |
 | Log de prompt | `docs/prompts/2026-11-02_2100_diretorio-chamado-hifen.md` |
 | Issues | nenhuma |
-| Branch / base | `feature/diretorio-chamado-hifen` sobre `origin/develop` @ `4f5be61` |
+| Branch / base | `feature/diretorio-chamado-hifen` sobre `origin/develop` @ `4f5be61`; a mesma correcao na linha legada em `feature/diretorio-chamado-hifen-bash42` sobre `origin/support/bash-4.2` (cherry-pick de `60c216f`, decisao do solicitante no prompt 3) |
 | Agents | Tech Lead (diagnostico, implementacao e gates), QA Expert (validacao independente) |
 | Data | 2026-11-02 |
 
@@ -41,6 +41,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **83**.
 - Barreiras estaticas: `shellcheck -x -s bash lib/walk.sh tests/unit/walk_test.sh` sem aviso.
 - Testes de seguranca e acesso (Regra 6): a guarda destrutiva do `--espelhar` e o cenario do teste de integracao (origem lida pelo nome, irmao nao relido); nenhuma rota, sessao ou segredo tocado.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: CLI sem formulario.
+- Linha legada (bash 4.2.46 real, CentOS 7, `sh scripts/suite-bash42.sh <filtro>` em `feature/diretorio-chamado-hifen-bash42`): `walk_test.sh` 15 aprovados, 0 reprovados; `qa_diretorio_hifen_test.sh` 8 aprovados, 0 reprovados; `sync_test.sh` 97 aprovados, 0 reprovados. No host (bash 5.3), mesma linha: 15, 8 e 100 aprovados, 0 reprovados; `shellcheck -x -s bash` sem aviso. Inventario da legada: `arquivos: 118 | casos: 2920 | divergencias: 0`.
 - Suite completa local no push para a PR: ver secao 8 (preenchida no push).
 
 ## 5. Gates
@@ -63,7 +64,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **83**.
 
 ## 7. Riscos e rollback
 
-- Riscos residuais: a linha legada `support/bash-4.2` (2.3.1-bash42) tem os mesmos cinco `cd` e o mesmo defeito; correcao pendente de decisao do solicitante (owner: Tech Lead).
+- Riscos residuais: Nenhum identificado alem do escopo do diff (a linha legada recebe a mesma correcao, ver secao 1 e a tabela abaixo).
 - Impacto: Nenhum em contrato, CLI, schema ou dependencia; so o adaptador de travessia.
 - Rollback: `git revert` do commit basta.
 
@@ -71,7 +72,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **83**.
 
 - Entradas de memoria: a gravar no aceite da suite do QA (regra 12).
 - Documentacao sincronizada: `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (v1.37), `docs/testes/inventario-de-testes.md`.
-- Commit(s): (no fechamento)
-- PR: (no fechamento)
-- Tech Lead: (no fechamento)
+- Commit(s): principal `60c216f` - fix(walk): subdiretorio chamado - nao corrompe nem desvia a travessia, seguido do commit de documentacao desta secao; legada: cherry-pick dos mesmos commits em `feature/diretorio-chamado-hifen-bash42`
+- PR: uma para `develop` e uma para `support/bash-4.2` (links no corpo de cada PR e no hand-off ao solicitante)
+- Tech Lead: **Aprovado**, 2026-11-02 - gates e QA verdes nas duas linhas; merge condicionado a suite completa registrada e ao aceite da suite do QA
 - Solicitante: aceite da suite `qa_diretorio_hifen_test.sh` por sha256 pendente.
