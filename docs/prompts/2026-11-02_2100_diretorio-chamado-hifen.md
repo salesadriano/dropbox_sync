@@ -34,3 +34,9 @@ Sanitizado: os nomes intermediarios das pastas do operador foram substituidos po
 **Contorno:** renomear a pasta `-` na origem ou exclui-la com `--excluir`.
 
 **Inferencias adotadas:** correcao em `lib/walk.sh`, todo `cd` de nome relativo passa a `cd -- "./$nome"` (unico nome que o bash nunca reinterpreta); linha legada `support/bash-4.2` registrada como pendencia para o solicitante.
+
+## Prompt 3 — 2026-11-02
+
+> fix the legacy line too
+
+**Decisao do solicitante:** a correcao entra tambem na linha legada `support/bash-4.2` (2.3.1-bash42), como na demanda `ignorar-cdpath`. Branch `feature/diretorio-chamado-hifen-bash42` sobre `origin/support/bash-4.2`, pelo cherry-pick do commit `60c216f` (conflito so no cabecalho do inventario de testes, resolvido com as contagens da legada: 118 arquivos, 2920 casos); validacao dos itens afetados no bash 4.2 real (`sh scripts/suite-bash42.sh <filtro>`).
