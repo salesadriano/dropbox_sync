@@ -5,7 +5,7 @@
 #
 # POR QUE DESCIDA COM NOME RELATIVO, E NAO CAMINHO MONTADO EM TEXTO
 #
-#   `cd -- "$nome"` referencia o INODE do diretorio; reabrir por caminho
+#   `cd -- "./$nome"` referencia o INODE do diretorio; reabrir por caminho
 #   absoluto reconstruido referencia o TEXTO, e entre uma leitura e a seguinte o
 #   texto pode passar a designar outra coisa. E o equivalente em shell de
 #   `openat` com `O_NOFOLLOW` por componente, e foi adotado em `DP-26` depois de
@@ -15,6 +15,13 @@
 #   percorridos, e nao a troca ocorrida imediatamente antes de descer. E reducao
 #   de superficie, nao eliminacao — `RSK-24` continua no registro com
 #   probabilidade reduzida.
+#
+#   O prefixo `./` e obrigatorio: `cd -- -` NAO trata `-` como nome, mesmo
+#   apos `--` (o bash o le como OLDPWD, volta ao diretorio anterior e IMPRIME o
+#   destino no stdout, que aqui e o fluxo de registros). Uma pasta chamada `-`
+#   em producao corrompeu a lista de diretorios do `sync` (demanda
+#   diretorio-chamado-hifen). `./nome` e a unica grafia que o bash nunca
+#   reinterpreta, e tambem dispensa o CDPATH (DIV-392).
 #
 # TRAVESSIA PARCIAL E FATAL PARA EXCLUSAO (RF-41a)
 #
@@ -127,7 +134,7 @@ _dbx_walk_descer() {
       fi
       # A descida e a volta sao o par que sustenta a garantia. `cd ..` nao
       # reconstroi texto: sobe pelo vinculo do proprio diretorio aberto.
-      if ! cd -- "$nome" 2>/dev/null; then
+      if ! cd -- "./$nome" 2>/dev/null; then
         printf 'nao foi possivel descer em: %s\n' "$relativo" >&3
         continue
       fi
@@ -347,7 +354,7 @@ _dbx_walk_dirs() {
       printf 'diretorio ilegivel: %s\n' "$relativo" >&3
       continue
     fi
-    if ! cd -- "$nome" 2>/dev/null; then
+    if ! cd -- "./$nome" 2>/dev/null; then
       printf 'nao foi possivel descer em: %s\n' "$relativo" >&3
       continue
     fi
@@ -405,7 +412,7 @@ dbx_walk_diretorios() {
     while [[ -n $resto ]]; do
       comp=${resto%%/*}
       if [[ $resto == */* ]]; then resto=${resto#*/}; else resto=''; fi
-      if [[ -d $comp && ! -L $comp ]] && cd -- "$comp" 2>/dev/null; then
+      if [[ -d $comp && ! -L $comp ]] && cd -- "./$comp" 2>/dev/null; then
         :
       else
         printf 'nao foi possivel descer em: %s\n' "$inicio" >&3
@@ -448,7 +455,7 @@ _dbx_walk_ciclo_dir() {
       printf 'diretorio ilegivel: %s\n' "$dir" >&3
       return 0
     fi
-    if ! cd -- "$comp" 2>/dev/null; then
+    if ! cd -- "./$comp" 2>/dev/null; then
       printf 'nao foi possivel descer em: %s\n' "$dir" >&3
       return 0
     fi
@@ -468,7 +475,7 @@ _dbx_walk_ciclo_dir() {
       if [[ -n $_dbx_walk_conjunto && -z ${_conj["k:${relativo,,}"]+definido} ]]; then
         if [[ ! -r $nome || ! -x $nome ]]; then
           printf 'diretorio ilegivel: %s\n' "$relativo" >&3
-        elif ! (cd -- "$nome" 2>/dev/null && _dbx_walk_descer 2 "$relativo/"); then
+        elif ! (cd -- "./$nome" 2>/dev/null && _dbx_walk_descer 2 "$relativo/"); then
           printf 'nao foi possivel ler o ramo: %s\n' "$relativo" >&3
         fi
       fi
