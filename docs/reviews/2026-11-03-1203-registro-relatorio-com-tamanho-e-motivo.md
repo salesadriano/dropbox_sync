@@ -41,7 +41,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **226**.
 | `tests/unit/output_test.sh` | `lib/output.sh` | `bash tests/run.sh output_test.sh < /dev/null` | 32 | 32 | 0 | idem |
 | `json_test`, `http_test`, `preflight_test`, `composicao_test` | auditorias de `lib/` inteiro | idem | - | todos | 0 | idem |
 | `cursor_test`, `verificar_test`, `qa_sync_blocos`, `progresso_linha_test` | saida e ciclos do `sync` | idem | - | todos | 0 | idem |
-| `tests/integracao/qa_*` (todas) | saida do `sync` lida pelas suites do QA | `bash tests/run.sh qa_ < /dev/null` | (resultado na secao 8, execucao em segundo plano) | | | |
+| `tests/integracao/qa_*` (todas) | saida do `sync` lida pelas suites do QA | `bash tests/run.sh qa_ < /dev/null` | 686 | 685 -> 686 apos o ajuste da `qa_robustez_rede_p2` (secao 6) | 1 -> 0 | idem |
 
 - Red observado: `teste_tamanho_humano_*` reprovou sem a funcao (`Bail out!`); `teste_relatorio_final_do_recebimento_*` reprovou sem a correcao (`trecho ausente: [recebido...]`), interrompendo o arquivo (parada no primeiro erro, Regra 9). Execucao final sem interrupcao.
 - Barreiras estaticas: `shellcheck -x -s bash` nos quatro arquivos sem aviso.
@@ -68,6 +68,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **226**.
 - Parecer do UX Expert: `docs/reviews/2026-11-03-1203-parecer-ux-relatorio-com-tamanho-e-motivo.md`, Aprovado com ressalvas, nenhuma bloqueante: `enviado=`/`falha=` a uma letra de `enviados=`/`falhas=` (ancorar o grep), caminho com espaco ou parentese torna a linha legivel ambigua para script (contrato para script e o `--json`), decimal no relatorio vs KiB/MiB na barra, falha duplicada no `nohup` com `2>&1`. As tres notas de README recomendadas foram acolhidas nesta demanda; o renome do prefixo (mudaria contrato) nao foi adotado.
 - Inventario de testes (regra 51): suite nova, 4 linhas em `sync_test.sh` (90 -> 94) e 1 em `output_test.sh` (31 -> 32); `sh scripts/inventario-de-testes.sh --check` -> 117 arquivos, 2921 casos, 0 divergencias (reexecutado pelo Tech Lead). Auditorias `json_test` (66) e `harness_test` (23) verdes com a suite nova.
 - Veredito do QA: Aprovado, 2026-11-03. Veredito do UX: Aprovado com ressalvas, 2026-11-03.
+- Suite do QA ja aceita alterada pelo Tech Lead (regra 12, reaprovacao pendente): `tests/integracao/qa_robustez_rede_p2_test.sh`, dois casos de `--json` (`teste_qa_json_com_null_emite_os_pares_terminados_em_nul`, `teste_qa_json_com_tres_falhas_de_classes_distintas_mantem_a_ordem`) contavam exatamente o par `falha_caminho`/`falha_classe` por item e passaram a esperar o bloco de quatro registros do `RF-208(d)` (`falha_motivo`, `falha_tamanho`); achado pela rodada `bash tests/run.sh qa_` (685 aprovados, 1 reprovado antes do ajuste). Suite: 21 aprovados, 0 reprovados; sha256 novo `b6ce38a8dccdcc650781bfe642798ded7827a9e7d6406f6682be21b1caa92477`.
 
 ## 7. Riscos e rollback
 
@@ -82,4 +83,4 @@ Total de linhas de codigo (producao e teste, sem documentacao): **226**.
 - Commit(s): `a509422` - feat(sync): relatorio final lista cada arquivo com o tamanho e cada falha com o motivo; seguido do commit de documentacao, pareceres e suite do QA
 - PR: (pendente) para `develop`; integrar apos a PR #86 (mesmo arquivo `commands/sync.sh`, regioes distintas).
 - Tech Lead: **Aprovado**, 2026-11-03 - gates, QA e UX verdes; merge condicionado a suite completa registrada e ao aceite da suite do QA (regra 12)
-- Solicitante: suite `qa_relatorio_final_test.sh` aceita em 2026-11-03 (prompt 2), sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`
+- Solicitante: reaprovacao pendente de `qa_robustez_rede_p2_test.sh` (sha256 `b6ce38a8dccdcc650781bfe642798ded7827a9e7d6406f6682be21b1caa92477`); suite `qa_relatorio_final_test.sh` aceita em 2026-11-03 (prompt 2), sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`
