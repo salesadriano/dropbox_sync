@@ -39,6 +39,12 @@ dbx_cmd_sync_requisitos() { printf 'credencial'; }
 DBX_CMD_SYNC_FALHAS_CAMINHOS=()
 DBX_CMD_SYNC_FALHAS_CLASSES=()
 DBX_CMD_SYNC_FALHA_CLASSE=''
+# RF-208: motivo e tamanho (bytes, ou vazio) de cada falha, e caminho e tamanho
+# de cada arquivo concluido, na ordem em que ocorreram, para o relatorio final.
+DBX_CMD_SYNC_FALHAS_MOTIVOS=()
+DBX_CMD_SYNC_FALHAS_TAMANHOS=()
+DBX_CMD_SYNC_OK_CAMINHOS=()
+DBX_CMD_SYNC_OK_TAMANHOS=()
 DBX_CMD_SYNC_EXIBIDO=''
 DBX_CMD_SYNC_RESUMO_FALHA=''
 
@@ -109,6 +115,9 @@ _dbx_cmd_sync_falha_emitir() {
   local caminho=$1 classe=${DBX_CMD_SYNC_FALHA_CLASSE:-erro_remoto}
   DBX_CMD_SYNC_FALHAS_CAMINHOS+=("$caminho")
   DBX_CMD_SYNC_FALHAS_CLASSES+=("$classe")
+  DBX_CMD_SYNC_FALHAS_MOTIVOS+=("${DBX_CMD_SYNC_RESUMO_FALHA:-falha local}")
+  _dbx_cmd_sync_tamanho_do_item "$caminho"
+  DBX_CMD_SYNC_FALHAS_TAMANHOS+=("$DBX_CMD_SYNC_TAMANHO_ITEM")
   _dbx_cmd_sync_exibir "$caminho"
   # QA-P2-02 (b): defesa em profundidade, a mesma do diagnostico — todo segredo
   # em memoria e mascarado pelo valor na linha inteira, antes de sair.
@@ -116,6 +125,76 @@ _dbx_cmd_sync_falha_emitir() {
   printf -v linha 'falha %s: %s %s' "$DBX_CMD_SYNC_EXIBIDO" "$classe" "$DBX_CMD_SYNC_RESUMO_FALHA"
   dbx_output_mascarar_segredos "$linha"
   printf '%s\n' "$DBX_OUTPUT_MASCARADO" >&2
+}
+
+# _dbx_cmd_sync_tamanho_do_item <caminho> — RF-208: bytes do item para o
+# relatorio, em DBX_CMD_SYNC_TAMANHO_ITEM (vazio quando desconhecido). No envio,
+# o tamanho lido na analise local (`tam_item`, escopo dinamico do executor); no
+# recebimento, o arquivo gravado no local e, sem ele, o `size` da listagem.
+DBX_CMD_SYNC_TAMANHO_ITEM=''
+_dbx_cmd_sync_tamanho_do_item() {
+  local alvo
+  DBX_CMD_SYNC_TAMANHO_ITEM=''
+  if [[ ${sentido:-} == 'enviar' ]]; then
+    DBX_CMD_SYNC_TAMANHO_ITEM=${tam_item[$1]:-}
+  elif [[ ${sentido:-} == 'receber' ]]; then
+    alvo=${DBX_SYNC_ALVO[$1]:-$1}
+    if [[ -n ${raiz_local:-} && -f $raiz_local/$alvo ]] && dbx_transfer_tamanho_de_arquivo "$raiz_local/$alvo"; then
+      DBX_CMD_SYNC_TAMANHO_ITEM=$DBX_TRANSFER_TAMANHO
+    else
+      DBX_CMD_SYNC_TAMANHO_ITEM=${mapa_tam_remoto[$1]:-}
+    fi
+  fi
+  [[ $DBX_CMD_SYNC_TAMANHO_ITEM =~ ^[0-9]+$ ]] || DBX_CMD_SYNC_TAMANHO_ITEM=''
+}
+
+# _dbx_cmd_sync_concluido <caminho> — RF-208: registra o arquivo concluido, com
+# o tamanho, para o relatorio final. Ponto unico dos quatro caminhos de sucesso
+# (lote, sequencial de envio, sequencial de recebimento e paralelo).
+_dbx_cmd_sync_concluido() {
+  _dbx_cmd_sync_tamanho_do_item "$1"
+  DBX_CMD_SYNC_OK_CAMINHOS+=("$1")
+  DBX_CMD_SYNC_OK_TAMANHOS+=("$DBX_CMD_SYNC_TAMANHO_ITEM")
+}
+
+# _dbx_cmd_sync_relatorio_itens <legivel|estruturado> — RF-208: as linhas por
+# arquivo do relatorio final. `legivel` sai SEMPRE, nos dois modos de saida (sem
+# terminal, caso do nohup, a saida ja e `chave=valor`): `enviado|recebido=<caminho>
+# (<tamanho>)` e `falha=<caminho> (<tamanho>): <classe> <motivo>`, antes dos
+# contadores. `estruturado` so com --json: `falha_motivo`/`falha_tamanho` entram
+# no par de RF-59(b) (quem chama) e cada concluido vira `<acao>_caminho`/
+# `<acao>_tamanho` em bytes, para o consumidor automatizado.
+# Caminho exibido pela regra de RF-59(d) (sem --null); motivo mascarado pelo
+# valor, como a linha de stderr (QA-P2-02).
+_dbx_cmd_sync_relatorio_itens() {
+  local forma=$1 acao=enviado indice valor tam texto
+  [[ ${sentido:-} == 'receber' ]] && acao=recebido
+  for indice in "${!DBX_CMD_SYNC_OK_CAMINHOS[@]}"; do
+    valor=${DBX_CMD_SYNC_OK_CAMINHOS[indice]}
+    tam=${DBX_CMD_SYNC_OK_TAMANHOS[indice]}
+    if [[ ${DBX_CLI_NULO:-nao} != 'sim' ]]; then
+      _dbx_cmd_sync_exibir "$valor"
+      valor=$DBX_CMD_SYNC_EXIBIDO
+    fi
+    if [[ $forma == 'estruturado' ]]; then
+      dbx_output_campo "${acao}_caminho" "$valor"
+      dbx_output_campo "${acao}_tamanho" "$tam"
+      continue
+    fi
+    dbx_output_tamanho_humano "$tam" texto
+    dbx_output_campo "$acao" "$valor${texto:+ ($texto)}"
+  done
+  [[ $forma == 'legivel' ]] || return 0
+  for indice in "${!DBX_CMD_SYNC_FALHAS_CAMINHOS[@]}"; do
+    valor=${DBX_CMD_SYNC_FALHAS_CAMINHOS[indice]}
+    if [[ ${DBX_CLI_NULO:-nao} != 'sim' ]]; then
+      _dbx_cmd_sync_exibir "$valor"
+      valor=$DBX_CMD_SYNC_EXIBIDO
+    fi
+    dbx_output_tamanho_humano "${DBX_CMD_SYNC_FALHAS_TAMANHOS[indice]-}" texto
+    dbx_output_mascarar_segredos "${DBX_CMD_SYNC_FALHAS_MOTIVOS[indice]-}"
+    dbx_output_campo falha "$valor${texto:+ ($texto)}: ${DBX_CMD_SYNC_FALHAS_CLASSES[indice]} $DBX_OUTPUT_MASCARADO"
+  done
 }
 
 _dbx_cmd_sync_carregar_dependencias() {
@@ -442,6 +521,7 @@ _dbx_cmd_sync_transferir_paralelo() {
       fi
       if [[ $status == '0' ]]; then
         if [[ $sentido == 'enviar' ]]; then enviados=$((enviados + 1)); else recebidos=$((recebidos + 1)); fi
+        _dbx_cmd_sync_concluido "$caminho"
       else
         falhas=$((falhas + 1))
         DBX_CMD_SYNC_FALHA_CLASSE=${classe:-erro_remoto}
@@ -1035,6 +1115,10 @@ dbx_cmd_sync_executar() {
   local area registros_locais registros_remotos
   DBX_CMD_SYNC_FALHAS_CAMINHOS=()
   DBX_CMD_SYNC_FALHAS_CLASSES=()
+  DBX_CMD_SYNC_FALHAS_MOTIVOS=()
+  DBX_CMD_SYNC_FALHAS_TAMANHOS=()
+  DBX_CMD_SYNC_OK_CAMINHOS=()
+  DBX_CMD_SYNC_OK_TAMANHOS=()
   # A area e do ciclo comum, registrada em `lib/tmp`: sai em toda saida,
   # inclusive por sinal (RNF-35), sem limpeza por porta de saida.
   area=$DBX_CMD_CICLO_AREA
@@ -1210,7 +1294,8 @@ dbx_cmd_sync_executar() {
         filtrados_remoto=$DBX_SYNC_FILTRADOS
         dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
         dbx_sync_ler_revs "$revs_remotos" mapa_revs
-        if [[ $sentido == 'receber' ]] && dbx_progress_ativo; then
+        # RF-208: o `size` da listagem alimenta o relatorio final, com ou sem -p.
+        if [[ $sentido == 'receber' ]]; then
           _dbx_cmd_sync_ler_tamanhos "$registros_remotos" mapa_tam_remoto
         fi
         dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
@@ -1244,7 +1329,8 @@ dbx_cmd_sync_executar() {
       dbx_sync_ler_resumos "$registros_remotos" ordem_remota mapa_remoto
       dbx_sync_ler_revs "$revs_remotos" mapa_revs
       # DIV-297: o total do recebimento vem do `size` da listagem, sem chamada nova.
-      if [[ $sentido == 'receber' ]] && dbx_progress_ativo; then
+      # RF-208: o `size` da listagem alimenta o relatorio final, com ou sem -p.
+      if [[ $sentido == 'receber' ]]; then
         _dbx_cmd_sync_ler_tamanhos "$registros_remotos" mapa_tam_remoto
       fi
       dbx_progress_mensagem "[sync] arquivos remotos consultados: ${#ordem_remota[@]} arquivo(s)"
@@ -1535,6 +1621,15 @@ dbx_cmd_sync_executar() {
     continue
   fi
 
+  # RF-208: tamanho de cada arquivo local da analise, por caminho, para o
+  # relatorio final (lido por `_dbx_cmd_sync_tamanho_do_item`, escopo dinamico).
+  local -A tam_item=()
+  local item_tam
+  if [[ $sentido == 'enviar' ]]; then
+    for item_tam in "${!caminhos_locais[@]}"; do
+      tam_item["${caminhos_locais[$item_tam]}"]=${tamanhos[$item_tam]}
+    done
+  fi
   local total_ops=0
   [[ ${#DBX_SYNC_TRANSFERIR[@]} -gt 0 ]] && total_ops=$((total_ops + ${#DBX_SYNC_TRANSFERIR[@]}))
   if [[ $espelhar == 'sim' && ${#DBX_SYNC_APAGAR[@]} -gt 0 ]]; then
@@ -1564,6 +1659,7 @@ dbx_cmd_sync_executar() {
       if [[ $_DBX_CMD_SYNC_LOTE_ITEM_STATUS == 0 ]]; then
         dbx_progress_arquivo_concluir
         enviados=$((enviados + 1))
+        _dbx_cmd_sync_concluido "$caminho"
       else
         dbx_progress_arquivo_falhar
         falhas=$((falhas + 1))
@@ -1581,6 +1677,7 @@ dbx_cmd_sync_executar() {
       if _dbx_cmd_sync_enviar "$raiz_local/$caminho" "$remoto/$alvo" "$rev" "$caminho"; then
         dbx_progress_arquivo_concluir
         enviados=$((enviados + 1))
+        _dbx_cmd_sync_concluido "$caminho"
       else
         dbx_progress_arquivo_falhar
         falhas=$((falhas + 1))
@@ -1594,6 +1691,7 @@ dbx_cmd_sync_executar() {
         if dbx_progress_ativo && [[ -f $raiz_local/$alvo ]]; then dbx_progress_tamanho_de "$raiz_local/$alvo" tam_prg || tam_prg=''; fi
         dbx_progress_arquivo_concluir "$tam_prg"
         recebidos=$((recebidos + 1))
+        _dbx_cmd_sync_concluido "$caminho"
       else
         dbx_progress_arquivo_falhar
         falhas=$((falhas + 1))
@@ -1686,6 +1784,10 @@ dbx_cmd_sync_executar() {
     fi
   fi
   dbx_cmd_iniciar_saida
+  # RF-208(a,b): os arquivos (concluidos e falhos), com tamanho legivel, vem
+  # antes dos contadores em qualquer modo; com --json os pares em bytes vem
+  # depois dos de RF-59(b).
+  _dbx_cmd_sync_relatorio_itens legivel
   dbx_output_campo operacao sync
   dbx_output_campo enviados "$enviados"
   dbx_output_campo recebidos "$recebidos"
@@ -1707,7 +1809,12 @@ dbx_cmd_sync_executar() {
       fi
       dbx_output_campo falha_caminho "$valor"
       dbx_output_campo falha_classe "${DBX_CMD_SYNC_FALHAS_CLASSES[indice]}"
+      # RF-208(c): motivo (mascarado pelo valor, como a linha de stderr) e bytes.
+      dbx_output_mascarar_segredos "${DBX_CMD_SYNC_FALHAS_MOTIVOS[indice]-}"
+      dbx_output_campo falha_motivo "$DBX_OUTPUT_MASCARADO"
+      dbx_output_campo falha_tamanho "${DBX_CMD_SYNC_FALHAS_TAMANHOS[indice]-}"
     done
+    _dbx_cmd_sync_relatorio_itens estruturado
   fi
   if [[ ${DBX_CLI_ESTRUTURADA:-nao} == 'sim' || $ciclo_i -gt 1 ]]; then
     dbx_output_campo ciclos "$ciclo_i"

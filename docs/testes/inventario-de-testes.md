@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
-Atualizado em: 2026-11-03, demanda `arquivo-remoto-no-lugar-da-pasta` (`docs/prompts/2026-11-03_1017_arquivo-remoto-no-lugar-da-pasta.md`), pelo QA Expert (suite `qa_pasta_ocupada` e casos do `sync_test`)
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 117 arquivos, 2916 casos, 0 divergencias.
+Atualizado em: 2026-11-03, demanda `relatorio-com-tamanho-e-motivo` (`docs/prompts/2026-11-03_1203_relatorio-com-tamanho-e-motivo.md`), pelo QA Expert (suite `qa_relatorio_final` e casos do `sync_test`/`output_test`), integrada com a demanda `arquivo-remoto-no-lugar-da-pasta` (PR #86: suite `qa_pasta_ocupada` e casos do `sync_test`) na mesma data; antes, 2026-11-02, demanda `diretorio-chamado-hifen`.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 118 arquivos, 2929 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -66,6 +66,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_progresso_arquivo_b10_test.sh` | `bin/dbx` (upload de fluxo, download, `sync` nos dois sentidos com N=1 e N=3), `lib/progress.sh` | qa_progresso | integracao | QA Expert (suite independente da demanda `progresso-por-arquivo`) | 8 | F-49; RF-140 a RF-147; secao 5.19 da especificacao; DIV-302, DIV-303; log `docs/prompts/2026-10-22_1600_progresso-por-arquivo.md` |
 | `tests/integracao/qa_recuperacao_b3_test.sh` | `bin/dbx` nos comandos `revisoes`, `restaurar` e `lixeira` (com exclusao permanente), `commands/revisoes.sh`, `commands/restaurar.sh`, `c... | qa_recuperacao | integracao | QA Expert (suite independente da demanda `backlog-fase-3-recuperacao`) | 30 | F-07; F-20; RF-72..RF-78; DIV-54..DIV-77; log `docs/prompts/2026-10-19_1828_backlog-fase-3-recuperacao.md` |
 | `tests/integracao/qa_regex_portavel_b17_test.sh` | todas as expressoes regulares de `lib/`, `commands/`, `bin/`, `install.sh` e `uninstall.sh` (limite de repeticao RE_DUP_MAX 255 do FreeBS... | qa_regex_portavel_b17 | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 19 | RF-166; TC-FBSD-19 (parte regex); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada](../../.github/agents/memoria/entradas/... |
+| `tests/integracao/qa_relatorio_final_test.sh` | `sync` (envio e recebimento): linhas por arquivo do relatorio final com tamanho legivel e motivo, pares em bytes no `--json` | `qa_relatorio_final` (filtro do mapa de modulos) | integracao | QA Expert (suite independente da demanda `relatorio-com-tamanho-e-motivo`) | 8 | RF-208(a-e); RF-59(b)(d) |
 | `tests/integracao/qa_retencao_b6_test.sh` | `bin/dbx` (comandos `reter` e `retain`) com `commands/reter.sh`, `lib/retencao.sh`, `lib/filtro.sh`: plano de retencao, lixeira e guarda ... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-6-retencao`) | 60 | log `docs/prompts/2026-10-20_2010_backlog-fase-6-retencao.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-20-2010-retencao.m... |
 | `tests/integracao/qa_retomada_b7a_test.sh` | `bin/dbx` (upload e download retomados) com `commands/upload.sh`, `commands/download.sh`, `commands/unlink.sh`, `commands/diagnostico.sh`... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-7a-retomada`) | 41 | log `docs/prompts/2026-10-20_2315_backlog-fase-7a-retomada.md`; grupos de cenario D (download), L (nao pendurar em entradas nao regulares... |
 | `tests/integracao/qa_robustez_rede_p2_test.sh` | `bin/dbx` download, upload, sync e diagnostico sob falhas de rede, consumidor que fecha cedo, sinais e segredos (`commands/download.sh`, ... | `qa_robustez` | integracao | QA Expert (suite independente da demanda `robustez-de-rede-p2`) | 21 | RNF-30(c); RNF-07(e); RF-32(b); RF-59; RNF-31; log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md` |
@@ -77,7 +78,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/retomada_download_test.sh` | `bin/dbx download` retomado entre execucoes (`Range`), `--no-resume`, `diagnostico` e `unlink`; `commands/download.sh`, `lib/cmd.sh`, `li... | retomada_download | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 32 | F-03; RF-102, RF-104 a RF-108; TC-RMD-01..15, TC-RMO-01, 02, 04, 05, TC-RMC-01, 06, TC-RML-05..07, TC-RMS-06, TC-DBG-13..15; DIV-176 a DI... |
 | `tests/integracao/retomada_upload_test.sh` | `bin/dbx upload` retomado entre execucoes (`commands/upload.sh`, `lib/transfer.sh`, `lib/state.sh`, registro `retomada-*`) | retomada_upload | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 43 | F-03; RF-101..RF-109; DIV-171..DIV-190; TC-RMU-01..16; TC-RME-02, 12, 14; TC-RMO-01..03, 05..11; TC-RMC-01, 04, 05; TC-RMS-01..06; TC-DBG... |
 | `tests/integracao/sync_blocos_test.sh` | `bin/dbx sync` e `download` de pasta em ciclos por diretorio | `sync_blocos_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 23 | F-101; RF-187..RF-197; TC-BLC-nn |
-| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 92 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
+| `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 96 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
 | `tests/integracao/testar_test.sh` | `bin/dbx testar` (alias `check`) e a sonda de disponibilidade (`commands/testar.sh`, `lib/disponibilidade.sh`) | `commands/testar.sh` | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 29 | RF-148; RF-149; RF-150; RF-154; TC-DSP-01..25; TC-DSP-55; TC-DSP-57; TC-DSP-58; DIV-326; log `docs/prompts/2026-10-23_0900_teste-de-dispo... |
 | `tests/integracao/trava_test.sh` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help) com `lib/state.sh` e `lib/tmp.sh`: tr... | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 31 | RF-69, RF-70, RF-71, RNF-35; TC-TRV, TC-ESR, TC-DIA-11..14, TC-TMP-02, 05, 06; DIV-50, DIV-51; F-12, F-31; log `docs/prompts/2026-10-19_1... |
 | `tests/integracao/upload_pasta_test.sh` | `bin/dbx` (`upload` de arquivo para destino que e pasta) com `commands/upload.sh`: grava em `<pasta>/<nome>` sem falhar com `path/conflic... | `commands/upload.sh` | integracao | Senior Developer (TDD da demanda `upload-arquivo-para-pasta`) | 13 | RF-174; log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
@@ -105,7 +106,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/instalador_linha_test.sh` | `install.sh` (escolha da linha pelo bash do host, piso lido da fonte, troca de linha), `scripts/empacotar.sh` (`--target`, `--latest=false`) e `scripts/suite-bash42.sh` | `install.sh` | unitario | Senior Developer (TDD da demanda `suporte-bash-42`) | 19 | RF-198; RF-201 a RF-206; TC-B42-09..22; DIV-385; DIV-389; DIV-390; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md` |
 | `tests/unit/json_test.sh` | `lib/json.sh` (interpretador JSON proprio, sem `jq`) | json | unitario | Senior Developer (TDD da demanda `feat(json): interpretador JSON proprio sem dependencia externa`; sem log de prompt) | 66 | RNF-11; DIV-04; +4 casos `qa_rel230_03_*` do QA Expert (demanda `release-v230`: fronteira de 4096 do tokenizador) (citados no cabecalho do teste); sem log de prompt (commit de criacao `edfd8ad`, anterior a trilha do protocolo) |
 | `tests/unit/leitura_exata_portavel_test.sh` | `lib/atributos.sh` (`dbx_ler_exato`, sobre `dd`), `lib/hash.sh` e `lib/transfer.sh` na leitura em partes do mesmo descritor | `leitura_exata_portavel` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 7 | RF-173; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
-| `tests/unit/output_test.sh` | `lib/output.sh`: modelo de resultado unico com duas apresentacoes (texto e estruturada), terminador nulo, restricao de linha e mascaramen... | `output` | unitario | Senior Developer (commit `74b3567`, `feat(output): apresentacao dupla com terminador selecionavel`; sem log de prompt) | 31 | RF-28; RF-35; RNF-19; RNF-22; log de prompt: Nao aplicavel: anterior a trilha do protocolo |
+| `tests/unit/output_test.sh` | `lib/output.sh`: modelo de resultado unico com duas apresentacoes (texto e estruturada), terminador nulo, restricao de linha e mascaramen... | `output` | unitario | Senior Developer (commit `74b3567`, `feat(output): apresentacao dupla com terminador selecionavel`; sem log de prompt) | 32 | RF-28; RF-35; RNF-19; RNF-22; log de prompt: Nao aplicavel: anterior a trilha do protocolo |
 | `tests/unit/path_test.sh` | `lib/path.sh`: normalizacao, confinamento a raiz (remoto sem distincao de caixa, local com distincao), recusa de travessia, vinculos simb... | `lib/path.sh` | unitario | Senior Developer (TDD; commit de criacao `a03d2c0`, "first commit") | 58 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
 | `tests/unit/perfis_cli_test.sh` | `lib/cli.sh`, opcao global `--perfil` e variavel de perfil | `lib/cli.sh` | unitario | Senior Developer (TDD da demanda `backlog-fase-8-perfis`) | 9 | F-18; RF-120; RF-121(g); DIV-241; TC-PFS-01..08; TC-PFN-09; TC-PFN-10; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md` |
 | `tests/unit/perfis_config_test.sh` | `lib/config.sh`: perfis nomeados de credencial (nome, selecao, resolucao, permissoes, gravacao, remocao, identidade e listagem) | `perfis_config` | unitario | Senior Developer (TDD da demanda `backlog-fase-8-perfis`) | 38 | F-18; RF-120..122; RF-125; RF-126; RNF-37; TC-PFN; TC-PFC; TC-PFS; TC-PFG; TC-PFU; TC-PFL; log `docs/prompts/2026-10-21_1735_backlog-fase... |
@@ -2223,7 +2224,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `robustez-de-rede-p2`)
 - **Regras de origem:** RNF-30(c); RNF-07(e); RF-32(b); RF-59; RNF-31; log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md`
-- **Aceite do solicitante:** [entrada de reaprovacao](../../.github/agents/memoria/entradas/2026-10-27-1500-aceite-reaprovacao-inventario.md), sha256 `1f1731bf33212622ad5e5bc4777cd415faf7fea39c7cd2adeb9f668741edd565` (reaprovado em 2026-10-27; a versao aceita antes havia sido alterada sem novo aceite)
+- **Aceite do solicitante:** [entrada de reaprovacao](../../.github/agents/memoria/entradas/2026-11-03-1203-reaceite-testes-qa-robustez-rede-p2.md), sha256 `b6ce38a8dccdcc650781bfe642798ded7827a9e7d6406f6682be21b1caa92477` (reaprovado em 2026-11-03, demanda `relatorio-com-tamanho-e-motivo`: dois casos de `--json` passaram a esperar o bloco `falha_caminho`/`falha_classe`/`falha_motivo`/`falha_tamanho` do RF-208(d)); antes: [entrada de reaprovacao](../../.github/agents/memoria/entradas/2026-10-27-1500-aceite-reaprovacao-inventario.md), sha256 `1f1731bf33212622ad5e5bc4777cd415faf7fea39c7cd2adeb9f668741edd565` (reaprovado em 2026-10-27)
 - **Dados e precondicoes:** duplo de rede proprio e binario-seguro (conteudo do download por `cat`, preserva NUL); `TMPDIR` proprio por cenario para contar residuos; tokens sentinela sinteticos
 - **Comando:** `bash tests/run.sh tests/integracao/qa_robustez_rede_p2_test.sh`
 
@@ -2798,6 +2799,10 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_aviso_de_localidade_e_so_do_sync | O aviso de localidade ausente e emitido apenas pelo sync | RF-54 |
 | teste_cdpath_do_ambiente_nao_suja_nem_desvia_a_enumeracao | Com `CDPATH=.`, `CDPATH=<outra arvore>` e `CDPATH=<outra>:.` no ambiente, o `sync --enviar` conclui, a lista de diretorios fica intacta e so a arvore da origem e lida (nunca a pasta homonima do CDPATH) | defeito em producao 2026-11-02 |
 | teste_bash_env_e_opcoes_exportadas_nao_mudam_o_plano | `BASH_ENV`, `ENV`, `SHELLOPTS` e `BASHOPTS` exportados nao mudam o plano do `sync` (recomeco unico em ambiente limpo) | defeito 2026-11-02 |
+| teste_relatorio_final_lista_cada_arquivo_enviado_com_o_tamanho | Uma linha `enviado=<caminho> (<tamanho>)` por arquivo, antes dos contadores, em envio sequencial e paralelo | RF-208(a) |
+| teste_relatorio_final_traz_a_falha_com_tamanho_e_motivo | `falha=<caminho> (<tamanho>): <classe> <motivo>` no stdout, sem par novo fora do `--json`; stderr de RF-59(a) permanece | RF-208(b) |
+| teste_relatorio_final_estruturado_acrescenta_motivo_tamanho_e_arquivos_concluidos | No `--json`, `falha_motivo`/`falha_tamanho` apos o par de RF-59(b) e `enviado_caminho`/`enviado_tamanho` em bytes | RF-208(c) |
+| teste_relatorio_final_do_recebimento_traz_o_tamanho_do_arquivo_recebido | `recebido=<caminho> (<tamanho gravado>)` e `recebido_*` em bytes no `--receber` | RF-208(a)(c) |
 
 
 ## `tests/integracao/testar_test.sh`
@@ -3915,6 +3920,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_mascara_pelo_valor_cobre_a_chave_do_aplicativo | O mascaramento pelo valor cobre a chave do aplicativo | |
 | teste_diagnostico_redige_token_sl_u_fora_da_memoria_pela_forma | O diagnostico redige pela forma um token `sl.u` que nao esta em memoria | |
 | teste_diagnostico_mascara_pelo_valor_antes_da_redacao_por_forma | O mascaramento pelo valor ocorre antes da redacao por forma | |
+| teste_tamanho_humano_usa_unidades_decimais_com_uma_casa | `dbx_output_tamanho_humano`: bytes inteiros abaixo de 1000, KB/MB/GB/TB decimais com uma casa, teto em TB e entrada nao numerica vazia | RF-208 |
 
 
 ## `tests/unit/path_test.sh`
@@ -4796,6 +4802,29 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_pasta_hifen_nao_desvia_a_enumeracao_de_diretorios | `sl/-` e `sl/SL` sob `--espelhar`: o irmao `SL` nao e lido como `-` | DIV-393 |
 | teste_pasta_hifen_so_do_destino_sob_espelhar | `-/x.txt` so no remoto: exclusao planejada uma vez, local intacto | DIV-393 |
 | teste_pastas_chamadas_hifen_hifen_e_hifen_x | Pastas `--`, `-x` e `-` lidas pelo nome | DIV-393 |
+
+## `tests/integracao/qa_relatorio_final_test.sh`
+
+- **Alvo:** `bin/dbx sync` (envio e recebimento): relatorio final com tamanho legivel e motivo por arquivo (`commands/sync.sh`, `lib/output.sh`)
+- **Modulo:** `qa_relatorio_final` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `relatorio-com-tamanho-e-motivo`)
+- **Regras de origem:** RF-208(a-e); RF-59(b) e (d); parecer `docs/reviews/2026-11-03-1203-validacao-qa-relatorio-com-tamanho-e-motivo.md`
+- **Aceite do solicitante:** aceito em 2026-11-03 (prompt 2 do log), entrada `2026-11-03-1203-aceite-testes-qa-relatorio-com-tamanho-e-motivo`; sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`
+- **Dados e precondicoes:** arvore local, credencial e listagem remota sinteticas por caso; duplo de `curl` proprio (com `tests/support/lote_duplo.sh`); falha de download por marca no argumento; `DBX_QA_EXEC` aponta outro `bin/dbx`
+- **Comando:** `bash tests/run.sh tests/integracao/qa_relatorio_final_test.sh`
+- **Observacoes:** contra `bin lib commands` de `origin/develop`, os 8 casos reprovam (o de simulacao tem um controle sem `--dry-run` que reprova na base).
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_relfinal_fronteiras_de_unidade_ponta_a_ponta_pelo_relatorio | 999 B, 1000 B (1.0 KB), 1999 (1.9 KB, truncado), 999999 (999.9 KB), 1 MB, 1 GB, 1 TB e 1000 TB (teto) pelo relatorio | RF-208(a) |
+| teste_qa_relfinal_receber_com_falha_de_download_traz_classe_motivo_e_recebidos | Download falho: tamanho da listagem, classe e motivo; `recebido_*` dos que concluiram no `--json`; stderr permanece | RF-208(a)(b)(c); RF-59(a)(b) |
+| teste_qa_relfinal_ciclos_por_bloco_listam_todos_os_arquivos_na_ordem_de_conclusao | `--bloco 1` em 3 diretorios: 4 linhas, na ordem de conclusao, e pares em bytes | RF-208(d) |
+| teste_qa_relfinal_paralelo_lista_tantas_linhas_quantos_enviados | `--paralelo 3` com 5 arquivos: 5 linhas `enviado=` com os tamanhos | RF-208(a) |
+| teste_qa_relfinal_simulacao_nao_emite_linha_de_arquivo_concluido_nem_falha | `--dry-run` de envio e de recebimento sem `enviado=`/`recebido=`/`falha=`; controle sem simulacao gera a linha | RF-208(e) |
+| teste_qa_relfinal_nome_com_controle_ou_quebra_de_linha_nao_cria_linha_a_mais | Nomes com quebra de linha, tabulacao e ESC: 4 linhas `enviado=`, nenhum ESC cru | RF-208; RF-59(d) |
+| teste_qa_relfinal_json_sem_falha_nao_traz_motivo_e_com_falha_o_par_fica_colado | Sem falha, nenhum `falha_*`; com falha, `falha_caminho` seguido de `falha_classe` | RF-208(c); RF-59(b) |
+| teste_qa_relfinal_linhas_de_arquivo_somam_os_contadores_em_envio_e_recebimento | `enviado`+`recebido`+`falha` igual a `enviados`+`recebidos`+`falhas` | RF-208(a)(b) |
 
 ## `tests/integracao/qa_pasta_ocupada_test.sh`
 
