@@ -388,6 +388,10 @@ declare -gA DBX_SYNC_TAB_NA_ORDEM=()
 # `path_lower`, caminho confinado. Uma entrada fora disso so impede GRAVAR o
 # retrato; a varredura segue como sempre.
 DBX_SYNC_TAB_PERSISTIVEL='sim'
+# DIV-394: caminhos remotos de subdiretorios do ciclo que a Dropbox recusou com
+# `path/not_folder` (ha um ARQUIVO com o nome da pasta). Cada um foi tratado como
+# pasta vazia; `commands/sync` avisa. Quem inicia o ciclo zera.
+DBX_SYNC_PASTAS_OCUPADAS=()
 # Cursor da ultima pagina desta execucao. Identificador operacional sensivel
 # (C10): nunca em mensagem, progresso nem saida.
 DBX_SYNC_CURSOR_NOVO=''
@@ -612,10 +616,24 @@ _dbx_sync_listar_paginas() {
             DBX_SYNC_TAB_PERSISTIVEL='nao'
             return 0
             ;;
+          *not_folder*)
+            # DIV-394: ha um ARQUIVO na Dropbox com o nome desta pasta. Num
+            # subdiretorio do ciclo isso e pasta vazia (o arquivo homonimo esta na
+            # listagem do pai e e orfao sob `--espelhar`, RF-47); na raiz e o
+            # destino inteiro que nao e pasta, e a enumeracao falha nomeando-o.
+            if [[ $caminho != "$raiz" ]]; then
+              DBX_SYNC_PASTAS_OCUPADAS+=("$caminho")
+              DBX_SYNC_MOTIVO='pasta remota ocupada por um arquivo: tratada como vazia'
+              dbx_progress_mensagem "[sync] consultando remoto: $caminho e um arquivo na Dropbox, nao uma pasta (tratado como pasta vazia)"
+              # shellcheck disable=SC2034  # canal publico, lido por commands/sync
+              DBX_SYNC_TAB_PERSISTIVEL='nao'
+              return 0
+            fi
+            ;;
         esac
       fi
       # shellcheck disable=SC2034  # canal publico, ver nota no topo
-      DBX_SYNC_MOTIVO="enumeracao remota recusada: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
+      DBX_SYNC_MOTIVO="enumeracao remota recusada em $caminho: ${DBX_HTTP_RESUMO_DE_ERRO:-codigo ${DBX_HTTP_CODIGO:-0}}"
       # Recuo para `erro_remoto` quando a classe vem vazia: `return` com cadeia
       # vazia e erro de sintaxe do proprio shell.
       codigo=$(dbx_errors_codigo_saida "${DBX_HTTP_CLASSE:-erro_remoto}")
