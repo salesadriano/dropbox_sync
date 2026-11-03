@@ -2223,7 +2223,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `robustez-de-rede-p2`)
 - **Regras de origem:** RNF-30(c); RNF-07(e); RF-32(b); RF-59; RNF-31; log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md`
-- **Aceite do solicitante:** reaprovacao pendente (2026-11-03, demanda `relatorio-com-tamanho-e-motivo`: dois casos de `--json` passaram a esperar o bloco `falha_caminho`/`falha_classe`/`falha_motivo`/`falha_tamanho` do RF-208(d)), sha256 `b6ce38a8dccdcc650781bfe642798ded7827a9e7d6406f6682be21b1caa92477`; antes: [entrada de reaprovacao](../../.github/agents/memoria/entradas/2026-10-27-1500-aceite-reaprovacao-inventario.md), sha256 `1f1731bf33212622ad5e5bc4777cd415faf7fea39c7cd2adeb9f668741edd565` (reaprovado em 2026-10-27)
+- **Aceite do solicitante:** [entrada de reaprovacao](../../.github/agents/memoria/entradas/2026-11-03-1203-reaceite-testes-qa-robustez-rede-p2.md), sha256 `b6ce38a8dccdcc650781bfe642798ded7827a9e7d6406f6682be21b1caa92477` (reaprovado em 2026-11-03, demanda `relatorio-com-tamanho-e-motivo`: dois casos de `--json` passaram a esperar o bloco `falha_caminho`/`falha_classe`/`falha_motivo`/`falha_tamanho` do RF-208(d)); antes: [entrada de reaprovacao](../../.github/agents/memoria/entradas/2026-10-27-1500-aceite-reaprovacao-inventario.md), sha256 `1f1731bf33212622ad5e5bc4777cd415faf7fea39c7cd2adeb9f668741edd565` (reaprovado em 2026-10-27)
 - **Dados e precondicoes:** duplo de rede proprio e binario-seguro (conteudo do download por `cat`, preserva NUL); `TMPDIR` proprio por cenario para contar residuos; tokens sentinela sinteticos
 - **Comando:** `bash tests/run.sh tests/integracao/qa_robustez_rede_p2_test.sh`
 

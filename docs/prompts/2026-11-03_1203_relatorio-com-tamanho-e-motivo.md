@@ -29,3 +29,9 @@
 **Decisao do solicitante:** aceite da suite do QA `tests/integracao/qa_relatorio_final_test.sh` (sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`), regra 12; entrada de memoria `2026-11-03-1203-aceite-testes-qa-relatorio-com-tamanho-e-motivo`. A funcionalidade entra tambem na linha legada `support/bash-4.2`: branch `feature/relatorio-com-tamanho-e-motivo-bash42` sobre `origin/support/bash-4.2`, por cherry-pick dos commits da principal.
 
 **Ajuste apos o aceite (Tech Lead):** a rodada de todas as suites do QA (`bash tests/run.sh qa_`) reprovou 1 caso de `tests/integracao/qa_robustez_rede_p2_test.sh` (ja aceita em 2026-10-27), que contava exatamente dois registros `falha_*` por item no `--json`; um segundo caso da mesma suite esperava a sequencia exata dos pares. Os dois casos passaram a esperar o bloco de quatro registros do `RF-208(d)`. Reaprovacao pendente do solicitante (regra 12), sha256 `b6ce38a8dccdcc650781bfe642798ded7827a9e7d6406f6682be21b1caa92477`.
+
+## Prompt 3 — 2026-11-03
+
+> accept the sha
+
+**Decisao do solicitante:** reaprovacao da suite `tests/integracao/qa_robustez_rede_p2_test.sh` (sha256 `b6ce38a8dccdcc650781bfe642798ded7827a9e7d6406f6682be21b1caa92477`), regra 12; entrada de memoria `2026-11-03-1203-reaceite-testes-qa-robustez-rede-p2`.
