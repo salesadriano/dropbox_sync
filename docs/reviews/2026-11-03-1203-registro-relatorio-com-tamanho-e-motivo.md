@@ -8,7 +8,7 @@
 | Porte | M - contrato publico de saida do `sync` (`RF-35`, `RF-36`, `RF-46`, `RF-59`); `sh scripts/porte.sh`: 226 linhas de codigo, gatilho `commands/*.sh`, `porte: M` |
 | Log de prompt | `docs/prompts/2026-11-03_1203_relatorio-com-tamanho-e-motivo.md` |
 | Issues | nenhuma |
-| Branch / base | `feature/relatorio-com-tamanho-e-motivo` sobre `origin/develop` @ `6c29d28` |
+| Branch / base | `feature/relatorio-com-tamanho-e-motivo` sobre `origin/develop` @ `6c29d28`; a mesma funcionalidade na linha legada em `feature/relatorio-com-tamanho-e-motivo-bash42` sobre `origin/support/bash-4.2` (cherry-pick, decisao do solicitante no prompt 2) |
 | Agents | Tech Lead (desenho, implementacao e gates), QA Expert (validacao independente), UX Expert (parecer sobre a forma do relatorio) |
 | Data | 2026-11-03 |
 
@@ -76,9 +76,9 @@ Total de linhas de codigo (producao e teste, sem documentacao): **226**.
 
 ## 8. Links e aceites
 
-- Entradas de memoria: (pendente: aceite da suite do QA, regra 12)
+- Entradas de memoria: `2026-11-03-1203-aceite-testes-qa-relatorio-com-tamanho-e-motivo` (aceite da suite do QA, regra 12).
 - Documentacao sincronizada: `README.md`, `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (v1.39); inventario de testes pelo QA.
 - Commit(s): `a509422` - feat(sync): relatorio final lista cada arquivo com o tamanho e cada falha com o motivo; seguido do commit de documentacao, pareceres e suite do QA
 - PR: (pendente) para `develop`; integrar apos a PR #86 (mesmo arquivo `commands/sync.sh`, regioes distintas).
 - Tech Lead: **Aprovado**, 2026-11-03 - gates, QA e UX verdes; merge condicionado a suite completa registrada e ao aceite da suite do QA (regra 12)
-- Solicitante: (pendente) aceite da suite `qa_relatorio_final_test.sh`, sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`
+- Solicitante: suite `qa_relatorio_final_test.sh` aceita em 2026-11-03 (prompt 2), sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`

@@ -21,3 +21,9 @@
 - Escopo: comando `sync` (o da producao). `upload`/`download` de pasta nao mudam nesta demanda.
 
 **Achado durante a implementacao (Tech Lead):** sem terminal na saida padrao (o `nohup` da producao) o `dbx` ja emite o relatorio na forma `chave=valor` mesmo sem `--json`, e os pares `falha_caminho`/`falha_classe` de `RF-59(b)` so saem com `--json`. Por isso as linhas por arquivo (`enviado=`, `recebido=`, `falha=`) com tamanho legivel saem **em qualquer modo**, antes dos contadores, e os campos em bytes (`falha_motivo`, `falha_tamanho`, `enviado_caminho`/`enviado_tamanho`) ficam restritos ao `--json`. Requisito `RF-208` (v1.39; v1.38 reservada a PR #86).
+
+## Prompt 2 — 2026-11-03
+
+> accept the sha, legacy line too
+
+**Decisao do solicitante:** aceite da suite do QA `tests/integracao/qa_relatorio_final_test.sh` (sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`), regra 12; entrada de memoria `2026-11-03-1203-aceite-testes-qa-relatorio-com-tamanho-e-motivo`. A funcionalidade entra tambem na linha legada `support/bash-4.2`: branch `feature/relatorio-com-tamanho-e-motivo-bash42` sobre `origin/support/bash-4.2`, por cherry-pick dos commits da principal.

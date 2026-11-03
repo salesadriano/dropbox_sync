@@ -4849,7 +4849,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `relatorio-com-tamanho-e-motivo`)
 - **Regras de origem:** RF-208(a-e); RF-59(b) e (d); parecer `docs/reviews/2026-11-03-1203-validacao-qa-relatorio-com-tamanho-e-motivo.md`
-- **Aceite do solicitante:** pendente; sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`
+- **Aceite do solicitante:** aceito em 2026-11-03 (prompt 2 do log), entrada `2026-11-03-1203-aceite-testes-qa-relatorio-com-tamanho-e-motivo`; sha256 `675f9aff24809b54a0135a7d52fa24515be9c3731004822a4b418c7200ca881e`
 - **Dados e precondicoes:** arvore local, credencial e listagem remota sinteticas por caso; duplo de `curl` proprio (com `tests/support/lote_duplo.sh`); falha de download por marca no argumento; `DBX_QA_EXEC` aponta outro `bin/dbx`
 - **Comando:** `bash tests/run.sh tests/integracao/qa_relatorio_final_test.sh`
 - **Observacoes:** contra `bin lib commands` de `origin/develop`, os 8 casos reprovam (o de simulacao tem um controle sem `--dry-run` que reprova na base).
