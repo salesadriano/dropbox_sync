@@ -46,3 +46,9 @@ Sanitizado: nenhum segredo no log; caminhos de origem e destino mantidos (necess
 ## Andamento — 2026-11-03
 
 Correcao em `047cbd3`; validacao independente do QA aprovada (suite `qa_pasta_ocupada_test.sh`, 6 casos, sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`), aguardando o aceite do solicitante (regra 12).
+
+## Prompt 2 — 2026-11-03
+
+> accept the sha and fix the legacy line too
+
+**Decisao do solicitante:** aceite da suite do QA `tests/integracao/qa_pasta_ocupada_test.sh` (sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`), regra 12; entrada de memoria `2026-11-03-1017-aceite-testes-qa-arquivo-remoto-no-lugar-da-pasta`. A correcao entra tambem na linha legada `support/bash-4.2`, como nas demandas `ignorar-cdpath` e `diretorio-chamado-hifen`: branch `feature/arquivo-remoto-no-lugar-da-pasta-bash42` sobre `origin/support/bash-4.2` por cherry-pick dos commits da principal. Push e PR #86 feitos pelo solicitante (o hook de push avalia o checkout principal).
