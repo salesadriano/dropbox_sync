@@ -40,3 +40,9 @@ Sanitizado: os nomes intermediarios das pastas do operador foram substituidos po
 > fix the legacy line too
 
 **Decisao do solicitante:** a correcao entra tambem na linha legada `support/bash-4.2` (2.3.1-bash42), como na demanda `ignorar-cdpath`. Branch `feature/diretorio-chamado-hifen-bash42` sobre `origin/support/bash-4.2`, pelo cherry-pick do commit `60c216f` (conflito so no cabecalho do inventario de testes, resolvido com as contagens da legada: 118 arquivos, 2920 casos); validacao dos itens afetados no bash 4.2 real (`sh scripts/suite-bash42.sh <filtro>`).
+
+## Prompt 4 — 2026-11-02
+
+> accept the sha and give me the legacy commands
+
+**Decisao do solicitante:** aceite da suite do QA `tests/integracao/qa_diretorio_hifen_test.sh` (sha256 `014c29de61287029d44fbc01d8ba53944ddde11c4943df1b309dfd65ebe38833`), regra 12; entrada de memoria `2026-11-02-2100-aceite-testes-qa-diretorio-chamado-hifen`. Push e PR da legada executados pelo solicitante (o guarda de push avalia o checkout principal).

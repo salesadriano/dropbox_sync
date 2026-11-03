@@ -70,9 +70,9 @@ Total de linhas de codigo (producao e teste, sem documentacao): **83**.
 
 ## 8. Links e aceites
 
-- Entradas de memoria: a gravar no aceite da suite do QA (regra 12).
+- Entradas de memoria: `2026-11-02-2100-aceite-testes-qa-diretorio-chamado-hifen` (aceite da suite do QA, regra 12).
 - Documentacao sincronizada: `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (v1.37), `docs/testes/inventario-de-testes.md`.
 - Commit(s): principal `60c216f` - fix(walk): subdiretorio chamado - nao corrompe nem desvia a travessia, seguido do commit de documentacao desta secao; legada: cherry-pick dos mesmos commits em `feature/diretorio-chamado-hifen-bash42`
 - PR: uma para `develop` e uma para `support/bash-4.2` (links no corpo de cada PR e no hand-off ao solicitante)
 - Tech Lead: **Aprovado**, 2026-11-02 - gates e QA verdes nas duas linhas; merge condicionado a suite completa registrada e ao aceite da suite do QA
-- Solicitante: aceite da suite `qa_diretorio_hifen_test.sh` por sha256 pendente.
+- Solicitante: suite `qa_diretorio_hifen_test.sh` aceita em 2026-11-02 (prompt 4), sha256 `014c29de61287029d44fbc01d8ba53944ddde11c4943df1b309dfd65ebe38833`.
