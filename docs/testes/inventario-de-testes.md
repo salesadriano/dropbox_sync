@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
-Atualizado em: 2026-10-31, demanda `investigar-retomada-download` (`docs/prompts/2026-10-31_1900_investigar-retomada-download.md`), pelo Tech Lead (Fluxo P: linhas do `harness_test.sh`); antes, demanda `sync-em-blocos`, por QA Expert.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 115 arquivos, 2897 casos, 0 divergencias.
+Atualizado em: 2026-11-02, demanda `diretorio-chamado-hifen` (`docs/prompts/2026-11-02_2100_diretorio-chamado-hifen.md`), pelo QA Expert (suite `qa_diretorio_hifen` e casos do `walk_test`/`sync_test`); antes, 2026-10-31, demanda `investigar-retomada-download` (`docs/prompts/2026-10-31_1900_investigar-retomada-download.md`), pelo Tech Lead (Fluxo P: linhas do `harness_test.sh`); antes, demanda `sync-em-blocos`, por QA Expert.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 116 arquivos, 2908 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -54,6 +54,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_instalador_linha_b22_test.sh` | `install.sh` (`--canal` hostil, troca de linha, fonte invalida, bordas de `escolher_linha`) e `scripts/empacotar.sh` (`--latest=false`, `--target`) | `qa_instalador_linha` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`) | 17 | F-102; RF-201..RF-205; TC-B42-09..22; DIV-385; DIV-389; protocolo-tdd Regra 6; log `docs/prompts/2026-11-01_1200_suporte-bash-42.md` |
 | `tests/integracao/qa_exclusao_sem_localidade_b42_test.sh` | `sync --receber/--enviar --espelhar` com `--incluir`/`--excluir` e nomes com byte nao ASCII sem `C.UTF-8` (nada apagado) | `qa_exclusao_sem_localidade` | integracao | QA Expert (suite independente da demanda `suporte-bash-42`, ciclo 2) | 6 | QA-B42-01; RF-54(f2); RF-80; DIV-391; protocolo-tdd Regra 6 |
 | `tests/integracao/qa_cdpath_test.sh` | `upload`/`download` de pasta, `verificar` e `sync` (enviar/receber, `--espelhar`, `--bloco`, `--paralelo`) com `CDPATH` hostil no ambiente | `qa_cdpath` | integracao | QA Expert (suite independente da demanda `ignorar-cdpath`) | 8 | defeito em producao 2026-11-02; protocolo-tdd Regras 6 e 8 |
+| `tests/integracao/qa_diretorio_hifen_test.sh` | `sync --dry-run` com pasta ou arquivo chamado `-`, `--` e `-x` (raiz, primeiro e ultimo irmao, aninhada, so do destino sob `--espelhar`) | `qa_diretorio_hifen` | integracao | QA Expert (suite independente da demanda `diretorio-chamado-hifen`) | 8 | defeito em producao 2.3.1; DIV-393; protocolo-tdd Regras 6 e 8 |
 | `tests/integracao/qa_integridade_p1_test.sh` | `bin/dbx` (download de arquivo e de pasta, sync, upload) com `lib/transfer.sh`, `lib/hash.sh`, `lib/walk.sh`: integridade de dados no rec... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `integridade-de-dados-p1`) | 27 | RF-49, RF-54, RF-55, RF-56, RF-57, RNF-29, RNF-04 (emendado); log `docs/prompts/2026-10-18_1745_integridade-de-dados-p1.md` |
 | `tests/integracao/qa_leitura_exata_b14_test.sh` | `lib/atributos.sh` (`dbx_ler_exato`), calculo do `content_hash` em `lib/hash.sh` e upload em sessao de `bin/dbx` sob o duble `head` do Fr... | qa_leitura_exata (sem linha propria no mapa de modulos; ver observacoes) | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-173, TC-FBSD-25..27; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada de aceite](../../.github/agents/memoria/entradas/... |
 | `tests/integracao/qa_paralelo_download_b20_test.sh` | `bin/dbx download` de arquivo grande em faixas simultaneas (`commands/download.sh`, `lib/transfer.sh`, `lib/http.sh`) | `qa_paralelo_download` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 21 | F-100 etapa 2b; RF-180 a RF-184; RF-104(c)(d); RF-106(a); DIV-369 a DIV-371; DIV-373 a DIV-376; log `docs/prompts/2026-10-26_1900_paralel... |
@@ -126,7 +127,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/sync_tabela_test.sh` | `lib/sync.sh` (tabela remota: retrato carregado, delta aplicado, confinamento e agrupamento das confirmacoes de exclusao) | sync_tabela | unitario | Senior Developer (TDD da demanda `backlog-fase-7b-cursor`) | 12 | F-14; DIV-g; RF-112; RF-114; RF-115; parecer do DBA (secao 5; C3, C4, C5); log `docs/prompts/2026-10-21_0713_backlog-fase-7b-cursor.md` |
 | `tests/unit/tmp_test.sh` | `lib/tmp.sh` (registro unico de areas temporarias e acoes de liberacao com tratadores de sinal) e auditoria de `mktemp` e `trap` em `lib/... | `lib/tmp.sh` | unitario | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 21 | RNF-35; RNF-36; TC-TMP-01..09; TC-CNF-01; F-12; F-31; log `docs/prompts/2026-10-19_1419_backlog-fase-2-trava-e-tmp.md`; mapa de modulos R... |
 | `tests/unit/transfer_test.sh` | `lib/transfer.sh` (sessao de envio em partes sequencial com retentativa e retomada na mesma execucao) | transfer | unitario | Senior Developer (TDD da demanda `feat(transfer): envio em partes por sessao sequencial com retentativa`; sem log de prompt) | 36 | RF-08; RF-09; RF-31 (citados no cabecalho do teste); sem log de prompt (commit de criacao `ca64c8d`) |
-| `tests/unit/walk_test.sh` | `lib/walk.sh`: travessia da arvore local por descida | `walk` | unitario | Senior Developer (commit `f8b9ed0`, `feat(sync): sincronizacao direcional com a origem como autoridade`; sem log de prompt) | 13 | RNF-28; RF-41a; log de prompt: Nao aplicavel: anterior a trilha do protocolo |
+| `tests/unit/walk_test.sh` | `lib/walk.sh`: travessia da arvore local por descida | `walk` | unitario | Senior Developer (commit `f8b9ed0`, `feat(sync): sincronizacao direcional com a origem como autoridade`; sem log de prompt) | 15 | RNF-28; RF-41a; DIV-393; log de prompt: Nao aplicavel: anterior a trilha do protocolo |
 
 ## `tests/integracao/banda_test.sh`
 
@@ -2702,6 +2703,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 
 | Caso | O que verifica | Regra especifica |
 |---|---|---|
+| teste_subdiretorio_chamado_hifen_nao_suja_nem_desvia_a_enumeracao | Subdiretorio chamado `-` e lido pelo nome: o plano `--dry-run --espelhar` traz `sl/SL/a.txt` e `sl/-/h.txt`, sem erro aritmetico e sem repetir o irmao | DIV-393 |
 | teste_origem_e_destino_sao_obrigatorios | Sem --origem ou --destino o sync sai com uso invalido | RF-53; DP-28 |
 | teste_sentido_e_obrigatorio_e_mutuamente_exclusivo | O sentido (--enviar ou --receber) e obrigatorio e os dois juntos sao recusados | RF-53; DP-28 |
 | teste_o_tipo_de_cada_lado_nunca_e_inferido_do_caminho | O tipo de cada lado vem do sentido, nunca do formato do caminho | DP-28 |
@@ -4707,6 +4709,8 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 
 | Caso | O que verifica | Regra especifica |
 |---|---|---|
+| teste_diretorio_chamado_hifen_e_um_nome_e_nao_o_oldpwd | Pasta `-` e descida como nome (nao OLDPWD); nada alem de registros no stdout e a travessia continua depois dela | DIV-393 |
+| teste_enumeracao_de_diretorios_com_pasta_hifen_mantem_as_contagens_numericas | A lista `n<TAB>caminho` da enumeracao de diretorios tem contagem inteira em todo registro e traz `sub/-` | DIV-393 |
 | teste_percorre_a_arvore_inteira_com_caminhos_relativos | A travessia percorre a arvore inteira com caminhos relativos | |
 | teste_arquivo_oculto_e_transferivel_como_qualquer_outro | Arquivo oculto e tratado como qualquer outro | |
 | teste_nome_com_quebra_de_linha_sobrevive_a_travessia | Nome com quebra de linha sobrevive a travessia | |
@@ -4766,3 +4770,26 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_upload_de_pasta | `upload` de pasta nunca le a isca | defeito 2026-11-02 |
 | teste_upload_de_pasta_paralelo | `upload --paralelo 2` de pasta | defeito 2026-11-02 |
 | teste_verificar | `verificar` nos dois sentidos | defeito 2026-11-02 |
+
+## `tests/integracao/qa_diretorio_hifen_test.sh`
+
+- **Alvo:** `sync --enviar --dry-run` (travessia `lib/walk.sh` e enumeracao de diretorios) com pasta ou arquivo chamado `-`, `--` e `-x`
+- **Modulo:** `qa_diretorio_hifen` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `diretorio-chamado-hifen`)
+- **Regras de origem:** defeito em producao 2.3.1 (erro aritmetico em "enumerando diretorios locais"); DIV-393; protocolo-tdd Regras 6 e 8; parecer `docs/reviews/2026-11-02-2100-validacao-qa-diretorio-chamado-hifen.md`
+- **Aceite do solicitante:** pendente; sha256 `014c29de61287029d44fbc01d8ba53944ddde11c4943df1b309dfd65ebe38833`
+- **Dados e precondicoes:** arvore local, credencial e listagem remota falsas criadas por caso; duplo de `curl`; o plano e comparado por contagem exata de itens (`transferir=`/`apagar=`), ordenados com `LC_ALL=C`
+- **Comando:** `bash tests/run.sh tests/integracao/qa_diretorio_hifen_test.sh`
+- **Observacoes:** contra `lib/walk.sh` de `origin/develop`, 6 dos 8 casos reprovam; `arquivo_chamado_hifen_nao_e_pasta` e `pasta_hifen_so_do_destino_sob_espelhar` passam nos dois (nao descem por `cd` em pasta `-` local) e ficam como guarda de regressao.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_arquivo_chamado_hifen_nao_e_pasta | Arquivo (nao pasta) chamado `-` e enviado como arquivo, sem desviar a travessia | DIV-393 |
+| teste_pasta_hifen_aninhada | `a/-/b`, `a/-/-` e irmao `a/irmao` listados uma vez cada | DIV-393 |
+| teste_pasta_hifen_como_primeiro_irmao | `-` antes de `b` e `c`: nenhum irmao repetido ou perdido | DIV-393 |
+| teste_pasta_hifen_como_ultimo_irmao | `-` depois de `!` e `+`: nenhum irmao repetido ou perdido | DIV-393 |
+| teste_pasta_hifen_na_raiz_da_origem | `-` na raiz da origem, com irmao e arquivo na raiz | DIV-393 |
+| teste_pasta_hifen_nao_desvia_a_enumeracao_de_diretorios | `sl/-` e `sl/SL` sob `--espelhar`: o irmao `SL` nao e lido como `-` | DIV-393 |
+| teste_pasta_hifen_so_do_destino_sob_espelhar | `-/x.txt` so no remoto: exclusao planejada uma vez, local intacto | DIV-393 |
+| teste_pastas_chamadas_hifen_hifen_e_hifen_x | Pastas `--`, `-x` e `-` lidas pelo nome | DIV-393 |
