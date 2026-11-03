@@ -4820,7 +4820,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `diretorio-chamado-hifen`)
 - **Regras de origem:** defeito em producao 2.3.1 (erro aritmetico em "enumerando diretorios locais"); DIV-393; protocolo-tdd Regras 6 e 8; parecer `docs/reviews/2026-11-02-2100-validacao-qa-diretorio-chamado-hifen.md`
-- **Aceite do solicitante:** pendente; sha256 `014c29de61287029d44fbc01d8ba53944ddde11c4943df1b309dfd65ebe38833`
+- **Aceite do solicitante:** aceito em 2026-11-02 (prompt 4; entrada `2026-11-02-2100-aceite-testes-qa-diretorio-chamado-hifen`); sha256 `014c29de61287029d44fbc01d8ba53944ddde11c4943df1b309dfd65ebe38833`
 - **Dados e precondicoes:** arvore local, credencial e listagem remota falsas criadas por caso; duplo de `curl`; o plano e comparado por contagem exata de itens (`transferir=`/`apagar=`), ordenados com `LC_ALL=C`
 - **Comando:** `bash tests/run.sh tests/integracao/qa_diretorio_hifen_test.sh`
 - **Observacoes:** contra `lib/walk.sh` de `origin/develop`, 6 dos 8 casos reprovam; `arquivo_chamado_hifen_nao_e_pasta` e `pasta_hifen_so_do_destino_sob_espelhar` passam nos dois (nao descem por `cd` em pasta `-` local) e ficam como guarda de regressao.
