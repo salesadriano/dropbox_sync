@@ -4846,7 +4846,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `arquivo-remoto-no-lugar-da-pasta`)
 - **Regras de origem:** defeito em producao 2.3.2 (`erro=enumeracao remota recusada: path/not_folder/`); DIV-394; RF-47; protocolo-tdd Regras 8 e 9; parecer `docs/reviews/2026-11-03-1017-validacao-qa-arquivo-remoto-no-lugar-da-pasta.md`
-- **Aceite do solicitante:** pendente; sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`
+- **Aceite do solicitante:** aceito em 2026-11-03 (prompt 2 do log), entrada `2026-11-03-1017-aceite-testes-qa-arquivo-remoto-no-lugar-da-pasta`; sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`
 - **Dados e precondicoes:** arvore local, credencial e listagem remota falsas criadas por caso; duplo de `curl` proprio por regras de endpoint, com `tests/support/lote_duplo.sh` para a exclusao em lote; `DBX_QA_EXEC` aponta outro `bin/dbx` (prova do vermelho)
 - **Comando:** `bash tests/run.sh tests/integracao/qa_pasta_ocupada_test.sh`
 - **Observacoes:** contra `bin lib commands` de `origin/develop`, os 6 casos reprovam.

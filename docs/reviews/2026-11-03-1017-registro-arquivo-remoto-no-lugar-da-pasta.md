@@ -8,7 +8,7 @@
 | Porte | M - defeito critico em producao (o espelhamento nao termina) e tratamento de erro da enumeracao remota; `sh scripts/porte.sh`: 69 linhas de codigo, gatilho `commands/*.sh`, `porte: M` |
 | Log de prompt | `docs/prompts/2026-11-03_1017_arquivo-remoto-no-lugar-da-pasta.md` |
 | Issues | nenhuma |
-| Branch / base | `feature/arquivo-remoto-no-lugar-da-pasta` sobre `origin/develop` @ `6c29d28` |
+| Branch / base | `feature/arquivo-remoto-no-lugar-da-pasta` sobre `origin/develop` @ `6c29d28`; a mesma correcao na linha legada em `feature/arquivo-remoto-no-lugar-da-pasta-bash42` sobre `origin/support/bash-4.2` @ `deb0a02` (cherry-pick) |
 | Agents | Tech Lead (diagnostico, implementacao e gates), QA Expert (validacao independente) |
 | Data | 2026-11-03 |
 
@@ -44,7 +44,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **69**.
 - Barreiras estaticas: `shellcheck -x -s bash lib/sync.sh commands/sync.sh tests/integracao/sync_test.sh` sem aviso.
 - Testes de seguranca e acesso (Regra 6): a guarda destrutiva do `--espelhar` e o cenario do teste (o orfao apagado e o que a listagem do pai mostrou; nada e apagado por inferencia); nenhuma rota, sessao ou segredo tocado.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: CLI sem formulario.
-- Suite completa local no push para a PR: ver secao 8 (preenchida no push).
+- Suite completa local no push para a PR: verde para `546efb4` (117 arquivos, 2900 aprovados, 0 reprovados, 4 pulados, 3467s); reexecutada para o commit de aceite (secao 8).
 
 ## 5. Gates
 
@@ -72,9 +72,9 @@ Total de linhas de codigo (producao e teste, sem documentacao): **69**.
 
 ## 8. Links e aceites
 
-- Entradas de memoria: (pendente: aceite da suite do QA, regra 12)
+- Entradas de memoria: `2026-11-03-1017-aceite-testes-qa-arquivo-remoto-no-lugar-da-pasta` (aceite da suite do QA, regra 12).
 - Documentacao sincronizada: `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (v1.38); inventario de testes pelo QA.
 - Commit(s): `047cbd3` - fix(sync): arquivo remoto com o nome de uma pasta local nao encerra o sync; seguido do commit de documentacao e da suite do QA
-- PR: (pendente) para `develop`
+- PR: #86 para `develop` (https://github.com/salesadriano/dropbox_sync/pull/86), push e abertura pelo solicitante; linha legada: `feature/arquivo-remoto-no-lugar-da-pasta-bash42` sobre `origin/support/bash-4.2` (cherry-pick dos mesmos commits), PR propria.
 - Tech Lead: **Aprovado**, 2026-11-03 - gates e QA verdes; merge condicionado a suite completa registrada e ao aceite da suite do QA (regra 12)
-- Solicitante: (pendente) aceite da suite `qa_pasta_ocupada_test.sh`, sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`
+- Solicitante: suite `qa_pasta_ocupada_test.sh` aceita em 2026-11-03 (prompt 2), sha256 `d7cd09d4127d25750aa9b10acda60bbc465846a079599688e34babd368d754eb`
