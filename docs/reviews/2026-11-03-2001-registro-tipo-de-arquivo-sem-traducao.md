@@ -57,7 +57,7 @@
 
 ## 6. QA
 
-- Validacao independente: `docs/reviews/2026-11-03-2001-validacao-qa-tipo-de-arquivo-sem-traducao.md`. Aprovado, sujeito ao aceite da suite `tests/integracao/qa_tipo_sem_traducao_test.sh` (sha256 `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`). 6 casos; 5 de 6 reprovam na base (controle e guarda verdes). Varredura: nenhum outro utilitario com saida textual interpretada. Ciclos de reprovacao: 0.
+- Validacao independente: `docs/reviews/2026-11-03-2001-validacao-qa-tipo-de-arquivo-sem-traducao.md`. Aprovado, com a suite `tests/integracao/qa_tipo_sem_traducao_test.sh` aceita (sha256 `c88e5c4a7cfe3666c5ab3f5649964d786ab44e48939929ef05385d9f1c91132e`; a versao `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1` falhou na auditoria `composicao_test` da suite completa por um `grep -c` na linha 150, trocado por `_harness_contar`). 6 casos; 5 de 6 reprovam na base (controle e guarda verdes). Varredura: nenhum outro utilitario com saida textual interpretada. Ciclos de reprovacao: 0.
 
 ## 7. Riscos e rollback
 
@@ -72,4 +72,4 @@
 - Commit(s): correcao, seguida do commit da validacao e da suite do QA com o aceite; a mesma correcao na linha legada.
 - PR: para `develop` e para `support/bash-4.2`, push e abertura pelo solicitante.
 - Tech Lead: **Aprovado**, 2026-11-03 - gates e QA verdes; merge condicionado a suite completa registrada.
-- Solicitante: suite `qa_tipo_sem_traducao_test.sh` aceita em 2026-11-03 (prompt 2), sha256 `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`, nas duas linhas.
+- Solicitante: suite `qa_tipo_sem_traducao_test.sh` aceita em 2026-11-03 (prompt 2, sha256 `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`) e reaceita apos a correcao da auditoria (prompt 3), sha256 `c88e5c4a7cfe3666c5ab3f5649964d786ab44e48939929ef05385d9f1c91132e`, nas duas linhas.

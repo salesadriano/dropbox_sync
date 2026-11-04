@@ -30,3 +30,11 @@
 **Intencao principal:** aceite (regra 12) da suite do QA `qa_tipo_sem_traducao_test.sh`, sha256 `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`, e correcao tambem na linha legada.
 
 **Inferencias adotadas:** o aceite vale para as duas linhas (o arquivo e identico e passa no bash 4.2.46 real); a linha legada recebe a mesma suite, validacao, inventario e entrada de memoria.
+
+## Prompt 3 — 2026-11-03
+
+> accept the new sha, both lines
+
+**Intencao principal:** aceite (regra 12) da suite do QA `qa_tipo_sem_traducao_test.sh` alterada em uma linha (linha 150: contagem por `_harness_contar` em vez de `grep -c`, exigida pela auditoria `composicao_test`), sha256 `c88e5c4a7cfe3666c5ab3f5649964d786ab44e48939929ef05385d9f1c91132e`, que substitui `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`.
+
+**Inferencias adotadas:** o aceite vale para as duas linhas (arquivo identico); nenhum caso ou assertiva mudou de sentido.

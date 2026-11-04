@@ -4881,7 +4881,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `tipo-de-arquivo-sem-traducao`)
 - **Regras de origem:** DIV-395; RF-167; RF-69/RF-70 (trava); RF-71 (diagnostico); RF-110 (cursor); parecer `docs/reviews/2026-11-03-2001-validacao-qa-tipo-de-arquivo-sem-traducao.md`
-- **Aceite do solicitante:** aceito em 2026-11-03 (prompt 2 do log), entrada `2026-11-03-2001-aceite-testes-qa-tipo-de-arquivo-sem-traducao`; sha256 `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`
+- **Aceite do solicitante:** aceito em 2026-11-03 (prompt 3 do log, reaceite apos a correcao da auditoria `composicao_test`), entrada `2026-11-03-2001-aceite-testes-qa-tipo-de-arquivo-sem-traducao`; sha256 `c88e5c4a7cfe3666c5ab3f5649964d786ab44e48939929ef05385d9f1c91132e`
 - **Dados e precondicoes:** credencial, trava e arvore local sinteticas por caso; duble de `curl` e duble de `stat` que traduz `%F` fora de C; `LANG=pt_BR.UTF-8` (com e sem `LC_ALL`); `DBX_QA_EXEC` aponta outro `bin/dbx`
 - **Comando:** `bash tests/run.sh tests/integracao/qa_tipo_sem_traducao_test.sh`
 - **Observacoes:** contra `bin lib commands` de `origin/develop`, 5 dos 6 casos reprovam; o do `LC_ALL` exportado e guarda e passa na base, porque as funcoes de trava usam `local LC_ALL=C`, que herda o atributo de exportado.

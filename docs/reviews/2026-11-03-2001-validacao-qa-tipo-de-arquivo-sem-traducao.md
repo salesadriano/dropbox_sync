@@ -11,7 +11,7 @@
 ## 2. Suite independente
 
 - `tests/integracao/qa_tipo_sem_traducao_test.sh`, 6 casos, pelo `bin/dbx` real, com `stat` duble que traduz `%F` fora de C ("arquivo comum", "diretorio") e duble de `curl`; `LANG=pt_BR.UTF-8` com e sem `LC_ALL` exportado.
-- sha256: `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1` (para o aceite, regra 12).
+- sha256: `c88e5c4a7cfe3666c5ab3f5649964d786ab44e48939929ef05385d9f1c91132e` (aceito no prompt 3; substitui `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`, aceito no prompt 2, apos a troca de `grep -c` por `_harness_contar` na linha 150 exigida pela auditoria `composicao_test`).
 - Cobertura: trava orfa retomada (saida 0, aviso); trava viva dita "trava ocupada" com o pid (saida 7, sem "ilegivel", sem pedir rm, sem chamada a API, trava preservada); `LC_ALL` exportado (viva e orfa); `diagnostico` com `trava=ok: viva`; cursor gravado e continuado na segunda execucao (`list_folder/continue`); controle negativo: trava com lixo continua "ilegivel" e nao e apagada.
 - Mapa de contencao: `nenhum`. Os 4 casos do Senior Developer sao unitarios (funcao); os do QA passam pelo binario, com outras assertivas.
 - Consumidores de `dbx_atributo_fd tipo` alem da trava: `_dbx_state_ler_limitado` (state.sh:250), `_dbx_state_cursor_abrir` (state.sh:2081, coberto aqui) e `_dbx_cmd_part_abrir` (cmd.sh:765, retomada de download, nao coberto pelo binario: ver pendencia).
