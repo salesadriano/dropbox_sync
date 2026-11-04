@@ -43,6 +43,7 @@
 - Barreiras estaticas: `sh scripts/lint.sh lib/atributos.sh tests/unit/atributos_portavel_test.sh` sem achado nas duas linhas (`SC2030`/`SC2031` justificados no cabecalho: a localidade muda so no subshell do caso).
 - Testes de seguranca e acesso (Regra 6): a conferencia de dono e tipo do descritor (`RF-171`) volta a valer em qualquer localidade; nenhuma permissao afrouxada.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: CLI sem formulario.
+- Linha legada, no bash 4.2.46 real (`sh scripts/suite-bash42.sh <arquivo>`): `atributos_portavel` 15/0, `state_test` 24/0, `qa_trava_tmp_b2` 21/0 (2 pulados), `perfis_trava_raiz` 10/0, `diagnostico_test` 16/0 (1 pulado), `qa_tipo_sem_traducao` 6/0; no host: `json_test` 62/0, `harness_test` 23/0.
 - Suite completa local no push para a PR: secao 8.
 
 ## 5. Gates
@@ -56,7 +57,7 @@
 
 ## 6. QA
 
-- Pendente: validacao independente do QA Expert.
+- Validacao independente: `docs/reviews/2026-11-03-2001-validacao-qa-tipo-de-arquivo-sem-traducao.md`. Aprovado, sujeito ao aceite da suite `tests/integracao/qa_tipo_sem_traducao_test.sh` (sha256 `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`). 6 casos; 5 de 6 reprovam na base (controle e guarda verdes). Varredura: nenhum outro utilitario com saida textual interpretada. Ciclos de reprovacao: 0.
 
 ## 7. Riscos e rollback
 
@@ -66,4 +67,9 @@
 
 ## 8. Links e aceites
 
-- Preenchidos no fechamento.
+- Entradas de memoria: `2026-11-03-2001-aceite-testes-qa-tipo-de-arquivo-sem-traducao` (aceite da suite do QA, regra 12).
+- Documentacao sincronizada: `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (v1.40, `DIV-395`); inventario de testes pelo QA.
+- Commit(s): correcao, seguida do commit da validacao e da suite do QA com o aceite; a mesma correcao na linha legada.
+- PR: para `develop` e para `support/bash-4.2`, push e abertura pelo solicitante.
+- Tech Lead: **Aprovado**, 2026-11-03 - gates e QA verdes; merge condicionado a suite completa registrada.
+- Solicitante: suite `qa_tipo_sem_traducao_test.sh` aceita em 2026-11-03 (prompt 2), sha256 `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`, nas duas linhas.
