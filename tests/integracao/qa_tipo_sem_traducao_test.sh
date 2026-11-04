@@ -147,7 +147,7 @@ teste_qa_trava_viva_e_dita_ocupada_e_nao_ilegivel_em_pt_br() {
   assert_nao_contem 'ilegivel' "$Q_ERRO" 'nao e ilegivel'
   assert_nao_contem 'rm ' "$Q_ERRO" 'sem pedir remocao manual'
   [[ -f $Q_TRAVA ]] || _harness_falhar 'a trava viva foi apagada'
-  assert_igual 0 "$(grep -c . "$B/chamadas")" 'nenhuma chamada a API com a trava ocupada'
+  assert_igual 0 "$(_harness_contar . "$B/chamadas")" 'nenhuma chamada a API com a trava ocupada'
 }
 
 teste_qa_lc_all_exportado_em_pt_br_nao_muda_o_veredito_da_trava() {
