@@ -22,3 +22,11 @@
 - Causa medida pelo Tech Lead num conteiner `oraclelinux:7` com as traducoes do coreutils: `LANG=pt_BR.UTF-8 stat -c %F` responde `arquivo comum`; `dbx_fd_regular_proprio` espera `regular*` e a leitura da trava (`_dbx_state_trava_ler`) devolve "ilegivel" para TODA trava existente, viva ou orfa. `local LC_ALL=C` da funcao nao chega ao `stat` porque nao e exportado. `LC_MESSAGES=C` no ambiente contorna.
 - O aviso de localidade e informativo (`DIV-391`), fora do escopo.
 - Correcao nas duas linhas, como nas demandas anteriores de producao.
+
+## Prompt 2 — 2026-11-03
+
+> accept the sha, legacy line too
+
+**Intencao principal:** aceite (regra 12) da suite do QA `qa_tipo_sem_traducao_test.sh`, sha256 `83bff6c50d1ea8741c20b567cc2da06d9dcbf5989f1d00aabe106bc0c6b0b2c1`, e correcao tambem na linha legada.
+
+**Inferencias adotadas:** o aceite vale para as duas linhas (o arquivo e identico e passa no bash 4.2.46 real); a linha legada recebe a mesma suite, validacao, inventario e entrada de memoria.
