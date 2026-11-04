@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
 Atualizado em: 2026-11-03, demanda `relatorio-com-tamanho-e-motivo` (`docs/prompts/2026-11-03_1203_relatorio-com-tamanho-e-motivo.md`), pelo QA Expert (suite `qa_relatorio_final` e casos do `sync_test`/`output_test`), integrada com a demanda `arquivo-remoto-no-lugar-da-pasta` (PR #86: suite `qa_pasta_ocupada` e casos do `sync_test`) na mesma data; antes, 2026-11-02, demanda `diretorio-chamado-hifen`.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 118 arquivos, 2929 casos, 0 divergencias.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 119 arquivos, 2939 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -67,6 +67,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_recuperacao_b3_test.sh` | `bin/dbx` nos comandos `revisoes`, `restaurar` e `lixeira` (com exclusao permanente), `commands/revisoes.sh`, `commands/restaurar.sh`, `c... | qa_recuperacao | integracao | QA Expert (suite independente da demanda `backlog-fase-3-recuperacao`) | 30 | F-07; F-20; RF-72..RF-78; DIV-54..DIV-77; log `docs/prompts/2026-10-19_1828_backlog-fase-3-recuperacao.md` |
 | `tests/integracao/qa_regex_portavel_b17_test.sh` | todas as expressoes regulares de `lib/`, `commands/`, `bin/`, `install.sh` e `uninstall.sh` (limite de repeticao RE_DUP_MAX 255 do FreeBS... | qa_regex_portavel_b17 | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 19 | RF-166; TC-FBSD-19 (parte regex); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada](../../.github/agents/memoria/entradas/... |
 | `tests/integracao/qa_relatorio_final_test.sh` | `sync` (envio e recebimento): linhas por arquivo do relatorio final com tamanho legivel e motivo, pares em bytes no `--json` | `qa_relatorio_final` (filtro do mapa de modulos) | integracao | QA Expert (suite independente da demanda `relatorio-com-tamanho-e-motivo`) | 8 | RF-208(a-e); RF-59(b)(d) |
+| `tests/integracao/qa_tipo_sem_traducao_test.sh` | `trava` e cursor de `bin/dbx` sob `stat` com tipo de arquivo traduzido (pt_BR): trava orfa, viva, diagnostico e cursor | `qa_tipo_sem_traducao` (filtro do mapa de modulos) | integracao | QA Expert (suite independente da demanda `tipo-de-arquivo-sem-traducao`) | 6 | DIV-395; RF-167; RF-69; RF-70; RF-71; RF-110 |
 | `tests/integracao/qa_retencao_b6_test.sh` | `bin/dbx` (comandos `reter` e `retain`) com `commands/reter.sh`, `lib/retencao.sh`, `lib/filtro.sh`: plano de retencao, lixeira e guarda ... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-6-retencao`) | 60 | log `docs/prompts/2026-10-20_2010_backlog-fase-6-retencao.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-20-2010-retencao.m... |
 | `tests/integracao/qa_retomada_b7a_test.sh` | `bin/dbx` (upload e download retomados) com `commands/upload.sh`, `commands/download.sh`, `commands/unlink.sh`, `commands/diagnostico.sh`... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-7a-retomada`) | 41 | log `docs/prompts/2026-10-20_2315_backlog-fase-7a-retomada.md`; grupos de cenario D (download), L (nao pendurar em entradas nao regulares... |
 | `tests/integracao/qa_robustez_rede_p2_test.sh` | `bin/dbx` download, upload, sync e diagnostico sob falhas de rede, consumidor que fecha cedo, sinais e segredos (`commands/download.sh`, ... | `qa_robustez` | integracao | QA Expert (suite independente da demanda `robustez-de-rede-p2`) | 21 | RNF-30(c); RNF-07(e); RF-32(b); RF-59; RNF-31; log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md` |
@@ -83,7 +84,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/trava_test.sh` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help) com `lib/state.sh` e `lib/tmp.sh`: tr... | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 31 | RF-69, RF-70, RF-71, RNF-35; TC-TRV, TC-ESR, TC-DIA-11..14, TC-TMP-02, 05, 06; DIV-50, DIV-51; F-12, F-31; log `docs/prompts/2026-10-19_1... |
 | `tests/integracao/upload_pasta_test.sh` | `bin/dbx` (`upload` de arquivo para destino que e pasta) com `commands/upload.sh`: grava em `<pasta>/<nome>` sem falhar com `path/conflic... | `commands/upload.sh` | integracao | Senior Developer (TDD da demanda `upload-arquivo-para-pasta`) | 13 | RF-174; log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
 | `tests/integracao/verificar_test.sh` | `bin/dbx verificar` (alias `verify`) (`commands/verificar.sh`, `lib/walk.sh`, `lib/sync.sh`) | `commands/verificar.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-1-consulta-diagnostico`) | 17 | RF-65; TC-VER-01..09; log `docs/prompts/2026-10-19_1050_backlog-fase-1-consulta-diagnostico.md`; protocolo-tdd Regra 6 |
-| `tests/unit/atributos_portavel_test.sh` | `lib/atributos.sh` (`dbx_atributo`), `lib/http.sh` e `lib/transfer.sh` na leitura de atributos de arquivo com `stat` GNU ou BSD | `atributos_portavel` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 11 | RF-167; TC-FBSD-02; TC-FBSD-11; TC-FBSD-19 (parte `stat`); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
+| `tests/unit/atributos_portavel_test.sh` | `lib/atributos.sh` (`dbx_atributo`), `lib/http.sh` e `lib/transfer.sh` na leitura de atributos de arquivo com `stat` GNU ou BSD | `atributos_portavel` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | unitario | Senior Developer (TDD das demandas `suporte-freebsd` e `tipo-de-arquivo-sem-traducao`) | 15 | RF-167; TC-FBSD-02; TC-FBSD-11; TC-FBSD-19 (parte `stat`); DIV-395; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
 | `tests/unit/auth_test.sh` | `lib/auth.sh` (troca de codigo e renovacao de token de curta duracao, revogacao, esquecimento de credencial) | auth_test | unitario | Senior Developer (TDD da demanda `feat(auth): renovacao de token sem escrita do segredo em disco`) | 42 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
 | `tests/unit/cabecalho_test.sh` | `lib/http.sh` (recusa de valor de cabecalho HTTP com CR, LF ou byte de controle antes de chegar ao cliente) | `cabecalho` | unitario | Senior Developer (commit de criacao e0cee97 `test: casos adversariais da recusa de cabecalho, escritos pelo QA`, sem log de prompt) | 17 | Nao aplicavel: anterior a trilha do protocolo; comportamento inferido do codigo do teste |
 | `tests/unit/chmod_portavel_test.sh` | chamadas de `chmod` de `lib/auth.sh`, `lib/state.sh` e `lib/http.sh` (gravacao da credencial, diretorio de estado, modo do alvo no recebi... | chmod_portavel | unitario | Senior Developer (TDD da demanda `suporte-freebsd`) | 6 | RF-166; TC-FBSD-01; TC-FBSD-19 (parte chmod); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
@@ -2963,7 +2964,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Autoria:** Senior Developer (TDD da demanda `suporte-freebsd`)
 - **Regras de origem:** RF-167; TC-FBSD-02; TC-FBSD-11; TC-FBSD-19 (parte `stat`); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`
 - **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
-- **Dados e precondicoes:** duble de `stat` do FreeBSD em `tests/duplos/freebsd/bin/stat` (rejeita `-c`, aceita `-f`) no `PATH`; arquivos temporarios por caso
+- **Dados e precondicoes:** (casos DIV-395: duble `_stat_traduzido_ativar` que traduz `%F` fora de C) duble de `stat` do FreeBSD em `tests/duplos/freebsd/bin/stat` (rejeita `-c`, aceita `-f`) no `PATH`; arquivos temporarios por caso
 - **Comando:** `bash tests/run.sh tests/unit/atributos_portavel_test.sh`
 
 | Caso | O que verifica | Regra especifica |
@@ -2979,6 +2980,10 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_modo_mantem_suid_e_sticky_e_coincide_nas_duas_formas | O modo mantem suid e sticky e coincide nas duas formas de `stat` | |
 | teste_nenhum_stat_com_formato_fora_do_auxiliar | Nenhum `stat` com formato (`-c`/`-f`) e chamado fora do auxiliar | TC-FBSD-02 |
 | teste_recebimento_preserva_o_modo_do_alvo_com_stat_bsd | O recebimento preserva o modo do alvo com `stat` BSD | |
+| teste_duplo_de_stat_traduz_o_tipo_fora_da_localidade_c | Precondicao do DIV-395: o duble traduz `%F` em pt_BR e nao traduz sob `LC_ALL=C` | DIV-395 |
+| teste_tipo_do_descritor_e_regular_com_stat_traduzido | `dbx_atributo_fd tipo` e `dbx_fd_regular_proprio` dao regular em pt_BR com stat traduzido | DIV-395 |
+| teste_tipo_do_caminho_e_regular_com_stat_traduzido_e_lc_all_exportado | `dbx_atributo tipo` por caminho com `LC_ALL` exportado em pt_BR devolve `regular file` | DIV-395 |
+| teste_trava_valida_e_legivel_com_stat_traduzido | `dbx_state_trava_ler` de trava valida e legivel em pt_BR (pid e comando lidos) | DIV-395 |
 
 
 ## `tests/unit/auth_test.sh`
@@ -4825,6 +4830,28 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_qa_relfinal_nome_com_controle_ou_quebra_de_linha_nao_cria_linha_a_mais | Nomes com quebra de linha, tabulacao e ESC: 4 linhas `enviado=`, nenhum ESC cru | RF-208; RF-59(d) |
 | teste_qa_relfinal_json_sem_falha_nao_traz_motivo_e_com_falha_o_par_fica_colado | Sem falha, nenhum `falha_*`; com falha, `falha_caminho` seguido de `falha_classe` | RF-208(c); RF-59(b) |
 | teste_qa_relfinal_linhas_de_arquivo_somam_os_contadores_em_envio_e_recebimento | `enviado`+`recebido`+`falha` igual a `enviados`+`recebidos`+`falhas` | RF-208(a)(b) |
+
+
+## `tests/integracao/qa_tipo_sem_traducao_test.sh`
+
+- **Alvo:** `bin/dbx` (`sync`, `diagnostico`): leitura do tipo de arquivo por `stat` independente da localidade (`lib/atributos.sh`, `lib/state.sh`)
+- **Modulo:** `qa_tipo_sem_traducao` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `tipo-de-arquivo-sem-traducao`)
+- **Regras de origem:** DIV-395; RF-167; RF-69/RF-70 (trava); RF-71 (diagnostico); RF-110 (cursor); parecer `docs/reviews/2026-11-03-2001-validacao-qa-tipo-de-arquivo-sem-traducao.md`
+- **Aceite do solicitante:** aceito em 2026-11-03 (prompt 3 do log, reaceite apos a correcao da auditoria `composicao_test`), entrada `2026-11-03-2001-aceite-testes-qa-tipo-de-arquivo-sem-traducao`; sha256 `c88e5c4a7cfe3666c5ab3f5649964d786ab44e48939929ef05385d9f1c91132e`
+- **Dados e precondicoes:** credencial, trava e arvore local sinteticas por caso; duble de `curl` e duble de `stat` que traduz `%F` fora de C; `LANG=pt_BR.UTF-8` (com e sem `LC_ALL`); `DBX_QA_EXEC` aponta outro `bin/dbx`
+- **Comando:** `bash tests/run.sh tests/integracao/qa_tipo_sem_traducao_test.sh`
+- **Observacoes:** contra `bin lib commands` de `origin/develop`, 5 dos 6 casos reprovam; o do `LC_ALL` exportado e guarda e passa na base, porque as funcoes de trava usam `local LC_ALL=C`, que herda o atributo de exportado.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_trava_orfa_e_retomada_em_pt_br_com_stat_traduzido | Trava orfa do mesmo host e retomada com aviso em pt_BR (saida 0, sem 'ilegivel') | DIV-395 |
+| teste_qa_trava_viva_e_dita_ocupada_e_nao_ilegivel_em_pt_br | Trava viva: saida 7, 'trava ocupada' com o pid, sem 'ilegivel' nem pedido de rm, sem chamada a API | DIV-395 |
+| teste_qa_lc_all_exportado_em_pt_br_nao_muda_o_veredito_da_trava | Com `LC_ALL` exportado em pt_BR: viva continua ocupada e orfa continua retomada (guarda; verde tambem na base) | DIV-395 |
+| teste_qa_diagnostico_reporta_trava_viva_como_ok_em_pt_br | `diagnostico` reporta `trava=ok: viva` e nao `ilegivel` em pt_BR | DIV-395 |
+| teste_qa_cursor_gravado_continua_incremental_em_pt_br | Cursor gravado na 1a execucao e lido na 2a (`list_folder/continue`), sem descarte, em pt_BR | DIV-395 |
+| teste_qa_trava_realmente_ilegivel_continua_ilegivel_em_pt_br | Controle negativo: trava com lixo continua 'ilegivel' (saida 7) e nao e apagada | DIV-395 |
 
 ## `tests/integracao/qa_pasta_ocupada_test.sh`
 
