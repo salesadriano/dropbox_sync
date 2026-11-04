@@ -61,7 +61,7 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 ### Plataformas e linhas do produto
 
 - **Linha principal** (canal `master`, bash 4.4+): a versão completa, em Linux e FreeBSD.
-- **Linha legada** (canal `support/bash-4.2`, bash 4.2 e 4.3, versão `2.3.2-bash42`): mesmos comandos, para hosts com bash antigo (por exemplo CentOS 7).
+- **Linha legada** (canal `support/bash-4.2`, bash 4.2 e 4.3, versão `2.3.3-bash42`): mesmos comandos, para hosts com bash antigo (por exemplo CentOS 7).
 
 O `install.sh` escolhe a linha pelo bash do host, sem opção a informar; bash abaixo de 4.2 é recusado. **Atualizar é rodar o `install.sh` de novo** (credencial, configuração e estado são preservados); se o bash do host mudou, a linha muda junto, com aviso.
 
@@ -83,9 +83,9 @@ sudo ./install.sh --system   # Instalação global (/usr/local/bin)
 ```
 
 #### Opção C: Instalação a partir do Tarball de Release
-Baixe o arquivo `dropbox_sync-2.3.2-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
+Baixe o arquivo `dropbox_sync-2.3.3-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
 ```bash
-tar -xzf dropbox_sync-2.3.2-linux.tar.gz
+tar -xzf dropbox_sync-2.3.3-linux.tar.gz
 ./install.sh
 ```
 
@@ -266,6 +266,8 @@ Cada opção do `sync` tem um nome em português e um alias em inglês, com o me
 | `--esperar <s>` | `--wait <s>` | Espera até `<s>` segundos (inteiro de `0` a `3600`) pela trava do par; inválido sai com `2` |
 
 No `--enviar`, a soma dos arquivos a transferir (omitidos e exclusões não contam; sobrescrita conta o arquivo novo inteiro) é conferida com o espaço livre da conta numa única consulta: se não cabe, o plano sai e a execução é recusada com código `12` **antes de qualquer escrita**, inclusive das exclusões do `--espelhar` e da gravação da memória. Com `--dry-run`, o plano só anuncia `recusaria=...`. O `--forcar` não muda a decisão por `content_hash`: arquivo idêntico continua omitido.
+
+**Relatório final por arquivo:** ao terminar, antes dos contadores (`enviados`, `recebidos`, `apagados`, `omitidos`, `falhas`), o `sync` lista cada arquivo concluído com o tamanho em unidades decimais (`enviado=docs/a.pdf (12.4 MB)`, `recebido=fotos/b.jpg (3.2 MB)`; bytes abaixo de 1 KB, uma casa decimal truncada em KB, MB, GB e TB) e cada arquivo que falhou com a classe e o motivo (`falha=docs/c.txt (1.0 MB): conflito path/conflict/file`). As linhas saem na mesma forma em que o relatório é lido num log (`chave=valor` sem terminal, `chave: valor` no terminal). Com `--json`, os campos existentes não mudam: cada falha ganha `falha_motivo` e `falha_tamanho` (bytes) ao lado de `falha_caminho`/`falha_classe`, e cada arquivo concluído vira o par `enviado_caminho`/`enviado_tamanho` (ou `recebido_*`), em bytes. A linha `falha <caminho>: <classe> <motivo>` em `stderr` continua (num `nohup ... > log 2>&1` a mesma falha aparece duas vezes, uma por canal). As linhas `enviado=`, `recebido=` e `falha=` são para leitura humana: um caminho pode conter espaço ou parêntese, e por isso o contrato para scripts é o `--json`, em bytes. Ao filtrar o log, ancore no início da linha (`grep '^falha='`), porque `falha=` e `falhas=`, `enviado=` e `enviados=` diferem por uma letra. O relatório usa unidades decimais (1 MB = 1.000.000 B); a barra de progresso (`-p`) usa KiB/MiB, então o mesmo arquivo pode mostrar números diferentes nos dois lugares.
 
 Repetir uma opção, ainda que pelos dois nomes, segue a mesma regra: opção com valor vale o último valor dado (`--origem a --source b` usa `b`); opção sem valor é idempotente; um segundo sentido (`--enviar --push`, `--push --pull`) é recusado como uso inválido.
 

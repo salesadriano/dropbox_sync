@@ -426,4 +426,20 @@ teste_diagnostico_mascara_pelo_valor_antes_da_redacao_por_forma() {
     'nenhum pedaco do token em memoria sobra'
 }
 
+teste_tamanho_humano_usa_unidades_decimais_com_uma_casa() {
+  # RF-208: KB, MB, GB e TB decimais (1 KB = 1000 B), uma casa a partir de KB,
+  # bytes inteiros abaixo de 1 KB; teto em TB; valor invalido vira vazio.
+  local obtido
+  local -a casos=(0:'0 B' 999:'999 B' 1000:'1.0 KB' 1536:'1.5 KB' 12400000:'12.4 MB' 1048577:'1.0 MB'
+    1500000000:'1.5 GB' 2000000000000:'2.0 TB' 5000000000000000:'5000.0 TB')
+  local caso
+  for caso in "${casos[@]}"; do
+    dbx_output_tamanho_humano "${caso%%:*}" obtido
+    assert_igual "${caso#*:}" "$obtido" "tamanho humano de ${caso%%:*}"
+  done
+  dbx_output_tamanho_humano 'x' obtido
+  assert_igual '' "$obtido" 'valor que nao e numero vira vazio'
+  assert_igual '4 B' "$(dbx_output_tamanho_humano 4)" 'sem variavel de destino, imprime'
+}
+
 harness_executar "$@"

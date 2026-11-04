@@ -85,6 +85,12 @@ fi
 if [[ $url == *list_folder* && -f "$base/listagem_codigo" ]]; then
   codigo=$(cat "$base/listagem_codigo")
 fi
+# DIV-394: o `list_folder` cujo `path` e o caminho marcado recebe `path/not_folder`
+# (na Dropbox, aquele caminho e um ARQUIVO); os demais seguem a listagem comum.
+if [[ $url == *files/list_folder && -f "$base/nao_pasta" && -n $corpo_arquivo ]] \
+  && grep -qF "\"path\":\"$(cat "$base/nao_pasta")\"" "$corpo_arquivo"; then
+  codigo=409; corpo='{"error_summary":"path/not_folder/..","error":{".tag":"path","path":{".tag":"not_folder"}}}'
+fi
 for tipo in upload:files/upload download:files/download delete:files/delete_v2; do
   if [[ $url == *"${tipo#*:}" && -f "$base/${tipo%%:*}_erro" ]]; then
     codigo=$(cat "$base/${tipo%%:*}_erro")
@@ -670,6 +676,77 @@ teste_conflito_de_rev_nao_sobrescreve_e_conta_como_falha() {
   assert_igual 2 "$(_harness_contar 'files/upload$' "$base/chamadas")" 'uma tentativa por item, sem repeticao'
 }
 
+teste_relatorio_final_lista_cada_arquivo_enviado_com_o_tamanho() {
+  # RF-208(a): ao fim, uma linha por arquivo concluido com o tamanho legivel
+  # (unidades decimais), ANTES dos contadores; sequencial e em paralelo. Sem
+  # terminal (nohup, teste) a saida e `chave=valor`, a mesma forma em que o
+  # operador le o relatorio no log.
+  local base modo
+  for modo in sequencial paralelo; do
+    base=$(_cenario)
+    head -c 1500 /dev/zero >"$base/local/a.txt"
+    printf 'abcd' >"$base/local/b.txt"
+    if [[ $modo == paralelo ]]; then
+      _rodar "$base" sync --enviar --origem "$base/local" --destino /r --paralelo 2
+    else
+      _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+    fi
+    assert_igual 0 "$DBX_ESTADO" "envio ($modo) conclui; diagnostico: $DBX_ERRO"
+    assert_contem 'enviado=a.txt (1.5 KB)' "$DBX_SAIDA" "a.txt sai com o tamanho ($modo)"
+    assert_contem 'enviado=b.txt (4 B)' "$DBX_SAIDA" "b.txt sai com o tamanho ($modo)"
+    assert_contem $'enviado=b.txt (4 B)\noperacao=sync' "$DBX_SAIDA" "os arquivos vem antes dos contadores ($modo)"
+    assert_nao_contem 'falha=' "$DBX_SAIDA" "sem falha, nenhuma linha de falha ($modo)"
+  done
+}
+
+teste_relatorio_final_traz_a_falha_com_tamanho_e_motivo() {
+  # RF-208(b): a falha por item entra no relatorio final com o tamanho e o
+  # motivo (classe e resumo), na saida padrao; a linha de stderr (RF-59) fica.
+  local base
+  base=$(_cenario)
+  head -c 1048577 /dev/zero >"$base/local/x.txt"
+  printf 'arquivo novo' >"$base/local/y.txt"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota_com_rev '/r/x.txt' "$RESUMO_ZERADO" 5 015abc)" >"$base/listagem"
+  printf '/r/x.txt' >"$base/upload_conflito"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_contem 'falha=x.txt (1.0 MB): conflito path/conflict' "$DBX_SAIDA" 'a falha sai com tamanho, classe e motivo'
+  assert_contem 'enviado=y.txt (12 B)' "$DBX_SAIDA" 'o item que concluiu sai com o tamanho'
+  assert_nao_contem 'falha_motivo=' "$DBX_SAIDA" 'sem --json, nenhum par novo de RF-59(b)'
+  assert_contem 'falha x.txt: conflito path/conflict' "$DBX_ERRO" 'RF-59(a): a linha de stderr permanece'
+}
+
+teste_relatorio_final_estruturado_acrescenta_motivo_tamanho_e_arquivos_concluidos() {
+  # RF-208(c): no --json nenhum campo existente muda; `falha_caminho`/`falha_classe`
+  # ganham `falha_motivo` e `falha_tamanho` (bytes) e, depois, cada concluido
+  # vira `enviado_caminho`/`enviado_tamanho` (bytes).
+  local base
+  base=$(_cenario)
+  head -c 1048577 /dev/zero >"$base/local/x.txt"
+  printf 'arquivo novo' >"$base/local/y.txt"
+  printf '{"entries":[%s],"has_more":false}' \
+    "$(_entrada_remota_com_rev '/r/x.txt' "$RESUMO_ZERADO" 5 015abc)" >"$base/listagem"
+  printf '/r/x.txt' >"$base/upload_conflito"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r
+  assert_contem $'falhas=1\nfalha_caminho=x.txt\nfalha_classe=conflito\nfalha_motivo=path/conflict' "$DBX_SAIDA" \
+    'o par existente continua e ganha o motivo'
+  assert_contem 'falha_tamanho=1048577' "$DBX_SAIDA" 'o tamanho da falha em bytes'
+  assert_contem $'enviado_caminho=y.txt\nenviado_tamanho=12' "$DBX_SAIDA" 'o concluido em bytes'
+  assert_contem 'enviado=y.txt (12 B)' "$DBX_SAIDA" 'a linha legivel tambem sai no --json'
+}
+
+teste_relatorio_final_do_recebimento_traz_o_tamanho_do_arquivo_recebido() {
+  # RF-208(a) no --receber: o tamanho e o do arquivo gravado no local.
+  local base
+  base=$(_cenario)
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/sub/a.txt' 'ff' 3)" >"$base/listagem"
+  _rodar "$base" sync --receber --origem /r --destino "$base/local"
+  assert_igual 0 "$DBX_ESTADO" "recebimento conclui; diagnostico: $DBX_ERRO"
+  assert_contem 'recebido=sub/a.txt (15 B)' "$DBX_SAIDA" 'o recebido sai com o tamanho gravado'
+  _rodar "$base" --json sync --receber --origem /r --destino "$base/local2"
+  assert_contem $'recebido_caminho=sub/a.txt\nrecebido_tamanho=15' "$DBX_SAIDA" 'estruturado em bytes'
+}
+
 teste_envio_acima_do_teto_vai_por_sessao_com_rev() {
   # TC-SYE-01. Arquivo esparso: o que se verifica e o roteamento por tamanho
   # medido, sem materializar 150 MiB de conteudo.
@@ -1159,6 +1236,40 @@ teste_enumeracao_remota_que_falha_sai_com_o_codigo_da_classe() {
   assert_diferente 0 "$DBX_ESTADO" "enumeracao recusada nunca sai com sucesso; diagnostico: $DBX_ERRO"
   assert_igual "$(dbx_errors_codigo_saida "$(dbx_errors_classificar 403 'no_permission/..')")" "$DBX_ESTADO" \
     "enumeracao recusada sai com o codigo da classe; diagnostico: $DBX_ERRO"
+  assert_igual 0 "$(_escritas "$base")" 'nada escrito sem a listagem remota'
+}
+
+teste_arquivo_remoto_com_o_nome_de_uma_pasta_local_nao_encerra_o_sync() {
+  # DIV-394 (producao, 2.3.2): no ciclo, a listagem do subdiretorio `sub` recebe
+  # `path/not_folder` porque na Dropbox `sub` e um ARQUIVO. Isso e pasta remota
+  # vazia com aviso, nao falha da enumeracao: o arquivo homonimo e orfao (RF-47)
+  # e o conteudo local da pasta entra no plano.
+  local base
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  mkdir -p "$base/local/sub"
+  printf 'b' >"$base/local/sub/b.txt"
+  printf '{"entries":[%s],"has_more":false}' "$(_entrada_remota '/r/sub' 'ff' 1)" >"$base/listagem"
+  printf '%s' '/r/sub' >"$base/nao_pasta"
+  _rodar "$base" --json sync --enviar --origem "$base/local" --destino /r --espelhar --confirmar
+  assert_igual 0 "$DBX_ESTADO" "path/not_folder num subdiretorio nao encerra o sync; diagnostico: $DBX_ERRO"
+  assert_contem 'transferir=sub/b.txt' "$DBX_SAIDA" 'o conteudo da pasta local e planejado'
+  assert_contem 'apagar=sub' "$DBX_SAIDA" 'RF-47: o arquivo que ocupa o nome da pasta e orfao do espelhamento'
+  assert_contem '/r/sub' "$DBX_ERRO" 'o aviso nomeia o caminho remoto recusado'
+  assert_contem 'arquivo na Dropbox' "$DBX_ERRO" 'o aviso diz que ha um arquivo no lugar da pasta'
+  assert_igual 1 "$(_exclusoes "$base")" 'o arquivo homonimo e apagado ao fim do ciclo'
+}
+
+teste_destino_remoto_que_e_um_arquivo_falha_nomeando_o_caminho() {
+  # DIV-394: na RAIZ do destino, `path/not_folder` continua falha da enumeracao
+  # (o destino inteiro e um arquivo), e o motivo nomeia o caminho remoto.
+  local base
+  base=$(_cenario)
+  printf 'a' >"$base/local/a.txt"
+  printf '%s' '/r' >"$base/nao_pasta"
+  _rodar "$base" sync --enviar --origem "$base/local" --destino /r
+  assert_igual "$(dbx_errors_codigo_saida uso_invalido)" "$DBX_ESTADO" "destino que e arquivo sai com a classe de not_folder; diagnostico: $DBX_ERRO"
+  assert_contem 'recusada em /r:' "$DBX_ERRO" 'o motivo nomeia o caminho remoto recusado'
   assert_igual 0 "$(_escritas "$base")" 'nada escrito sem a listagem remota'
 }
 
