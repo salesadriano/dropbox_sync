@@ -62,6 +62,10 @@ _dbx_atributos_formato_gnu=''
 _dbx_atributos_formato_bsd=''
 
 # _dbx_atributos_formatos <campo> — define os dois formatos; 1 se o campo e desconhecido.
+#
+# Todo `stat` deste modulo roda sob `LC_ALL=C` (DIV-395): `%F` sai traduzido na
+# localidade do usuario ("arquivo comum" em pt_BR no Oracle Linux 7) e o tipo
+# deixaria de ser `regular`; os demais campos sao numericos e nao mudam.
 _dbx_atributos_formatos() {
   local tab=$'\t'
   case $1 in
@@ -99,7 +103,7 @@ dbx_atributo() {
     # Sem forma BSD: tenta so a GNU e falha no BSD ("nao verificado").
     # Captura (e nao `read < <()`) para o status do stat decidir: o BSD ainda
     # imprime algo para o operando valido ao recusar os demais.
-    leitura=$(stat -f -c %T -- "$2" 2>/dev/null) || return 1
+    leitura=$(LC_ALL=C stat -f -c %T -- "$2" 2>/dev/null) || return 1
     DBX_ATRIBUTO=$leitura
     return 0
   fi
@@ -109,9 +113,9 @@ dbx_atributo() {
   # terminar nem devolve o status dele, e quem chama confere o arquivo logo em
   # seguida (barreira de inode do `.part`).
   if [[ $_dbx_atributos_forma == gnu ]]; then
-    leitura=$(stat ${seguir[@]+"${seguir[@]}"} -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null) || return 1
+    leitura=$(LC_ALL=C stat ${seguir[@]+"${seguir[@]}"} -c "$_dbx_atributos_formato_gnu" -- "$2" 2>/dev/null) || return 1
   else
-    leitura=$(stat ${seguir[@]+"${seguir[@]}"} -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null) || return 1
+    leitura=$(LC_ALL=C stat ${seguir[@]+"${seguir[@]}"} -f "$_dbx_atributos_formato_bsd" -- "$2" 2>/dev/null) || return 1
     _dbx_atributos_normalizar_modo "$1"
   fi
   # shellcheck disable=SC2034  # canal publico, lido pelo chamador
@@ -146,9 +150,9 @@ dbx_atributo_fd() {
   # A redirecao do erro vem ANTES da do descritor, para um descritor fechado nao
   # escrever a mensagem do shell.
   if [[ $_dbx_atributos_forma == gnu ]]; then
-    leitura=$(stat -L -c "$_dbx_atributos_formato_gnu" - 2>/dev/null <&"$2") || return 1
+    leitura=$(LC_ALL=C stat -L -c "$_dbx_atributos_formato_gnu" - 2>/dev/null <&"$2") || return 1
   else
-    leitura=$(stat -f "$_dbx_atributos_formato_bsd" 2>/dev/null <&"$2") || return 1
+    leitura=$(LC_ALL=C stat -f "$_dbx_atributos_formato_bsd" 2>/dev/null <&"$2") || return 1
     _dbx_atributos_normalizar_modo "$1"
   fi
   if [[ $1 == tipo ]]; then
@@ -177,9 +181,9 @@ dbx_fd_regular_proprio() {
 # permissao) nunca decide a forma. 1 se nenhuma das duas formas funciona.
 _dbx_atributos_aprender_forma() {
   [[ -n $_dbx_atributos_forma ]] && return 0
-  if stat -c %a -- "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
+  if LC_ALL=C stat -c %a -- "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
     _dbx_atributos_forma=gnu
-  elif stat -f %Lp -- "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
+  elif LC_ALL=C stat -f %Lp -- "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
     _dbx_atributos_forma=bsd
   else
     return 1

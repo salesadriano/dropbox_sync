@@ -13,6 +13,10 @@
 # shellcheck disable=SC2034
 # Justificativa: canais de lib/auth e lib/http ajustados pelos casos.
 #
+# shellcheck disable=SC2030,SC2031
+# Justificativa: os casos do DIV-395 mudam a localidade so no subshell do caso,
+# de proposito, para nao vazar para os demais.
+#
 # shellcheck source=tests/support/harness.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/../support/harness.sh"
 . "$DBX_HARNESS_RAIZ/tests/support/freebsd.sh"
@@ -286,6 +290,96 @@ teste_nenhum_stat_com_formato_fora_do_auxiliar() {
     achados+=$(_stat_com_formato_fora_do_auxiliar "$arquivo")
   done
   assert_igual '' "$achados" "stat com -c/-f fora de lib/atributos.sh: $achados"
+}
+
+# ---------------------------------------------------------------------------
+# DIV-395: `%F` sai traduzido na localidade do usuario
+# ---------------------------------------------------------------------------
+# No Oracle Linux 7 em pt_BR, com as traducoes do coreutils, `stat -c %F` de um
+# arquivo comum responde "arquivo comum", nao "regular file"; o produto via toda
+# trava existente como ilegivel. O duble abaixo traduz como o coreutils, pela
+# mesma precedencia de localidade (LC_ALL, LC_MESSAGES, LANG).
+
+_stat_traduzido_ativar() {
+  local area=$1 real
+  real=$(command -v stat)
+  mkdir -p "$area/bin"
+  {
+    printf '#!%s\n' "$BASH"
+    printf 'real=%q\n' "$real"
+    cat <<'DUBLE'
+loc=${LC_ALL:-${LC_MESSAGES:-${LANG:-C}}}
+case $loc in
+  C | C.* | POSIX) exec "$real" "$@" ;;
+esac
+saida=$("$real" "$@") || exit $?
+saida=${saida//regular empty file/arquivo comum vazio}
+saida=${saida//regular file/arquivo comum}
+saida=${saida//directory/diretorio}
+printf '%s\n' "$saida"
+DUBLE
+  } >"$area/bin/stat"
+  chmod 755 "$area/bin/stat"
+  PATH="$area/bin:$PATH"
+  _dbx_atributos_forma=''
+}
+
+teste_duplo_de_stat_traduz_o_tipo_fora_da_localidade_c() {
+  local area
+  area=$(_area)
+  printf 'x' >"$area/a"
+  (
+    _stat_traduzido_ativar "$area"
+    unset LC_ALL LC_MESSAGES
+    export LANG=pt_BR.UTF-8
+    assert_igual 'arquivo comum' "$(stat -c %F -- "$area/a")" 'em pt_BR o duble traduz'
+    assert_igual 'regular file' "$(LC_ALL=C stat -c %F -- "$area/a")" 'sob C nao traduz'
+  )
+}
+
+teste_tipo_do_descritor_e_regular_com_stat_traduzido() {
+  local area fd
+  area=$(_area)
+  printf 'x' >"$area/a"
+  (
+    _stat_traduzido_ativar "$area"
+    unset LC_ALL LC_MESSAGES
+    export LANG=pt_BR.UTF-8
+    exec {fd}<"$area/a"
+    dbx_atributo_fd tipo "$fd"
+    assert_igual regular "$DBX_ATRIBUTO" 'tipo pelo descritor em pt_BR'
+    dbx_fd_regular_proprio "$fd" || _harness_falhar 'arquivo proprio dado como alheio em pt_BR'
+    exec {fd}<&-
+  )
+}
+
+teste_tipo_do_caminho_e_regular_com_stat_traduzido_e_lc_all_exportado() {
+  local area
+  area=$(_area)
+  printf 'x' >"$area/a"
+  (
+    _stat_traduzido_ativar "$area"
+    unset LC_MESSAGES
+    export LC_ALL=pt_BR.UTF-8 LANG=pt_BR.UTF-8
+    dbx_atributo tipo "$area/a"
+    assert_igual 'regular file' "$DBX_ATRIBUTO" 'LC_ALL exportado nao traduz o tipo'
+  )
+}
+
+teste_trava_valida_e_legivel_com_stat_traduzido() {
+  local area estado
+  area=$(_area)
+  printf 'dbx-trava\t1\t%s\thost:boot:1\t%s\tsync\tfim\n' 4242 1700000000 >"$area/trava"
+  (
+    _stat_traduzido_ativar "$area"
+    unset LC_ALL LC_MESSAGES
+    export LANG=pt_BR.UTF-8
+    dbx_state_trava_ler "$area/trava"
+    estado=$?
+    assert_igual 0 "$estado" 'trava valida e legivel em pt_BR'
+    assert_igual 4242 "$DBX_STATE_TRAVA_PID"
+    assert_igual sync "$DBX_STATE_TRAVA_COMANDO"
+  )
 }
 
 harness_executar "$@"
