@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
-Atualizado em: 2026-11-03, demanda `relatorio-com-tamanho-e-motivo` (`docs/prompts/2026-11-03_1203_relatorio-com-tamanho-e-motivo.md`), pelo QA Expert (suite `qa_relatorio_final` e casos do `sync_test`/`output_test`), integrada com a demanda `arquivo-remoto-no-lugar-da-pasta` (PR #87: suite `qa_pasta_ocupada` e casos do `sync_test`) na mesma data; antes, 2026-11-02, demanda `diretorio-chamado-hifen`.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 121 arquivos, 2951 casos, 0 divergencias.
+Atualizado em: 2026-11-04, demanda `trava-raiz-diretorio-sumido` (`docs/prompts/2026-11-04_1742_trava-raiz-diretorio-sumido.md`), pelo Tech Lead com a suite do QA Expert (`qa_trava_raiz_diretorio_sumido`, 6 casos) e 3 casos `pft_espera_*` em `state_trava_raiz_test.sh`.
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 122 arquivos, 2960 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
@@ -69,6 +69,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_regex_portavel_b17_test.sh` | todas as expressoes regulares de `lib/`, `commands/`, `bin/`, `install.sh` e `uninstall.sh` (limite de repeticao RE_DUP_MAX 255 do FreeBS... | qa_regex_portavel_b17 | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 19 | RF-166; TC-FBSD-19 (parte regex); log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada](../../.github/agents/memoria/entradas/... |
 | `tests/integracao/qa_relatorio_final_test.sh` | `sync` (envio e recebimento): linhas por arquivo do relatorio final com tamanho legivel e motivo, pares em bytes no `--json` | `qa_relatorio_final` (filtro do mapa de modulos) | integracao | QA Expert (suite independente da demanda `relatorio-com-tamanho-e-motivo`) | 8 | RF-208(a-e); RF-59(b)(d) |
 | `tests/integracao/qa_tipo_sem_traducao_test.sh` | `trava` e cursor de `bin/dbx` sob `stat` com tipo de arquivo traduzido (pt_BR): trava orfa, viva, diagnostico e cursor | `qa_tipo_sem_traducao` (filtro do mapa de modulos) | integracao | QA Expert (suite independente da demanda `tipo-de-arquivo-sem-traducao`) | 6 | DIV-395; RF-167; RF-69; RF-70; RF-71; RF-110 |
+| `tests/integracao/qa_trava_raiz_diretorio_sumido_test.sh` | `lib/state.sh`: espera pela trava de raiz quando o detentor remove o diretorio de estado ao soltar; guardas de permissao e limite de repeticoes | `qa_trava_raiz_diretorio_sumido` (filtro do mapa de modulos) | integracao | QA Expert (suite independente da demanda `trava-raiz-diretorio-sumido`) | 6 | DIV-396; RF-69; RF-70 |
 | `tests/integracao/qa_retencao_b6_test.sh` | `bin/dbx` (comandos `reter` e `retain`) com `commands/reter.sh`, `lib/retencao.sh`, `lib/filtro.sh`: plano de retencao, lixeira e guarda ... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-6-retencao`) | 60 | log `docs/prompts/2026-10-20_2010_backlog-fase-6-retencao.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-20-2010-retencao.m... |
 | `tests/integracao/qa_retomada_b7a_test.sh` | `bin/dbx` (upload e download retomados) com `commands/upload.sh`, `commands/download.sh`, `commands/unlink.sh`, `commands/diagnostico.sh`... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-7a-retomada`) | 41 | log `docs/prompts/2026-10-20_2315_backlog-fase-7a-retomada.md`; grupos de cenario D (download), L (nao pendurar em entradas nao regulares... |
 | `tests/integracao/qa_robustez_rede_p2_test.sh` | `bin/dbx` download, upload, sync e diagnostico sob falhas de rede, consumidor que fecha cedo, sinais e segredos (`commands/download.sh`, ... | `qa_robustez` | integracao | QA Expert (suite independente da demanda `robustez-de-rede-p2`) | 21 | RNF-30(c); RNF-07(e); RF-32(b); RF-59; RNF-31; log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md` |
@@ -126,7 +127,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/unit/retencao_test.sh` | `lib/retencao.sh` (politica pura de `--manter` e `--dias`, carimbo, guardas) e casamento de nome avulso de `lib/filtro.sh` | `retencao_test` | unitario | Senior Developer (TDD da demanda `backlog-fase-6-retencao`) | 38 | F-10; RF-93(e)(f)(g)(h)(j); RF-95; RF-97(b); TC-RTA-05..07; TC-RTP-01..12; TC-RTG-03..05; TC-RTG-09; log `docs/prompts/2026-10-20_2010_ba... |
 | `tests/unit/retomada_estado_test.sh` | registro de retomada (`retomada-*`), travas de registro, poda e barreira do `.part` em `lib/state.sh` | `lib/state.sh` | unitario | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 26 | F-03; RF-61 (emenda C3); RF-101; RF-105; RF-107; TC-RME-01, 03..11, 13; TC-UPC-13; TC-RMC-02; TC-RMC-03; TC-RML-01..04; parecer do DBA C1... |
 | `tests/unit/state_test.sh` | `lib/state.sh` (cache unico de `content_hash`: carga, gravacao atomica, namespaces `memoria-*` do sync e `upload-*` do upload, identidade... | state | unitario | Senior Developer (TDD da demanda `cache-unico-p3`) | 24 | RNF-32(d); RNF-33; log `docs/prompts/2026-10-18_2243_cache-unico-p3.md` |
-| `tests/unit/state_trava_raiz_test.sh` | `lib/state.sh`: trava por raiz local canonica entre processos | `state_trava_raiz` | unitario | Senior Developer (TDD da demanda `backlog-fase-8-perfis`) | 9 | F-18; RF-132; DIV-250; TC-PFT-01..03; TC-PFT-06..08; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md` |
+| `tests/unit/state_trava_raiz_test.sh` | `lib/state.sh`: trava por raiz local canonica entre processos | `state_trava_raiz` | unitario | Senior Developer (TDD da demanda `backlog-fase-8-perfis`) | 12 | F-18; RF-132; DIV-250; DIV-396; TC-PFT-01..03; TC-PFT-06..08; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md` |
 | `tests/unit/state_trava_test.sh` | `lib/state.sh` (trava de concorrencia por par, retomada de trava orfa, listagem), com apoio de `lib/tmp.sh` e `lib/hash.sh` | state_trava | unitario | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 28 | RF-69; parecer do DBA de 2026-10-19; TC-TRV-12..15, 17, 21..30, 32..34 e a parte de biblioteca de TC-TRV-01, 09..11, 18; DIV-53; log `doc... |
 | `tests/unit/sync_blocos_test.sh` | `dbx_cli_validar_bloco`, `dbx_cmd_bloco`, planejador de ciclos e `dbx_sync_listar_diretorio` | `sync_blocos_test` | unitario | Senior Developer (TDD da demanda `sync-em-blocos`) | 19 | RF-186; RF-187; RF-189; TC-BLC-nn |
 | `tests/unit/sync_plano_test.sh` | `lib/sync.sh` (`dbx_sync_comparar`, traducao do plano para os quatro estados do `verificar`) | sync_plano | unitario | Senior Developer (TDD da demanda `backlog-fase-1-consulta-diagnostico`) | 6 | RF-65(c)(d); log `docs/prompts/2026-10-19_1050_backlog-fase-1-consulta-diagnostico.md` |
@@ -4522,7 +4523,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Modulo:** `state_trava_raiz`
 - **Camada:** unitario
 - **Autoria:** Senior Developer (TDD da demanda `backlog-fase-8-perfis`)
-- **Regras de origem:** F-18; RF-132; DIV-250; TC-PFT-01..03; TC-PFT-06..08; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md`
+- **Regras de origem:** F-18; RF-132; DIV-250; DIV-396 (casos `pft_espera_*`, demanda `trava-raiz-diretorio-sumido`); TC-PFT-01..03; TC-PFT-06..08; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md`
 - **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
 - **Dados e precondicoes:** processos `bash` proprios com `lib/errors`, `json`, `config` e `state`; raizes e diretorio de estado temporarios; disputantes reais da trava
 - **Comando:** `bash tests/run.sh tests/unit/state_trava_raiz_test.sh`
@@ -4533,6 +4534,9 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_pft02_grafias_diferentes_da_mesma_pasta_resolvem_a_mesma_trava | Grafias diferentes da mesma pasta resolvem a mesma trava | TC-PFT-02 |
 | teste_pft_raizes_diferentes_tem_travas_diferentes_e_aninhadas_nao_sao_cobertas | Raizes diferentes tem travas diferentes e raizes aninhadas nao se cobrem | |
 | teste_pft03_espera_cobre_a_trava_e_conclui_quando_a_primeira_termina | A espera cobre a trava e conclui quando a primeira execucao termina | TC-PFT-03 |
+| teste_pft_espera_adquire_quando_o_detentor_remove_o_diretorio_depois_da_checagem | O detentor solta e remove o diretorio de estado entre a conferencia e a sondagem de quem espera: a espera recria o diretorio e adquire (saida 0) | DIV-396 |
+| teste_pft_espera_adquire_quando_a_criacao_do_diretorio_perde_a_corrida | O `mkdir` do diretorio de estado falha porque outro processo o recriou: com o diretorio existente, a espera segue e adquire (saida 0) | DIV-396 |
+| teste_pft_espera_diretorio_sem_escrita_continua_permissao | Diretorio de estado existente sem escrita durante a espera continua saindo 6 (guarda de permissao preservada) | DIV-396 |
 | teste_pft06_trava_orfa_de_processo_morto_e_retomada | Trava orfa de processo morto e retomada | TC-PFT-06 |
 | teste_pft07_a_trava_nao_carrega_credencial_conta_nem_perfil | A trava nao carrega credencial, conta nem perfil | TC-PFT-07 |
 | teste_pft08_par_depois_raiz_libera_na_ordem_inversa_e_falha_da_segunda_libera_a_primeira | O par de travas e liberado na ordem inversa e a falha da segunda libera a primeira | TC-PFT-08 |
@@ -4894,6 +4898,27 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_qa_diagnostico_reporta_trava_viva_como_ok_em_pt_br | `diagnostico` reporta `trava=ok: viva` e nao `ilegivel` em pt_BR | DIV-395 |
 | teste_qa_cursor_gravado_continua_incremental_em_pt_br | Cursor gravado na 1a execucao e lido na 2a (`list_folder/continue`), sem descarte, em pt_BR | DIV-395 |
 | teste_qa_trava_realmente_ilegivel_continua_ilegivel_em_pt_br | Controle negativo: trava com lixo continua 'ilegivel' (saida 7) e nao e apagada | DIV-395 |
+
+## `tests/integracao/qa_trava_raiz_diretorio_sumido_test.sh`
+
+- **Alvo:** `lib/state.sh` (`dbx_state_trava_raiz_adquirir` com espera, `_dbx_state_trava_raiz_garantir_diretorio`, liberacao): quem espera pela trava de raiz quando o detentor remove o diretorio de estado ao soltar
+- **Modulo:** `qa_trava_raiz_diretorio_sumido` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `trava-raiz-diretorio-sumido`)
+- **Regras de origem:** DIV-396; RF-69; RF-70; parecer `docs/reviews/2026-11-04-1742-validacao-qa-trava-raiz-diretorio-sumido.md`
+- **Aceite do solicitante:** aceito em 2026-11-04 (prompt 2 do log), entrada `2026-11-04-1742-aceite-testes-qa-trava-raiz-diretorio-sumido`; sha256 `ccf0339924721ba1b6d5f088a542a5e4574a790c44916fee3243af1e21ab85d9`
+- **Dados e precondicoes:** detentor real (`bash` com `lib/state.sh`) e quem espera em outro processo; duble de `mktemp` no `PATH` de quem espera solta o detentor no ponto exato da sondagem (sem carga nem espera longa); diretorio de estado e raiz temporarios; nao roda como root (o caso de diretorio 0500)
+- **Comando:** `bash tests/run.sh tests/integracao/qa_trava_raiz_diretorio_sumido_test.sh`
+- **Observacoes:** contra `lib/` de `origin/develop` @ `7d974bc`, um caso por vez, 3 dos 6 reprovam; os 3 de guarda (diretorio alheio permanece, sem escrita e de outro dono continuam 6) passam na base de proposito.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_espera_conclui_quando_o_detentor_apaga_o_diretorio_na_janela_da_sondagem | O detentor apaga o diretorio na janela da sondagem: a espera conclui com 0, a trava existe e houve exatamente 3 sondagens | DIV-396 |
+| teste_qa_quem_recriou_o_diretorio_o_remove_ao_soltar_e_nao_deixa_lixo | Quem espera e recriou o diretorio o remove ao soltar, sem deixar lixo | DIV-396 |
+| teste_qa_diretorio_que_a_espera_nao_criou_permanece_ao_soltar | Diretorio e arquivo alheios ficam intactos quando quem espera solta (guarda) | DIV-396 |
+| teste_qa_diretorio_existente_sem_escrita_continua_permissao | Diretorio 0500 existente: saida 6 com "diretorio de estado sem escrita" e o caminho, diretorio preservado (guarda) | DIV-396 |
+| teste_qa_diretorio_de_outro_dono_continua_permissao_e_intacto | Diretorio de outro dono: saida 6 com "pertence a outro usuario", nao apagado (guarda) | DIV-396 |
+| teste_qa_diretorio_que_some_a_cada_sondagem_para_no_limite_de_repeticoes | Diretorio que some a cada sondagem: para no limite (1 + 50 repeticoes = 51 sondagens), sai 6 sem laco infinito e desfaz o diretorio recriado | DIV-396 |
 
 ## `tests/integracao/qa_pasta_ocupada_test.sh`
 
