@@ -1130,11 +1130,14 @@ _dbx_state_trava_raiz_garantir_diretorio() {
   done
   if [[ ${#faltam[@]} -gt 0 ]]; then
     # shellcheck disable=SC2174  # deliberado: cada componente criado aqui nasce 0700
-    mkdir -p -m 700 -- "$diretorio" 2>/dev/null || {
+    if mkdir -p -m 700 -- "$diretorio" 2>/dev/null; then
+      _dbx_state_trava_raiz_criados+=("${faltam[@]}")
+    elif [[ ! -d $diretorio ]]; then
       DBX_STATE_MOTIVO="diretorio de estado sem escrita: $diretorio"
       return "$DBX_STATE_ERRO_PERMISSAO"
-    }
-    _dbx_state_trava_raiz_criados+=("${faltam[@]}")
+    fi
+    # Perdeu a corrida para quem recriou (ou soltou) o diretorio: ele existe,
+    # nao e nosso para desfazer, e a conferencia de dono abaixo decide.
   fi
   if ! _dbx_state_diretorio_confiavel "$diretorio"; then
     DBX_STATE_MOTIVO='diretorio de estado pertence a outro usuario'
@@ -1175,7 +1178,23 @@ dbx_state_trava_raiz_adquirir() {
   while :; do
     _dbx_state_trava_tentar "$arquivo" sync
     estado=$?
-    [[ $estado -eq 0 ]] && break
+    if [[ $estado -eq 0 ]]; then
+      # Sondagem anterior pode ter deixado motivo de falha; adquirida, nao vale.
+      DBX_STATE_MOTIVO=''
+      break
+    fi
+    if [[ $estado -eq $DBX_STATE_ERRO_PERMISSAO && ! -d $diretorio && $repeticoes -lt 50 ]]; then
+      # O detentor soltou e removeu o diretorio entre a conferencia e a
+      # sondagem: nao e falta de escrita, e diretorio que sumiu. Recria e tenta
+      # de novo; diretorio que existe e nao grava segue como permissao.
+      repeticoes=$((repeticoes + 1))
+      _dbx_state_trava_raiz_garantir_diretorio "$diretorio" || {
+        estado=$?
+        _dbx_state_trava_raiz_desfazer_diretorio
+        break
+      }
+      continue
+    fi
     if [[ $estado -eq 3 ]]; then
       repeticoes=$((repeticoes + 1))
       [[ $repeticoes -lt 50 ]] && continue

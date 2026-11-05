@@ -105,6 +105,71 @@ teste_pft03_espera_cobre_a_trava_e_conclui_quando_a_primeira_termina() {
   assert_igual 0 "$FILHO_SAIDA" 'esperou e adquiriu'
 }
 
+# DIV-396: o detentor, ao soltar, apaga o diretorio de estado que criou. Quem
+# espera nao pode tratar isso como "sem escrita": o diretorio que sumiu e
+# recriado e a trava adquirida. Os casos forcam a intercalacao no ponto exato
+# (sem carga nem espera longa): _liberar_detentor solta o detentor real e so
+# volta quando o diretorio ja foi removido.
+_liberar_detentor='
+  _liberar_detentor() {
+    : >"$AREA/solta"
+    while [[ -e $ESTADO ]]; do command sleep 0.05; done
+  }
+  # Duble unico de sleep: no caso que define APOS_SOLTAR, a espera de 1 s entre
+  # sondagens solta o detentor e roda o passo proprio do caso, sem esperar de
+  # verdade; sem APOS_SOLTAR, dorme de verdade.
+  sleep() {
+    [[ -n ${APOS_SOLTAR-} ]] || { command sleep "$@"; return; }
+    _liberar_detentor
+    eval "$APOS_SOLTAR"
+  }
+'
+
+teste_pft_espera_adquire_quando_o_detentor_remove_o_diretorio_depois_da_checagem() {
+  _area
+  _segurar "$AREA/dados"
+  _filho "$_liberar_detentor"'
+    eval "$(declare -f _dbx_state_trava_tentar | sed "1s/_dbx_state_trava_tentar/_tentar_original/")"
+    chamadas=0
+    _dbx_state_trava_tentar() {
+      chamadas=$((chamadas + 1))
+      # 2a sondagem: o diretorio ja foi conferido e o detentor o remove agora.
+      [[ $chamadas -eq 2 ]] && _liberar_detentor
+      _tentar_original "$@"
+    }
+    dbx_state_trava_raiz_adquirir "$1" 5
+    printf "%s" "$?"
+  ' "$AREA/dados"
+  wait "$SEGURANDO" 2>/dev/null
+  assert_igual 0 "$FILHO_SAIDA" 'adquiriu apos o detentor remover o diretorio'
+}
+
+teste_pft_espera_adquire_quando_a_criacao_do_diretorio_perde_a_corrida() {
+  _area
+  _segurar "$AREA/dados"
+  _filho "$_liberar_detentor"'
+    APOS_SOLTAR="mkdir() { command mkdir \"\$@\"; return 1; }"
+    dbx_state_trava_raiz_adquirir "$1" 5
+    printf "%s" "$?"
+  ' "$AREA/dados"
+  wait "$SEGURANDO" 2>/dev/null
+  assert_igual 0 "$FILHO_SAIDA" 'adquiriu com o diretorio recriado por outro'
+}
+
+teste_pft_espera_diretorio_sem_escrita_continua_permissao() {
+  _area
+  _segurar "$AREA/dados"
+  _filho "$_liberar_detentor"'
+    APOS_SOLTAR="command mkdir -p -m 500 \"\$ESTADO\""
+    dbx_state_trava_raiz_adquirir "$1" 2
+    estado=$?
+    chmod 700 "$ESTADO"
+    printf "%s" "$estado"
+  ' "$AREA/dados"
+  _soltar
+  assert_igual 6 "$FILHO_SAIDA" 'guarda real de permissao preservada'
+}
+
 teste_pft06_trava_orfa_de_processo_morto_e_retomada() {
   _area
   local host chave
