@@ -2,10 +2,26 @@
 # lib/lote.sh — operacoes em lote da fase 9 (F-08; RF-136, RF-137; DIV-259, 262, 263).
 #
 # Camada: adaptadores. Depende de lib/auth, lib/http e lib/json (carregados pelo
-# comando). Duas operacoes:
+# comando). Tres operacoes:
 #
 #   dbx_lote_excluir        `files/delete_batch` + `delete_batch/check` (exclusao)
 #   dbx_lote_concluir_envio `upload_session/finish_batch_v2` (envio de pequenos)
+#   dbx_lote_criar_pastas   `files/create_folder_batch` + `create_folder_batch/check`
+#                           (arvore remota antes da transferencia; RF-210, RF-213)
+#
+# CONTRATO DE dbx_lote_criar_pastas (lido pelos comandos):
+#   entrada  DBX_LOTE_PASTAS: vetor de caminhos remotos ja canonicos (absolutos,
+#            sem barra final). Vetor, e nao texto por linha, para que caminho com
+#            quebra de linha ou TAB nao desloque a posicao.
+#   saida    DBX_LOTE_PASTAS_RESULTADO[i], na posicao da entrada i:
+#              criada            confirmada `success` pelo servidor
+#              existia           `path/conflict/folder` (sucesso; nao conta como criada)
+#              falha<TAB>motivo  motivo curto, so texto do dbx, termina no caminho
+#            Na falha sistemica, DBX_LOTE_PASTAS_CLASSE (classe da taxonomia) e
+#            DBX_LOTE_PASTAS_MOTIVO; o que nao chegou a ser confirmado sai
+#            `falha<TAB>criacao de pastas interrompida: <motivo>`.
+#   status   0 tudo criada/existia; DBX_LOTE_PASTAS_FALHA_ITEM (1) ao menos uma
+#            falha de item; DBX_LOTE_PASTAS_FALHA_SISTEMICA (2) parada (RF-213(b)).
 #
 # NENHUM ESTADO ENTRE EXECUCOES (DIV-263, RNF-38(c)): o job pendente nao e
 # gravado; a exclusao que o servidor concluiu reaparece como ausente na proxima
@@ -388,5 +404,254 @@ dbx_lote_concluir_envio() {
   done
   dbx_json_descartar lote
   dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Criacao de pastas em lote (F-103; RF-210, RF-213; DIV-398)
+# ---------------------------------------------------------------------------
+
+# Caminhos por `create_folder_batch` (DIV-398: o limite oficial NAO e documentado;
+# 250, como a exclusao, cabe no teto do analisador de JSON). Constante unica.
+readonly DBX_LOTE_PASTAS_FATIA=250
+readonly DBX_LOTE_PASTAS_FALHA_ITEM=1
+readonly DBX_LOTE_PASTAS_FALHA_SISTEMICA=2
+readonly DBX_LOTE_URL_PASTAS='https://api.dropboxapi.com/2/files/create_folder_batch'
+readonly DBX_LOTE_URL_PASTAS_CONFERIR='https://api.dropboxapi.com/2/files/create_folder_batch/check'
+
+declare -ga DBX_LOTE_PASTAS=() DBX_LOTE_PASTAS_RESULTADO=()
+DBX_LOTE_PASTAS_CLASSE='' DBX_LOTE_PASTAS_MOTIVO=''
+# Indices da fatia em voo e a ultima resposta lida (tag e detalhe).
+declare -ga _DBX_LOTE_PASTAS_VOO=()
+_DBX_LOTE_PASTAS_TAG='' _DBX_LOTE_PASTAS_DETALHE=''
+
+# _dbx_lote_pastas_parar <classe> <motivo> — registra a falha sistemica (a primeira vence).
+_dbx_lote_pastas_parar() {
+  [[ -n $DBX_LOTE_PASTAS_CLASSE ]] && return 0
+  DBX_LOTE_PASTAS_CLASSE=${1:-erro_remoto} DBX_LOTE_PASTAS_MOTIVO=$2
+  return 0
+}
+
+# _dbx_lote_pastas_recusa <prefixo> — requisicao recusada depois do que o cliente
+# HTTP ja retentou (RNF-21) e da renovacao unica do token: sempre sistemica.
+_dbx_lote_pastas_recusa() {
+  if dbx_auth_falha_e_do_token; then
+    dbx_auth_falhar_com _dbx_lote_pastas_parar
+    return 0
+  fi
+  _dbx_lote_resumo_http
+  _dbx_lote_pastas_parar "${DBX_HTTP_CLASSE:-erro_remoto}" "$1: $_DBX_LOTE_RESUMO"
+}
+
+# _dbx_lote_pastas_conferir — confere `entries` (contexto `lote` corrente) por
+# posicao contra _DBX_LOTE_PASTAS_VOO (DIV-399).
+_dbx_lote_pastas_conferir() {
+  local total=${#_DBX_LOTE_PASTAS_VOO[@]} n=0 k i caminho falha sub motivo
+  if dbx_json_existe entries; then
+    n=$(dbx_json_tamanho_arranjo entries 2>/dev/null) || n=0
+  fi
+  if ((n > total)); then
+    _dbx_lote_pastas_parar erro_remoto 'resposta do lote de pastas incoerente: mais entradas que o enviado'
+    return 0
+  fi
+  for ((k = 0; k < total; k++)); do
+    i=${_DBX_LOTE_PASTAS_VOO[k]}
+    caminho=${DBX_LOTE_PASTAS[i]}
+    if ((k >= n)); then
+      DBX_LOTE_PASTAS_RESULTADO[i]="falha"$'\t'"sem confirmacao do servidor: $caminho"
+      continue
+    fi
+    _dbx_lote_ler_marca entries "$k" '.tag'
+    case $_DBX_LOTE_MARCA in
+      success) DBX_LOTE_PASTAS_RESULTADO[i]='criada' ;;
+      failure)
+        _dbx_lote_ler_marca entries "$k" failure '.tag'
+        falha=$_DBX_LOTE_MARCA sub=''
+        if [[ $falha == 'path' ]]; then
+          _dbx_lote_ler_marca entries "$k" failure path '.tag'
+          sub=$_DBX_LOTE_MARCA
+          if [[ $sub == 'conflict' ]]; then
+            _dbx_lote_ler_marca entries "$k" failure path conflict '.tag'
+            sub+="/$_DBX_LOTE_MARCA"
+          fi
+        fi
+        case $sub in
+          conflict/folder) DBX_LOTE_PASTAS_RESULTADO[i]='existia'; continue ;;
+          conflict/file) motivo="arquivo no lugar da pasta: $caminho" ;;
+          conflict/file_ancestor) motivo="arquivo no caminho da pasta: $caminho" ;;
+          disallowed_name) motivo="nome nao permitido pelo Dropbox: $caminho" ;;
+          malformed_path) motivo="caminho malformado: $caminho" ;;
+          no_write_permission) motivo="sem permissao de escrita: $caminho" ;;
+          insufficient_space)
+            motivo="sem espaco na conta: $caminho"
+            _dbx_lote_pastas_parar espaco 'sem espaco na conta Dropbox para criar pastas'
+            ;;
+          *) motivo="criacao recusada (${falha:-sem detalhe}${sub:+/$sub}): $caminho" ;;
+        esac
+        DBX_LOTE_PASTAS_RESULTADO[i]="falha"$'\t'"$motivo"
+        ;;
+      *) DBX_LOTE_PASTAS_RESULTADO[i]="falha"$'\t'"entrada do lote sem resultado reconhecido: $caminho" ;;
+    esac
+  done
+}
+
+# _dbx_lote_pastas_resposta — interpreta DBX_HTTP_CORPO: tag em
+# _DBX_LOTE_PASTAS_TAG; `complete` ja conferido; job ou erro do lote em
+# _DBX_LOTE_PASTAS_DETALHE. Status 1 = parada ja registrada.
+_dbx_lote_pastas_resposta() {
+  _DBX_LOTE_PASTAS_TAG='' _DBX_LOTE_PASTAS_DETALHE=''
+  dbx_json_contexto lote || { _dbx_lote_pastas_parar erro_remoto 'contexto de analise indisponivel'; return 1; }
+  if ! dbx_json_analisar "$DBX_HTTP_CORPO"; then
+    dbx_json_descartar lote
+    dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+    _dbx_lote_pastas_parar erro_remoto 'resposta do lote de pastas nao interpretavel'
+    return 1
+  fi
+  _dbx_lote_ler_marca '.tag'
+  _DBX_LOTE_PASTAS_TAG=$_DBX_LOTE_MARCA
+  case $_DBX_LOTE_PASTAS_TAG in
+    complete) _dbx_lote_pastas_conferir ;;
+    async_job_id) _dbx_lote_ler_marca async_job_id && _DBX_LOTE_PASTAS_DETALHE=$_DBX_LOTE_MARCA ;;
+    failed) _dbx_lote_ler_marca failed '.tag' && _DBX_LOTE_PASTAS_DETALHE=$_DBX_LOTE_MARCA ;;
+  esac
+  dbx_json_descartar lote
+  dbx_json_contexto "$DBX_JSON_CONTEXTO_ANTERIOR"
+  return 0
+}
+
+# _dbx_lote_pastas_fatia — lanca a fatia _DBX_LOTE_PASTAS_VOO e, se assincrona,
+# consulta o `check` com o recuo e o teto da exclusao (DIV-262). Criar com
+# `autorename=false` e idempotente (repetir da `conflict/folder`), por isso o
+# cliente HTTP pode retentar rede/429/5xx (RNF-21).
+_dbx_lote_pastas_fatia() {
+  local idx lista='' corpo espera=$DBX_LOTE_ESPERA_INICIAL acumulado=0
+  for idx in "${_DBX_LOTE_PASTAS_VOO[@]}"; do
+    dbx_json_escapar_cadeia "${DBX_LOTE_PASTAS[idx]}"
+    lista+="${lista:+,}\"$DBX_JSON_ESCAPADO\""
+  done
+  # RF-210(e): autorename sempre false; force_async nunca enviado.
+  corpo="{\"paths\":[$lista],\"autorename\":false}"
+  if ! dbx_auth_requisitar POST "$DBX_LOTE_URL_PASTAS" "$corpo" sim; then
+    _dbx_lote_pastas_recusa 'lote de pastas recusado'
+    return 0
+  fi
+  _dbx_lote_pastas_resposta || return 0
+  case $_DBX_LOTE_PASTAS_TAG in
+    complete) return 0 ;;
+    async_job_id)
+      [[ -n $_DBX_LOTE_PASTAS_DETALHE ]] || {
+        _dbx_lote_pastas_parar erro_remoto 'resposta do lote de pastas sem identificador de job'
+        return 0
+      }
+      ;;
+    *)
+      _dbx_lote_pastas_parar erro_remoto "resposta do lote de pastas nao reconhecida (${_DBX_LOTE_PASTAS_TAG:-sem tag})"
+      return 0
+      ;;
+  esac
+  dbx_json_escapar_cadeia "$_DBX_LOTE_PASTAS_DETALHE"
+  corpo="{\"async_job_id\":\"$DBX_JSON_ESCAPADO\"}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  while :; do
+    if ! dbx_auth_requisitar POST "$DBX_LOTE_URL_PASTAS_CONFERIR" "$corpo" sim; then
+      _dbx_lote_pastas_recusa 'consulta do lote de pastas recusada'
+      return 0
+    fi
+    _dbx_lote_pastas_resposta || return 0
+    case $_DBX_LOTE_PASTAS_TAG in
+      complete) return 0 ;;
+      in_progress)
+        if ((acumulado + espera > DBX_LOTE_ESPERA_TETO)); then
+          _dbx_lote_pastas_parar nao_concluida "lote de pastas nao confirmado em ${DBX_LOTE_ESPERA_TETO} s"
+          return 0
+        fi
+        _dbx_lote_dormir "$espera"
+        acumulado=$((acumulado + espera))
+        espera=$((espera * 2))
+        ((espera > DBX_LOTE_ESPERA_MAXIMA)) && espera=$DBX_LOTE_ESPERA_MAXIMA
+        ;;
+      failed)
+        _dbx_lote_pastas_parar erro_remoto "lote de pastas falhou no servidor (${_DBX_LOTE_PASTAS_DETALHE:-sem detalhe})"
+        return 0
+        ;;
+      *)
+        _dbx_lote_pastas_parar erro_remoto "lote de pastas falhou no servidor (${_DBX_LOTE_PASTAS_TAG:-sem detalhe})"
+        return 0
+        ;;
+    esac
+  done
+}
+
+# dbx_lote_criar_pastas — cria DBX_LOTE_PASTAS por nivel de profundidade, o nivel
+# k so depois do k-1 concluido (RF-210(b)); a pasta que falha bloqueia as
+# descendentes (RF-213(a)). Contrato de entrada, saida e status no cabecalho.
+# Sem estado entre execucoes; simulacao e lista vazia nao chamam a API.
+# shellcheck disable=SC2034  # DBX_LOTE_PASTAS_*: canais publicos, lidos pelos comandos
+dbx_lote_criar_pastas() {
+  local total=${#DBX_LOTE_PASTAS[@]} i nivel chave anc raiz ini falhas=0
+  local -A primeiro=() falhou=()
+  local -a niveis=() duplicadas=() membros=() pendentes=()
+  DBX_LOTE_PASTAS_RESULTADO=() DBX_LOTE_PASTAS_CLASSE='' DBX_LOTE_PASTAS_MOTIVO=''
+  ((total > 0)) || return 0
+  # RF-210(e): nenhuma chamada em simulacao (mesma barreira da exclusao).
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && return 0
+  for ((i = 0; i < total; i++)); do
+    chave=${DBX_LOTE_PASTAS[i],,}
+    if [[ -z ${chave#/} ]]; then
+      DBX_LOTE_PASTAS_RESULTADO[i]='existia'
+      continue
+    fi
+    # O servico conta caminho repetido uma vez (DIV-398): repetir desalinharia a posicao.
+    if [[ -n ${primeiro[$chave]+x} ]]; then
+      duplicadas+=("$i")
+      continue
+    fi
+    primeiro[$chave]=$i
+    nivel=${chave//[!\/]/}
+    nivel=${#nivel}
+    niveis[nivel]+=" $i"
+  done
+  for nivel in "${!niveis[@]}"; do
+    [[ -z $DBX_LOTE_PASTAS_CLASSE ]] || break
+    read -r -a membros <<<"${niveis[nivel]}"
+    pendentes=()
+    for i in "${membros[@]}"; do
+      chave=${DBX_LOTE_PASTAS[i],,}
+      anc=${chave%/*} raiz=''
+      while [[ -n $anc ]]; do
+        [[ -n ${falhou[$anc]+x} ]] && { raiz=${falhou[$anc]}; break; }
+        anc=${anc%/*}
+      done
+      if [[ -n $raiz ]]; then
+        DBX_LOTE_PASTAS_RESULTADO[i]="falha"$'\t'"pasta de destino nao criada: $raiz"
+        falhou[$chave]=$raiz
+      else
+        pendentes+=("$i")
+      fi
+    done
+    for ((ini = 0; ini < ${#pendentes[@]}; ini += DBX_LOTE_PASTAS_FATIA)); do
+      [[ -z $DBX_LOTE_PASTAS_CLASSE ]] || break
+      _DBX_LOTE_PASTAS_VOO=("${pendentes[@]:ini:DBX_LOTE_PASTAS_FATIA}")
+      _dbx_lote_pastas_fatia
+    done
+    _DBX_LOTE_PASTAS_VOO=()
+    for i in "${pendentes[@]}"; do
+      [[ ${DBX_LOTE_PASTAS_RESULTADO[i]:-} == falha$'\t'* ]] && falhou[${DBX_LOTE_PASTAS[i],,}]=${DBX_LOTE_PASTAS[i]}
+    done
+  done
+  for ((i = 0; i < total; i++)); do
+    [[ -n ${DBX_LOTE_PASTAS_RESULTADO[i]:-} ]] && continue
+    [[ -n $DBX_LOTE_PASTAS_CLASSE ]] &&
+      DBX_LOTE_PASTAS_RESULTADO[i]="falha"$'\t'"criacao de pastas interrompida: $DBX_LOTE_PASTAS_MOTIVO"
+  done
+  for i in "${duplicadas[@]}"; do
+    DBX_LOTE_PASTAS_RESULTADO[i]=${DBX_LOTE_PASTAS_RESULTADO[${primeiro[${DBX_LOTE_PASTAS[i],,}]}]}
+  done
+  [[ -n $DBX_LOTE_PASTAS_CLASSE ]] && return "$DBX_LOTE_PASTAS_FALHA_SISTEMICA"
+  for ((i = 0; i < total; i++)); do
+    [[ ${DBX_LOTE_PASTAS_RESULTADO[i]} == falha$'\t'* ]] && falhas=$((falhas + 1))
+  done
+  ((falhas == 0)) || return "$DBX_LOTE_PASTAS_FALHA_ITEM"
   return 0
 }

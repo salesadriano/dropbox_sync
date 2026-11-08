@@ -32,7 +32,7 @@ _cenario() {
   chmod 600 "$base/config/dbx/credencial.json"
   printf '%s' '{"entries":[],"has_more":false}' >"$base/listagem"
   {
-    printf '#!%s\nbase=%q\n' "$BASH" "$base"
+    printf '#!%s\nbase=%q\nDBX_HARNESS_RAIZ=%q\n' "$BASH" "$base" "$DBX_HARNESS_RAIZ"
     cat <<'FIM'
 conf=$(cat 2>/dev/null)
 saida='' escrever='' anterior='' url='' corpo_arquivo='' falha_http='nao'
@@ -89,6 +89,8 @@ case $url in
     ;;
   *) corpo='{"name":"x","rev":"1"}' ;;
 esac
+. "$DBX_HARNESS_RAIZ/tests/support/lote_duplo.sh"
+lote_responder "$url" "$corpo_arquivo" || :
 if [[ $falha_http == sim && $codigo -ge 400 && -n $saida ]]; then
   [[ -n $escrever ]] && printf '%s' "$codigo"
   exit 22

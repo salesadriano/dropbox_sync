@@ -1,6 +1,6 @@
 # Inventario de testes - dropbox_sync
 
-Atualizado em: 2026-11-04, demanda `trava-raiz-diretorio-sumido` (`docs/prompts/2026-11-04_1742_trava-raiz-diretorio-sumido.md`), pelo Tech Lead com a suite do QA Expert (`qa_trava_raiz_diretorio_sumido`, 6 casos) e 3 casos `pft_espera_*` em `state_trava_raiz_test.sh`.
+Atualizado em: 2026-11-08, demanda `estrutura-de-pastas-antes-da-transferencia` (F-103, `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md`), pelo QA Expert: 6 arquivos `estrutura_pastas_*` (99 casos) e ajustes em 6 arquivos existentes.
 Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 120 arquivos, 2948 casos, 0 divergencias.
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
@@ -28,12 +28,18 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/diagnostico_test.sh` | `bin/dbx diagnostico`, `verificar` e preflight com utilitarios fora do `PATH` (`commands/diagnostico.sh`, `lib/preflight.sh`) | `diagnostico` | integracao | Senior Developer (TDD da demanda `backlog-fase-1-consulta-diagnostico`) | 17 | RF-66; TC-DIA-01..16; protocolo-tdd Regra 6 (nenhuma credencial em saida); log `docs/prompts/2026-10-19_1050_backlog-fase-1-consulta-diag... |
 | `tests/integracao/disponibilidade_automatica_test.sh` | `bin/dbx` nos comandos de nivel `credencial` (exercitado por `space`, `upload`, `download`, `sync`, `diagnostico`), com a checagem automa... | disponibilidade_automatica | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 48 | RF-151..RF-154; TC-DSP-18, 20, 28..64; RNF-03; log `docs/prompts/2026-10-23_0900_teste-de-disponibilidade.md` |
 | `tests/integracao/espaco_test.sh` | `bin/dbx upload` e `bin/dbx sync --enviar` com a checagem previa de espaco (`dbx_cmd_espaco_checar` em `lib/cmd.sh`) | `lib/cmd.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-1-consulta-diagnostico`) | 13 | RF-67; TC-ESP-01..10; RF-136; RF-137; RF-15; RF-44; log `docs/prompts/2026-10-19_1050_backlog-fase-1-consulta-diagnostico.md` |
+| `tests/integracao/estrutura_pastas_cursor_test.sh` | `bin/dbx sync --receber` com cursor valido (delta): pasta nova do delta criada localmente, retrato recriado, `deleted` de pasta sem efeito destrutivo | `estrutura_pastas_cursor` | integracao | Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`) | 7 | F-103; RF-212; RF-110..RF-119; TC-ARV-13..15; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md` |
+| `tests/integracao/estrutura_pastas_envio_test.sh` | `bin/dbx sync --enviar` e `upload` de pasta (`commands/sync.sh`, `lib/lote.sh`): arvore remota criada antes do primeiro envio, arquivo no lugar de pasta, exclusao de pasta remota orfa no `--espelhar` | `estrutura_pastas_envio` | integracao | Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`) | 31 | F-103; RF-209; RF-210; RF-213; RF-214; RF-216; TC-ARV-01..03; TC-ARV-05; TC-ARV-05b; TC-ARV-16; TC-ARV-17; TC-ARV-17b; TC-ARV-22..28; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md` |
+| `tests/integracao/estrutura_pastas_lote_test.sh` | `lib/lote.sh` (`dbx_lote_criar_pastas`) com o cliente HTTP real e duble de `curl`: criacao de pastas em lote por nivel, fatias, `check`, falhas de item e sistemicas | `estrutura_pastas_lote` | integracao | Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`) | 17 | F-103; RF-210; RF-213; DIV-398; TC-ARV-06..09; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md` |
+| `tests/integracao/estrutura_pastas_paralelo_test.sh` | `bin/dbx sync --paralelo` com criacao de pastas (`commands/sync.sh`): barreira da fase de criacao, `--debug` das operacoes de pasta e equivalencia de arvore entre paralelo 1 e 8 | `estrutura_pastas_paralelo` | integracao | Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`) | 7 | F-103; RF-215; F-100; TC-ARV-20; TC-ARV-21; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md` |
+| `tests/integracao/estrutura_pastas_recebimento_test.sh` | `bin/dbx sync --receber` e `download` de pasta (`commands/sync.sh`): pastas do ciclo criadas antes dos downloads, ligacao simbolica e arquivo no lugar de pasta, exclusao local de pasta orfa por `rmdir` no `--espelhar` | `estrutura_pastas_recebimento` | integracao | Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`) | 34 | F-103; RF-209; RF-211; RF-213; RF-214; RF-216; TC-ARV-10..12; TC-ARV-17c; TC-ARV-22..25; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md` |
+| `tests/integracao/estrutura_pastas_relatorio_test.sh` | `bin/dbx sync` resumo, `--json` e `--dry-run` (`commands/sync.sh`): contadores de pasta, motivo de falha de pasta, plano `criaria`/`apagaria pasta`, compatibilidade com arvore sem pasta nova | `estrutura_pastas_relatorio` | integracao | Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`) | 12 | F-103; RF-217; RF-218; RF-219; RF-214; TC-ARV-30..32; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md` |
 | `tests/integracao/filtros_ajuda_test.sh` | ajuda (`bin/dbx help`), autocompletar (`completions/dbx.bash`), `README.md` e mapa de modulos para as opcoes de filtro e limite de banda | `bin/dbx` | integracao | Senior Developer (TDD da demanda `backlog-fase-4-filtros-e-banda`) | 4 | RF-83; TC-CPL-09; TC-DOC-03; TC-TST-07; log `docs/prompts/2026-10-19_2141_backlog-fase-4-filtros-e-banda.md` |
 | `tests/integracao/filtros_test.sh` | `bin/dbx` (sync nos dois sentidos, `--dry-run`, `verificar`, download de pasta e de arquivo, upload) com filtros de caminho, data e taman... | filtros_test | integracao | Senior Developer (TDD da demanda `backlog-fase-4-filtros-e-banda`) | 33 | RF-79; RF-80; RF-80(d); RF-81; RF-12 (emendado pela DIV-90); TC-FLT; TC-FES; TC-FDT; DIV-95; DIV-103; log `docs/prompts/2026-10-19_2141_b... |
 | `tests/integracao/instalador_diagnostico_freebsd_test.sh` | `install.sh` (instalar e desinstalar com prefixo) e `commands/diagnostico.sh`, no ambiente simulado do FreeBSD | `instalador_diagnostico_freebsd` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | Senior Developer (TDD da demanda `suporte-freebsd`) | 7 | RF-170; RF-172; TC-FBSD-08, TC-FBSD-09, TC-FBSD-23; DIV-357; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md` |
-| `tests/integracao/lote_test.sh` | `lib/lote.sh` e `bin/dbx sync` (exclusao em lote no `--espelhar`, envio em lote de pequenos no `--enviar`); `reter` fica item a item | lote_test | integracao | Senior Developer (TDD da demanda `backlog-fase-9-desempenho`) | 32 | F-08; F-34; RF-136; RF-137; DIV-269; TC-LOT-*; TC-LOU-*; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md` |
+| `tests/integracao/lote_test.sh` | `lib/lote.sh` e `bin/dbx sync` (exclusao em lote no `--espelhar`, envio em lote de pequenos no `--enviar`); `reter` fica item a item | lote_test | integracao | Senior Developer (TDD da demanda `backlog-fase-9-desempenho`) | 32 | F-08; F-34; RF-136; RF-137; DIV-269; TC-LOT-*; TC-LOU-*; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md`; F-103 (RF-136(f), `create_folder_batch` no duble) |
 | `tests/integracao/paralelo_download_test.sh` | `bin/dbx download` de arquivo grande em faixas simultaneas (`commands/download.sh`, `lib/transfer.sh`, `lib/http.sh`) | paralelo_download | integracao | Senior Developer (TDD da demanda `paralelo-upload-download`) | 12 | F-100; RF-180; RF-181 (download); RF-182; RF-183; RF-184; DIV-369..371; DIV-373..376; TC-PUD-30..33; log `docs/prompts/2026-10-26_1900_pa... |
-| `tests/integracao/paralelo_test.sh` | `bin/dbx sync`, `download` e `upload` de pasta com `--paralelo` (`commands/sync.sh`, `lib/lote.sh`), incluindo selecao, equivalencia N=1 ... | paralelo | integracao | Senior Developer (TDD da demanda `backlog-fase-9-desempenho`) | 25 | F-09; F-08; F-34; RF-133..RF-135; RF-139; TC-PAR-01..; DIV-338; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md` |
+| `tests/integracao/paralelo_test.sh` | `bin/dbx sync`, `download` e `upload` de pasta com `--paralelo` (`commands/sync.sh`, `lib/lote.sh`), incluindo selecao, equivalencia N=1 ... | paralelo | integracao | Senior Developer (TDD da demanda `backlog-fase-9-desempenho`) | 25 | F-09; F-08; F-34; RF-133..RF-135; RF-139; TC-PAR-01..; DIV-338; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md`; F-103 (RF-136(f), `create_folder_batch` no duble) |
 | `tests/integracao/paralelo_upload_test.sh` | `bin/dbx upload` de arquivo grande em partes simultaneas (`commands/upload.sh`, `lib/transfer.sh`, registro de retomada v2) | `paralelo_upload` | integracao | Senior Developer (TDD da demanda `paralelo-upload-download`) | 12 | F-100 (etapa 2a); RF-177..RF-179, RF-181 (upload), RF-182..RF-184, RF-175(c); DIV-358..DIV-368, DIV-373..DIV-376; TC-PUD; log `docs/promp... |
 | `tests/integracao/perfis_test.sh` | `bin/dbx perfis`, `config --perfil`, opcao `--perfil` e variavel de perfil (`commands/perfis.sh`, `commands/config.sh`, `lib/config.sh`) | `commands/perfis.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-8-perfis`) | 40 | F-18; RF-120..RF-123; RF-126..RF-131; TC-PFS; TC-PFN; TC-PFC; TC-PFG; TC-PFL; TC-PFD; TC-PFA; TC-PFR; log `docs/prompts/2026-10-21_1735_b... |
 | `tests/integracao/perfis_trava_raiz_test.sh` | trava por raiz local canonica no `sync --receber`, independente do perfil (`commands/sync.sh`, `lib/state.sh`, `lib/cmd.sh`) | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-8-perfis`) | 10 | F-18; TC-PFT; TC-PFE-06; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md` |
@@ -43,9 +49,9 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_compartilhamento_b5_test.sh` | `bin/dbx compartilhar` (criar, reuso, modificar, listar, revogar, dry-run) e `link-temporario` (`commands/compartilhar.sh`, `commands/lin... | `commands/compartilhar.sh` | integracao | QA Expert (suite independente da demanda `backlog-fase-5-compartilhamento`) | 43 | F-15; F-16; RF-84; RF-85..RF-92; DIV-104..DIV-127; RSK-57..RSK-61; log `docs/prompts/2026-10-20_1110_backlog-fase-5-compartilhamento.md`;... |
 | `tests/integracao/qa_confinamento_remoto_b1b_test.sh` | `bin/dbx` (upload, download, list, delete, info, sync, verificar), `lib/path.sh` e `lib/cmd.sh`: confinamento a `raiz_remota` e recusa de... | `qa_confinamento_remoto` | integracao | QA Expert (suite independente da demanda `backlog-fase-1b-confinamento-remoto`) | 13 | F-36; F-37; RNF-20(b1..b8); RNF-10(b); TC-SEC-18..32; log `docs/prompts/2026-10-19_1243_backlog-fase-1b-confinamento-remoto.md` |
 | `tests/integracao/qa_consulta_diagnostico_b1_test.sh` | `bin/dbx` (`verificar`/`verify`, `diagnostico`, checagem previa de espaco em `upload` e `sync --enviar`, autocompletar de bash e `install... | `qa_consulta_diagnostico` | integracao | QA Expert (suite independente da demanda `backlog-fase-1-consulta-diagnostico`) | 21 | RF-65 a RF-68; log `docs/prompts/2026-10-19_1050_backlog-fase-1-consulta-diagnostico.md`; protocolo-tdd Regra 6 (cenarios negativos de ca... |
-| `tests/integracao/qa_cursor_b7b_test.sh` | `bin/dbx sync --receber` com cursor de listagem (`commands/sync.sh`, `lib/state.sh`, `lib/sync.sh`, `lib/hash.sh`) | qa_cursor | integracao | QA Expert (suite independente da demanda `backlog-fase-7b-cursor`) | 49 | F-14; RF-110..RF-119; RF-43; RF-48; DIV-204..DIV-234; condicoes C1..C11 do DBA; TC-CUL-04; TC-CUL-05; log `docs/prompts/2026-10-21_0713_b... |
+| `tests/integracao/qa_cursor_b7b_test.sh` | `bin/dbx sync --receber` com cursor de listagem (`commands/sync.sh`, `lib/state.sh`, `lib/sync.sh`, `lib/hash.sh`) | qa_cursor | integracao | QA Expert (suite independente da demanda `backlog-fase-7b-cursor`) | 49 | F-14; RF-110..RF-119; RF-43; RF-48; DIV-204..DIV-234; condicoes C1..C11 do DBA; TC-CUL-04; TC-CUL-05; log `docs/prompts/2026-10-21_0713_b...; F-103 (RF-136(f), `create_folder_batch` no duble) |
 | `tests/integracao/qa_debug_transferencias_b12_test.sh` | `bin/dbx` nos tres comandos de transferencia (download, upload e sync) com `--debug` (`lib/http.sh`, `lib/transfer.sh`, `commands/sync.sh... | qa_debug | integracao | QA Expert (suite independente da demanda `debug-transferencias`) | 28 | RF-156..RF-165; regra 12 do `AGENTS.md` (aceite pela regra 12); log `docs/prompts/2026-10-24_0330_debug-transferencias.md`; [entrada](../... |
-| `tests/integracao/qa_desempenho_b9_test.sh` | `bin/dbx` (`sync` em paralelo e em lote, `sync --espelhar`, `reter`), `commands/sync.sh`, `commands/reter.sh`, `lib/lote.sh`, bancada de ... | qa_desempenho | integracao | QA Expert (suite independente da demanda `backlog-fase-9-desempenho`) | 15 | F-09, F-08, F-34; RF-136, RF-137, RF-138; DIV-269, DIV-278; protocolo-tdd Regra 6; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desem... |
+| `tests/integracao/qa_desempenho_b9_test.sh` | `bin/dbx` (`sync` em paralelo e em lote, `sync --espelhar`, `reter`), `commands/sync.sh`, `commands/reter.sh`, `lib/lote.sh`, bancada de ... | qa_desempenho | integracao | QA Expert (suite independente da demanda `backlog-fase-9-desempenho`) | 15 | F-09, F-08, F-34; RF-136, RF-137, RF-138; DIV-269, DIV-278; protocolo-tdd Regra 6; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desem...; F-103 (RF-136(f), `create_folder_batch` no duble) |
 | `tests/integracao/qa_disponibilidade_b11_test.sh` | `bin/dbx testar` e a deteccao automatica de disponibilidade (internet, servico Dropbox, credencial) nos comandos de nivel credencial, com... | `qa_disponibilidade` | integracao | QA Expert (suite independente da demanda `teste-de-disponibilidade`) | 33 | RF-148..RF-155; protocolo-tdd Regra 6 (nenhum segredo em canal algum); log `docs/prompts/2026-10-23_0900_teste-de-disponibilidade.md` |
 | `tests/integracao/qa_docs_aliases_p4_test.sh` | `bin/dbx` (aliases em ingles dos comandos e opcoes, guarda de origem vazia pelo plano, fixacao de localidade na comparacao do sync), `REA... | qa_docs_aliases | integracao | QA Expert (suite independente da demanda `docs-e-aliases-p4`) | 16 | RF-64; RF-41(b); RF-54(e)(f)(g); RNF-34; RNF-03; DIV-30; DIV-31; DIV-32; TC-ALI-02; TC-ALI-03; TC-CX-04; TC-CX-05; log `docs/prompts/2026... |
 | `tests/integracao/qa_download_curl_real_b16_test.sh` | `dbx_http_conteudo_receber` de `lib/http.sh` com destino `fd:<n>` e `-`, usando curl real contra servidor HTTP local real | qa_download_curl_real | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 7 | RF-171; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada de aceite](../../.github/agents/memoria/entradas/2026-10-24-1153-... |
@@ -59,7 +65,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_integridade_p1_test.sh` | `bin/dbx` (download de arquivo e de pasta, sync, upload) com `lib/transfer.sh`, `lib/hash.sh`, `lib/walk.sh`: integridade de dados no rec... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `integridade-de-dados-p1`) | 27 | RF-49, RF-54, RF-55, RF-56, RF-57, RNF-29, RNF-04 (emendado); log `docs/prompts/2026-10-18_1745_integridade-de-dados-p1.md` |
 | `tests/integracao/qa_leitura_exata_b14_test.sh` | `lib/atributos.sh` (`dbx_ler_exato`), calculo do `content_hash` em `lib/hash.sh` e upload em sessao de `bin/dbx` sob o duble `head` do Fr... | qa_leitura_exata (sem linha propria no mapa de modulos; ver observacoes) | integracao | QA Expert (suite independente da demanda `suporte-freebsd`) | 10 | RF-173, TC-FBSD-25..27; log `docs/prompts/2026-10-24_1153_suporte-freebsd.md`; [entrada de aceite](../../.github/agents/memoria/entradas/... |
 | `tests/integracao/qa_paralelo_download_b20_test.sh` | `bin/dbx download` de arquivo grande em faixas simultaneas (`commands/download.sh`, `lib/transfer.sh`, `lib/http.sh`) | `qa_paralelo_download` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 21 | F-100 etapa 2b; RF-180 a RF-184; RF-104(c)(d); RF-106(a); DIV-369 a DIV-371; DIV-373 a DIV-376; log `docs/prompts/2026-10-26_1900_paralel... |
-| `tests/integracao/qa_paralelo_pastas_b18_test.sh` | `--paralelo`/`--parallel` e `DBX_PARALELO` em `bin/dbx upload` e `download` (pasta repassa N ao sync), com `commands/upload.sh`, `command... | `qa_paralelo_pastas` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 10 | RF-175; RF-176; DIV-372; DIV-373; DIV-374 (opcao A); log `docs/prompts/2026-10-26_1900_paralelo-upload-download.md` |
+| `tests/integracao/qa_paralelo_pastas_b18_test.sh` | `--paralelo`/`--parallel` e `DBX_PARALELO` em `bin/dbx upload` e `download` (pasta repassa N ao sync), com `commands/upload.sh`, `command... | `qa_paralelo_pastas` (linha ausente do mapa de modulos; id derivado do nome do arquivo) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 10 | RF-175; RF-176; DIV-372; DIV-373; DIV-374 (opcao A); log `docs/prompts/2026-10-26_1900_paralelo-upload-download.md`; F-103 (RF-136(f), `create_folder_batch` no duble) |
 | `tests/integracao/qa_paralelo_upload_b19_test.sh` | `bin/dbx upload` de arquivo grande em partes simultaneas, `lib/transfer_paralelo.sh`, `lib/state.sh` (registro de retomada v2) | qa_paralelo_upload (sem linha propria no mapa de modulos; ver observacoes) | integracao | QA Expert (suite independente da demanda `paralelo-upload-download`) | 19 | F-100; RF-177 a RF-183; RF-181; DIV-358 a DIV-368; protocolo-tdd Regra 6 (registro hostil); log `docs/prompts/2026-10-26_1900_paralelo-up... |
 | `tests/integracao/qa_pendencias_p0_test.sh` | `dbx_cmd_ler_corpo_silencioso` de `lib/cmd.sh` e seu uso em `_dbx_cmd_upload_hash_remoto` de `commands/upload.sh`; prova de que `identida... | qa_pendencias | integracao | QA Expert (suite independente da demanda `backlog-fase-0-pendencias`) | 10 | O-5; RSK-43; RNF-03; log `docs/prompts/2026-10-19_1023_backlog-fase-0-pendencias.md`; [entrada de aceite](../../.github/agents/memoria/en... |
 | `tests/integracao/qa_perfis_b8_test.sh` | `bin/dbx` (perfis, `config`, `unlink`, `sync` com perfil), `lib/config.sh`, `lib/state.sh`, `lib/tmp.sh` | `qa_perfis` | integracao | QA Expert (suite independente da demanda `backlog-fase-8-perfis`) | 34 | F-18; RF-120 a RF-132; DIV-236 a DIV-255; TC-CNF-03; log `docs/prompts/2026-10-21_1735_backlog-fase-8-perfis.md`; protocolo-tdd Regra 6 (... |
@@ -72,7 +78,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_retencao_b6_test.sh` | `bin/dbx` (comandos `reter` e `retain`) com `commands/reter.sh`, `lib/retencao.sh`, `lib/filtro.sh`: plano de retencao, lixeira e guarda ... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-6-retencao`) | 60 | log `docs/prompts/2026-10-20_2010_backlog-fase-6-retencao.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-20-2010-retencao.m... |
 | `tests/integracao/qa_retomada_b7a_test.sh` | `bin/dbx` (upload e download retomados) com `commands/upload.sh`, `commands/download.sh`, `commands/unlink.sh`, `commands/diagnostico.sh`... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-7a-retomada`) | 41 | log `docs/prompts/2026-10-20_2315_backlog-fase-7a-retomada.md`; grupos de cenario D (download), L (nao pendurar em entradas nao regulares... |
 | `tests/integracao/qa_robustez_rede_p2_test.sh` | `bin/dbx` download, upload, sync e diagnostico sob falhas de rede, consumidor que fecha cedo, sinais e segredos (`commands/download.sh`, ... | `qa_robustez` | integracao | QA Expert (suite independente da demanda `robustez-de-rede-p2`) | 21 | RNF-30(c); RNF-07(e); RF-32(b); RF-59; RNF-31; log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md` |
-| `tests/integracao/qa_sync_blocos_b21_test.sh` | `bin/dbx` sync, upload e download de pasta em blocos cortados por diretorio | `qa_sync_blocos_b21` | integracao | QA Expert (suite independente da demanda `sync-em-blocos`) | 25 | F-101; RF-186..RF-197; DIV-377..DIV-384 |
+| `tests/integracao/qa_sync_blocos_b21_test.sh` | `bin/dbx` sync, upload e download de pasta em blocos cortados por diretorio | `qa_sync_blocos_b21` | integracao | QA Expert (suite independente da demanda `sync-em-blocos`) | 25 | F-101; RF-186..RF-197; DIV-377..DIV-384; F-103 (RF-136(f), `create_folder_batch` no duble) |
 | `tests/integracao/qa_trava_tmp_b2_test.sh` | `bin/dbx` (sync, `--dry-run`, verificar, download de pasta, unlink, diagnostico, upload), `lib/state.sh` (trava de concorrencia por par),... | qa_trava_tmp | integracao | QA Expert (suite independente da demanda `backlog-fase-2-trava-e-tmp`) | 23 | F-12, F-31; RF-69, RF-70, RF-71; DIV-38..49; DIV-51; RNF-35, RNF-36; protocolo-tdd Regra 6; log `docs/prompts/2026-10-19_1419_backlog-fas... |
 | `tests/integracao/qa_upload_para_pasta_b15_test.sh` | `bin/dbx upload` de arquivo para pasta remota existente (`commands/upload.sh`, `lib/cmd.sh`), com e sem raiz remota e barra final | `qa_upload_para_pasta` | integracao | QA Expert (suite independente da demanda `upload-arquivo-para-pasta`) | 26 | RF-174; emenda de RF-60(g)(h); log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
 | `tests/integracao/recuperacao_test.sh` | `bin/dbx` (`revisoes`, `restaurar`, `lixeira` e aliases, incluindo expurgo permanente), `commands/revisoes.sh`, `commands/restaurar.sh`, ... | recuperacao | integracao | Senior Developer (TDD da demanda `backlog-fase-3-recuperacao`) | 61 | F-07, F-20; RF-72 a RF-78; TC-RVS, TC-RST, TC-RPA, TC-LIX, TC-EXP, TC-DOC-02; log `docs/prompts/2026-10-19_1828_backlog-fase-3-recuperaca... |
@@ -823,6 +829,203 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_esp10_campos_de_espaco_na_saida_estruturada | A saida --json traz espaco_necessario, espaco_livre e espaco_verificado | TC-ESP-10 |
 
 
+## `tests/integracao/estrutura_pastas_cursor_test.sh`
+
+- **Alvo:** `bin/dbx sync --receber` com cursor valido (delta): pasta nova do delta criada localmente, retrato recriado, `deleted` de pasta sem efeito destrutivo
+- **Modulo:** estrutura_pastas_cursor
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`)
+- **Regras de origem:** F-103; RF-212; RF-110..RF-119; TC-ARV-13..15; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** Duble de `curl` com primeira execucao completa e delta montado por caso; estado e retrato gravados no proprio caso
+- **Comando:** `bash tests/run.sh tests/integracao/estrutura_pastas_cursor_test.sh`
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_tc_arv_13_entrada_folder_do_delta_cria_a_pasta_local_sem_list_folder_por_diretorio | Entrada folder do delta cria a pasta local sem list folder por diretorio. | TC-ARV-13 |
+| teste_tc_arv_14_pasta_do_retrato_ausente_localmente_e_recriada | Pasta do retrato ausente localmente e recriada. | TC-ARV-14 |
+| teste_tc_arv_15_deleted_de_pasta_no_delta_nao_autoriza_exclusao_de_pasta | Deleted de pasta no delta nao autoriza exclusao de pasta. | TC-ARV-15 |
+| teste_rf_214_delta_com_espelhar_apaga_o_arquivo_que_ocupa_a_pasta_e_cria_a_pasta | Delta com cursor valido e `--espelhar`: o arquivo local que ocupa o lugar de uma pasta e apagado antes da criacao (DIV-401), a pasta e criada e o conteudo baixado. | RF-214; RF-212 |
+| teste_rf_214_delta_sem_espelhar_mantem_o_arquivo_e_falha_o_item | Delta sem `--espelhar`: o arquivo no lugar da pasta fica intacto e a pasta falha como item, com motivo. | RF-214; RF-213 |
+| teste_rf_214_delta_pasta_so_do_retrato_nao_confirmada_nao_apaga_o_arquivo_local | Delta com `--espelhar`; a pasta existe so no retrato (memoria) e o `get_metadata` desta execucao responde not_found: o arquivo local fica intacto e a pasta falha (`arquivo no lugar da pasta`, `pastas_falhas=1`). | RF-214(a); DIV-401 |
+| teste_rf_214_delta_pasta_so_do_retrato_confirmada_por_get_metadata_apaga_o_arquivo_local | O mesmo cenario, com o `get_metadata` desta execucao respondendo `folder`: o arquivo local e apagado e a pasta e criada. | RF-214(b); DIV-401 |
+
+
+## `tests/integracao/estrutura_pastas_envio_test.sh`
+
+- **Alvo:** `bin/dbx sync --enviar` e `upload` de pasta (`commands/sync.sh`, `lib/lote.sh`): arvore remota criada antes do primeiro envio, arquivo no lugar de pasta, exclusao de pasta remota orfa no `--espelhar`
+- **Modulo:** estrutura_pastas_envio
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`)
+- **Regras de origem:** F-103; RF-209; RF-210; RF-213; RF-214; RF-216; TC-ARV-01..03; TC-ARV-05; TC-ARV-05b; TC-ARV-16; TC-ARV-17; TC-ARV-17b; TC-ARV-22..28; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** Duble de `curl` que registra a ordem das chamadas e os corpos; origem local e listagem remota montadas por caso a partir do zero; estado isolado por caso
+- **Comando:** `bash tests/run.sh tests/integracao/estrutura_pastas_envio_test.sh`
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_tc_arv_01_pasta_vazia_e_pasta_com_arquivo_sao_criadas_e_o_arquivo_enviado | Pasta vazia e pasta com arquivo sao criadas e o arquivo enviado. | TC-ARV-01 |
+| teste_tc_arv_02_pasta_podada_por_excluir_nao_e_criada | Pasta podada por excluir nao e criada. | TC-ARV-02 |
+| teste_tc_arv_03_pasta_com_arquivos_todos_filtrados_por_tamanho_e_criada_vazia | Pasta com arquivos todos filtrados por tamanho e criada vazia. | TC-ARV-03 |
+| teste_tc_arv_05_com_tres_ciclos_toda_criacao_precede_o_primeiro_envio | Com tres ciclos toda criacao precede o primeiro envio. | TC-ARV-05 |
+| teste_tc_arv_16_arquivo_no_lugar_da_pasta_falha_os_arquivos_sob_ela_e_envia_o_resto | Arquivo no lugar da pasta falha os arquivos sob ela e envia o resto. | TC-ARV-16 |
+| teste_simulacao_nao_chama_criacao_de_pastas | Simulacao nao chama criacao de pastas. | RF-209 |
+| teste_upload_de_pasta_cria_a_arvore_antes_do_primeiro_envio | Upload de pasta cria a arvore antes do primeiro envio. | RF-209 |
+| teste_falha_sistemica_na_criacao_para_antes_de_qualquer_envio | Falha sistemica na criacao para antes de qualquer envio. | RF-209 |
+| teste_tc_arv_05b_origem_so_com_pastas_vazias_e_recusada_sem_criar_pasta | Origem so com pastas vazias e recusada sem criar pasta. | TC-ARV-05b |
+| teste_pasta_vazia_ocupada_conta_ela_mesma_como_falha_de_item | Pasta vazia ocupada conta ela mesma como falha de item. | RF-209 |
+| teste_tc_arv_17_espelhar_apaga_o_arquivo_antes_de_criar_a_pasta_e_envia_na_mesma_execucao | Espelhar apaga o arquivo antes de criar a pasta e envia na mesma execucao. | TC-ARV-17 |
+| teste_tc_arv_17_sem_espelhar_nao_chama_delete_v2_e_a_pasta_falha | Sem espelhar nao chama delete v2 e a pasta falha. | TC-ARV-17 |
+| teste_tc_arv_17b_destino_filtrado_e_protegido_e_a_pasta_falha | Destino filtrado e protegido e a pasta falha. | TC-ARV-17b |
+| teste_tc_arv_17b_rev_divergente_no_delete_v2_nao_apaga_e_a_pasta_falha | Rev divergente no delete v2 nao apaga e a pasta falha. | TC-ARV-17b |
+| teste_tc_arv_17b_item_listado_como_pasta_nao_apaga | Item listado como pasta nao apaga. | TC-ARV-17b |
+| teste_tc_arv_17b_origem_vazia_e_leitura_parcial_nao_apagam_antes_de_criar | Origem vazia e leitura parcial nao apagam antes de criar. | TC-ARV-17b |
+| teste_div_400_item_de_exclusao_sob_pasta_que_falhou_nao_e_apagado | Item de exclusao sob pasta que falhou nao e apagado. | DIV-400 |
+| teste_rf216_pasta_remota_orfa_vazia_vai_para_delete_v2_apos_releitura | Pasta remota orfa vazia vai para delete v2 apos releitura. | RF-216 |
+| teste_rf216_sem_espelhar_nenhuma_pasta_remota_e_apagada | Sem espelhar nenhuma pasta remota e apagada. | RF-216 |
+| teste_rf216_pasta_orfa_com_arquivo_orfao_arquivo_em_lote_depois_pasta_por_delete_v2 | Pasta orfa com arquivo orfao arquivo em lote depois pasta por delete v2. | RF-216 |
+| teste_rf216_pastas_remotas_aninhadas_filho_antes_do_pai | Pastas remotas aninhadas filho antes do pai. | RF-216 |
+| teste_rf216_releitura_com_entrada_nova_mantem_a_pasta_sem_delete_v2 | Releitura com entrada nova mantem a pasta sem delete v2. | RF-216 |
+| teste_rf216_pasta_remota_com_item_filtrado_nunca_e_apagada | Pasta remota com item filtrado nunca e apagada. | RF-216 |
+| teste_rf216_pasta_remota_excluida_por_filtro_nunca_e_apagada | Pasta remota excluida por filtro nunca e apagada. | RF-216 |
+| teste_rf216_origem_vazia_recusa_antes_de_apagar_pasta_remota | Origem vazia recusa antes de apagar pasta remota. | RF-216 |
+| teste_rf216_leitura_parcial_desliga_a_exclusao_de_pasta | Leitura parcial desliga a exclusao de pasta. | RF-216 |
+| teste_rf216_simulacao_nao_escreve_nem_rele_a_pasta | Simulacao nao escreve nem rele a pasta. | RF-216 |
+| teste_rf216_a_decisao_remota_nao_apaga_em_lote_nem_permanentemente | A decisao remota nao apaga em lote nem permanentemente. | RF-216 |
+| teste_tc_arv_04_upload_de_arquivo_unico_nao_chama_criacao_de_pasta | `upload` de arquivo unico: nenhuma chamada `create_folder*`. | TC-ARV-04 |
+| teste_tc_arv_28_subarvore_so_no_destino_com_pagina_que_falha_nada_dentro_e_apagado | A subarvore so existe no destino e a pagina da listagem principal falha: nenhum `delete_v2` nem `delete_batch`. | TC-ARV-28 |
+| teste_tc_arv_28_releitura_da_orfa_com_pagina_que_falha_nao_apaga | A listagem principal e integra, mas a pagina da releitura da orfa falha: a pasta e mantida (`releitura falhou`), sem `delete_v2`. | TC-ARV-28; RF-216(h) |
+
+
+## `tests/integracao/estrutura_pastas_lote_test.sh`
+
+- **Alvo:** `lib/lote.sh` (`dbx_lote_criar_pastas`) com o cliente HTTP real e duble de `curl`: criacao de pastas em lote por nivel, fatias, `check`, falhas de item e sistemicas
+- **Modulo:** estrutura_pastas_lote
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`)
+- **Regras de origem:** F-103; RF-210; RF-213; DIV-398; TC-ARV-06..09; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** Duble de `curl` local que responde `create_folder_batch` e `create_folder_batch/check` a partir do corpo; controles por arquivo em `$DUPLO`; duble de `sleep` que registra a espera; sem rede
+- **Comando:** `bash tests/run.sh tests/integracao/estrutura_pastas_lote_test.sh`
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_tc_arv_06_nivel_seguinte_so_depois_do_check_complete_do_anterior | Nivel seguinte so depois do check complete do anterior. | TC-ARV-06 |
+| teste_tc_arv_07_pasta_existente_conta_como_sucesso_e_nao_como_criada | Pasta existente conta como sucesso e nao como criada. | TC-ARV-07 |
+| teste_tc_arv_08_09_fatias_conservadoras_posicao_e_autorename_false | 09 fatias conservadoras posicao e autorename false. | TC-ARV-08 |
+| teste_arquivo_no_lugar_falha_a_pasta_e_nao_submete_descendentes | Arquivo no lugar falha a pasta e nao submete descendentes. | RF-210 |
+| teste_tag_desconhecida_no_lancamento_e_falha_sistemica | Tag desconhecida no lancamento e falha sistemica. | RF-210 |
+| teste_job_failed_no_check_e_falha_sistemica | Job failed no check e falha sistemica. | RF-210 |
+| teste_sem_espaco_na_entrada_e_falha_sistemica | Sem espaco na entrada e falha sistemica. | RF-210 |
+| teste_teto_do_check_e_falha_sistemica | Teto do check e falha sistemica. | RF-210 |
+| teste_simulacao_e_lista_vazia_nao_chamam_a_api | Simulacao e lista vazia nao chamam a api. | RF-210 |
+| teste_401_renova_o_token_uma_vez_e_repete_o_lancamento | 401 renova o token uma vez e repete o lancamento. | RF-210 |
+| teste_401_de_novo_apos_renovar_e_falha_de_autenticacao_sem_laco | 401 de novo apos renovar e falha de autenticacao sem laco. | RF-210 |
+| teste_rede_repetida_no_lancamento_esgota_as_tentativas | Rede repetida no lancamento esgota as tentativas. | RF-210 |
+| teste_429_repetido_no_lancamento_esgota_as_tentativas | 429 repetido no lancamento esgota as tentativas. | RF-210 |
+| teste_5xx_repetido_no_lancamento_esgota_as_tentativas | 5xx repetido no lancamento esgota as tentativas. | RF-210 |
+| teste_rede_repetida_no_check_esgota_as_tentativas | Rede repetida no check esgota as tentativas. | RF-210 |
+| teste_429_repetido_no_check_esgota_as_tentativas | 429 repetido no check esgota as tentativas. | RF-210 |
+| teste_5xx_repetido_no_check_esgota_as_tentativas | 5xx repetido no check esgota as tentativas. | RF-210 |
+
+
+## `tests/integracao/estrutura_pastas_paralelo_test.sh`
+
+- **Alvo:** `bin/dbx sync --paralelo` com criacao de pastas (`commands/sync.sh`): barreira da fase de criacao, `--debug` das operacoes de pasta e equivalencia de arvore entre paralelo 1 e 8
+- **Modulo:** estrutura_pastas_paralelo
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`)
+- **Regras de origem:** F-103; RF-215; F-100; TC-ARV-20; TC-ARV-21; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** Duble de `curl` que registra instante e ordem das chamadas; arvores de 3 pastas com 2 arquivos pequenos; sem rede
+- **Comando:** `bash tests/run.sh tests/integracao/estrutura_pastas_paralelo_test.sh`
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_tc_arv_20_envio_com_paralelo_nenhum_envio_sai_antes_do_fim_da_criacao_das_pastas | Envio com paralelo nenhum envio sai antes do fim da criacao das pastas. | TC-ARV-20 |
+| teste_tc_arv_20_recebimento_com_paralelo_todas_as_pastas_existem_antes_de_qualquer_download | Recebimento com paralelo todas as pastas existem antes de qualquer download. | TC-ARV-20 |
+| teste_tc_arv_21_debug_registra_criacao_de_pasta_no_envio_sem_segredo | Debug registra criacao de pasta no envio sem segredo. | TC-ARV-21 |
+| teste_tc_arv_21_debug_registra_delete_v2_de_pasta_orfa_sem_segredo | Debug registra delete v2 de pasta orfa sem segredo. | TC-ARV-21 |
+| teste_tc_arv_21_debug_registra_mkdir_e_rmdir_locais_sem_segredo | Debug registra mkdir e rmdir locais sem segredo. | TC-ARV-21 |
+| teste_rf215e_envio_paralelo_1_e_8_produzem_a_mesma_arvore | Envio paralelo 1 e 8 produzem a mesma arvore. | RF-215e |
+| teste_rf215e_recebimento_paralelo_1_e_8_produzem_a_mesma_arvore | Recebimento paralelo 1 e 8 produzem a mesma arvore. | RF-215e |
+
+
+## `tests/integracao/estrutura_pastas_recebimento_test.sh`
+
+- **Alvo:** `bin/dbx sync --receber` e `download` de pasta (`commands/sync.sh`): pastas do ciclo criadas antes dos downloads, ligacao simbolica e arquivo no lugar de pasta, exclusao local de pasta orfa por `rmdir` no `--espelhar`
+- **Modulo:** estrutura_pastas_recebimento
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`)
+- **Regras de origem:** F-103; RF-209; RF-211; RF-213; RF-214; RF-216; TC-ARV-10..12; TC-ARV-17c; TC-ARV-22..25; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** Duble de `curl` com listagens remotas por pasta montadas por caso; diretorio local temporario por caso; sem rede
+- **Comando:** `bash tests/run.sh tests/integracao/estrutura_pastas_recebimento_test.sh`
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_tc_arv_10_pastas_de_cada_ciclo_existem_antes_do_primeiro_download_do_ciclo | Pastas de cada ciclo existem antes do primeiro download do ciclo. | TC-ARV-10 |
+| teste_tc_arv_11_download_de_pasta_com_subpasta_vazia_cria_a_subpasta | Download de pasta com subpasta vazia cria a subpasta. | TC-ARV-11 |
+| teste_tc_arv_12_ligacao_simbolica_no_lugar_da_pasta_falha_sem_seguir_e_o_resto_segue | Ligacao simbolica no lugar da pasta falha sem seguir e o resto segue. | TC-ARV-12 |
+| teste_arquivo_regular_no_lugar_da_pasta_falha_e_nao_e_apagado | Arquivo regular no lugar da pasta falha e nao e apagado. | RF-209 |
+| teste_simulacao_nao_cria_pasta_local | Simulacao nao cria pasta local. | RF-209 |
+| teste_origem_remota_so_com_pastas_vazias_e_recusada_sem_criar_pasta_local | Origem remota so com pastas vazias e recusada sem criar pasta local. | RF-209 |
+| teste_pasta_vazia_ocupada_conta_ela_mesma_como_falha_de_item | Pasta vazia ocupada conta ela mesma como falha de item. | RF-209 |
+| teste_download_de_pasta_sem_filtro_cria_subpasta_vazia | Download de pasta sem filtro cria subpasta vazia. | RF-209 |
+| teste_tc_arv_17c_espelhar_remove_o_arquivo_regular_e_preenche_a_pasta_na_mesma_execucao | Espelhar remove o arquivo regular e preenche a pasta na mesma execucao. | TC-ARV-17c |
+| teste_tc_arv_17c_ligacao_local_com_espelhar_segue_a_leitura_parcial_e_nada_e_removido | Ligacao local com espelhar segue a leitura parcial e nada e removido. | TC-ARV-17c |
+| teste_tc_arv_17c_sem_espelhar_nada_e_removido | Sem espelhar nada e removido. | TC-ARV-17c |
+| teste_tc_arv_17c_destino_filtrado_nao_e_removido | Destino filtrado nao e removido. | TC-ARV-17c |
+| teste_tc_arv_17c_diretorio_local_nunca_e_removido_por_este_caminho | Diretorio local nunca e removido por este caminho. | TC-ARV-17c |
+| teste_rf216_pasta_orfa_vazia_e_apagada_e_a_raiz_fica | Pasta orfa vazia e apagada e a raiz fica. | RF-216 |
+| teste_rf216_sem_espelhar_a_pasta_orfa_fica | Sem espelhar a pasta orfa fica. | RF-216 |
+| teste_rf216_pasta_orfa_com_arquivo_orfao_arquivo_sai_e_depois_a_pasta | Pasta orfa com arquivo orfao arquivo sai e depois a pasta. | RF-216 |
+| teste_rf216_pastas_aninhadas_filho_antes_do_pai | Pastas aninhadas filho antes do pai. | RF-216 |
+| teste_rf216_pasta_orfa_com_item_filtrado_fica_mantida | Pasta orfa com item filtrado fica mantida. | RF-216 |
+| teste_rf216_subpasta_com_filtrado_mantem_a_cadeia_e_apaga_a_irma_vazia | Subpasta com filtrado mantem a cadeia e apaga a irma vazia. | RF-216 |
+| teste_rf216_ligacao_simbolica_no_lugar_de_pasta_orfa_nada_e_apagado | Ligacao simbolica no lugar de pasta orfa nada e apagado. | RF-216 |
+| teste_rf216_origem_vazia_recusa_antes_de_apagar_pasta | Origem vazia recusa antes de apagar pasta. | RF-216 |
+| teste_rf216_simulacao_nao_apaga_pasta | Simulacao nao apaga pasta. | RF-216 |
+| teste_rf216_pasta_local_com_caixa_diferente_do_remoto_nao_e_orfa | Pasta local com caixa diferente do remoto nao e orfa. | RF-216 |
+| teste_rf216_pasta_local_com_caixa_diferente_e_vazia_nao_e_apagada | Pasta local com caixa diferente e vazia nao e apagada. | RF-216 |
+| teste_rf216_a_decisao_nao_le_memoria_retrato_nem_cursor | A decisao nao le memoria retrato nem cursor. | RF-216 |
+| teste_tc_arv_31_recebimento_conta_so_a_pasta_criada_e_pasta_nao_e_arquivo | Recebimento conta so a pasta criada e pasta nao e arquivo. | TC-ARV-31 |
+| teste_tc_arv_30_simulacao_de_recebimento_anuncia_as_pastas_sem_criar_nada | Simulacao de recebimento anuncia as pastas sem criar nada. | TC-ARV-30 |
+| teste_tc_arv_30_simulacao_de_recebimento_anuncia_a_pasta_orfa_sem_rmdir | Simulacao de recebimento anuncia a pasta orfa sem rmdir. | TC-ARV-30 |
+| teste_rf214e_recebimento_exclusao_antecipada_sai_no_relatorio_com_motivo | Recebimento exclusao antecipada sai no relatorio com motivo. | RF-214e |
+| teste_rf214e_recebimento_simulacao_anuncia_apagaria_e_criaria_pasta | Recebimento simulacao anuncia apagaria e criaria pasta. | RF-214e |
+| teste_rf217c_recebimento_simulacao_anuncia_a_orfa_que_fica_vazia_pelo_arquivo_planejado | Recebimento simulacao anuncia a orfa que fica vazia pelo arquivo planejado. | RF-217c |
+| teste_rf217c_recebimento_simulacao_nao_anuncia_a_orfa_com_item_filtrado | Recebimento simulacao nao anuncia a orfa com item filtrado. | RF-217c |
+| teste_tc_arv_04_download_de_arquivo_unico_nao_cria_pasta_nem_registra_mkdir | `download` de arquivo unico: nenhuma chamada `create_folder*` e nenhuma linha de debug `operacao=mkdir`. | TC-ARV-04 |
+| teste_tc_arv_19_enospc_ou_erofs_no_mkdir_do_ciclo_2_zero_downloads_e_ciclo_1_permanece | ENOSPC ou EROFS no `mkdir` do ciclo 2: falha sistemica com saida 3, nenhum download do ciclo 2 e o ciclo 1 preservado. | TC-ARV-19 |
+
+
+## `tests/integracao/estrutura_pastas_relatorio_test.sh`
+
+- **Alvo:** `bin/dbx sync` resumo, `--json` e `--dry-run` (`commands/sync.sh`): contadores de pasta, motivo de falha de pasta, plano `criaria`/`apagaria pasta`, compatibilidade com arvore sem pasta nova
+- **Modulo:** estrutura_pastas_relatorio
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `estrutura-de-pastas-antes-da-transferencia`)
+- **Regras de origem:** F-103; RF-217; RF-218; RF-219; RF-214; TC-ARV-30..32; log `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
+- **Dados e precondicoes:** Duble de `curl` sem rede; origem e destino montados por caso; verificacao de zero escrita em simulacao
+- **Comando:** `bash tests/run.sh tests/integracao/estrutura_pastas_relatorio_test.sh`
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_tc_arv_31_resumo_traz_os_quatro_contadores_e_pasta_nao_e_arquivo | Resumo traz os quatro contadores e pasta nao e arquivo. | TC-ARV-31 |
+| teste_tc_arv_31_json_traz_os_quatro_contadores | Json traz os quatro contadores. | TC-ARV-31 |
+| teste_tc_arv_32_arvore_sem_pasta_nova_traz_os_antigos_iguais_e_os_novos_zerados | Arvore sem pasta nova traz os antigos iguais e os novos zerados. | TC-ARV-32 |
+| teste_tc_arv_31_falha_de_pasta_sai_com_caminho_e_motivo_antes_dos_contadores | Falha de pasta sai com caminho e motivo antes dos contadores. | TC-ARV-31 |
+| teste_tc_arv_30_simulacao_anuncia_as_pastas_antes_dos_arquivos_sem_nenhuma_escrita | Simulacao anuncia as pastas antes dos arquivos sem nenhuma escrita. | TC-ARV-30 |
+| teste_tc_arv_30_simulacao_anuncia_a_pasta_orfa_sem_releitura_nem_escrita | Simulacao anuncia a pasta orfa sem releitura nem escrita. | TC-ARV-30 |
+| teste_rf214e_exclusao_antecipada_sai_no_relatorio_com_motivo | Exclusao antecipada sai no relatorio com motivo. | RF-214e |
+| teste_rf214e_simulacao_anuncia_apagaria_e_criaria_pasta | Simulacao anuncia apagaria e criaria pasta. | RF-214e |
+| teste_rf217c_simulacao_anuncia_a_orfa_que_fica_vazia_pelas_exclusoes_planejadas | Simulacao anuncia a orfa que fica vazia pelas exclusoes planejadas. | RF-217c |
+| teste_rf217c_simulacao_nao_anuncia_a_orfa_com_item_filtrado | Simulacao nao anuncia a orfa com item filtrado. | RF-217c |
+| teste_rf217c_simulacao_subpasta_com_filtrado_mantem_a_cadeia_e_anuncia_a_irma_vazia | Simulacao subpasta com filtrado mantem a cadeia e anuncia a irma vazia. | RF-217c |
+| teste_rf217d_recusa_por_espaco_nao_anuncia_nenhuma_pasta | Recusa por espaco nao anuncia nenhuma pasta. | RF-217d |
+
 ## `tests/integracao/filtros_ajuda_test.sh`
 
 - **Alvo:** ajuda (`bin/dbx help`), autocompletar (`completions/dbx.bash`), `README.md` e mapa de modulos para as opcoes de filtro e limite de banda
@@ -918,7 +1121,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Modulo:** lote_test
 - **Camada:** integracao
 - **Autoria:** Senior Developer (TDD da demanda `backlog-fase-9-desempenho`)
-- **Regras de origem:** F-08; F-34; RF-136; RF-137; DIV-269; TC-LOT-*; TC-LOU-*; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md`
+- **Regras de origem:** F-08; F-34; RF-136; RF-137; DIV-269; TC-LOT-*; TC-LOU-*; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md`; F-103 (ajuste do duble de `create_folder_batch` e da guarda RF-136(f))
 - **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
 - **Dados e precondicoes:** duble de `curl` que delega rotas de lote a `tests/support/lote_duplo.sh`; duble de `sleep` que registra a espera em arquivo (sem esperar de verdade); arquivos temporarios por caso
 - **Comando:** `bash tests/run.sh tests/integracao/lote_test.sh`
@@ -992,7 +1195,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Modulo:** paralelo
 - **Camada:** integracao
 - **Autoria:** Senior Developer (TDD da demanda `backlog-fase-9-desempenho`)
-- **Regras de origem:** F-09; F-08; F-34; RF-133..RF-135; RF-139; TC-PAR-01..; DIV-338; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md`
+- **Regras de origem:** F-09; F-08; F-34; RF-133..RF-135; RF-139; TC-PAR-01..; DIV-338; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md`; F-103 (ajuste do duble de `create_folder_batch` e da guarda RF-136(f))
 - **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer
 - **Dados e precondicoes:** duble de `curl` que marca cada transferencia em `$base/vivos` e anota o pico em `$base/pico` (prova o paralelismo sem depender de tempo); arvores sinteticas locais e remotas; credencial sintetica
 - **Comando:** `bash tests/run.sh tests/integracao/paralelo_test.sh`
@@ -1394,7 +1597,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Modulo:** qa_cursor
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `backlog-fase-7b-cursor`)
-- **Regras de origem:** F-14; RF-110..RF-119; RF-43; RF-48; DIV-204..DIV-234; condicoes C1..C11 do DBA; TC-CUL-04; TC-CUL-05; log `docs/prompts/2026-10-21_0713_backlog-fase-7b-cursor.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-21-0713-cursor.md)
+- **Regras de origem:** F-14; RF-110..RF-119; RF-43; RF-48; DIV-204..DIV-234; condicoes C1..C11 do DBA; TC-CUL-04; TC-CUL-05; log `docs/prompts/2026-10-21_0713_backlog-fase-7b-cursor.md`; [entrada](../../.github/agents/memoria/entradas/2026-10-21-0713-cursor.md); F-103 (ajuste do duble de `create_folder_batch` e da guarda RF-136(f))
 - **Aceite do solicitante:** [entrada](../../.github/agents/memoria/entradas/2026-10-21-0713-cursor.md) com sha256 `8c40c6f0f77ea0dd9e147e4ba6e21898366e7e131f5b51043e021ce05235e4b6`; alterado na demanda `sync-em-blocos`: novo sha256 `15045c18464902f61c70069c513a506cd3ac8f7fa2e3ed251a82e26af4ab5159`, reaprovado em 2026-10-31, [entrada](../../.github/agents/memoria/entradas/2026-10-31-1200-aceite-testes-qa-sync-em-blocos.md)
 - **Dados e precondicoes:** duble de `curl` proprio por regras (endpoint, filtro do corpo, codigo, resposta; codigos especiais `REDE` e `SINAL:NOME`), registros de chamadas, argv e ambiente em arquivos temporarios; sem rede
 - **Comando:** `bash tests/run.sh tests/integracao/qa_cursor_b7b_test.sh`
@@ -1504,7 +1707,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Modulo:** qa_desempenho
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `backlog-fase-9-desempenho`)
-- **Regras de origem:** F-09, F-08, F-34; RF-136, RF-137, RF-138; DIV-269, DIV-278; protocolo-tdd Regra 6; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md`
+- **Regras de origem:** F-09, F-08, F-34; RF-136, RF-137, RF-138; DIV-269, DIV-278; protocolo-tdd Regra 6; log `docs/prompts/2026-10-21_2300_backlog-fase-9-desempenho.md`; F-103 (ajuste do duble de `create_folder_batch` e da guarda RF-136(f))
 - **Aceite do solicitante:** [entrada de reaprovacao](../../.github/agents/memoria/entradas/2026-10-27-1500-aceite-reaprovacao-inventario.md), sha256 `2630f5364fd3da79f3f6a36ca67b61722b9f010e50a86f6d7603e312bef90c47` (reaprovado em 2026-10-27; a versao aceita antes havia sido alterada sem novo aceite)
 - **Dados e precondicoes:** duplo de `curl` proprio delegando as rotas de lote a `tests/support/lote_duplo.sh`; arquivos sinteticos temporarios; sem rede nem conta real
 - **Comando:** `bash tests/run.sh tests/integracao/qa_desempenho_b9_test.sh`
@@ -1840,7 +2043,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Modulo:** `qa_paralelo_pastas` (linha ausente do mapa de modulos; id derivado do nome do arquivo)
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `paralelo-upload-download`)
-- **Regras de origem:** RF-175; RF-176; DIV-372; DIV-373; DIV-374 (opcao A); log `docs/prompts/2026-10-26_1900_paralelo-upload-download.md`
+- **Regras de origem:** RF-175; RF-176; DIV-372; DIV-373; DIV-374 (opcao A); log `docs/prompts/2026-10-26_1900_paralelo-upload-download.md`; F-103 (ajuste do duble de `create_folder_batch` e da guarda RF-136(f))
 - **Aceite do solicitante:** [log de prompt](../prompts/2026-10-26_1900_paralelo-upload-download.md), com sha256 `94f2b18c884f014b162632451ac28c2c1f0a2b372be37bcadf3d7e4e02071c44`
 - **Dados e precondicoes:** duble de `curl` proprio; simultaneidade provada por marcas em `B/vivos` e pico em `B/picos`, sem depender de tempo de parede; bytes conferidos por `cmp` contra massa gerada com valores proprios; area temporaria por caso
 - **Comando:** `bash tests/run.sh tests/integracao/qa_paralelo_pastas_b18_test.sh`
@@ -2261,7 +2464,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 - **Modulo:** `qa_sync_blocos` (filtro do mapa de modulos)
 - **Camada:** integracao
 - **Autoria:** QA Expert (suite independente da demanda `sync-em-blocos`)
-- **Regras de origem:** F-101; RF-186..RF-197; TC-BLC-nn (secao 5.24 do escopo); log `docs/prompts/2026-10-31_1200_sync-em-blocos.md`; registro `docs/reviews/2026-10-31-1200-registro-sync-em-blocos.md`; DIV-377..DIV-384
+- **Regras de origem:** F-101; RF-186..RF-197; TC-BLC-nn (secao 5.24 do escopo); log `docs/prompts/2026-10-31_1200_sync-em-blocos.md`; registro `docs/reviews/2026-10-31-1200-registro-sync-em-blocos.md`; DIV-377..DIV-384; F-103 (ajuste do duble de `create_folder_batch` e da guarda RF-136(f))
 - **Aceite do solicitante:** [entrada](../../.github/agents/memoria/entradas/2026-10-31-1200-aceite-testes-qa-sync-em-blocos.md) com sha256 `f5e8fc366fda4d77c41db5e1541d40060a273ad1532397f11466209502bbd6f8` (2026-10-31)
 - **Dados e precondicoes:** duplo de `curl` proprio por roteiro, registros de chamadas em arquivos temporarios; arvores locais e remotas sinteticas por caso; sem rede; casos de modo 000 nao rodam como root
 - **Comando:** `bash tests/run.sh tests/integracao/qa_sync_blocos_b21_test.sh`

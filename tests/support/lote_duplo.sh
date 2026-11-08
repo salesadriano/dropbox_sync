@@ -55,12 +55,35 @@ lote_responder() {
   # Rota que nao e de lote: sai sem tocar em nada (nem `codigo`, nem `corpo`).
   case $url in
     */files/delete_batch/check | */files/delete_batch | */upload_session/start | */upload_session/finish_batch_v2) ;;
+    */files/create_folder_batch) ;;
     *) return 1 ;;
   esac
   mkdir -p "$base/lote/excluir_falha" "$base/lote/envio_falha" "$base/lote/envio_hash"
   [[ -n $arquivo && -r $arquivo ]] && IFS= read -r -d '' pedido <"$arquivo"
   codigo=200
   case $url in
+    */files/create_folder_batch)
+      # F-103 (RF-210): resposta sincrona `complete`, uma entrada por posicao.
+      # Controles: `lote/pasta_arquivo/<nome>` responde path/conflict/file (falha
+      # de item); `lote/pasta_sem_espaco/<nome>` responde insufficient_space
+      # (falha sistemica, sem retentativa do cliente HTTP).
+      printf 'create_folder_batch\t%s\n' "$pedido" >>"$base/lote/chamadas"
+      local resto=${pedido#*\"paths\":[} re_pasta='^"([^"]*)",?(.*)$'
+      resto=${resto%%]*}
+      while [[ $resto =~ $re_pasta ]]; do
+        caminho=${BASH_REMATCH[1]}
+        resto=${BASH_REMATCH[2]}
+        nome=${caminho##*/}
+        if [[ -f $base/lote/pasta_arquivo/$nome ]]; then
+          entradas+="${entradas:+,}{\".tag\":\"failure\",\"failure\":{\".tag\":\"path\",\"path\":{\".tag\":\"conflict\",\"conflict\":{\".tag\":\"file\"}}}}"
+        elif [[ -f $base/lote/pasta_sem_espaco/$nome ]]; then
+          entradas+="${entradas:+,}{\".tag\":\"failure\",\"failure\":{\".tag\":\"path\",\"path\":{\".tag\":\"insufficient_space\"}}}"
+        else
+          entradas+="${entradas:+,}{\".tag\":\"success\",\"metadata\":{\"name\":\"$nome\",\"path_lower\":\"${caminho,,}\",\"id\":\"id:P$nome\"}}"
+        fi
+      done
+      corpo="{\".tag\":\"complete\",\"entries\":[$entradas]}"
+      ;;
     */files/delete_batch/check)
       printf 'check\t%s\n' "$pedido" >>"$base/lote/chamadas"
       local job=''
