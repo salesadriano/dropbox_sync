@@ -45,6 +45,8 @@ DBX_CMD_SYNC_FALHAS_MOTIVOS=()
 DBX_CMD_SYNC_FALHAS_TAMANHOS=()
 DBX_CMD_SYNC_OK_CAMINHOS=()
 DBX_CMD_SYNC_OK_TAMANHOS=()
+# RF-214(e): arquivos apagados no lugar de pasta (linha `apagado` do relatorio).
+DBX_CMD_SYNC_APAGADOS_PASTA=()
 DBX_CMD_SYNC_EXIBIDO=''
 DBX_CMD_SYNC_RESUMO_FALHA=''
 
@@ -183,6 +185,20 @@ _dbx_cmd_sync_relatorio_itens() {
     fi
     dbx_output_tamanho_humano "$tam" texto
     dbx_output_campo "$acao" "$valor${texto:+ ($texto)}"
+  done
+  # RF-214(e): o arquivo apagado no lugar da pasta, com o motivo.
+  for indice in "${!DBX_CMD_SYNC_APAGADOS_PASTA[@]}"; do
+    valor=${DBX_CMD_SYNC_APAGADOS_PASTA[indice]}
+    if [[ ${DBX_CLI_NULO:-nao} != 'sim' ]]; then
+      _dbx_cmd_sync_exibir "$valor"
+      valor=$DBX_CMD_SYNC_EXIBIDO
+    fi
+    if [[ $forma == 'estruturado' ]]; then
+      dbx_output_campo apagado_caminho "$valor"
+      dbx_output_campo apagado_motivo 'arquivo no lugar da pasta'
+    else
+      dbx_output_campo apagado "$valor (arquivo no lugar da pasta)"
+    fi
   done
   [[ $forma == 'legivel' ]] || return 0
   for indice in "${!DBX_CMD_SYNC_FALHAS_CAMINHOS[@]}"; do
@@ -1119,6 +1135,7 @@ dbx_cmd_sync_executar() {
   DBX_CMD_SYNC_FALHAS_TAMANHOS=()
   DBX_CMD_SYNC_OK_CAMINHOS=()
   DBX_CMD_SYNC_OK_TAMANHOS=()
+  DBX_CMD_SYNC_APAGADOS_PASTA=()
   # A area e do ciclo comum, registrada em `lib/tmp`: sai em toda saida,
   # inclusive por sinal (RNF-35), sem limpeza por porta de saida.
   area=$DBX_CMD_CICLO_AREA
@@ -1167,6 +1184,23 @@ dbx_cmd_sync_executar() {
   local -a pend_filhos=() pend_chaves=() pend_regs=()
   local -A chaves_dirs=()
   local estado_remoto=0 rodada
+  # RF-216: pastas orfas candidatas e contagem (resumo/--json: Tarefa 6)
+  local -a pastas_orfas=()
+  local -A pastas_vistas=()
+  local pastas_apagadas=0 pastas_mantidas=0 pastas_bloqueio='nao' filhos_locais=/dev/null
+  # RF-218: contadores de pasta (criadas, falhas) e, em simulacao (RF-217), o
+  # plano de pastas do ciclo (`chave<TAB>valor`), as exclusoes de pasta
+  # anunciadas e as pastas do destino remoto observadas nesta execucao.
+  local pastas_criadas=0 pastas_falhou=0
+  local -a plano_pastas=() pastas_apagaria=()
+  local -A pastas_destino_vistas=()
+  # RF-217(c)(d), so em simulacao: o que esta execucao planejou apagar (arquivos),
+  # o que ela observou no destino remoto (`tipo<TAB>relativo`), as pastas ja
+  # anunciadas como `apagaria` e a recusa por espaco (nenhum plano de pastas).
+  local -A apagar_planejado=() pastas_apagaria_set=()
+  local -a observados_destino=()
+  local pastas_recusa='nao'
+  [[ $sentido == 'receber' ]] && filhos_locais="$area/filhos_locais"
   local -a ordem_remota=()
   # shellcheck disable=SC2034  # preenchido e lido por referencia de nome nas funcoes de lib/sync
   local -A mapa_remoto=() mapa_revs=() mapa_tam_remoto=()
@@ -1177,6 +1211,13 @@ dbx_cmd_sync_executar() {
     _dbx_cmd_sync_retrato_iniciar "$remoto"
     _dbx_cmd_sync_diretorios_enumerar || return $?
   fi
+  # F-103, RF-210(a)(g): no --enviar (e no `upload` de pasta, que chega aqui) a
+  # arvore remota inteira e criada uma unica vez, dentro do laco, DEPOIS das
+  # recusas do plano do ciclo 1 (origem vazia, espaco) e da simulacao, e antes do
+  # primeiro envio. Pastas que falham ficam em `pastas_falhas` (relativo local ->
+  # pasta remota que falhou), lido por ciclo.
+  local -A pastas_falhas=()
+  local pastas_arvore_criada='nao'
 
     while _dbx_cmd_sync_ciclo_proximo; do
       ciclo_i=$((ciclo_i + 1))
@@ -1192,7 +1233,7 @@ dbx_cmd_sync_executar() {
   else
     dbx_progress_mensagem "[sync] analisando arquivos locais em: $raiz_local"
     if [[ $modo_ciclos == 'sim' ]]; then
-      dbx_walk_ciclo "$raiz_local" "$dirs_arq" "$ci_ini" "$ci_fim" "$registros_locais" /dev/null \
+      dbx_walk_ciclo "$raiz_local" "$dirs_arq" "$ci_ini" "$ci_fim" "$registros_locais" "$filhos_locais" \
         "$([[ $sentido == 'receber' ]] && printf chaves_dirs)" || {
         dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
         return $?
@@ -1203,6 +1244,7 @@ dbx_cmd_sync_executar() {
         parcial='sim'
         motivo_parcial="${motivo_parcial}${motivo_parcial:+; }$DBX_WALK_MOTIVO"
       fi
+      [[ $sentido == 'receber' ]] && _dbx_cmd_sync_pastas_orfas_locais "$filhos_locais"
     else
       dbx_walk_local "$raiz_local" "$registros_locais" || {
         dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
@@ -1281,6 +1323,7 @@ dbx_cmd_sync_executar() {
         fi
         if [[ $estado_remoto -eq 0 && $sentido == 'enviar' ]]; then
           _dbx_cmd_sync_ramos_destino_remotos || estado_remoto=$?
+          [[ $estado_remoto -eq 0 ]] && _dbx_cmd_sync_pastas_orfas_remotas
         fi
         if [[ $estado_remoto -ne 0 ]]; then
           dbx_cmd_falhar "${DBX_HTTP_CLASSE:-erro_remoto}" "${DBX_SYNC_MOTIVO:-enumeracao remota falhou}"
@@ -1427,10 +1470,11 @@ dbx_cmd_sync_executar() {
   local recusa_origem_vazia='nao' a_apagar_recusado=0 recusaria=''
   # Ramo so do destino com arquivo conta como "algo a apagar" (RF-191): sem isso a
   # origem vazia apagaria o conteudo desses ramos sem a recusa.
-  if [[ $espelhar == 'sim' && $vazia == 'sim' && $((${#DBX_SYNC_APAGAR[@]} + extras_arquivos)) -gt 0 &&
+  if [[ $espelhar == 'sim' && $vazia == 'sim' && $((${#DBX_SYNC_APAGAR[@]} + extras_arquivos + ${#pastas_orfas[@]})) -gt 0 &&
     $permitir_origem_vazia != 'sim' ]]; then
     recusa_origem_vazia='sim'
-    a_apagar_recusado=$((${#DBX_SYNC_APAGAR[@]} + extras_arquivos))
+    pastas_bloqueio='sim'
+    a_apagar_recusado=$((${#DBX_SYNC_APAGAR[@]} + extras_arquivos + ${#pastas_orfas[@]}))
     [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && recusaria='origem vazia'
     DBX_SYNC_APAGAR=()
     extras_arquivos=0
@@ -1529,11 +1573,16 @@ dbx_cmd_sync_executar() {
     if ! dbx_cmd_espaco_checar "$total_bytes" "$forcar"; then
       if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
         recusaria_espaco=$DBX_CMD_ESPACO_MOTIVO
+        pastas_recusa='sim'
       else
         recusa_espaco='sim'
       fi
     fi
   fi
+
+  # RF-217(d): depois da checagem de espaco, para a recusa por espaco tambem
+  # calar o plano de pastas.
+  _dbx_cmd_sync_pastas_plano_simular
 
   # RF-41(d) e RF-47: o plano inteiro, com toda exclusao nomeada, sai ANTES da
   # primeira escrita. Em simulacao a saida e a mesma — e o que torna `--dry-run`
@@ -1571,6 +1620,10 @@ dbx_cmd_sync_executar() {
     [[ -n $recusaria_espaco ]] &&
       dbx_output_campo recusaria "$recusaria_espaco (a execucao real seria recusada)"
   fi
+  # RF-217(a): `apagaria`/`criaria pasta` do ciclo antes dos arquivos do ciclo.
+  for caminho in ${plano_pastas[@]+"${plano_pastas[@]}"}; do
+    dbx_output_campo "${caminho%%$'\t'*}" "${caminho#*$'\t'}"
+  done
   for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
     dbx_output_campo transferir "$caminho"
   done
@@ -1629,6 +1682,40 @@ dbx_cmd_sync_executar() {
     for item_tam in "${!caminhos_locais[@]}"; do
       tam_item["${caminhos_locais[$item_tam]}"]=${tamanhos[$item_tam]}
     done
+    if [[ $pastas_arvore_criada != 'sim' ]]; then
+      pastas_arvore_criada='sim'
+      _dbx_cmd_sync_pastas_criar || {
+        codigo_parada=$?
+        if [[ $modo_ciclos != 'sim' || $ciclo_i -eq 1 ]]; then
+          return "$codigo_parada"
+        fi
+        ciclo_falho=$ciclo_i
+        break
+      }
+    fi
+    _dbx_cmd_sync_pastas_falhas_aplicar
+  elif [[ $modo_ciclos == 'sim' ]]; then
+    # F-103, RF-211(a): no --receber (e no `download` de pasta) as pastas do
+    # CICLO sao criadas aqui, depois das recusas e da simulacao, antes da
+    # primeira transferencia do ciclo. Sem ciclos (delta incremental, RF-212) o
+    # comportamento segue o de antes: o pai nasce na gravacao de cada arquivo.
+    _dbx_cmd_sync_pastas_receber_criar || {
+      codigo_parada=$?
+      if [[ $ciclo_i -eq 1 ]]; then
+        return "$codigo_parada"
+      fi
+      ciclo_falho=$ciclo_i
+      break
+    }
+    _dbx_cmd_sync_pastas_falhas_aplicar
+  elif [[ $sentido == 'receber' ]]; then
+    # F-103, RF-212(a)(b): sem ciclos (delta com cursor valido) as pastas vem da
+    # tabela (retrato + delta), sem nenhum `list_folder` por diretorio.
+    _dbx_cmd_sync_pastas_delta_criar || {
+      codigo_parada=$?
+      return "$codigo_parada"
+    }
+    _dbx_cmd_sync_pastas_falhas_aplicar
   fi
   local total_ops=0
   [[ ${#DBX_SYNC_TRANSFERIR[@]} -gt 0 ]] && total_ops=$((total_ops + ${#DBX_SYNC_TRANSFERIR[@]}))
@@ -1729,8 +1816,13 @@ dbx_cmd_sync_executar() {
       fi
     done
   fi
+    # RF-216(g): ciclo sem exclusao liberada, falho ou parcial bloqueia as pastas.
+    [[ $espelhar == 'sim' && $exclusao_desabilitada == 'nao' && $recusa_origem_vazia == 'nao' &&
+      $ciclo_falho -eq 0 && $parcial != 'sim' ]] || pastas_bloqueio='sim'
     [[ $ciclo_falho -gt 0 ]] && break
     done
+  # RF-215(c), RF-216: pastas orfas so depois das exclusoes de arquivo de TODOS os ciclos.
+  _dbx_cmd_sync_pastas_orfas_apagar
 
   if [[ $modo_ciclos == 'sim' ]]; then
     dbx_sync_avisos_de_filtro "$antes_total" "$depois_total"
@@ -1738,6 +1830,11 @@ dbx_cmd_sync_executar() {
   fi
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' && $ciclo_falho -eq 0 ]]; then
     dbx_cmd_iniciar_saida
+    # RF-217(a): exclusoes de pasta depois das de arquivo de todos os ciclos.
+    for caminho in ${pastas_apagaria[@]+"${pastas_apagaria[@]}"}; do
+      dbx_output_campo apagaria "$caminho"
+    done
+    _dbx_cmd_sync_pastas_campos
     dbx_output_campo simulado sim
     dbx_output_render
     return 0
@@ -1816,6 +1913,9 @@ dbx_cmd_sync_executar() {
     done
     _dbx_cmd_sync_relatorio_itens estruturado
   fi
+  # RF-218(a): contadores de pasta depois dos pares de falha (RF-59(b)), que
+  # seguem logo apos `falhas`; os campos antigos ficam onde estavam.
+  _dbx_cmd_sync_pastas_campos
   if [[ ${DBX_CLI_ESTRUTURADA:-nao} == 'sim' || $ciclo_i -gt 1 ]]; then
     dbx_output_campo ciclos "$ciclo_i"
     dbx_output_campo bloco "$DBX_CMD_SYNC_BLOCO"
@@ -2262,6 +2362,500 @@ _dbx_cmd_sync_cursor_gravar() {
   return 0
 }
 
+# _dbx_cmd_sync_pastas_do_escopo — F-103, RF-209(a)(b)(c): diretorios locais do
+# escopo de caminho (relativos), em `pastas_escopo`. Em ciclos, os da enumeracao
+# previa (`dirs_v`); sem ciclos (delta incremental, que percorre so arquivos em
+# `dbx_walk_local`), a mesma travessia de diretorios da enumeracao, sem tocar em
+# `parcial` (a leitura parcial continua sendo a da travessia de arquivos).
+# Filtros de data e tamanho nao podam diretorio; o de caminho sim (lib/walk).
+# Executor: modo_ciclos, dirs_v, raiz_local, area (le); pastas_escopo (escreve).
+_dbx_cmd_sync_pastas_do_escopo() {
+  local reg
+  pastas_escopo=()
+  if [[ $modo_ciclos == 'sim' ]]; then
+    pastas_escopo=(${dirs_v[@]+"${dirs_v[@]}"})
+    return 0
+  fi
+  dbx_walk_diretorios "$raiz_local" "$area/pastas_escopo" || {
+    dbx_cmd_falhar nao_encontrado "nao foi possivel percorrer a raiz local: $raiz_local"
+    return $?
+  }
+  while IFS= read -r -d '' reg; do
+    pastas_escopo+=("${reg#*$'\t'}")
+  done <"$area/pastas_escopo"
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_criar — F-103, RF-210(a)(e), RF-213(a)(b): cria pelo lote
+# (`dbx_lote_criar_pastas`) toda pasta do escopo sob o destino remoto, antes do
+# ciclo 1. A raiz do destino fica de fora (RF-209(e)). Simulacao: nenhuma
+# chamada. Falha sistemica: para pelo caminho de falha do comando, antes de
+# qualquer transferencia e sem exclusao. Falha de item: a pasta e avisada e
+# registrada em `pastas_falhas`; os arquivos sob ela falham por ciclo
+# (`_dbx_cmd_sync_pastas_falhas_aplicar`). Nao marca leitura parcial (RF-213(c)).
+# Variaveis do executor: sentido, modo_ciclos, dirs_v, raiz_local, remoto, area,
+# espelhar (le); pastas_falhas, pastas_criadas, pastas_escopo, falhas, apagados
+# (escreve).
+_dbx_cmd_sync_pastas_criar() {
+  local k res status=0
+  local -a pastas_escopo=() relativos=()
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && return 0
+  _dbx_cmd_sync_pastas_do_escopo || return $?
+  DBX_LOTE_PASTAS=()
+  for k in "${!pastas_escopo[@]}"; do
+    [[ -n ${pastas_escopo[k]} ]] || continue
+    relativos+=("${pastas_escopo[k]}")
+    DBX_LOTE_PASTAS+=("$remoto/${pastas_escopo[k]}")
+  done
+  # RF-214(a): sem --espelhar (ou com guarda que nao passa), `path/conflict/file`
+  # volta do lote como falha de item e nada e apagado.
+  dbx_lote_criar_pastas || status=$?
+  if [[ $status -eq $DBX_LOTE_PASTAS_FALHA_SISTEMICA ]]; then
+    dbx_cmd_falhar "${DBX_LOTE_PASTAS_CLASSE:-erro_remoto}" "${DBX_LOTE_PASTAS_MOTIVO:-criacao de pastas falhou}"
+    return $?
+  fi
+  # RF-214(b)-(e): com --espelhar, o arquivo do destino que ocupa o caminho de
+  # uma pasta da origem e apagado (guardas em `_ocupantes_apagar`) e a pasta e
+  # submetida de novo, na mesma execucao.
+  if [[ $status -ne 0 ]]; then
+    _dbx_cmd_sync_pastas_ocupantes_apagar "${relativos[@]}" || return $?
+  fi
+  for k in "${!relativos[@]}"; do
+    res=${DBX_LOTE_PASTAS_RESULTADO[k]:-}
+    [[ $res == 'criada' ]] && pastas_criadas=$((pastas_criadas + 1))
+    [[ $res == falha$'\t'* ]] || continue
+    res=${res#*$'\t'}
+    if [[ $res == 'pasta de destino nao criada: '* ]]; then
+      pastas_falhas["${relativos[k]}"]=${res#pasta de destino nao criada: }
+    else
+      pastas_falhas["${relativos[k]}"]=${DBX_LOTE_PASTAS[k]}
+      dbx_cmd_avisar "pasta nao criada: $res"
+      _dbx_cmd_sync_pasta_falha_contar "${relativos[k]}" "$res"
+    fi
+  done
+  return 0
+}
+
+# _dbx_cmd_sync_apagar_retirar <relativo> — RF-214(b): o item apagado pela
+# exclusao antecipada sai de DBX_SYNC_APAGAR (sem dupla exclusao nem contagem).
+_dbx_cmd_sync_apagar_retirar() {
+  local c
+  local -a manter=()
+  for c in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+    [[ $c == "$1" ]] || manter+=("$c")
+  done
+  DBX_SYNC_APAGAR=(${manter[@]+"${manter[@]}"})
+}
+
+# _dbx_cmd_sync_exclusao_antecipada_permitida <relativo> — RF-214(c)(3)(4)(5): os
+# MESMOS predicados da exclusao comum, reavaliados no momento: --espelhar, sem
+# exclusao desabilitada (travessia parcial, conta nao identificada, memoria
+# descartada), sem recusa de origem vazia, e o destino nao filtrado (RF-80(d)).
+# Variavel ausente conta como nao liberada. O reconhecimento da primeira
+# execucao (--confirmar, RF-48) ja foi exigido antes do plano.
+_dbx_cmd_sync_exclusao_antecipada_permitida() {
+  [[ ${espelhar:-nao} == 'sim' && ${exclusao_desabilitada:-sim} == 'nao' && ${recusa_origem_vazia:-sim} == 'nao' ]] || return 1
+  _dbx_cmd_sync_protegido "$1" && return 1
+  return 0
+}
+
+# _dbx_cmd_sync_ocupante_remoto_ler <pai> <alvo> — RF-214(c)(1)(6): lista o pai
+# por inteiro (todas as paginas, nao recursivo) e le o item de caminho <alvo>.
+# Status 0 so quando a listagem terminou e o item e um `file` com `rev`; o rev
+# fica em _DBX_SYNC_OCUPANTE_REV. Qualquer outra coisa (erro, laco, ausente,
+# pasta, sem rev) e status 1.
+_DBX_SYNC_OCUPANTE_REV=''
+_dbx_cmd_sync_ocupante_remoto_ler() {
+  local pai=$1 alvo=${2,,} corpo url estado quantidade i cam tag rev pagina=1 anterior='' achou='nao' tag_achada='' rev_achado=''
+  _DBX_SYNC_OCUPANTE_REV=''
+  dbx_json_escapar_cadeia "$pai"
+  corpo="{\"path\":\"$DBX_JSON_ESCAPADO\",\"recursive\":false}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  url='https://api.dropboxapi.com/2/files/list_folder'
+  while :; do
+    if [[ $pagina -eq 1 ]]; then
+      dbx_auth_colecao POST "$url" "$corpo" "$DBX_SYNC_LIMITE_PAGINA"
+    else
+      dbx_auth_requisitar POST "$url" "$_DBX_SYNC_CORPO" sim
+    fi
+    estado=$?
+    _DBX_SYNC_CORPO=''
+    [[ $estado -eq 0 ]] || return 1
+    _dbx_cmd_analisar_corpo || return 1
+    quantidade=$(dbx_json_tamanho_arranjo entries) || quantidade=0
+    for ((i = 0; i < quantidade; i++)); do
+      cam='' tag='' rev=''
+      _dbx_cmd_campo entries "$i" path_lower && cam=$DBX_CMD_LIDO
+      [[ ${cam,,} == "$alvo" ]] || continue
+      _dbx_cmd_campo entries "$i" '.tag' && tag=$DBX_CMD_LIDO
+      _dbx_cmd_campo entries "$i" rev && rev=$DBX_CMD_LIDO
+      achou='sim' tag_achada=$tag rev_achado=$rev
+    done
+    _dbx_sync_pagina_seguinte "$anterior"
+    estado=$?
+    _dbx_cmd_encerrar_consulta
+    [[ $estado -eq 1 ]] && break
+    if [[ $estado -eq 2 || $pagina -ge $DBX_SYNC_TETO_PAGINAS ]]; then
+      DBX_SYNC_CURSOR_NOVO=''
+      return 1
+    fi
+    anterior=$DBX_SYNC_CURSOR_NOVO
+    pagina=$((pagina + 1))
+    _dbx_sync_corpo_continue "$anterior"
+    url='https://api.dropboxapi.com/2/files/list_folder/continue'
+  done
+  [[ $achou == 'sim' && $tag_achada == 'file' && -n $rev_achado ]] || return 1
+  _DBX_SYNC_OCUPANTE_REV=$rev_achado
+  return 0
+}
+
+# _dbx_cmd_sync_ocupante_remoto_apagar <caminho remoto> — RF-214(c)(1)(6): le o
+# item no pai listado nesta execucao e o apaga por `files/delete_v2` com
+# `parent_rev` igual ao rev lido (para a lixeira; nunca delete_batch nem
+# permanently_delete). Status 0 so com o servidor confirmando.
+_dbx_cmd_sync_ocupante_remoto_apagar() {
+  local alvo=$1 pai corpo
+  pai=${alvo%/*}
+  _dbx_cmd_sync_ocupante_remoto_ler "$pai" "$alvo" || return 1
+  dbx_json_escapar_cadeia "$alvo"
+  corpo="{\"path\":\"$DBX_JSON_ESCAPADO\""
+  dbx_json_escapar_cadeia "$_DBX_SYNC_OCUPANTE_REV"
+  corpo+=",\"parent_rev\":\"$DBX_JSON_ESCAPADO\"}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  _dbx_cmd_escrita_remota 'https://api.dropboxapi.com/2/files/delete_v2' "$corpo" || return 1
+  _dbx_cmd_encerrar_consulta
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_ocupantes_apagar <relativos das pastas, na ordem de
+# DBX_LOTE_PASTAS> — RF-214(b)-(e), envio: para cada pasta que o lote devolveu
+# com `arquivo no lugar da pasta` e passa nas guardas, apaga o arquivo do destino
+# e submete de novo a pasta e as descendentes que dela dependiam. O resultado do
+# reenvio substitui o das posicoes. Guarda que nao passa ou exclusao que falha:
+# o resultado de falha de item (RF-214(a)) fica como estava e a pasta nao e criada
+# (RF-214(d)). Falha sistemica no reenvio para pelo caminho de falha do comando.
+# Executor: espelhar, apagados, exclusao_desabilitada, recusa_origem_vazia.
+_dbx_cmd_sync_pastas_ocupantes_apagar() {
+  local -a rels=("$@") reenvio=() cheia=("${DBX_LOTE_PASTAS[@]}") velhos=("${DBX_LOTE_PASTAS_RESULTADO[@]}")
+  local k j cam res status=0
+  local -A liberada=()
+  for k in "${!cheia[@]}"; do
+    res=${velhos[k]:-}
+    [[ $res == "falha"$'\t'"arquivo no lugar da pasta: ${cheia[k]}" ]] || continue
+    cam=${cheia[k]}
+    _dbx_cmd_sync_exclusao_antecipada_permitida "${rels[k]}" || continue
+    if _dbx_cmd_sync_ocupante_remoto_apagar "$cam"; then
+      apagados=$((apagados + 1))
+      _dbx_cmd_sync_apagar_retirar "${rels[k]}"
+      dbx_cmd_avisar "apagado: ${rels[k]} (arquivo no lugar da pasta)"
+      DBX_CMD_SYNC_APAGADOS_PASTA+=("${rels[k]}")
+      liberada[$cam]=1
+    else
+      dbx_cmd_avisar "arquivo no lugar da pasta nao apagado: $cam"
+    fi
+  done
+  [[ ${#liberada[@]} -gt 0 ]] || return 0
+  local -a posicoes=()
+  for k in "${!cheia[@]}"; do
+    res=${velhos[k]:-}
+    for j in "${!liberada[@]}"; do
+      if [[ ${cheia[k]} == "$j" || $res == "falha"$'\t'"pasta de destino nao criada: $j" ]]; then
+        posicoes+=("$k")
+        reenvio+=("${cheia[k]}")
+        break
+      fi
+    done
+  done
+  DBX_LOTE_PASTAS=("${reenvio[@]}")
+  dbx_lote_criar_pastas || status=$?
+  local -a novos=("${DBX_LOTE_PASTAS_RESULTADO[@]}")
+  DBX_LOTE_PASTAS=("${cheia[@]}")
+  DBX_LOTE_PASTAS_RESULTADO=("${velhos[@]}")
+  if [[ $status -eq $DBX_LOTE_PASTAS_FALHA_SISTEMICA ]]; then
+    dbx_cmd_falhar "${DBX_LOTE_PASTAS_CLASSE:-erro_remoto}" "${DBX_LOTE_PASTAS_MOTIVO:-criacao de pastas falhou}"
+    return $?
+  fi
+  for k in "${!posicoes[@]}"; do
+    DBX_LOTE_PASTAS_RESULTADO[posicoes[k]]=${novos[k]:-}
+  done
+  return 0
+}
+
+# _dbx_cmd_sync_pasta_falha_contar <relativo> <motivo> — RF-213(a): a pasta que
+# nao foi criada conta ela mesma como falha de item (mesmo sem arquivos sob ela),
+# com a classe do sentido e o caminho da pasta, como os arquivos. Executor:
+# sentido (le), falhas e pastas_falhou (escreve).
+_dbx_cmd_sync_pasta_falha_contar() {
+  falhas=$((falhas + 1))
+  pastas_falhou=$((pastas_falhou + 1))
+  if [[ $sentido == 'enviar' ]]; then DBX_CMD_SYNC_FALHA_CLASSE='erro_remoto'; else DBX_CMD_SYNC_FALHA_CLASSE='configuracao'; fi
+  DBX_CMD_SYNC_RESUMO_FALHA=$2
+  _dbx_cmd_sync_falha_emitir "$1"
+}
+
+# _dbx_cmd_sync_pasta_local_ocupada_remover <relativo> <caminho local> —
+# RF-214(b)(c)(7), recebimento: com as guardas da exclusao antecipada, remove o
+# arquivo regular ou a ligacao simbolica (`rm -f`, nunca -r, nunca o alvo da
+# ligacao) que ocupa o caminho de uma pasta remota observada nesta execucao.
+# Diretorio nunca. Status 0 so quando o caminho ficou livre. Executor: apagados
+# (escreve), espelhar e demais predicados da exclusao antecipada (le),
+# DBX_CMD_SYNC_APAGADOS_PASTA (escreve).
+_dbx_cmd_sync_pasta_local_ocupada_remover() {
+  _dbx_cmd_sync_exclusao_antecipada_permitida "$1" || return 1
+  if [[ -L $2 ]]; then :; elif [[ -f $2 && ! -d $2 ]]; then :; else return 1; fi
+  rm -f -- "$2" 2>/dev/null || return 1
+  [[ -e $2 || -L $2 ]] && return 1
+  apagados=$((apagados + 1))
+  _dbx_cmd_sync_apagar_retirar "$1"
+  dbx_cmd_avisar "apagado: $1 (arquivo no lugar da pasta)"
+  DBX_CMD_SYNC_APAGADOS_PASTA+=("$1")
+  return 0
+}
+
+# _dbx_cmd_sync_pasta_remota_observada <relativo> — RF-214(a), DIV-401: status 0
+# so quando um `get_metadata` DESTA execucao devolve `.tag == folder` para o
+# caminho remoto. Retrato, cursor e tabela nao valem; erro, ausencia ou arquivo
+# sao status 1 (nada e apagado). Executor: remoto.
+_dbx_cmd_sync_pasta_remota_observada() {
+  dbx_json_escapar_cadeia "$remoto/$1"
+  dbx_auth_requisitar POST 'https://api.dropboxapi.com/2/files/get_metadata' \
+    "{\"path\":\"$DBX_JSON_ESCAPADO\"}" sim
+  local estado=$?
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  [[ $estado -eq 0 ]] || return 1
+  dbx_cmd_ler_corpo_silencioso '.tag' || return 1
+  [[ ${DBX_CMD_CAMPOS[0]-} == 'folder' ]]
+}
+
+# _dbx_cmd_sync_pasta_local_criar <relativo> <ocupante:sim|confirmar> — RF-211,
+# RF-213, RF-214: cria uma pasta local (`mkdir` NAO recursivo). Herda a falha do
+# ancestral; o arquivo ou a ligacao que ocupa o caminho so e apagado quando a
+# pasta remota foi observada nesta execucao: `sim` (o chamador ja a observou, a
+# travessia dos ciclos) ou `confirmar` (delta: exige antes que `--espelhar` e as
+# guardas permitam e que `get_metadata` confirme a pasta, sem rede fora disso).
+# Caso contrario o ocupante fica intacto e a pasta falha com motivo. Devolve 0
+# (inclusive falha de item) ou o codigo da falha sistemica (ENOSPC, EROFS,
+# cota). Executor: raiz_local, pastas_falhas, pastas_criadas, falhas, apagados,
+# sentido, remoto.
+_dbx_cmd_sync_pasta_local_criar() {
+  local rel=$1 cam="$raiz_local/$1" acima=$1 herdada='' erro
+  while [[ $acima == */* ]]; do
+    acima=${acima%/*}
+    if [[ -n ${pastas_falhas[$acima]+x} ]]; then
+      herdada=${pastas_falhas[$acima]}
+      break
+    fi
+  done
+  if [[ -n $herdada ]]; then
+    pastas_falhas["$rel"]=$herdada
+    return 0
+  fi
+  # RF-214(b)-(e): o arquivo (ou ligacao) que ocupa o caminho e apagado ANTES da
+  # criacao; diretorio nunca.
+  if [[ -L $cam || ( -e $cam && ! -d $cam ) ]]; then
+    if [[ $2 == 'sim' ]] ||
+      { [[ $2 == 'confirmar' ]] && _dbx_cmd_sync_exclusao_antecipada_permitida "$rel" &&
+        _dbx_cmd_sync_pasta_remota_observada "$rel"; }; then
+      _dbx_cmd_sync_pasta_local_ocupada_remover "$rel" "$cam"
+    fi
+  fi
+  if [[ -L $cam || ( -e $cam && ! -d $cam ) ]]; then
+    pastas_falhas["$rel"]=$cam
+    dbx_cmd_avisar "pasta nao criada: arquivo no lugar da pasta: $cam"
+    _dbx_cmd_sync_pasta_falha_contar "$rel" "arquivo no lugar da pasta: $cam"
+    return 0
+  fi
+  [[ -d $cam ]] && return 0
+  [[ -d $raiz_local ]] || mkdir -p -- "$raiz_local" 2>/dev/null
+  if ! erro=$(mkdir -- "$cam" 2>&1); then
+    dbx_debug_linha pasta operacao=mkdir resultado=falha caminho="$rel"
+    case $erro in
+      *'No space left'* | *'Read-only file system'* | *'Disk quota'*)
+        dbx_cmd_falhar configuracao "sem espaco ou destino somente leitura para criar pastas: $cam"
+        return $?
+        ;;
+    esac
+    pastas_falhas["$rel"]=$cam
+    dbx_cmd_avisar "pasta nao criada: nao foi possivel criar $cam"
+    _dbx_cmd_sync_pasta_falha_contar "$rel" "nao foi possivel criar $cam"
+  else
+    dbx_debug_linha pasta operacao=mkdir resultado=ok caminho="$rel"
+    pastas_criadas=$((pastas_criadas + 1))
+  fi
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_receber_criar — F-103, RF-211(a)-(e), RF-213(a)(b),
+# RF-214(a): cria no destino local as pastas do ciclo (`dirs_v[ci_ini..ci_fim)`,
+# que ja respeitam filtro de caminho e confinamento), pai antes de filho, com
+# `mkdir` NAO recursivo. Pasta ja existente e sucesso. Caminho existente que nao
+# e diretorio, ou e ligacao simbolica (nunca seguida), e falha de item: avisa
+# `arquivo no lugar da pasta: <caminho>` e registra em `pastas_falhas` (relativo
+# -> caminho local), herdado pelos descendentes; nada e apagado. EACCES e falha de
+# item; ENOSPC e EROFS sao sistemicos (devolve o codigo da falha). A raiz do
+# destino fica de fora. Simulacao: nada e criado. Executor: dirs_v, ci_ini, ci_fim,
+# raiz_local, pastas_falhas, pastas_criadas, falhas, apagados, sentido.
+_dbx_cmd_sync_pastas_receber_criar() {
+  local k rel
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && return 0
+  for ((k = ci_ini; k < ci_fim; k++)); do
+    rel=${dirs_v[k]}
+    [[ -n $rel ]] || continue
+    # A travessia remota dos ciclos e desta execucao: a pasta foi observada agora.
+    _dbx_cmd_sync_pasta_local_criar "$rel" sim || return $?
+  done
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_delta_criar — F-103, RF-212(a)(b)(c)(d), so no
+# recebimento sem ciclos (delta com cursor valido): cria localmente toda pasta
+# `d` da tabela (a entrada `folder` do delta e a pasta do retrato ausente
+# localmente), pai antes de filho, `mkdir` NAO recursivo, no escopo dos filtros.
+# So criacao: `deleted` de pasta no delta nunca remove nada aqui (a pasta so sai
+# por RF-216) e nenhuma chamada de rede e feita, salvo a confirmacao do ocupante
+# local (`get_metadata`, so com arquivo no lugar da pasta e --espelhar). Falha de
+# item e sistemica como em `_dbx_cmd_sync_pastas_receber_criar`. Simulacao: nada
+# e criado. Executor: DBX_SYNC_TAB, remoto, raiz_local, pastas_falhas,
+# pastas_criadas, falhas, apagados, sentido, espelhar.
+_dbx_cmd_sync_pastas_delta_criar() {
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]] && return 0
+  local pl registro exibido rel k profundidade maxima=0 sem_barras
+  local -a rels=()
+  for pl in "${!DBX_SYNC_TAB[@]}"; do
+    registro=${DBX_SYNC_TAB[$pl]}
+    [[ $registro == d$'\t'* ]] || continue
+    exibido=$registro
+    for k in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
+    dbx_sync_relativo "$remoto" "$exibido" || continue
+    rel=$DBX_SYNC_LIDO
+    [[ -n $rel && $rel != *$'\n'* ]] || continue
+    dbx_filtro_ativo && dbx_filtro_pasta_excluida "$rel" && continue
+    rels+=("$rel")
+    sem_barras=${rel//[^\/]/}
+    ((${#sem_barras} > maxima)) && maxima=${#sem_barras}
+  done
+  for ((profundidade = 0; profundidade <= maxima; profundidade++)); do
+    for rel in ${rels[@]+"${rels[@]}"}; do
+      sem_barras=${rel//[^\/]/}
+      ((${#sem_barras} == profundidade)) || continue
+      # RF-214, DIV-401: a tabela mistura o retrato gravado (memoria) com o delta;
+      # o ocupante so e apagado se a pasta remota for confirmada nesta execucao.
+      _dbx_cmd_sync_pasta_local_criar "$rel" confirmar || return $?
+    done
+  done
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_falhas_aplicar — RF-213(a), os dois sentidos: tira do plano
+# do ciclo cada arquivo cuja pasta (em qualquer profundidade, pela pasta pai, que
+# ja herda a falha do ancestral) nao foi criada, e o registra como falha de item
+# com motivo `pasta de destino nao criada: <pasta>` (RF-208). Executor: falhas,
+# pastas_falhas.
+_dbx_cmd_sync_pastas_falhas_aplicar() {
+  [[ ${#pastas_falhas[@]} -gt 0 ]] || return 0
+  local caminho pai
+  local -a restam=()
+  for caminho in ${DBX_SYNC_TRANSFERIR[@]+"${DBX_SYNC_TRANSFERIR[@]}"}; do
+    pai=''
+    [[ $caminho == */* ]] && pai=${caminho%/*}
+    if [[ -n $pai && -n ${pastas_falhas[$pai]+x} ]]; then
+      falhas=$((falhas + 1))
+      # Envio: a pasta e remota (erro_remoto); recebimento: e local (configuracao).
+      if [[ $sentido == 'enviar' ]]; then DBX_CMD_SYNC_FALHA_CLASSE='erro_remoto'; else DBX_CMD_SYNC_FALHA_CLASSE='configuracao'; fi
+      DBX_CMD_SYNC_RESUMO_FALHA="pasta de destino nao criada: ${pastas_falhas[$pai]}"
+      _dbx_cmd_sync_falha_emitir "$caminho"
+    else
+      restam+=("$caminho")
+    fi
+  done
+  DBX_SYNC_TRANSFERIR=(${restam[@]+"${restam[@]}"})
+  # DIV-400: nada sob a pasta que falhou (nem o proprio caminho dela) e apagado.
+  local acima
+  restam=()
+  for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+    acima=$caminho
+    while :; do
+      [[ -n ${pastas_falhas[$acima]+x} ]] && break
+      [[ $acima == */* ]] || { acima=''; break; }
+      acima=${acima%/*}
+    done
+    [[ -n $acima ]] || restam+=("$caminho")
+  done
+  DBX_SYNC_APAGAR=(${restam[@]+"${restam[@]}"})
+}
+
+# _dbx_cmd_sync_pastas_plano_simular — F-103, RF-217(a)(c)(d), RF-214(e), so em
+# simulacao e em ciclos: monta em `plano_pastas` (`chave<TAB>valor`) o anuncio do
+# ciclo, na ordem real: por pasta do ciclo, `apagaria` do arquivo que a ocupa
+# (permanece em DBX_SYNC_APAGAR, como no plano real, e conta em `apagados`) e
+# `criaria pasta`. Regra de `criaria pasta`: no envio, toda pasta do ciclo ainda
+# nao observada como existente no destino nesta execucao (registro `d` das
+# listagens remotas ja lidas, acumuladas em `pastas_destino_vistas`; nenhuma
+# chamada nova); no recebimento, a que nao e diretorio local agora (`-d`).
+# Contadores contam o anunciado. Recusa de origem vazia (`recusaria`) nao anuncia.
+# Executor: modo_ciclos, sentido, remoto, dirs_v, ci_ini, ci_fim, raiz_local,
+# recusaria, pastas_criadas, apagados, DBX_SYNC_TAB_ORDEM, DBX_SYNC_APAGAR.
+_dbx_cmd_sync_pastas_plano_simular() {
+  plano_pastas=()
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' && $modo_ciclos == 'sim' ]] || return 0
+  local k j pl registro exibido rel ocupada existe
+  # RF-217(c): o que esta execucao planeja apagar, acumulado dos ciclos.
+  for j in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+    apagar_planejado["k:${j,,}"]=1
+  done
+  # RF-217(d): recusa (origem vazia ou espaco) nao anuncia plano de pastas.
+  [[ -z $recusaria && $pastas_recusa == 'nao' ]] || return 0
+  if [[ $sentido == 'enviar' ]]; then
+    for pl in ${DBX_SYNC_TAB_ORDEM[@]+"${DBX_SYNC_TAB_ORDEM[@]}"}; do
+      registro=${DBX_SYNC_TAB[$pl]-}
+      [[ $registro == d$'\t'* ]] || continue
+      exibido=$registro
+      for j in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
+      dbx_sync_relativo "$remoto" "$exibido" || continue
+      pastas_destino_vistas["k:${DBX_SYNC_LIDO,,}"]=1
+    done
+  fi
+  for ((k = ci_ini; k < ci_fim; k++)); do
+    rel=${dirs_v[k]}
+    [[ -n $rel ]] || continue
+    ocupada='nao'
+    for j in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+      [[ ${j,,} == "${rel,,}" ]] && ocupada='sim'
+    done
+    if [[ $sentido == 'enviar' ]]; then
+      existe='nao'
+      [[ -n ${pastas_destino_vistas["k:${rel,,}"]+definido} ]] && existe='sim'
+    else
+      existe='nao'
+      [[ -d $raiz_local/$rel && ! -L $raiz_local/$rel ]] && existe='sim'
+      [[ $ocupada == 'sim' && ! -e $raiz_local/$rel && ! -L $raiz_local/$rel ]] && ocupada='nao'
+    fi
+    if [[ $ocupada == 'sim' ]] && _dbx_cmd_sync_exclusao_antecipada_permitida "$rel"; then
+      apagados=$((apagados + 1))
+      plano_pastas+=("apagaria"$'\t'"$rel (arquivo no lugar da pasta)")
+      existe='nao'
+    fi
+    if [[ $existe == 'nao' ]]; then
+      pastas_criadas=$((pastas_criadas + 1))
+      plano_pastas+=("criaria"$'\t'"pasta $rel")
+    fi
+  done
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_campos — RF-218(a): os quatro contadores de pasta, agregados
+# dos ciclos (em simulacao, o anunciado), logo depois de `falhas`. Executor:
+# pastas_criadas, pastas_apagadas, pastas_mantidas, pastas_falhou (le).
+_dbx_cmd_sync_pastas_campos() {
+  dbx_output_campo pastas_criadas "$pastas_criadas"
+  dbx_output_campo pastas_apagadas "$pastas_apagadas"
+  dbx_output_campo pastas_mantidas "$pastas_mantidas"
+  dbx_output_campo pastas_falhas "$pastas_falhou"
+}
+
 # _dbx_cmd_sync_diretorios_enumerar — F-101, RF-188, DIV-378 C: antes do ciclo 1,
 # enumera os DIRETORIOS da origem (local: travessia por diretorio; remota: descida
 # por `list_folder` nao recursivo), ordena (DIV-384), planeja os ciclos e responde
@@ -2459,6 +3053,276 @@ _dbx_cmd_sync_ciclo_proximo() {
   ciclo=${ciclos[ciclo_i]}
   ci_ini=${ciclo%-*}
   ci_fim=${ciclo#*-}
+  return 0
+}
+
+# --- RF-216: exclusao de pasta orfa no --espelhar (F-103; DESTRUTIVA) -----------
+#
+# Fonte da lista (so o que ESTA execucao leu, RF-216(i)): envio = registros `d`
+# da tabela do ciclo que a descida do destino remoto listou por inteiro e que a
+# origem nao tem (RF-190(b)); recebimento = subdiretorios vistos pela travessia
+# local do ciclo que a origem nao tem, mais o que ha sob eles no disco. A decisao
+# de apagar sai do que se leu AGORA: o remoto e relido imediatamente antes e o
+# local so cede a `rmdir` nao recursivo.
+
+# _dbx_cmd_sync_pastas_orfas_registrar <relativo> — RF-216(a)(f): guarda a pasta
+# candidata (sem repeticao, sem nome com quebra de linha). Pasta excluida por
+# RF-80 nunca entra. Executor: pastas_orfas, pastas_vistas.
+_dbx_cmd_sync_pastas_orfas_registrar() {
+  local rel=$1
+  [[ -n $rel && $rel != *$'\n'* ]] || return 0
+  [[ -n ${pastas_vistas["k:${rel,,}"]+definido} ]] && return 0
+  dbx_filtro_ativo && dbx_filtro_pasta_excluida "$rel" && return 0
+  pastas_vistas["k:${rel,,}"]=1
+  pastas_orfas+=("$rel")
+}
+
+# _dbx_cmd_sync_pastas_orfas_remotas — RF-216(b)(h), envio: candidatas do ciclo.
+# A tabela so tem pastas de diretorios listados por inteiro (ciclo e ramos so do
+# destino; erro de pagina derruba o ciclo antes daqui). Executor: chaves_dirs, remoto.
+_dbx_cmd_sync_pastas_orfas_remotas() {
+  local pl registro exibido rel k
+  for pl in ${DBX_SYNC_TAB_ORDEM[@]+"${DBX_SYNC_TAB_ORDEM[@]}"}; do
+    registro=${DBX_SYNC_TAB[$pl]-}
+    [[ $registro == d$'\t'* ]] || continue
+    exibido=$registro
+    for k in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
+    dbx_sync_relativo "$remoto" "$exibido" || continue
+    rel=$DBX_SYNC_LIDO
+    [[ -n ${chaves_dirs["k:${rel,,}"]+definido} ]] && continue
+    _dbx_cmd_sync_pastas_orfas_registrar "$rel"
+  done
+  _dbx_cmd_sync_observados_acumular
+  return 0
+}
+
+# _dbx_cmd_sync_observados_acumular — RF-217(c), so em simulacao: guarda, do que
+# a tabela do ciclo observou no destino remoto, `tipo<TAB>relativo` de cada item
+# (filtrado inclusive), para saber se uma pasta orfa ficaria vazia. Nada vem de
+# memoria, retrato ou cursor. Executor: observados_destino, DBX_SYNC_TAB, remoto.
+_dbx_cmd_sync_observados_acumular() {
+  [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' && ${espelhar:-nao} == 'sim' ]] || return 0
+  local pl registro exibido k tipo
+  for pl in ${DBX_SYNC_TAB_ORDEM[@]+"${DBX_SYNC_TAB_ORDEM[@]}"}; do
+    registro=${DBX_SYNC_TAB[$pl]-}
+    [[ -n $registro ]] || continue
+    tipo=f
+    [[ $registro == d$'\t'* ]] && tipo=d
+    exibido=$registro
+    for k in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
+    dbx_sync_relativo "$remoto" "$exibido" || continue
+    observados_destino+=("$tipo"$'\t'"$DBX_SYNC_LIDO")
+  done
+  return 0
+}
+
+# _dbx_cmd_sync_pasta_orfa_ficara_vazia <relativo> — RF-217(c): status 0 quando
+# todo item observado sob a pasta nesta execucao (remoto: tabela dos ciclos;
+# local: leitura do disco agora, sem seguir ligacao) esta nas exclusoes
+# planejadas (arquivo) ou ja anunciado como pasta a apagar (subpasta, filhos
+# antes do pai). Item filtrado nunca entra no plano e, portanto, bloqueia.
+# Executor: observados_destino, apagar_planejado, pastas_apagaria_set.
+_dbx_cmd_sync_pasta_orfa_ficara_vazia() {
+  local prefixo=${1,,}/ item tipo rel
+  if [[ $sentido == 'enviar' ]]; then
+    [[ ${#observados_destino[@]} -gt 0 ]] || return 0
+    for item in "${observados_destino[@]}"; do
+      tipo=${item%%$'\t'*}
+      rel=${item#*$'\t'}
+      [[ ${rel,,} == "$prefixo"* ]] || continue
+      if [[ $tipo == 'd' ]]; then
+        [[ -n ${pastas_apagaria_set["k:${rel,,}"]+definido} ]] || return 1
+      else
+        [[ -n ${apagar_planejado["k:${rel,,}"]+definido} ]] || return 1
+      fi
+    done
+    return 0
+  fi
+  while IFS= read -r -d '' item; do
+    rel=${item#"$raiz_local"/}
+    if [[ -d $item && ! -L $item ]]; then
+      [[ -n ${pastas_apagaria_set["k:${rel,,}"]+definido} ]] || return 1
+    else
+      [[ -n ${apagar_planejado["k:${rel,,}"]+definido} ]] || return 1
+    fi
+  done < <(find -P "$raiz_local/$1" -mindepth 1 -print0 2>/dev/null)
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_cobertas_pela_origem <mapa> — RF-216(a): preenche o mapa
+# `k:<ancestral minusculo>` com cada pasta que a origem remota cobre por algum
+# item da tabela (Dropbox ignora a caixa; mesma chave de `chaves_dirs`). Pasta
+# local com item da origem sob ela nunca e orfa. Executor: DBX_SYNC_TAB, remoto.
+_dbx_cmd_sync_pastas_cobertas_pela_origem() {
+  # shellcheck disable=SC2178 # nameref para o mapa associativo do chamador
+  local -n _mapa=$1
+  local pl registro exibido rel k
+  for pl in ${DBX_SYNC_TAB_ORDEM[@]+"${DBX_SYNC_TAB_ORDEM[@]}"}; do
+    registro=${DBX_SYNC_TAB[$pl]-}
+    [[ -n $registro ]] || continue
+    exibido=$registro
+    for k in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
+    dbx_sync_relativo "$remoto" "$exibido" || continue
+    rel=$DBX_SYNC_LIDO
+    while [[ $rel == */* ]]; do
+      rel=${rel%/*}
+      [[ -n ${_mapa["k:${rel,,}"]+definido} ]] && break
+      _mapa["k:${rel,,}"]=1
+    done
+  done
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_orfas_locais <arquivo de subdiretorios> — RF-216(b)(h),
+# recebimento: subdiretorio do ciclo ausente da origem, e as pastas sob ele (lidas
+# agora do disco, sem seguir ligacao). Executor: chaves_dirs, raiz_local.
+_dbx_cmd_sync_pastas_orfas_locais() {
+  local arq=$1 reg sub
+  local -A cobertas=()
+  [[ -r $arq ]] || return 0
+  _dbx_cmd_sync_pastas_cobertas_pela_origem cobertas
+  while IFS= read -r -d '' reg; do
+    [[ -n ${chaves_dirs["k:${reg,,}"]+definido} ]] && continue
+    # A origem lista algum item sob a pasta: ela existe la (sem caixa).
+    [[ -n ${cobertas["k:${reg,,}"]+definido} ]] && continue
+    [[ -d $raiz_local/$reg && ! -L $raiz_local/$reg ]] || continue
+    while IFS= read -r -d '' sub; do
+      _dbx_cmd_sync_pastas_orfas_registrar "${sub#"$raiz_local"/}"
+    done < <(find -P "$raiz_local/$reg" -type d -print0 2>/dev/null)
+  done <"$arq"
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_orfas_remota_vazia <pasta remota> — RF-216(e): lista a
+# pasta (nao recursivo, todas as paginas) NESTA execucao. 0 = zero entradas;
+# 2 = tem entrada; 1 = erro ou listagem incerta (nao apagar).
+_dbx_cmd_sync_pastas_orfas_remota_vazia() {
+  local corpo url estado quantidade pagina=1 anterior=''
+  dbx_json_escapar_cadeia "$1"
+  corpo="{\"path\":\"$DBX_JSON_ESCAPADO\",\"recursive\":false}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  url='https://api.dropboxapi.com/2/files/list_folder'
+  while :; do
+    if [[ $pagina -eq 1 ]]; then
+      dbx_auth_colecao POST "$url" "$corpo" "$DBX_SYNC_LIMITE_PAGINA"
+    else
+      dbx_auth_requisitar POST "$url" "$_DBX_SYNC_CORPO" sim
+    fi
+    estado=$?
+    _DBX_SYNC_CORPO=''
+    [[ $estado -eq 0 ]] || return 1
+    _dbx_cmd_analisar_corpo || return 1
+    quantidade=$(dbx_json_tamanho_arranjo entries) || quantidade=1
+    if [[ ! $quantidade =~ ^[0-9]+$ || $quantidade -gt 0 ]]; then
+      _dbx_cmd_encerrar_consulta
+      return 2
+    fi
+    _dbx_sync_pagina_seguinte "$anterior"
+    estado=$?
+    _dbx_cmd_encerrar_consulta
+    [[ $estado -eq 1 ]] && return 0
+    if [[ $estado -eq 2 || $pagina -ge $DBX_SYNC_TETO_PAGINAS ]]; then
+      DBX_SYNC_CURSOR_NOVO=''
+      return 1
+    fi
+    anterior=$DBX_SYNC_CURSOR_NOVO
+    pagina=$((pagina + 1))
+    _dbx_sync_corpo_continue "$anterior"
+    url='https://api.dropboxapi.com/2/files/list_folder/continue'
+  done
+}
+
+# _dbx_cmd_sync_pastas_orfas_apagar_remota <relativo> — RF-216(e), DIV-402: a
+# releitura confirma pasta vazia; so entao `delete_v2` da PROPRIA pasta (lixeira),
+# uma por chamada. Define _DBX_CMD_SYNC_PASTA_MOTIVO e devolve 0 quando apagou.
+# Executor: remoto (le); nada do escopo dinamico e escrito.
+_DBX_CMD_SYNC_PASTA_MOTIVO=''
+_dbx_cmd_sync_pastas_orfas_apagar_remota() {
+  local caminho="$remoto/$1" estado corpo
+  _dbx_cmd_sync_pastas_orfas_remota_vazia "$caminho"
+  estado=$?
+  if [[ $estado -eq 2 ]]; then _DBX_CMD_SYNC_PASTA_MOTIVO='nao vazia na releitura'; return 1; fi
+  if [[ $estado -ne 0 ]]; then _DBX_CMD_SYNC_PASTA_MOTIVO='releitura falhou'; return 1; fi
+  dbx_json_escapar_cadeia "$caminho"
+  corpo="{\"path\":\"$DBX_JSON_ESCAPADO\"}"
+  # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
+  DBX_JSON_ESCAPADO=''
+  if ! _dbx_cmd_escrita_remota 'https://api.dropboxapi.com/2/files/delete_v2' "$corpo"; then
+    _DBX_CMD_SYNC_PASTA_MOTIVO='exclusao nao confirmada'
+    return 1
+  fi
+  _dbx_cmd_encerrar_consulta
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_orfas_apagar_local <relativo> — RF-216(d): `rmdir` nao
+# recursivo; ligacao simbolica no caminho (ou na propria pasta) = mantida.
+# Executor: raiz_local (le); nada do escopo dinamico e escrito.
+_dbx_cmd_sync_pastas_orfas_apagar_local() {
+  local rel=$1 acumulado=$raiz_local resto=$1 comp
+  [[ -n $rel && -n $raiz_local ]] || { _DBX_CMD_SYNC_PASTA_MOTIVO='caminho vazio'; return 1; }
+  while [[ -n $resto ]]; do
+    comp=${resto%%/*}
+    if [[ $resto == */* ]]; then resto=${resto#*/}; else resto=''; fi
+    acumulado="$acumulado/$comp"
+    if [[ -L $acumulado ]]; then _DBX_CMD_SYNC_PASTA_MOTIVO='ligacao simbolica'; return 1; fi
+  done
+  if [[ ! -d $acumulado ]]; then _DBX_CMD_SYNC_PASTA_MOTIVO='nao e pasta'; return 1; fi
+  if ! rmdir -- "${acumulado:?}" 2>/dev/null; then
+    dbx_debug_linha pasta operacao=rmdir resultado=falha caminho="$rel"
+    _DBX_CMD_SYNC_PASTA_MOTIVO='nao vazia (ENOTEMPTY) ou nao removivel'
+    return 1
+  fi
+  dbx_debug_linha pasta operacao=rmdir resultado=ok caminho="$rel"
+  return 0
+}
+
+# _dbx_cmd_sync_pastas_orfas_apagar — RF-216(b)(c)(g): depois de TODOS os ciclos
+# e de suas exclusoes de arquivo (RF-215(c)), filhos antes do pai. Nao age com
+# bloqueio (origem vazia, leitura parcial, ciclo falho, exclusao desabilitada),
+# ou sem --espelhar; em simulacao so anuncia (RF-217). A raiz nunca e candidata (RF-216(j)). Executor:
+# pastas_orfas, pastas_bloqueio, pastas_apagadas, pastas_mantidas, ciclo_falho, parcial.
+_dbx_cmd_sync_pastas_orfas_apagar() {
+  [[ ${espelhar:-nao} == 'sim' && $pastas_bloqueio == 'nao' &&
+    $ciclo_falho -eq 0 && $parcial != 'sim' && ${#pastas_orfas[@]} -gt 0 &&
+    $pastas_recusa == 'nao' ]] || return 0
+  local rel profundidade maxima=0 sem_barras
+  for rel in "${pastas_orfas[@]}"; do
+    sem_barras=${rel//[^\/]/}
+    ((${#sem_barras} > maxima)) && maxima=${#sem_barras}
+  done
+  for ((profundidade = maxima; profundidade >= 0; profundidade--)); do
+    for rel in "${pastas_orfas[@]}"; do
+      sem_barras=${rel//[^\/]/}
+      ((${#sem_barras} == profundidade)) || continue
+      _DBX_CMD_SYNC_PASTA_MOTIVO=''
+      # RF-217(a)(c), simulacao: anuncia `apagaria pasta`, sem releitura nem escrita.
+      if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
+        if _dbx_cmd_sync_exclusao_antecipada_permitida "$rel" &&
+          _dbx_cmd_sync_pasta_orfa_ficara_vazia "$rel"; then
+          pastas_apagadas=$((pastas_apagadas + 1))
+          pastas_apagaria+=("pasta $rel")
+          pastas_apagaria_set["k:${rel,,}"]=1
+        fi
+        continue
+      fi
+      if ! _dbx_cmd_sync_exclusao_antecipada_permitida "$rel"; then
+        _DBX_CMD_SYNC_PASTA_MOTIVO='fora do escopo ou exclusao desabilitada'
+      elif [[ $sentido == 'enviar' ]]; then
+        _dbx_cmd_sync_pastas_orfas_apagar_remota "$rel" && _DBX_CMD_SYNC_PASTA_MOTIVO='ok'
+      else
+        _dbx_cmd_sync_pastas_orfas_apagar_local "$rel" && _DBX_CMD_SYNC_PASTA_MOTIVO='ok'
+      fi
+      if [[ $_DBX_CMD_SYNC_PASTA_MOTIVO == 'ok' ]]; then
+        pastas_apagadas=$((pastas_apagadas + 1))
+        dbx_cmd_avisar "pasta apagada: $rel"
+      else
+        pastas_mantidas=$((pastas_mantidas + 1))
+        dbx_cmd_avisar "pasta mantida: $rel ($_DBX_CMD_SYNC_PASTA_MOTIVO)"
+      fi
+    done
+  done
   return 0
 }
 

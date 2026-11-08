@@ -379,8 +379,12 @@ teste_qdb09_reter_nunca_usa_rota_de_lote_e_o_sync_nao_tem_delete_v2() {
   local sem_comentario="$DBX_TESTES_TMP/qdb09-sync.$$"
   assert_igual 0 "$(_harness_contar 'delete_batch\|lote' "$DBX_HARNESS_RAIZ/commands/reter.sh")" 'reter.sh nao referencia lote'
   grep -v '^[[:space:]]*#' "$DBX_HARNESS_RAIZ/commands/sync.sh" >"$sem_comentario"
-  assert_igual 0 "$(_harness_contar 'delete_v2\|dbx_transfer_excluir\|files/delete\b' "$sem_comentario")" 'sync.sh nao tem delete_v2 por item (fora de comentario)'
-  rm -f "$sem_comentario"
+  # RF-136(f): delete_v2 por item so dentro de duas funcoes; o relatorio lista as definicoes vistas e cada uso fora delas
+  awk '/^[A-Za-z_][A-Za-z0-9_]*\(\) \{/ { f = $1; sub(/\(\)$/, "", f); if (f == "_dbx_cmd_sync_ocupante_remoto_apagar" || f == "_dbx_cmd_sync_pastas_orfas_apagar_remota") print "DEFINIDA " f }
+    /delete_v2|dbx_transfer_excluir|files\/delete([^_A-Za-z0-9]|$)/ { if (f != "_dbx_cmd_sync_ocupante_remoto_apagar" && f != "_dbx_cmd_sync_pastas_orfas_apagar_remota") print "FORA " f ":" NR }' "$sem_comentario" >"$sem_comentario.rel"
+  assert_igual 2 "$(_harness_contar '^DEFINIDA ' "$sem_comentario.rel")" 'as duas funcoes que podem apagar por item existem em sync.sh'
+  assert_igual 0 "$(_harness_contar '^FORA ' "$sem_comentario.rel")" 'sync.sh so tem delete_v2 por item dentro das duas funcoes permitidas (RF-136(f))'
+  rm -f "$sem_comentario" "$sem_comentario.rel"
   base=$(_qa_cenario)
   for i in 1 2 3; do
     lista+="${lista:+,}{\".tag\":\"file\",\"id\":\"id:b$i\",\"name\":\"b$i.tar\",\"path_display\":\"/bk/b$i.tar\",\"path_lower\":\"/bk/b$i.tar\",\"size\":1,\"rev\":\"0a1b2c3d$i\",\"server_modified\":\"2026-01-0${i}T00:00:00Z\",\"content_hash\":\"$(_qa_hash_n "$i")\"}"
