@@ -125,6 +125,17 @@ if [[ $achou == nao ]]; then
     oauth2/token) cod=200 corpo="{\"access_token\":\"$TOKEN\",\"token_type\":\"bearer\",\"expires_in\":14400}" ;;
     users/get_current_account) cod=200 corpo='{"account_id":"dbid:QACONTAB7B"}' ;;
     files/get_metadata) cod=409 corpo='{"error_summary":"path/not_found/..","error":{".tag":"path","path":{".tag":"not_found"}}}' ;;
+    files/create_folder_batch)
+      cod=200 corpo='{".tag":"complete","entries":[' sep=''
+      lista=${pedido#*\"paths\":[} lista=${lista%%]*}
+      re='\"([^\"]*)\"(.*)$'
+      while [[ $lista =~ $re ]]; do
+        corpo+="$sep{\".tag\":\"success\",\"metadata\":{\"name\":\"${BASH_REMATCH[1]##*/}\",\"path_display\":\"${BASH_REMATCH[1]}\"}}"
+        sep=','
+        lista=${BASH_REMATCH[2]}
+      done
+      corpo+=']}'
+      ;;
     files/download) cod=200 corpo='conteudo remoto' ;;
     auth/token/revoke) cod=200 corpo='null' ;;
   esac

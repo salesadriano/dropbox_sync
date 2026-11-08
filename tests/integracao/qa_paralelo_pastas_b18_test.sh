@@ -66,6 +66,18 @@ case $url in
     corpo=$(<"$b/remoto$caminho")
     if [[ -e $b/falha/$nome ]]; then cod=409; corpo='{"error_summary":"path/not_found/.."}'; fi
     ;;
+  *files/create_folder_batch)
+    pedido=$(<"$dados")
+    cod=200 corpo='{".tag":"complete","entries":[' sep=''
+    lista=${pedido#*\"paths\":[} lista=${lista%%]*}
+    re='\"([^\"]*)\"(.*)$'
+    while [[ $lista =~ $re ]]; do
+      corpo+="$sep{\".tag\":\"success\",\"metadata\":{\"name\":\"${BASH_REMATCH[1]##*/}\",\"path_display\":\"${BASH_REMATCH[1]}\"}}"
+      sep=','
+      lista=${BASH_REMATCH[2]}
+    done
+    corpo+=']}'
+    ;;
   *files/upload)
     transf
     mkdir -p "$b/enviado${caminho%/*}"
