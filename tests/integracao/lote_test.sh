@@ -324,11 +324,25 @@ teste_lot10_parent_rev_quando_o_rev_e_conhecido() {
   assert_contem '"parent_rev":"abcdef0123456789"' "$(<"$base/lote/chamadas")" 'rev da listagem'
 }
 
+# RF-136(f): delete_v2 por item so dentro das duas funcoes admitidas; a exclusao comum do espelhar segue por delete_batch.
+_lot11_delete_v2_fora_das_admitidas() { # <sync.sh> — uma linha "funcao:linha" por ocorrencia fora de comentario e das funcoes admitidas
+  awk '
+    /^[A-Za-z_][A-Za-z0-9_]*\(\) \{/ { fn = $1; sub(/\(\).*/, "", fn) }
+    /^[[:space:]]*#/ { next }
+    /delete_v2/ && fn != "_dbx_cmd_sync_ocupante_remoto_apagar" && fn != "_dbx_cmd_sync_pastas_orfas_apagar_remota" { print fn ":" NR }
+  ' "$1"
+}
+
 teste_lot11_sem_delete_v2_em_laco_no_espelhar() {
-  if grep -v '^[[:space:]]*#' "$DBX_HARNESS_RAIZ/commands/sync.sh" | grep -q 'delete_v2'; then
-    _harness_falhar 'commands/sync.sh ainda chama delete_v2'
-  fi
-  assert_igual 0 0 'estatico'
+  local fora sync=$DBX_HARNESS_RAIZ/commands/sync.sh
+  fora=$(mktemp)
+  _lot11_delete_v2_fora_das_admitidas "$sync" >"$fora"
+  assert_igual 0 "$(_harness_contar . "$fora")" "delete_v2 fora das funcoes admitidas: $(<"$fora")"
+  rm -f "$fora"
+  assert_igual 1 "$(_harness_contar '^_dbx_cmd_sync_ocupante_remoto_apagar() {' "$sync")" 'funcao admitida existe'
+  assert_igual 1 "$(_harness_contar '^_dbx_cmd_sync_pastas_orfas_apagar_remota() {' "$sync")" 'funcao admitida existe'
+  assert_igual 1 "$(_harness_contar '^_dbx_cmd_sync_apagar_remoto_em_lote() {' "$sync")" 'exclusao em lote existe'
+  [[ $(_harness_contar '^[[:space:]]*_dbx_cmd_sync_apagar_remoto_em_lote ' "$sync") -ge 1 ]] || _harness_falhar 'exclusao em lote nao e chamada'
 }
 
 # ---------------------------------------------------------------------------

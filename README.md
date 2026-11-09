@@ -61,7 +61,7 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 ### Plataformas e linhas do produto
 
 - **Linha principal** (canal `master`, bash 4.4+): a versão completa, em Linux e FreeBSD.
-- **Linha legada** (canal `support/bash-4.2`, bash 4.2 e 4.3, versão `2.3.5-bash42`): mesmos comandos, para hosts com bash antigo (por exemplo CentOS 7).
+- **Linha legada** (canal `support/bash-4.2`, bash 4.2 e 4.3, versão `2.4.0-bash42`): mesmos comandos, para hosts com bash antigo (por exemplo CentOS 7).
 
 O `install.sh` escolhe a linha pelo bash do host, sem opção a informar; bash abaixo de 4.2 é recusado. **Atualizar é rodar o `install.sh` de novo** (credencial, configuração e estado são preservados); se o bash do host mudou, a linha muda junto, com aviso.
 
@@ -83,9 +83,9 @@ sudo ./install.sh --system   # Instalação global (/usr/local/bin)
 ```
 
 #### Opção C: Instalação a partir do Tarball de Release
-Baixe o arquivo `dropbox_sync-2.3.5-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
+Baixe o arquivo `dropbox_sync-2.4.0-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
 ```bash
-tar -xzf dropbox_sync-2.3.5-linux.tar.gz
+tar -xzf dropbox_sync-2.4.0-linux.tar.gz
 ./install.sh
 ```
 
@@ -273,6 +273,8 @@ Repetir uma opção, ainda que pelos dois nomes, segue a mesma regra: opção co
 
 > **Origem vazia com `--espelhar`:** se a origem está vazia (`--enviar`: a raiz local não tem nenhum arquivo; `--receber`: a listagem remota está vazia) e há algo a apagar no destino, a execução é **recusada inteira, antes de qualquer escrita**, haja ou não memória do par — é o caso de uma montagem que não subiu. Nos dois sentidos o plano sai antes, com `recusada=origem vazia`, e o código de saída é `14`. Só `--permitir-origem-vazia` (`--allow-empty-source`) libera; `--confirmar` (`--yes`) não basta. Com `--dry-run`, o plano anuncia `recusaria=origem vazia`, não lista exclusões e sai com `0`. Origem vazia sem nada a apagar no destino, ou sem `--espelhar`, é uma operação vazia que sai com `0`; uma raiz local inexistente continua recusada.
 >
+> **Estrutura de pastas:** a árvore de pastas do escopo é criada **antes dos arquivos**, no destino local e no remoto, inclusive as pastas vazias; as pastas podadas por filtro ficam de fora. No recebimento (`--receber`) a criação é feita por ciclo. Com `--espelhar`, as pastas órfas do destino são apagadas **depois de todos os ciclos**, e um arquivo que ocupa o lugar de uma pasta é apagado antes de a pasta ser criada. O `--dry-run` anuncia `criaria=pasta <caminho>` e `apagaria=pasta <caminho>`. O relatório (e o `--json`) traz os contadores `pastas_criadas`, `pastas_apagadas`, `pastas_mantidas` e `pastas_falhas`. Vale também para o `upload` e o `download` de pasta, que usam o `sync` internamente (`--enviar` e `--receber`).
+
 > **Exclusões remotas em lote:** no `--enviar --espelhar`, as exclusões vão ao Dropbox em lotes de até 250 arquivos (`files/delete_batch`), conferidos item a item; só o que o serviço confirma conta como apagado. Os arquivos vão para a lixeira, como antes. Se a execução for interrompida enquanto um lote é conferido, ele pode ter sido concluído no servidor sem aparecer no resumo; a próxima execução vê esses arquivos como já ausentes. O `dbx reter` continua apagando um arquivo por vez.
 
 > **Primeira execução com `--espelhar`:** sobre um par de raízes ainda não visto, o `sync` exige `--dry-run` antes ou `--confirmar`. **Se a identificação da conta falhar** (`users/get_current_account`), o `sync` segue sem memória auxiliar e, com `--espelhar`, as **exclusões ficam desabilitadas naquela execução**, nos dois sentidos: envios e recebimentos acontecem, o motivo sai no relatório (`exclusao_desabilitada=conta nao identificada` na saída estruturada) e o código de saída é diferente de `0`. O `--confirmar` **não** reabilita as exclusões — sem a memória não há linha de base, e uma origem que ficou parcial por engano apagaria o que faltou nela.
