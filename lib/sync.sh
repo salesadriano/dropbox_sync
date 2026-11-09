@@ -22,14 +22,15 @@
 #   somente para decidir se um resumo JA CALCULADO pode ser reaproveitado da
 #   memoria auxiliar, e essa e a unica ocorrencia dele em todo o componente.
 #
-# SO ARQUIVOS. LIMITE DECLARADO.
+# ARQUIVOS E ARVORE DE PASTAS (RF-209(f), DIV-397; F-103).
 #
-#   Diretorio vazio nao e criado nem removido. A Dropbox tem pastas, o sistema de
-#   arquivos local tem diretorios, e os dois so coincidem quando ha conteudo:
-#   enviar um arquivo cria as pastas intermediarias sozinho, e apagar o ultimo
-#   arquivo de uma pasta remota a remove. Sincronizar diretorio vazio exigiria
-#   `create_folder` e `delete` de pasta com semantica propria de recursao, que e
-#   escopo que ninguem pediu — e fingir que se sincroniza seria pior.
+#   O sync trata de arquivos e tambem da arvore de pastas. Antes de transferir
+#   qualquer arquivo, ele cria a arvore de pastas do destino (pai antes de filho,
+#   inclusive pastas vazias): no envio, por `create_folder_batch` na Dropbox; no
+#   recebimento, por `mkdir` local, a partir da enumeracao ou, sem ciclos, do
+#   retrato mais o delta. Com `--espelhar`, apaga tambem as pastas orfas do
+#   destino, depois dos arquivos, sempre sob o filtro e as barreiras de exclusao.
+#   Pasta so sai por `--espelhar`: `deleted` de pasta no delta nao a apaga.
 
 [[ -n ${DBX_SYNC_CARREGADO:-} ]] && return 0
 DBX_SYNC_CARREGADO=1
