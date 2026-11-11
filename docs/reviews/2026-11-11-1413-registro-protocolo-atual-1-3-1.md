@@ -87,9 +87,7 @@ Comandos e resultados executados nesta entrega.
 | Alteracoes externas | `sh scripts/alteracoes-externas.sh --detectar` | 0 |
 | Auditoria de casos | `sh scripts/auditar-casos.sh` | Bloqueantes 0, maiores 0, avisos 12 |
 
-Suite completa local: pendente (registrada antes do push).
-
-Validacao nao executada: suite completa do produto nao foi executada nesta etapa; a execucao sera registrada antes do push, conforme a regra 8.
+Suite completa local: `sh scripts/suite-completa.sh` (`bash tests/run.sh`) sobre `d734f3b`, arvore limpa: 126 arquivos, 3040 aprovados, 0 reprovados, 3 pulados, APROVADA, 3525 s, registrada em 2026-11-11T20:45:52Z (`--conferir` = 0).
 
 ## Gates
 
@@ -143,4 +141,4 @@ Rollback: `git revert` do commit da demanda.
 
 - Propor ao pacote ai_team as adaptacoes (b) do `auditar-casos.sh`.
 - Aviso de `memoria-index.sh --check` para `2026-10-07-1256-stack` (agentes: todos) fica para tratamento proprio.
-- Suite completa local: pendente (registrada antes do push).
+- Suite completa local: verde (secao Evidencias). PR #109 para `develop`, mesclada em 2026-11-11 (`6a62cfc`); worktree removido por `limpar-worktrees.sh --executar`. Envio da branch e abertura da PR feitos pelo solicitante: o guarda do plugin avalia o checkout principal (`develop`) e nao o worktree.

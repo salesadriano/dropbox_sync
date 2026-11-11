@@ -72,7 +72,7 @@ Nota: o total do caso removido nao foi transcrito do runner; o resultado registr
 
 ## Suite completa no push para a PR e na pipeline de main/master (Regra 8)
 
-- Execucao local no push para a PR: Ainda nao houve push para a PR. Suite completa local: pendente (registrada antes do push).
+- Execucao local antes do envio para a PR: `sh scripts/suite-completa.sh` (`bash tests/run.sh`) sobre `d734f3b`, arvore limpa: 126 arquivos, 3040 aprovados, 0 reprovados, 3 pulados, APROVADA, 3525 s, registrada em 2026-11-11T20:45:52Z (`--conferir` = 0).
 - Branch de integracao do projeto: `develop` (branch principal declarada; releases vao a `master`)
 - Workflow e job que rodam a suite completa: Nao aplicavel: o projeto nao tem pipeline (`.github/workflows/` ausente); vale a execucao local registrada no registro de entrega
 - Eventos configurados (PR e push/merge para a branch de integracao)?: Nao aplicavel nesta etapa (verificacao local; pipeline roda no PR)
@@ -178,7 +178,7 @@ Nao aplicavel: a alteracao nao toca interface com entrada de dados.
 | Recurso ausente | Impacto na verificacao | Achado registrado |
 |---|---|---|
 | Testcontainers / runner E2E / seeder | Nao aplicavel (CLI sem servico) | Nao |
-| Suite completa local | Ainda nao executada nesta etapa; sera anexada antes do push | Sim (registrada como pendencia) |
+| Suite completa local | Verde: 3040 aprovados, 0 reprovados, 3 pulados (126 arquivos, 3525 s, `d734f3b`) | Sim |
 
 ## Achados
 
@@ -186,7 +186,7 @@ Nao aplicavel: a alteracao nao toca interface com entrada de dados.
 |---|---|---|---|---|---|---|
 | 1 | `scripts/auditar-casos.sh:338` | `_harness_falhar_x` e `afirmarX` aceitos por falta de fronteira de palavra (achado do QA) | `protocolo-tdd / Regra 1` | Fronteira de palavra | Menor | Corrigido |
 | 2 | `scripts/auditar-casos.sh` (`VAR=$(cmd arg)` antes de assercao) | Falso positivo ainda possivel; lado seguro (acusa a mais) | `protocolo-tdd / Regra 1` | Tratar em demanda propria | Menor | Justificado |
-| 3 | `docs/reviews/` (suite completa) | Suite completa local ainda nao anexada | `protocolo-tdd / Regra 8 - Suite completa` | Anexar antes do push | Menor | Aberto |
+| 3 | `docs/reviews/` (suite completa) | Suite completa local ainda nao anexada | `protocolo-tdd / Regra 8 - Suite completa` | Anexar antes do envio | Menor | Corrigido (suite verde registrada antes do envio) |
 
 - Total de bloqueantes: 0
 - Total de maiores: 0
@@ -200,10 +200,10 @@ Nao aplicavel: ciclo 1.
 
 - Resultado: Aprovado
 - Justificativa objetiva: red-green comprovado para a adaptacao (b); adaptacao (a) coberta pelo caso invertido e pelo `--check` sem divergencia; achado do QA corrigido com 11/11 verdes; caso inerte removido com cobertura equivalente; sem codigo de produto alterado; Regra 6 nao aplicavel.
-- Ressalvas registradas, com owner e prazo: suite completa local sera anexada pelo Tech Lead antes do push (owner: Tech Lead; prazo: antes do push da PR).
+- Ressalvas registradas, com owner e prazo: nenhuma aberta; a suite completa local foi registrada verde antes do envio.
 - Handoff liberado?: Sim
 - Gate de conformidade liberado para execucao?: Sim
-- Proximo passo do ciclo do developer: anexar a suite completa local e fazer o push da PR.
+- Proximo passo do ciclo do developer: nenhum; PR #109 mesclada.
 
 ## Devolucao ao agent (preencher apenas se Reprovado)
 
