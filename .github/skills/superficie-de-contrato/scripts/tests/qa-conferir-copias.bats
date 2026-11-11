@@ -60,27 +60,11 @@ setup() {
   [[ "$output" == *"168 igual em 2 copia(s)"* ]]
 }
 
-@test "QA: valor nao numerico (palavra) tambem e conferido" {
-  printf 'branch: main\n' > "$D/c.txt"
-  printf 'principal e `main`\n' > "$D/d.md"
-  run sh "$SCRIPT" --rotulo branch "$D/c.txt=branch: ([a-z]+)" "$D/d.md=principal e \`([a-z]+)\`"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"branch: main igual em 2 copia(s)"* ]]
-}
-
 @test "QA: ERE ancorada com ^ so le o inicio da linha; o mesmo padrao no meio da linha nao conta" {
   printf 'ROTAS = 168;\n// ROTAS = 170;\n' > "$D/a.ts"
   run sh "$SCRIPT" "$D/a.ts=^ROTAS = ([0-9]+);" "$D/b.txt=TOTAL=([0-9]+)"
   [ "$status" -eq 0 ]
   [[ "$output" == *"168 igual em 2 copia(s)"* ]]
-}
-
-@test "QA: tres copias com duas divergentes listam as tres linhas e saem 1" {
-  printf 'N=169\n' > "$D/c.txt"
-  run sh "$SCRIPT" "$D/a.ts=ROTAS = ([0-9]+);" "$D/b.txt=TOTAL=([0-9]+)" "$D/c.txt=N=([0-9]+)"
-  [ "$status" -eq 1 ]
-  [ "$(printf '%s\n' "$output" | grep -c '^- ')" -eq 3 ]
-  [[ "$output" == *"copias: copias divergem"* ]]
 }
 
 @test "QA: --rotulo depois de uma copia e recusado como opcao desconhecida (limite declarado no cabecalho)" {

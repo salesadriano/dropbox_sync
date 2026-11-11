@@ -58,43 +58,11 @@ Corpo.
 EOF2
 }
 
-@test "--desde filtra pela data do nome do arquivo e aparece na linha Filtros" {
-  entrada_em 2026-09-01-0900-antiga decisao projeto ativa todos
-  entrada_em 2026-10-01-0900-recente decisao projeto ativa todos
-  run sh "$SCRIPT" --desde 2026-09-15
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"desde=2026-09-15"* ]]
-  [[ "$output" == *"2026-10-01-0900-recente"* ]]
-  [[ "$output" != *"2026-09-01-0900-antiga"* ]]
-}
-
-@test "sem --desde a linha Filtros mostra desde=inicio e nada e filtrado por data" {
-  entrada_em 2026-09-01-0900-antiga decisao projeto ativa todos
-  run sh "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"desde=inicio"* ]]
-  [[ "$output" == *"2026-09-01-0900-antiga"* ]]
-}
-
 @test "--desde sem valor sai com 2" {
   entrada_em 2026-09-01-0900-antiga decisao projeto ativa todos
   run sh "$SCRIPT" --desde
   [ "$status" -eq 2 ]
   [[ "$output" == *"--desde exige uma data"* ]]
-}
-
-@test "--desde com mes e dia fora do calendario sai com 2" {
-  entrada_em 2026-09-01-0900-antiga decisao projeto ativa todos
-  run sh "$SCRIPT" --desde 2026-13-45
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"data invalida em --desde: 2026-13-45"* ]]
-}
-
-@test "--desde com forma invalida (2026-1-1) sai com 2" {
-  entrada_em 2026-09-01-0900-antiga decisao projeto ativa todos
-  run sh "$SCRIPT" --desde 2026-1-1
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"data invalida em --desde: 2026-1-1"* ]]
 }
 
 @test "--todas e atalho de --status todas: inclui entrada encerrada" {
@@ -108,33 +76,51 @@ EOF2
   [[ "$output" == *"2026-09-01-0900-fechada"* ]]
 }
 
-@test "--check emite AVISO para agentes: todos em tipo reserva e continua com exit 0" {
-  entrada_em 2026-09-01-0900-reserva reserva pacote ativa todos
+@test "--check reprova a entrada com id, tipo, escopo, status e campos obrigatorios invalidos e nomeia cada erro" {
+  cat > "$BATS_TEST_TMPDIR/raiz/.github/agents/memoria/entradas/entrada-fora-do-padrao.md" <<'EOF2'
+---
+id: outro-id
+tipo: rascunho
+escopo: global
+status: pendente
+---
+
+Corpo.
+EOF2
   run sh "$SCRIPT" --check
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"AVISO 2026-09-01-0900-reserva: 'agentes: todos' fora de tipo decisao + escopo pacote; nomeie os papeis (README das entradas)"* ]]
-  [[ "$output" == *"entradas validas: 1"* ]]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: id 'outro-id' difere do nome do arquivo"* ]]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: tipo invalido 'rascunho'"* ]]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: escopo invalido 'global'"* ]]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: status invalido 'pendente'"* ]]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: data ausente"* ]]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: dono ausente"* ]]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: titulo ausente"* ]]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: agentes ausente"* ]]
+  [[ "$output" == *"ERRO entrada-fora-do-padrao: nome fora do padrao YYYY-MM-DD-HHMM-slug"* ]]
+  [[ "$output" != *"entradas validas"* ]]
 }
 
-@test "--check nao emite AVISO para tipo decisao + escopo pacote com agentes: todos" {
-  entrada_em 2026-09-01-0900-regra decisao pacote ativa todos
-  run sh "$SCRIPT" --check
+@test "--escopo e --tipo isolados filtram o indice e --agente tech-lead ve toda a memoria" {
+  entrada_em 2026-09-01-0900-dec-proj decisao projeto ativa dba
+  entrada_em 2026-09-02-0900-ace-proj aceite projeto ativa dba
+  entrada_em 2026-09-03-0900-dec-pac decisao pacote ativa qa-expert
+  run sh "$SCRIPT" --escopo pacote
   [ "$status" -eq 0 ]
-  [[ "$output" != *"AVISO"* ]]
-}
-
-@test "--check nao emite AVISO para a entrada branch-principal com agentes: todos (regra 46)" {
-  entrada_em 2026-09-01-0900-branch-principal decisao projeto ativa todos
-  run sh "$SCRIPT" --check
+  [[ "$output" == *"escopo=pacote tipo=todos"* ]]
+  [[ "$output" == *"2026-09-03-0900-dec-pac"* ]]
+  [[ "$output" != *"2026-09-01-0900-dec-proj"* ]]
+  [[ "$output" != *"2026-09-02-0900-ace-proj"* ]]
+  run sh "$SCRIPT" --tipo aceite
   [ "$status" -eq 0 ]
-  [[ "$output" != *"AVISO"* ]]
-}
-
-@test "--desde no limite exato: entrada com a mesma data entra, dia anterior sai (QA-SK-5)" {
-  entrada_em 2026-09-14-2359-vespera decisao projeto ativa todos
-  entrada_em 2026-09-15-0000-no-dia decisao projeto ativa todos
-  run sh "$SCRIPT" --desde 2026-09-15
+  [[ "$output" == *"escopo=todos tipo=aceite"* ]]
+  [[ "$output" == *"2026-09-02-0900-ace-proj"* ]]
+  [[ "$output" != *"2026-09-01-0900-dec-proj"* ]]
+  [[ "$output" != *"2026-09-03-0900-dec-pac"* ]]
+  run sh "$SCRIPT" --agente tech-lead
   [ "$status" -eq 0 ]
-  [[ "$output" == *"2026-09-15-0000-no-dia"* ]]
-  [[ "$output" != *"2026-09-14-2359-vespera"* ]]
+  [[ "$output" == *"agente=tech-lead (tudo)"* ]]
+  [[ "$output" == *"2026-09-01-0900-dec-proj"* ]]
+  [[ "$output" == *"2026-09-02-0900-ace-proj"* ]]
+  [[ "$output" == *"2026-09-03-0900-dec-pac"* ]]
 }

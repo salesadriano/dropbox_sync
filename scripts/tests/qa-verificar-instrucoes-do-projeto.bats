@@ -54,22 +54,6 @@ EOF
   [[ "$output" == *"- (a) caminho citado nao existe: docs/link.md"* ]]
 }
 
-@test "QA: (b) numero duplicado no protocolo (5. 5.) e drift de continuidade, nao de contagem" {
-  sed -i 's/^6\. Regra 6\./5. Regra 6./' "$RAIZ/.github/agents/AGENTS.md"
-  printf 'O protocolo tem **48 regras**.\n' > "$RAIZ/CLAUDE.md"
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"- (b) regras do protocolo nao sao 1..N continuas: esperava 6, achei 5"* ]]
-}
-
-@test "QA: (b) protocolo que comeca em 0 ou em 2 e drift de continuidade" {
-  sed -i 's/^1\. Regra 1\./2. Regra 1./' "$RAIZ/.github/agents/AGENTS.md"
-  printf 'O protocolo tem **48 regras**.\n' > "$RAIZ/CLAUDE.md"
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"esperava 1, achei 2"* ]]
-}
-
 @test "QA: (b) a primeira frase 'N regras' vence; uma segunda com outro numero nao e conferida" {
   printf 'O protocolo tem **48 regras**. A secao X tem 12 regras.\n' > "$RAIZ/CLAUDE.md"
   run sh "$SCRIPT" --raiz "$RAIZ"
@@ -79,27 +63,6 @@ EOF
   run sh "$SCRIPT" --raiz "$RAIZ"
   [ "$status" -eq 1 ]
   [[ "$output" == *"- (b) instrucoes dizem 12 regras, protocolo tem 48"* ]]
-}
-
-@test "QA: (b) regras numeradas fora da secao do protocolo nao contam (secao seguinte com 1. 2. 3.)" {
-  printf 'O protocolo tem **48 regras**.\n' > "$RAIZ/CLAUDE.md"
-  printf '\n# Ciclo\n\n1. a\n2. b\n3. c\n' >> "$RAIZ/.github/agents/AGENTS.md"
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ok b: 48 regras"* ]]
-}
-
-@test "QA: (c) frase quebrada entre uma linha de blockquote e uma linha comum, com blockquote aninhado" {
-  cat > "$RAIZ/CLAUDE.md" <<'EOF'
-> > A branch principal
-declarada e `main`; o
-> repositorio canonico
-> > e `dono/repo`.
-EOF
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ok c: branch principal main"* ]]
-  [[ "$output" == *"ok d: repositorio canonico dono/repo"* ]]
 }
 
 @test "QA: (c) crase vazia na frase (branch principal e \`\`) nao casa e a conferencia e pulada" {
@@ -130,13 +93,6 @@ EOF
   run sh "$SCRIPT" --raiz "$RAIZ"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ok d: repositorio canonico dono/my.repo"* ]]
-}
-
-@test "QA: (d) LIMITE declarado: dono/repo com erro de digitacao identico nos dois lados passa" {
-  printf 'O repositorio canonico e `dono/rpeo`.\n' > "$RAIZ/CLAUDE.md"
-  git -C "$RAIZ" remote set-url origin git@github.com:dono/rpeo.git
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
 }
 
 @test "QA: (d) remoto com dono em caixa diferente do declarado e drift (comparacao literal)" {

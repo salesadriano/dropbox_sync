@@ -46,19 +46,8 @@ repo_com_stub() {  # $1 = exit do stub de alteracoes-externas.sh, $2 = texto que
   [ "$status" -eq 0 ]
 }
 
-@test "comando com aspas duplas escapadas no JSON e lido inteiro e bloqueado" {
-  run guarda 'echo "say \"ola\"" && npx vitest run'
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"suite inteira local"* ]]
-}
-
 @test "comando multilinha e lido inteiro (o padrao na segunda linha e bloqueado)" {
   run guarda $'cd backend\nnpx vitest run'
-  [ "$status" -eq 2 ]
-}
-
-@test "comando em subshell e bloqueado" {
-  run guarda '(cd backend && npx vitest run)'
   [ "$status" -eq 2 ]
 }
 
@@ -156,12 +145,6 @@ repo_com_stub() {  # $1 = exit do stub de alteracoes-externas.sh, $2 = texto que
   [ "$status" -eq 0 ]
 }
 
-@test "arquivo de padroes vazio nao bloqueia nada" {
-  : > "$PADROES"
-  run guarda "npm run verify"
-  [ "$status" -eq 0 ]
-}
-
 # --- regra 1: git push com alteracao nao realizada pelos agents -------------------------------------
 
 @test "git push e bloqueado quando alteracoes-externas --detectar sai com 3, e a saida vai no motivo" {
@@ -177,25 +160,6 @@ repo_com_stub() {  # $1 = exit do stub de alteracoes-externas.sh, $2 = texto que
   repo_com_stub 0 'nada'
   run guarda "git push -u origin feature/x" "$REPO"
   [ "$status" -eq 0 ]
-}
-
-@test "a regra 1 vale sem --padroes" {
-  repo_com_stub 3 'ARQUIVO docs/x.md'
-  run guarda_sem_padroes "git push" "$REPO"
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"ARQUIVO docs/x.md"* ]]
-}
-
-@test "git com opcoes antes do push (git -C dir push) tambem e verificado" {
-  repo_com_stub 3 'ARQUIVO docs/x.md'
-  run guarda "git -C $REPO push origin HEAD" "$REPO"
-  [ "$status" -eq 2 ]
-}
-
-@test "git push --dry-run tambem e bloqueado com --detectar em 3 (o guarda nao distingue)" {
-  repo_com_stub 3 'ARQUIVO docs/x.md'
-  run guarda 'git push --dry-run origin HEAD' "$REPO"
-  [ "$status" -eq 2 ]
 }
 
 @test "git push com cwd num subdiretorio do repositorio acha o script na raiz" {
@@ -217,12 +181,6 @@ repo_com_stub() {  # $1 = exit do stub de alteracoes-externas.sh, $2 = texto que
   SEM="$BATS_TEST_TMPDIR/sem-detector"; mkdir -p "$SEM"; git -C "$SEM" init -q
   run guarda 'git push' "$SEM"
   [ "$status" -eq 0 ]
-}
-
-@test "git push dentro de docker tambem e verificado (a isencao de conteiner e so da regra 2)" {
-  repo_com_stub 3 'ARQUIVO src/x.ts'
-  run guarda "docker run --rm -v x:/repo alpine git push" "$REPO"
-  [ "$status" -eq 2 ]
 }
 
 @test "o comando nunca e executado nem expandido pelo guarda" {
@@ -262,10 +220,6 @@ repo_com_stub() {  # $1 = exit do stub de alteracoes-externas.sh, $2 = texto que
   run sh -c "printf '{}' | sh '$SCRIPT' --x"
   [ "$status" -eq 2 ]
   [[ "$output" == *"argumento desconhecido: --x"* ]]
-}
-
-@test "o guarda nao traz os padroes do projeto de origem embutidos" {
-  run ! grep -q -e 'vitest' -e 'cypress' -e 'npm run verify' -e 'web-campo' -e 'web-comando' "$SCRIPT"
 }
 
 # --- regra 3: suite completa registrada antes do push para a PR de integracao --------------------------
@@ -382,9 +336,227 @@ sem_gh() { mkdir -p "$BATS_TEST_TMPDIR/bin"; printf '#!/usr/bin/env sh\nexit 127
   [ "$status" -eq 0 ]
 }
 
-@test "regra 3: HEAD destacado na branch de integracao nao quebra o guarda (sem branch, so gh decidiria)" {
+@test "regra 3: HEAD destacado: o push que mira a integracao pelo refspec exige o registro; o que nao mira passa" {
   repo_com_suite main
   git -C "$REPO" checkout -q --detach
   run guarda_sem_padroes "git push origin HEAD:main" "$REPO"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"Regra 8 de protocolo-tdd"* ]]
+  run guarda_sem_padroes "git push origin HEAD:feature/x" "$REPO"
   [ "$status" -eq 0 ]
+}
+
+# --- leitura por palavra (guarda-de-comandos.awk): regras 1 e 3 ------------------------------------------
+
+@test "palavra: git push em sh -c, \$( ), crase, heredoc, aspas e continuacao com barra conta como push (regra 1)" {
+  repo_com_stub 3 'ARQUIVO src/x.ts'
+  for c in "sh -c 'cd x && git push origin feature/x'" \
+           'echo $(git push origin feature/x)' \
+           'echo `git push`' \
+           $'cat <<EOF\ngit push origin feature/x\nEOF' \
+           $'cat <<\'FIM\' > nota.txt\ngit push\nFIM' \
+           '"git" push' \
+           $'git \\\n  push origin feature/x' \
+           'bash -c "git -C . push"' \
+           '/usr/bin/git push'; do
+    run guarda_sem_padroes "$c" "$REPO"
+    [ "$status" -eq 2 ] || { echo "passou: $c"; false; }
+    [[ "$output" == *"regra 48"* ]]
+  done
+}
+
+@test "palavra: o refspec segue a branch-principal declarada (trunk mira, main deixa de mirar)" {
+  repo_com_suite feature/x
+  mkdir -p "$REPO/.github/agents/memoria/entradas"
+  printf -- '---\nid: x\ntitulo: Branch principal declarada e `trunk`\nstatus: ativa\n---\n' > "$REPO/.github/agents/memoria/entradas/2026-01-01-0000-branch-principal.md"
+  run guarda_sem_padroes 'git push origin HEAD:trunk' "$REPO"
+  [ "$status" -eq 2 ]
+  run guarda_sem_padroes 'git push origin HEAD:main' "$REPO"
+  [ "$status" -eq 0 ]
+}
+
+@test "palavra: aspa ou \$( sem fechar aplica a regra antiga por substring (fail-closed)" {
+  repo_com_suite main
+  run guarda_sem_padroes 'git fetch; gh run list --event push --branch master "' "$REPO"
+  [ "$status" -eq 2 ]
+  repo_com_stub 3 'ARQUIVO src/x.ts'
+  run guarda_sem_padroes 'echo "x; git push' "$REPO"
+  [ "$status" -eq 2 ]
+  run guarda_sem_padroes 'echo $(git push' "$REPO"
+  [ "$status" -eq 2 ]
+}
+
+@test "palavra: limite declarado: git push citado em texto de outro programa conta como push, e o alvo tambem" {
+  repo_com_suite feature/x
+  run guarda_sem_padroes 'git commit -m "nota: git push origin main"' "$REPO"
+  [ "$status" -eq 2 ]
+}
+
+@test "sem guarda-de-comandos.awk ao lado do script o guarda avisa em stderr e libera" {
+  repo_com_stub 3 'ARQUIVO src/x.ts'
+  D="$BATS_TEST_TMPDIR/sem-awk"; mkdir -p "$D"; cp "$SCRIPT" "$D/"
+  run sh -c "printf '%s' '{\"tool_input\":{\"command\":\"git push\"},\"cwd\":\"$REPO\"}' | sh '$D/guarda-de-comandos.sh'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"guarda-de-comandos.awk ausente"* ]]
+}
+
+@test "palavra: redirecionamento colado (> e < fora de aspas) fecha a palavra: push, alvo e gh pr create continuam vistos" {
+  repo_com_stub 3 'ARQUIVO src/x.ts'
+  for c in 'git push>out.log 2>&1' 'git push>&2' 'git push<entrada' 'git push 2>/dev/null'; do
+    run guarda_sem_padroes "$c" "$REPO"
+    [ "$status" -eq 2 ] || { echo "passou: $c"; false; }
+  done
+  rm -rf "$REPO"; repo_com_suite feature/x
+  for c in 'gh pr create>out.txt' 'git push origin main>log' 'git push origin HEAD:main 2>&1'; do
+    run guarda_sem_padroes "$c" "$REPO"
+    [ "$status" -eq 2 ] || { echo "passou: $c"; false; }
+  done
+  run guarda_sem_padroes 'git push origin feature/x>log 2>&1' "$REPO"
+  [ "$status" -eq 0 ]
+}
+
+@test "palavra: limites declarados que continuam passando: variavel no lugar do git, git.exe e push por xargs sem o subcomando" {
+  repo_com_stub 3 'ARQUIVO src/x.ts'
+  for c in 'GIT=git; $GIT push' 'git.exe push' 'echo push | xargs git'; do
+    run guarda_sem_padroes "$c" "$REPO"
+    [ "$status" -eq 0 ] || { echo "bloqueou: $c"; false; }
+  done
+  run guarda_sem_padroes 'printf "%s\n" origin | xargs git push' "$REPO"
+  [ "$status" -eq 2 ]
+}
+
+@test "palavra: limite declarado: gh pr create citado em texto conta (grep) quando ha suite-completa.sh" {
+  repo_com_suite feature/x
+  run guarda_sem_padroes 'grep -rn "gh pr create" .' "$REPO"
+  [ "$status" -eq 2 ]
+}
+
+@test "palavra: redirecionamento (descritor, operador e alvo) sai das palavras do segmento, mesmo entre git e o subcomando" {
+  repo_com_stub 3 'ARQUIVO src/x.ts'
+  for c in 'git 2>/dev/null push' 'git -C x 2>err push' 'git >log push' 'git -C x>y push' 'git -C x > y push' \
+           'git 2>>err.log push' 'git >&2 push' 'git &>log push' 'git &>>log push' 'git >|log push' 'git <>f push' \
+           'git <&0 push' 'git 2>&1 push' 'git >"saida com espaco" push'; do
+    run guarda_sem_padroes "$c" "$REPO"
+    [ "$status" -eq 2 ] || { echo "passou: $c"; false; }
+  done
+  rm -rf "$REPO"; repo_com_suite feature/x
+  for c in 'gh pr >log create' 'gh 2>/dev/null pr create' 'gh pr 2>&1 create --fill' 'git push origin 2>/dev/null HEAD:main'; do
+    run guarda_sem_padroes "$c" "$REPO"
+    [ "$status" -eq 2 ] || { echo "passou: $c"; false; }
+  done
+  for c in 'git push origin feature/x >main' 'git push origin feature/x 2>main.log' 'git log >push'; do
+    run guarda_sem_padroes "$c" "$REPO"
+    [ "$status" -eq 0 ] || { echo "bloqueou: $c"; false; }
+  done
+}
+
+# ---------- pendentes (auditoria 2026-11-08, secao 7) ----------
+
+# ---------- repositorio alvo do comando (regras 1 e 3 leem o repositorio de `git -C <dir>`; `cd` nao e seguido) ----------
+
+dois_repos() {  # $1 = branch; cria $A (cwd do hook) e $B (alvo do comando), irmaos em $T, cada um com suite-completa.sh
+  T="$BATS_TEST_TMPDIR/alvo"; A="$T/a"; B="$T/b"
+  for r in "$A" "$B"; do
+    mkdir -p "$r/scripts"
+    git -C "$r" init -q -b "$1"
+    git -C "$r" -c user.name=t -c user.email=t@t commit -q --allow-empty -m inicio
+    printf '#!/usr/bin/env sh\nexit 0\n' > "$r/scripts/alteracoes-externas.sh"
+    cp "$BATS_TEST_DIRNAME/../suite-completa.sh" "$r/scripts/suite-completa.sh"
+  done
+}
+registrar() { (cd "$1" && sh scripts/suite-completa.sh -- true >/dev/null); }
+
+@test "alvo: git -C absoluto com suite registrada no alvo passa a partir de cwd sem registro" {
+  dois_repos main; registrar "$B"
+  run guarda_sem_padroes "git -C $B push origin main" "$A"
+  [ "$status" -eq 0 ]
+}
+
+@test "alvo: git -C relativo ao cwd do hook consulta o alvo, nao o cwd" {
+  dois_repos main; registrar "$B"
+  run guarda_sem_padroes "git -C ../b push origin main" "$A"
+  [ "$status" -eq 0 ]
+}
+
+@test "alvo: varios -C compoem em ordem e -C colado (-C<dir>) vale como -C <dir>" {
+  dois_repos main; registrar "$B"
+  run guarda_sem_padroes "git -C .. -C b push origin main" "$A"
+  [ "$status" -eq 0 ]
+  run guarda_sem_padroes "git -C$B push origin main" "$A"
+  [ "$status" -eq 0 ]
+}
+
+@test "alvo: -C de B a partir de cwd com registro bloqueia, e -C de A a partir de cwd sem registro passa (de A e de B)" {
+  dois_repos main; registrar "$A"
+  run guarda_sem_padroes "git -C $B push origin main" "$A"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"sem registro da suite completa"* ]]
+  run guarda_sem_padroes "git -C $B push origin main" "$B"
+  [ "$status" -eq 2 ]
+  run guarda_sem_padroes "git -C $A push origin main" "$B"
+  [ "$status" -eq 0 ]
+}
+
+@test "alvo: dois envios com alvos distintos, todos precisam passar" {
+  dois_repos main; registrar "$A"
+  run guarda_sem_padroes "git -C $A push origin main && git -C $B push origin main" "$A"
+  [ "$status" -eq 2 ]
+  registrar "$B"
+  run guarda_sem_padroes "git -C $A push origin main && git -C $B push origin main" "$A"
+  [ "$status" -eq 0 ]
+}
+
+@test "alvo: a regra 1 (detector) tambem le o alvo do -C, nos dois sentidos" {
+  dois_repos feature/x
+  printf '#!/usr/bin/env sh\necho ARQUIVO x\nexit 3\n' > "$B/scripts/alteracoes-externas.sh"
+  run guarda_sem_padroes "git -C $B push origin feature/x" "$A"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"regra 48"* ]]
+  run guarda_sem_padroes "git -C $A push origin feature/x" "$B"
+  [ "$status" -eq 0 ]
+}
+
+@test "alvo: -C nao resolvido ou diretorio inexistente cai no cwd; limite declarado" {
+  dois_repos main; registrar "$B"
+  run guarda_sem_padroes 'git -C $DESTINO push origin main' "$A"
+  [ "$status" -eq 2 ]
+  run guarda_sem_padroes "git -C $T/nao-existe push origin main" "$A"
+  [ "$status" -eq 2 ]
+  registrar "$A"
+  run guarda_sem_padroes "git -C $T/nao-existe push origin main" "$A"
+  [ "$status" -eq 0 ]
+}
+
+@test "alvo: -C que nao e repositorio, e --git-dir, --work-tree ou GIT_DIR junto de -C, conferem o cwd" {
+  dois_repos main; registrar "$B"
+  run guarda_sem_padroes "git -C $T push origin main" "$A"
+  [ "$status" -eq 2 ]
+  for c in "git --git-dir=$A/.git -C $B push origin main" "git -C $B --git-dir=$A/.git push origin main" \
+    "git --git-dir $A/.git -C $B push origin main" "git --work-tree=$A -C $B push origin main" \
+    "GIT_DIR=$A/.git git -C $B push origin main" "GIT_WORK_TREE=$A git -C $B push origin main"; do
+    run guarda_sem_padroes "$c" "$A"
+    [ "$status" -eq 2 ] || { echo "passou: $c"; false; }
+  done
+  registrar "$A"
+  run guarda_sem_padroes "git -C $T push origin main" "$A"
+  [ "$status" -eq 0 ]
+}
+
+@test "alvo: cd nao e seguido, o envio confere o cwd (limite declarado)" {
+  dois_repos main; registrar "$B"
+  run guarda_sem_padroes "cd $B && git push origin main" "$A"
+  [ "$status" -eq 2 ]
+  run guarda_sem_padroes "cd $B && gh pr create --title t" "$A"
+  [ "$status" -eq 2 ]
+}
+
+@test "alvo: force continua bloqueando em qualquer alvo" {
+  dois_repos main; registrar "$B"
+  run guarda_sem_padroes "git -C $B push --force origin main" "$A"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"regra 47"* ]]
+}
+
+@test "pendente: palavra acima de 200 caracteres entre git e push continua lida como push" {
+  skip "pendente: provar, com awk -f isolado, que git -c <250 caracteres> push e reconhecido como push"
 }

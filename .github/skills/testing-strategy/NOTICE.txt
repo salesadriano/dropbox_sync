@@ -1,0 +1,14 @@
+testing-strategy
+
+Source: anthropics/knowledge-work-plugins (metadata.source), engineering/skills/testing-strategy/, commit 4fa3cb92e2942d6594200fa8d2c800708e086072.
+License: Apache-2.0. See LICENSE.txt (inherited content, unchanged).
+
+Reingestion of 2026-11-10: the upstream SKILL.md was compared with the local catalog; the technical body is unchanged. Only the commit of origin was fixed and LICENSE.txt and NOTICE.txt were added.
+
+Modifications made by this package:
+- Normalization per .github/skills/SKILLS_SYNC.md: frontmatter license and metadata.source.
+- Added the Security Handoff section.
+- Added the Scope Boundary section, with the precedence of protocolo-tdd; the generic pyramid is declared a teaching model.
+
+Upstream review: no instruction to read secrets, disable verification, send data out or execute content on load was found.
+- LICENSE.txt is the license file of the upstream repository at the commit above (a first copy taken from the upstream HEAD carried trailing lines that are not in that commit and was replaced).

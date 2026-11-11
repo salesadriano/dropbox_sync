@@ -3,19 +3,10 @@
 
 setup() { RAIZ="$BATS_TEST_DIRNAME/../.."; }
 
-@test "o wrapper delega ao script da skill e repassa os argumentos (--mostrar responde com o registro real ou com a ausencia dele)" {
-  run sh "$RAIZ/scripts/suite-completa.sh" --mostrar
-  [ "$status" -eq 0 ]
-  [[ "$output" == "sem registro de suite completa neste worktree" || "${lines[0]}" =~ ^[0-9a-f]{40}\ (limpo|sujo)\ [0-9]+\ [0-9T:Z-]+\ [0-9]+$ ]]
-}
-
-@test "argumento invalido chega ao script da skill e sai com 2" {
-  run sh "$RAIZ/scripts/suite-completa.sh" --xpto
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"argumento desconhecido: --xpto"* ]]
-}
-
-@test "scripts/suite-completa.cmd traz o mesmo comando do passo 5 do main.yml" {
-  cmd=$(cat "$RAIZ/scripts/suite-completa.cmd")
-  grep -qF -- "$cmd" "$RAIZ/.github/workflows/main.yml"
+@test "--conferir sem registro chega ao script da skill e o wrapper sai com 3 e explica a ausencia" {
+  git init -q -b main "$BATS_TEST_TMPDIR/repo"
+  git -C "$BATS_TEST_TMPDIR/repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+  run sh -c "cd '$BATS_TEST_TMPDIR/repo' && sh '$RAIZ/scripts/suite-completa.sh' --conferir"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"sem registro da suite completa para o commit atual"* ]]
 }

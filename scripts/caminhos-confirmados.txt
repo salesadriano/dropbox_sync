@@ -1,0 +1,3 @@
+# Caminhos que o solicitante confirmou como intervencao humana sua (regra 12 e 48): `caminho<TAB>id da entrada de aceite`.
+# O resumo de estado e o hook de criacao de subagent imprimem esta lista para que nenhum agent os acuse, versione ou toque.
+.claude/settings.json	2026-10-20-1610-aceite-settings-json-com-o-plugin

@@ -1,6 +1,10 @@
 # Padroes de descoberta de testes para scripts/inventario-de-testes.sh.
 # Formato: <glob><TAB><ERE da linha que declara o teste>. Comentarios com #. O glob casa o caminho versionado
-# inteiro (o `*` cobre `/`). O nome do caso e a primeira string entre aspas duplas da linha; sem ela, a primeira
-# entre aspas simples; sem nenhuma, o identificador apos `def ` ou `func `; sem nenhum, o nome da funcao shell.
+# inteiro (o `*` cobre `/`). Neste projeto, a linha que comeca por declaracao de funcao shell (`nome() {`) vale
+# o nome da funcao, antes das strings (adaptacao local do script). Fora isso, o nome do caso e a string cujo
+# delimitador (aspas duplas, aspas simples ou crase) abre primeiro na linha; sem string, o identificador apos
+# `def ` ou `func `.
+# Linha que casa a ERE sem produzir nome sai no --check como aviso `NAO-DESCOBERTO <arquivo> :: linha <n>` (nao
+# e divergencia). Exclusoes: linha `!<glob>` (sem TAB) tira os caminhos da descoberta, para todos os padroes.
 # Harness proprio do projeto (tests/run.sh, TAP 13): cada caso e uma funcao `teste_<nome>()` em `*_test.sh`.
 tests/*_test.sh	^teste_[A-Za-z0-9_]+[ ]*\(\)

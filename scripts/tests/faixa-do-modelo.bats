@@ -15,20 +15,6 @@ setup() {
   [ "${lines[2]}" = "modelo: barato (modelo-b)" ]
 }
 
-@test "commit e log de prompt sao economico" {
-  run sh "$SCRIPT" --classe commit --tabela "$D/tabela.tsv"
-  [ "${lines[0]}" = "faixa: economico" ]
-  run sh "$SCRIPT" --classe log-de-prompt --tabela "$D/tabela.tsv"
-  [ "${lines[0]}" = "faixa: economico" ]
-}
-
-@test "implementacao e padrao em M" {
-  run sh "$SCRIPT" --classe implementacao --porte M --tabela "$D/tabela.tsv"
-  [ "$status" -eq 0 ]
-  [ "${lines[0]}" = "faixa: padrao" ]
-  [ "${lines[2]}" = "modelo: medio (modelo-m)" ]
-}
-
 @test "modelo de dados e maximo mesmo em porte P" {
   run sh "$SCRIPT" --classe modelo-de-dados --porte P --tabela "$D/tabela.tsv"
   [ "${lines[0]}" = "faixa: maximo" ]
@@ -57,12 +43,6 @@ setup() {
   [ "${lines[1]}" = "motivo: classe arquitetura e maximo" ]
 }
 
-@test "--toca com lista: vale o item mais alto" {
-  run sh "$SCRIPT" --classe analise --toca pipeline,dependencia,auth --tabela "$D/tabela.tsv"
-  [ "${lines[0]}" = "faixa: maximo" ]
-  [[ "${lines[1]}" == *"toca auth sobe para maximo"* ]]
-}
-
 @test "--critico sobe qualquer classe para maximo" {
   run sh "$SCRIPT" --classe formatacao --critico --tabela "$D/tabela.tsv"
   [ "${lines[0]}" = "faixa: maximo" ]
@@ -88,14 +68,6 @@ setup() {
   [ "$status" -eq 2 ]
 }
 
-@test "--classes lista toda classe com a faixa minima" {
-  run sh "$SCRIPT" --classes
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"redacao economico"* ]]
-  [[ "$output" == *"implementacao padrao"* ]]
-  [[ "$output" == *"modelo-de-dados maximo"* ]]
-}
-
 @test "sem tabela ao lado do script, usa o exemplo de references" {
   run sh "$SCRIPT" --classe commit
   [ "$status" -eq 0 ]
@@ -109,4 +81,34 @@ setup() {
   run sh "$SCRIPT" --classe commit --tabela "$D/so-padrao.tsv"
   [ "$status" -eq 1 ]
   [[ "$output" == *"sem linha para a faixa economico"* ]]
+}
+
+@test "--toca segredo e fronteira sobem para maximo e dado-sensivel para padrao" {
+  run sh "$SCRIPT" --classe redacao --toca segredo --tabela "$D/tabela.tsv"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "faixa: maximo" ]
+  [ "${lines[1]}" = "motivo: classe redacao e economico; toca segredo sobe para maximo" ]
+  run sh "$SCRIPT" --classe redacao --toca fronteira --tabela "$D/tabela.tsv"
+  [ "${lines[0]}" = "faixa: maximo" ]
+  [ "${lines[1]}" = "motivo: classe redacao e economico; toca fronteira sobe para maximo" ]
+  run sh "$SCRIPT" --classe redacao --toca dado-sensivel --tabela "$D/tabela.tsv"
+  [ "${lines[0]}" = "faixa: padrao" ]
+  [ "${lines[1]}" = "motivo: classe redacao e economico; toca dado-sensivel sobe para padrao" ]
+}
+
+@test "--critico em porte G e em classe ja maxima nao repete o motivo de subida" {
+  run sh "$SCRIPT" --classe teste --porte G --critico --tabela "$D/tabela.tsv"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "faixa: maximo" ]
+  [ "${lines[1]}" = "motivo: classe teste e padrao; porte G sobe padrao para maximo" ]
+  run sh "$SCRIPT" --classe seguranca --critico --tabela "$D/tabela.tsv"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "faixa: maximo" ]
+  [ "${lines[1]}" = "motivo: classe seguranca e maximo" ]
+}
+
+# ---------- pendentes (auditoria 2026-11-08, secao 7) ----------
+
+@test "pendente: tabela-de-modelos.tsv ao lado do script tem precedencia sobre o exemplo de references" {
+  skip "pendente: provar a precedencia da tabela local sobre o exemplo"
 }

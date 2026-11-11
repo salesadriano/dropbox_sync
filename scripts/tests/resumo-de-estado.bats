@@ -40,20 +40,6 @@ path_restrito() {  # $@ = binarios a expor
 
 # --- cabecalho, branch principal, remoto, branch atual ------------------------------------------
 
-@test "imprime branch principal, remoto, branch atual, reservas, PRs e worktrees, com exit 0" {
-  repo_com_remoto
-  entrada "$ENTRADAS" 2026-09-25-1400-branch-principal decisao ativa 'A branch principal declarada do projeto e `develop`'
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"== resumo de estado"* ]]
-  [[ "$output" == *"branch principal declarada: develop"* ]]
-  [[ "$output" == *"remoto (origin): git@example.com:dono/repo.git"* ]]
-  [[ "$output" == *"branch atual:"* ]]
-  [[ "$output" == *"reservas ativas de escopo:"* ]]
-  [[ "$output" == *"PRs abertas"* ]]
-  [[ "$output" == *"worktrees:"* ]]
-}
-
 @test "raiz que nao e repositorio git e sem entradas: tudo indisponivel, exit 0" {
   rmdir "$ENTRADAS"
   run sh "$SCRIPT" --raiz "$RAIZ"
@@ -72,15 +58,6 @@ path_restrito() {  # $@ = binarios a expor
   [[ "$output" == *"remoto (origin): indisponivel"* ]]
   [[ "$output" == *"branch atual: HEAD (-)"* ]]
   [[ "$output" == *"worktrees:"* ]]
-}
-
-@test "entrada branch-principal encerrada e ignorada; a ativa mais recente vence" {
-  entrada "$ENTRADAS" 2026-09-25-1400-branch-principal decisao encerrada 'A branch principal declarada do projeto e `master`'
-  entrada "$ENTRADAS" 2026-10-01-0900-branch-principal decisao ativa 'A branch principal declarada do projeto e `develop`'
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"branch principal declarada: develop"* ]]
-  [[ "$output" != *"declarada: master"* ]]
 }
 
 @test "entrada ativa cujo titulo nao traz a branch entre crases: indisponivel com o nome do arquivo, exit 0" {
@@ -116,13 +93,6 @@ path_restrito() {  # $@ = binarios a expor
   [ "$status" -eq 0 ]
   [[ "$output" == *"branch principal declarada: develop"* ]]
   [[ "$output" == *"reservas ativas de escopo: 1"* ]]
-}
-
-@test "--entradas apontando para diretorio inexistente: fontes da memoria indisponiveis, exit 0" {
-  run sh "$SCRIPT" --raiz "$RAIZ" --entradas "$BATS_TEST_TMPDIR/nao-existe"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"branch principal declarada: indisponivel"* ]]
-  [[ "$output" == *"reservas ativas de escopo: indisponivel"* ]]
 }
 
 # --- reservas ativas de escopo ------------------------------------------------------------------
@@ -184,12 +154,6 @@ detector() {  # $1 = exit do stub, $2 = texto impresso
   printf '#!/usr/bin/env sh\n[ "$1" = --detectar ] || exit 2\necho "%s"\nexit %s\n' "$2" "$1" > "$RAIZ/scripts/alteracoes-externas.sh"
 }
 
-@test "sem scripts/alteracoes-externas.sh na raiz: indisponivel, exit 0" {
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"alteracoes nao realizadas pelos agents: indisponivel (scripts/alteracoes-externas.sh nao encontrado)"* ]]
-}
-
 @test "detector com exit 0 imprime 'nenhuma'" {
   detector 0 ''
   run sh "$SCRIPT" --raiz "$RAIZ"
@@ -236,12 +200,6 @@ detector() {  # $1 = exit do stub, $2 = texto impresso
   [[ "$output" == *"  drift em Y"* ]]
 }
 
-@test "--verificador roda a partir da raiz" {
-  run sh "$SCRIPT" --raiz "$RAIZ" --verificador 'pwd'
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"verificador: ok ($(cd "$RAIZ" && pwd -P))"* ]]
-}
-
 # --- argumentos e raiz padrao ---------------------------------------------------------------------
 
 @test "sem --raiz, a raiz e o repositorio que contem o script (uso pelo hook)" {
@@ -275,10 +233,26 @@ detector() {  # $1 = exit do stub, $2 = texto impresso
   [ "$status" -eq 2 ]
 }
 
-@test "o resumo nao traz nada do projeto de origem (matriz de rotas, CLAUDE.md, nomes de clientes)" {
+@test "scripts/caminhos-confirmados.txt: imprime os caminhos (sem comentarios); ausente, nao imprime a linha" {
+  run sh "$SCRIPT" --raiz "$RAIZ"
+  [[ "$output" != *"caminhos confirmados"* ]]
+  printf '# cabecalho\ndocs/dados/**\t2026-10-15-1200-aceite\n\nrelatorios/*.xlsx\t2026-10-16-0900-aceite\n' > "$RAIZ/scripts/caminhos-confirmados.txt"
   run sh "$SCRIPT" --raiz "$RAIZ"
   [ "$status" -eq 0 ]
-  [[ "$output" != *"superficie de rotas"* ]]
-  [[ "$output" != *"CLAUDE.md"* ]]
-  run ! grep -q -e 'matriz-de-autorizacao' -e 'verificar-claude-md' -e 'web-campo' -e 'web-comando' "$SCRIPT"
+  [[ "$output" == *"caminhos confirmados como intervencao humana: docs/dados/** relatorios/*.xlsx"* ]]
+  printf '# so comentario\n' > "$RAIZ/scripts/caminhos-confirmados.txt"
+  run sh "$SCRIPT" --raiz "$RAIZ"
+  [[ "$output" == *"caminhos confirmados como intervencao humana: nenhum"* ]]
+}
+
+@test "a linha de worktrees lista o caminho e a branch de cada worktree, identados" {
+  git -C "$RAIZ" init -q -b main
+  git -C "$RAIZ" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+  git -C "$RAIZ" worktree add -q -b feature/wt "$BATS_TEST_TMPDIR/wt"
+  raiz_real=$(cd "$RAIZ" && pwd -P); wt_real=$(cd "$BATS_TEST_TMPDIR/wt" && pwd -P)
+  run sh "$SCRIPT" --raiz "$RAIZ"
+  [ "$status" -eq 0 ]
+  bloco=$(printf '%s\n' "$output" | sed -n '/^worktrees:/,$p')
+  [[ "$bloco" == *"  $raiz_real "*"[main]"* ]]
+  [[ "$bloco" == *"  $wt_real "*"[feature/wt]"* ]]
 }

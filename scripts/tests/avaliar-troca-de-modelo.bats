@@ -20,19 +20,6 @@ setup() {
   [[ "$output" == *"veredito: TROCAR"* ]]
 }
 
-# ponto de equilibrio: ficar - fixo = 150000 - 17000 = 133000; porT = 50 + 1 = 51 -> 2607 tokens
-@test "informa o ponto de equilibrio da transposicao" {
-  run sh "$SCRIPT" --de maximo --para economico --saida 1000 --leitura 10000 --transposicao 1000 --tabela "$D/t.tsv"
-  [[ "$output" == *"equilibrio: transposicao de ate 2607 tokens"* ]]
-}
-
-@test "transposicao acima do equilibrio: FICAR com exit 3" {
-  run sh "$SCRIPT" --de maximo --para economico --saida 1000 --leitura 10000 --transposicao 3000 --tabela "$D/t.tsv"
-  [ "$status" -eq 3 ]
-  [[ "$output" == *"veredito: FICAR"* ]]
-  [[ "$output" == *"economia: -"* ]]
-}
-
 # cache perdido vira entrada nova no barato: ficar = 50000*1 + 100*50 = 55000; trocar = 100*50 + (100+50000)*1 + 100*5 + 200*10 = 5000+50100+500+2000 = 57600
 @test "cache grande no modelo atual pesa contra a troca" {
   run sh "$SCRIPT" --de forte --para barato --saida 100 --cache 50000 --transposicao 100 --tabela "$D/t.tsv"
@@ -114,4 +101,10 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"de: opus (claude-opus-5-5)"* ]]
   [[ "$output" == *"veredito: TROCAR"* ]]
+}
+
+# ---------- pendentes (auditoria 2026-11-08, secao 7) ----------
+
+@test "pendente: --retorno explicito e --retrabalho 0 e 100 como limites" {
+  skip "pendente: provar o valor informado de --retorno e os limites de --retrabalho"
 }

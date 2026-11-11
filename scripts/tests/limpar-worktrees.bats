@@ -233,36 +233,75 @@ EOF2
   [ "$status" -eq 2 ]
 }
 
-@test "roda de dentro de um worktree sem --raiz: acha o checkout principal sozinho" {
-  worktree_mesclado feature/ok feature-ok
-  cd "$PASTA/feature-ok"
-  run sh "$SCRIPT" --sem-gh
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"REMOVERIA (branch feature/ok mesclada, worktree limpo): feature-ok"* ]]
-}
-
-@test "dry-run nao executa git worktree prune: registro de worktree apagado a mao continua la" {
-  worktree_mesclado feature/ok feature-ok
-  rm -rf "$PASTA/feature-ok"
-  run sh "$SCRIPT" --raiz "$RAIZ" --sem-gh
-  [ "$status" -eq 0 ]
-  [ -d "$RAIZ/.git/worktrees/feature-ok" ]
-}
-
-@test "squash: PR MERGED pelo gh conta so se o head da PR e o HEAD local; commit local posterior fica PENDENTE" {
+@test "squash com PR MERGED no mesmo sha: --executar remove o worktree e apaga a branch; commit local posterior fica PENDENTE e intacto" {
   worktree_nao_mesclado feature/squash feature-squash
-  sha=$(git -C "$RAIZ" rev-parse feature/squash)
+  worktree_nao_mesclado feature/depois feature-depois
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  for b in squash depois; do
+    sha=$(git -C "$RAIZ" rev-parse "feature/$b")
+    printf '%s\n' "$sha" > "$BATS_TEST_TMPDIR/sha-$b"
+  done
+  cat > "$BATS_TEST_TMPDIR/bin/gh" <<EOF2
+#!/bin/sh
+case "\$*" in
+  *--head\ feature/squash*) cat "$BATS_TEST_TMPDIR/sha-squash" ;;
+  *--head\ feature/depois*) cat "$BATS_TEST_TMPDIR/sha-depois" ;;
+esac
+EOF2
+  chmod +x "$BATS_TEST_TMPDIR/bin/gh"
+  echo z > "$PASTA/feature-depois/z.txt"; git -C "$PASTA/feature-depois" add -A; git -C "$PASTA/feature-depois" commit -qm z
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run sh "$SCRIPT" --raiz "$RAIZ" --executar
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REMOVIDO (branch feature/squash apagada): feature-squash"* ]]
+  [[ "$output" == *"PENDENTE (branch feature/depois nao mesclada em origin/main): feature-depois"* ]]
+  [[ "$output" == *"resumo: 1 removido(s), 1 pendente(s), 0 falha(s)."* ]]
+  [ ! -e "$PASTA/feature-squash" ]
+  [ -z "$(git -C "$RAIZ" branch --list feature/squash)" ]
+  [ -d "$PASTA/feature-depois" ]
+  git -C "$RAIZ" show-ref --verify --quiet refs/heads/feature/depois
+}
+
+# como worktree_mesclado, com um arquivo proprio por branch (varias branches mescladas na mesma main sem conflito)
+worktree_mesclado_em() {  # $1 = branch, $2 = diretorio
+  git -C "$RAIZ" branch "$1" main
+  git -C "$RAIZ" worktree add -q "$PASTA/$2" "$1"
+  echo x > "$PASTA/$2/$2.txt"; git -C "$PASTA/$2" add -A; git -C "$PASTA/$2" commit -qm "$2"
+  git -C "$RAIZ" merge -q --no-ff "$1" -m "merge $1"
+  git -C "$RAIZ" push -q origin main
+}
+
+@test "com gh disponivel e sem --sem-gh, branch ancestral nao consulta o gh; no mesmo --executar, so o mesclado limpo sai e o resumo agrega o resto" {
+  worktree_mesclado_em feature/ok feature-ok
+  worktree_mesclado_em feature/suja feature-suja
+  worktree_mesclado_em feature/presa feature-presa
+  worktree_nao_mesclado feature/aberta feature-aberta
+  echo lixo > "$PASTA/feature-suja/lixo.txt"
+  git -C "$RAIZ" worktree lock "$PASTA/feature-presa"
   mkdir -p "$BATS_TEST_TMPDIR/bin"
   cat > "$BATS_TEST_TMPDIR/bin/gh" <<EOF2
 #!/bin/sh
-case "\$*" in *--repo*--state\ merged*--base\ main*--head\ feature/squash*) echo "$sha" ;; *) echo "" ;; esac
+echo "\$*" >> "$BATS_TEST_TMPDIR/gh.log"
 EOF2
   chmod +x "$BATS_TEST_TMPDIR/bin/gh"
-  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run sh "$SCRIPT" --raiz "$RAIZ"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run sh "$SCRIPT" --raiz "$RAIZ" --executar
   [ "$status" -eq 0 ]
-  [[ "$output" == *"REMOVERIA (branch feature/squash mesclada, worktree limpo): feature-squash"* ]]
-  echo z > "$PASTA/feature-squash/z.txt"; git -C "$PASTA/feature-squash" add -A; git -C "$PASTA/feature-squash" commit -qm z
-  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"PENDENTE (branch feature/squash nao mesclada em origin/main): feature-squash"* ]]
+  [[ "$output" == *"REMOVIDO (branch feature/ok apagada): feature-ok"* ]]
+  [[ "$output" == *"PENDENTE (1 alteracao(oes) nao commitada(s); branch feature/suja): feature-suja"* ]]
+  [[ "$output" == *"PENDENTE (worktree travado por git worktree lock; branch feature/presa): feature-presa"* ]]
+  [[ "$output" == *"PENDENTE (branch feature/aberta nao mesclada em origin/main): feature-aberta"* ]]
+  [[ "$output" == *"resumo: 1 removido(s), 3 pendente(s), 0 falha(s)."* ]]
+  [ ! -e "$PASTA/feature-ok" ]
+  [ -d "$PASTA/feature-suja" ] && [ -d "$PASTA/feature-presa" ] && [ -d "$PASTA/feature-aberta" ]
+  [ "$(grep -c . "$BATS_TEST_TMPDIR/gh.log")" -eq 1 ]
+  grep -q -- '--head feature/aberta' "$BATS_TEST_TMPDIR/gh.log"
+}
+
+# ---------- pendentes (auditoria 2026-11-08, secao 7) ----------
+
+@test "pendente: git worktree remove que falha cai na recuperacao e conclui REMOVIDO; recuperacao que tambem falha e FALHOU" {
+  skip "pendente: provar os dois desfechos do caminho apagar + worktree prune"
+}
+
+@test "pendente: git branch -D que falha avisa branch local nao apagada e o worktree ainda conta como REMOVIDO com exit 0" {
+  skip "pendente: provar o AVISO e o exit 0 quando a branch ja foi apagada"
 }
