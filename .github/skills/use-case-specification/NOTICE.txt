@@ -1,0 +1,14 @@
+use-case-specification
+
+Source: awslabs/agent-plugins (metadata.source), plugins/sagemaker-ai/skills/use-case-specification/, commit b13ce7f008c52be10c3fcccce25d64ec614e76be.
+License: Apache-2.0. See LICENSE.txt (inherited content, unchanged).
+
+Reingestion of 2026-11-10: the upstream SKILL.md was compared with the local catalog; the technical body is unchanged. Only the commit of origin was fixed and LICENSE.txt and NOTICE.txt were added.
+
+Modifications made by this package:
+- Frontmatter: license and metadata.source added.
+- Added the Security Handoff section.
+- Rule 4 (base model selection): the reference to the upstream model-selection skill was replaced by a note that the decision is registered in the System Design.
+- Artifact location: the reference to the upstream directory-management skill was replaced by the documentation structure adopted by the project, with review-documentation and documentation-sync.
+
+Upstream review: no instruction to read secrets, disable verification, send data out or execute content on load was found.

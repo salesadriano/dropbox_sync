@@ -8,6 +8,8 @@ Regras de preenchimento:
 - **Uma linha por caso de teste.** A coluna *Caso* traz o **nome exato** do teste como declarado no arquivo (o texto do `@test`, `it(...)`, `test(...)`, `def test_...`, `func Test...`), sem crases, com `|` escrito como `\|`. E por esse nome que `sh scripts/inventario-de-testes.sh --check` casa a linha com o teste.
 - **Campos fixos obrigatorios** em todo bloco: *Alvo*, *Modulo*, *Camada*, *Autoria*, *Regras de origem*, *Comando*. *Aceite do solicitante* e obrigatorio quando a autoria e do QA; *Dados e precondicoes* quando houver estado, seeder, container ou servico. Campo sem valor nao leva placeholder: `Nao aplicavel: <motivo>`.
 - **Regras de origem** sao rastreaveis, nunca descritivas: regra do `AGENTS.md` (`AGENTS.md 48`), regra de skill (`protocolo-tdd Regra 9`), entrada de memoria (id, com link), requisito ou criterio de aceite (id e documento), issue (`#n`) e o log de prompt da demanda que criou o teste. A coluna *Regra especifica* da tabela so e preenchida quando o caso tem origem propria alem das do bloco.
+- **Condicao de execucao** (4a coluna, opcional) so e preenchida em caso condicional (pula sem rede externa, sem root, sem servico, sem variavel): `<condicao> -> <onde ela e satisfeita>`, com o lado direito apontando o lugar verificavel em que o caso de fato roda (ex.: `rede externa -> job e2e-rede da pipeline`; `root -> passo manual registrado em docs/testes/<arquivo>.md`). Vazia, o caso e incondicional. Tabela sem a coluna continua valida: todos os casos dela sao incondicionais. `--check` acusa `CONDICAO` quando a coluna esta preenchida sem ` -> ` ou com o lado direito vazio; caso condicional sem lugar em que rode nao e cobertura.
+- **Camada** admite, alem de unitario, integracao, E2E, contrato e fumaca, a camada `meta`: caso que testa a propria suite ou o harness (mutante que prova discriminacao, teste do runner ou do helper de teste). Casos `meta` ficam **fora da piramide 70/20/10**, porque nao sao cobertura do produto; o parecer de testes os conta a parte. O script nao valida o valor de *Camada*.
 - **O que verifica** e uma frase de comportamento observavel para quem nao le o codigo: condicao, acao e resultado esperado (ex.: "push para a PR sem suite registrada para o HEAD e bloqueado com exit 2"). Nao repete o nome do caso.
 - Linguagem: portugues do Brasil (regra 31), sem segredo, credencial nem dado pessoal (regra 2).
 
@@ -27,13 +29,13 @@ Comando da suite completa: `<comando oficial>` (Regra 8 de `protocolo-tdd`). Map
 
 | Arquivo | Alvo | Modulo | Camada | Autoria | Casos | Regras de origem principais |
 |---|---|---|---|---|---|---|
-| `<caminho do teste>` | `<arquivo ou funcionalidade>` | <modulo> | <unitario \| integracao \| E2E \| contrato \| fumaca> | <Senior Developer \| QA Expert> | <n> | <AGENTS.md n; entrada ...> |
+| `<caminho do teste>` | `<arquivo ou funcionalidade>` | <modulo> | <unitario \| integracao \| E2E \| contrato \| fumaca \| meta> | <Senior Developer \| QA Expert> | <n> | <AGENTS.md n; entrada ...> |
 
 ## `<caminho do teste>`
 
 - **Alvo:** `<arquivo, funcao, rota ou fluxo exercitado>`
 - **Modulo:** <identificador do mapa de modulos>
-- **Camada:** <unitario | integracao | E2E | contrato | fumaca>
+- **Camada:** <unitario | integracao | E2E | contrato | fumaca | meta (fora da piramide)>
 - **Autoria:** <Senior Developer (TDD da demanda `<slug>`) | QA Expert (suite independente da demanda `<slug>`)>
 - **Regras de origem:** <AGENTS.md n; protocolo-tdd Regra n; [entrada](../../.github/agents/memoria/entradas/<id>.md); requisito RF-n; #n; log `docs/prompts/<arquivo>.md`>
 - **Aceite do solicitante:** <[entrada de aceite](...) com sha256 `<hash>` | Nao aplicavel: teste do Senior Developer>
@@ -41,6 +43,6 @@ Comando da suite completa: `<comando oficial>` (Regra 8 de `protocolo-tdd`). Map
 - **Comando:** `<comando que roda so este arquivo, com parada no primeiro erro>`
 - **Observacoes:** <limites conhecidos, flaky tratado, dependencia de ferramenta; omitir se nada houver>
 
-| Caso | O que verifica | Regra especifica |
-|---|---|---|
-| <nome exato do teste> | <condicao, acao e resultado esperado> | <so quando diferente das do bloco> |
+| Caso | O que verifica | Regra especifica | Condicao de execucao |
+|---|---|---|---|
+| <nome exato do teste> | <condicao, acao e resultado esperado> | <so quando diferente das do bloco> | <vazio se incondicional; senao `<condicao> -> <onde ela e satisfeita>`> |

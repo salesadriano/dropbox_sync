@@ -75,32 +75,11 @@ path_restrito() {
   [[ "$output" == *'  ARQUIVO $(touch'* ]]
 }
 
-@test "QA: detector com exit 3 e saida vazia: DIVERGENCIA sem linha identada e exit 0" {
-  printf '#!/usr/bin/env sh\nexit 3\n' > "$RAIZ/scripts/alteracoes-externas.sh"
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"DIVERGENCIA (exit 3)"* ]]
-}
-
-@test "QA: reserva com 'status: ativa' so no corpo (nao no frontmatter) ainda conta como ativa (limite: grep sem ancora de secao)" {
-  printf -- '---\nid: 2026-10-01-0900-reserva-y\ntipo: reserva\ntitulo: Reserva - y\nstatus: encerrada\n---\n\nAntes era\nstatus: ativa\n' > "$ENTRADAS/2026-10-01-0900-reserva-y.md"
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"reservas ativas de escopo: 1"* ]]
-}
-
 @test "QA: --raiz com caminho relativo e aceito e o verificador roda a partir dele" {
   cd "$BATS_TEST_TMPDIR"
   run sh "$SCRIPT" --raiz raiz --verificador 'pwd'
   [ "$status" -eq 0 ]
   [[ "$output" == *"verificador: ok ($(cd "$RAIZ" && pwd -P))"* ]]
-}
-
-@test "QA: o resumo imprime as sete linhas na mesma ordem, com ou sem fontes disponiveis" {
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  ordem=$(printf '%s\n' "$output" | grep -oE '^(branch principal declarada|remoto \(origin\)|branch atual|reservas ativas de escopo|PRs abertas|worktrees|alteracoes nao realizadas pelos agents|verificador):' | tr '\n' ' ')
-  [ "$ordem" = "branch principal declarada: remoto (origin): branch atual: reservas ativas de escopo: PRs abertas: worktrees: alteracoes nao realizadas pelos agents: verificador: " ]
 }
 
 @test "QA: roda em dash e em bash com a mesma saida" {

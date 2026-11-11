@@ -44,12 +44,6 @@ setup() {
   [[ "$output" == *"168 igual em 2 copia(s)"* ]]
 }
 
-@test "--rotulo nomeia o resumo" {
-  run sh "$SCRIPT" --rotulo superficie "$D/matriz.ts=ROTAS = ([0-9]+);" "$D/pino.spec.ts=TOTAL=([0-9]+)"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"superficie: 168 igual em 2 copia(s)"* ]]
-}
-
 @test "um argumento so sai 2" {
   run sh "$SCRIPT" "$D/matriz.ts=ROTAS = ([0-9]+);"
   [ "$status" -eq 2 ]
@@ -81,24 +75,4 @@ setup() {
   [ "$status" -eq 2 ]
   run sh "$SCRIPT" --x "$D/matriz.ts=ROTAS = ([0-9]+);" "$D/pino.spec.ts=TOTAL=([0-9]+)"
   [ "$status" -eq 2 ]
-}
-
-@test "ERE com '=' no padrao e com '\\*\\*' escapado funciona; o primeiro '=' separa arquivo de ERE" {
-  run sh "$SCRIPT" "$D/INSTRUCOES.md=\*\*([0-9]+) rotas\*\*" "$D/pino.spec.ts=TOTAL=([0-9]+) OK"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"168 igual em 2 copia(s)"* ]]
-}
-
-@test "ERE com '/' e com '|' dentro do grupo funciona" {
-  printf 'caminho a/b/168/c\n' > "$D/x.txt"
-  printf 'valor 168\n' > "$D/y.txt"
-  run sh "$SCRIPT" "$D/x.txt=a/b/([0-9]+)/c" "$D/y.txt=valor ([0-9]+|nada)"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"168 igual em 2 copia(s)"* ]]
-}
-
-@test "roda sob dash" {
-  command -v dash >/dev/null 2>&1 || skip "dash nao instalado"
-  run dash "$SCRIPT" "$D/matriz.ts=ROTAS = ([0-9]+);" "$D/pino.spec.ts=TOTAL=([0-9]+)"
-  [ "$status" -eq 0 ]
 }

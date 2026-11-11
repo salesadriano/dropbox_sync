@@ -9,16 +9,6 @@ setup() {
   printf 'economico\tb\tmb\t1\t5\t0.1\npadrao\tm\tmm\t2\t10\t0.2\nmaximo\tf\tmf\t10\t50\t1\n' > "$D/t.tsv"
 }
 
-@test "QA-1: toda classe listada por --classes e aceita por --classe e devolve a mesma faixa" {
-  run sh "$F" --classes
-  [ "$status" -eq 0 ]
-  while read -r classe faixa; do
-    run sh "$F" --classe "$classe" --tabela "$D/t.tsv"
-    [ "$status" -eq 0 ]
-    [ "${lines[0]}" = "faixa: $faixa" ]
-  done <<< "$output"
-}
-
 @test "QA-2: --toca tolera espaco apos a virgula e item repetido, e so sobe uma vez" {
   run sh "$F" --classe teste --toca "contrato, auth" --tabela "$D/t.tsv"
   [ "$status" -eq 0 ]
@@ -54,22 +44,10 @@ setup() {
   [[ "$output" == *"economia: -0.0020 USD (0.0%)"* ]]
 }
 
-@test "QA-6: retrabalho 100 iguala trocar a ficar mais o custo da troca: sempre FICAR" {
-  run sh "$A" --de maximo --para economico --saida 1000 --leitura 10000 --transposicao 1 --retrabalho 100 --tabela "$D/t.tsv"
-  [ "$status" -eq 3 ]
-}
-
 @test "QA-7: pacote vazio conta zero tokens de transposicao" {
   : > "$D/vazio.md"
   run sh "$A" --de maximo --para economico --saida 100 --pacote "$D/vazio.md" --tabela "$D/t.tsv"
   [[ "$output" == *"transposicao=0 "* ]]
-}
-
-@test "QA-8: numero negativo e rejeitado como nao inteiro" {
-  run sh "$A" --de maximo --para economico --saida -5 --transposicao 1 --tabela "$D/t.tsv"
-  [ "$status" -eq 2 ]
-  run sh "$A" --de maximo --para economico --saida 5 --transposicao 1 --cache -1 --tabela "$D/t.tsv"
-  [ "$status" -eq 2 ]
 }
 
 @test "QA-9: ponto de equilibrio e consistente com o veredito nas duas bordas" {

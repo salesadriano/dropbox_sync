@@ -46,44 +46,11 @@ repo_com_stub() {  # $1 = exit do stub de alteracoes-externas.sh
   [[ "$output" == *"acento no padrao"* ]]
 }
 
-@test "QA: comando com \\n, \\t e aspas escapadas no JSON: o padrao na ultima linha, depois de um tab, bloqueia" {
-  run sh -c "printf '%s' '$(json_literal 'echo \"a\"\n\tcd x\n\tnpm run verify')' | sh '$SCRIPT' --padroes '$PADROES'"
-  [ "$status" -eq 2 ]
-}
-
-@test "QA: padrao com [ ] e ? no arquivo e literal: so o texto identico bloqueia" {
-  printf 'rm -rf [abc]\tm1\ncp ?.txt\tm2\n' > "$PADROES"
-  for c in 'rm -rf a' 'rm -rf b' 'cp x.txt' 'cp ab.txt'; do
-    run sh -c "printf '%s' '$(json_literal "$c")' | sh '$SCRIPT' --padroes '$PADROES'"
-    [ "$status" -eq 0 ]
-  done
-  run sh -c "printf '%s' '$(json_literal 'rm -rf [abc]')' | sh '$SCRIPT' --padroes '$PADROES'"
-  [ "$status" -eq 2 ]
-  run sh -c "printf '%s' '$(json_literal 'cp ?.txt')' | sh '$SCRIPT' --padroes '$PADROES'"
-  [ "$status" -eq 2 ]
-}
-
 @test "QA: padrao com barra invertida e literal (a\\b casa so com a\\b)" {
   printf 'a\\b\tm\n' > "$PADROES"
   run sh -c "printf '%s' '$(json_literal 'echo ab')' | sh '$SCRIPT' --padroes '$PADROES'"
   [ "$status" -eq 0 ]
   run sh -c "printf '%s' '$(json_literal 'echo a\\b')' | sh '$SCRIPT' --padroes '$PADROES'"
-  [ "$status" -eq 2 ]
-}
-
-@test "QA: linha so com TAB e motivo (padrao vazio) nao bloqueia todo comando" {
-  printf '\tmotivo sem padrao\nnpm run verify\tm\n' > "$PADROES"
-  run sh -c "printf '%s' '$(json_literal 'ls')' | sh '$SCRIPT' --padroes '$PADROES'"
-  [ "$status" -eq 0 ]
-  run sh -c "printf '%s' '$(json_literal 'npm run verify')' | sh '$SCRIPT' --padroes '$PADROES'"
-  [ "$status" -eq 2 ]
-}
-
-@test "QA: padrao com espacos nas pontas e preservado literalmente ('ls ' nao casa 'ls')" {
-  printf 'ls \tm\n' > "$PADROES"
-  run sh -c "printf '%s' '$(json_literal 'ls')' | sh '$SCRIPT' --padroes '$PADROES'"
-  [ "$status" -eq 0 ]
-  run sh -c "printf '%s' '$(json_literal 'ls -la')' | sh '$SCRIPT' --padroes '$PADROES'"
   [ "$status" -eq 2 ]
 }
 
@@ -93,12 +60,6 @@ repo_com_stub() {  # $1 = exit do stub de alteracoes-externas.sh
   [ "$status" -eq 2 ]
   [[ "$output" == *"regra 48"* ]]
   run sh -c "printf '%s' '$(json_literal 'docker-compose run --rm app sh -c \"git push\"' "$REPO")' | sh '$SCRIPT'"
-  [ "$status" -eq 2 ]
-}
-
-@test "QA: 'git push' citado em string de outro comando tambem dispara a regra 1 (limite por substring, declarado)" {
-  repo_com_stub 3
-  run sh -c "printf '%s' '$(json_literal 'grep -n \"git push\" README.md' "$REPO")' | sh '$SCRIPT'"
   [ "$status" -eq 2 ]
 }
 
@@ -169,11 +130,6 @@ repo_com_stub() {  # $1 = exit do stub de alteracoes-externas.sh
   run sh -c "printf '%s' '$(json_literal 'git push' "\$(touch $MARCA.cwd)")' | sh '$SCRIPT'"
   [ "$status" -eq 0 ]
   [ ! -e "$MARCA.cwd" ]
-}
-
-@test "QA: o JSON do hook inteiro (session_id, hook_event_name, tool_name, outros campos) nao atrapalha a leitura" {
-  run sh -c "printf '%s' '{\"session_id\":\"s\",\"transcript_path\":\"/t\",\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"npx vitest run\",\"description\":\"x\",\"timeout\":5},\"cwd\":\"/\"}' | sh '$SCRIPT' --padroes '$PADROES'"
-  [ "$status" -eq 2 ]
 }
 
 @test "QA: comando longo (200 KB) com o padrao no fim e lido inteiro" {

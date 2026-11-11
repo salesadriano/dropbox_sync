@@ -1,3 +1,16 @@
 # Padroes do guarda de comandos do modelo (regra 2 de guarda-de-comandos.sh): `padrao<TAB>motivo`, um por linha.
 # O modelo nao proibe comando em prosa alem do que as regras embutidas ja garantem (detector antes do push,
 # suite completa registrada antes do push para a PR de main). Acrescentar aqui o que vier a ser proibido.
+#
+# Exemplo comentado (inativo no modelo, que nao tem servidor): projeto com scripts operacionais
+# (init, down, check, watch) bloqueia a subida direta do servidor, que pularia porta, log, health check
+# e limpeza de orfaos. Para ativar na adocao, manter so as linhas da stack do projeto e remover o `#`
+# inicial, de modo que a linha comece pelo padrao. O casamento e por substring do comando digitado pelo
+# agent: `sh scripts/init.sh` passa (o `next dev` que o script roda por dentro nao chega ao guarda),
+# `npm run dev` digitado bloqueia, e tambem `npm run dev:qualquer` e o padrao citado numa string.
+#npm run dev	servidor sobe so pelo script operacional do projeto (init ou check --fix); ver protocolo-tdd/references/ambiente-de-execucao-local.md
+#next dev	servidor sobe so pelo script operacional do projeto (init ou check --fix); ver protocolo-tdd/references/ambiente-de-execucao-local.md
+#manage.py runserver	servidor sobe so pelo script operacional do projeto (init ou check --fix); ver protocolo-tdd/references/ambiente-de-execucao-local.md
+#php artisan serve	servidor sobe so pelo script operacional do projeto (init ou check --fix); ver protocolo-tdd/references/ambiente-de-execucao-local.md
+#rails server	servidor sobe so pelo script operacional do projeto (init ou check --fix); ver protocolo-tdd/references/ambiente-de-execucao-local.md
+#dotnet run	servidor sobe so pelo script operacional do projeto (init ou check --fix); ver protocolo-tdd/references/ambiente-de-execucao-local.md

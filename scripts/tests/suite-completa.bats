@@ -129,3 +129,46 @@ registro() { cat "$REPO/.git/agentes-suite-completa"; }
   [ -f "$REPO/.git/worktrees/wt/agentes-suite-completa" ]
   [ ! -f "$REPO/.git/agentes-suite-completa" ]
 }
+
+@test "comando morto por sinal (exit > 128) propaga o exit e fica vermelho; dois worktrees registram em paralelo cada um no seu registro" {
+  run sc -- sh -c 'kill -TERM $$'
+  [ "$status" -eq 143 ]
+  [[ "$output" == *"vermelha (exit 143)"* ]]
+  run sc --conferir
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"ficou vermelha (exit 143"* ]]
+  rm -f "$REPO/.git/agentes-suite-completa"
+  git -C "$REPO" worktree add -q -b w2 "$BATS_TEST_TMPDIR/wt2"
+  mkdir -p "$BATS_TEST_TMPDIR/wt2/scripts"; cp "$SCRIPT" "$BATS_TEST_TMPDIR/wt2/scripts/suite-completa.sh"
+  (cd "$REPO" && sh scripts/suite-completa.sh -- sh -c 'sleep 1; exit 0' >/dev/null 2>&1) &
+  p1=$!
+  (cd "$BATS_TEST_TMPDIR/wt2" && sh scripts/suite-completa.sh -- sh -c 'sleep 1; exit 5' >/dev/null 2>&1) &
+  p2=$!
+  wait "$p1" || true; wait "$p2" || true
+  run sc --conferir
+  [ "$status" -eq 0 ]
+  run sh -c "cd '$BATS_TEST_TMPDIR/wt2' && sh scripts/suite-completa.sh --conferir"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"ficou vermelha (exit 5"* ]]
+}
+
+@test "--mostrar com argumento sai com 2 sem alterar o registro; o .cmd vermelho propaga o exit e o --conferir recusa" {
+  run sc --mostrar extra
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"nao aceita argumentos"* ]]
+  printf 'exit 9\n' > "$REPO/scripts/suite-completa.cmd"
+  run sc
+  [ "$status" -eq 9 ]
+  [[ "$output" == *"vermelha (exit 9)"* ]]
+  run registro
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == *" limpo 9 "* ]]
+  run sc --conferir
+  [ "$status" -eq 3 ]
+}
+
+# ---------- pendentes (auditoria 2026-11-08, secao 7) ----------
+
+@test "pendente: invocacao sem -- roda o comando como recebido" {
+  skip "pendente: provar que sh scripts/suite-completa.sh true executa o comando e registra o resultado"
+}

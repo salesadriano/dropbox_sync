@@ -417,10 +417,10 @@ _qd_cenario_rede_dl() {
   printf '%s' "$base"
 }
 
-teste_qa_download_hash_divergente_registra_e_mantem_codigo() {
-  pular 'duplo de curl sem cabecalho Dropbox-API-Result: sem content_hash para conferir (limite da fixture, nao defeito)'
-  # RF-160(c) hash=divergente: coberto por tc_dbg_15 de retomada_download_test.sh (developer).
-}
+# RF-160(c) hash=divergente: sem caso aqui (o duplo de curl desta suite nao traz o cabecalho Dropbox-API-Result,
+# entao nao ha content_hash para conferir). Coberto por teste_tc_dbg_15_hash_divergente_aparece_antes_do_erro_11
+# em tests/integracao/retomada_download_test.sh. O caso que so fazia `pular` saiu na auditoria de casos inertes
+# (docs/reviews/2026-11-11-1413-registro-protocolo-atual-1-3-1.md).
 
 # ------------------------------------------------------------ sync
 

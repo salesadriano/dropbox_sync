@@ -1,0 +1,21 @@
+bats-testing-patterns
+
+Source: wshobson/agents (metadata.source), plugins/shell-scripting/skills/bats-testing-patterns/, commit be57c0b2e3c05c528ca6132b87410b385718775f.
+License: MIT, copyright (c) 2024 Seth Hobson. See LICENSE.txt (inherited content, unchanged).
+
+Reingestion of 2026-11-10: the original version of the first ingest was unknown, so the upstream was compared with the local catalog. The upstream technical content carried nothing newer than what the catalog already holds; only the commit of origin was fixed and LICENSE.txt and NOTICE.txt were added.
+
+Modifications made by this package:
+- Normalization per .github/skills/SKILLS_SYNC.md: frontmatter (name, scope-bounded description, license, metadata.tags, metadata.source).
+- Added the Security Handoff section.
+- Added the Scope Boundary section, with the precedence of protocolo-tdd.
+- Added the Package precedence section (dialect follows the shebang, stubs only at system boundaries, tests never write to the repository, local gate, missing Bats is a limitation).
+- SKILL.md body rewritten around POSIX sh scripts (run sh, dash, BATS_TEST_TMPDIR); the upstream Parallel Execution, Makefile and generic CI examples were replaced by a single optional CI complement.
+- Fail-fast: test commands and pipeline examples stop at the first error (bats --abort; protocolo-tdd Rule 9), with the runner version pinned.
+- references/details.md: package notes added at the top; GNU/BSD stat fix; sh shebang in the stub example; the empty trailing "Advanced Patterns" heading of the upstream was left out.
+- Removed references to external skills not shipped in this package.
+
+Upstream review: no instruction to read secrets, disable verification, send data out or execute content on load was found in what was compared.
+- Restored on 2026-11-11 from the upstream at the commit above: the helper functions assert_file_exists, setup_test_dir and cleanup_test_dir in the Test Helper Pattern section of SKILL.md, which the first local version lacked (origin unknown; found by the QA comparison of 2026-11-10). assert_file_exists is verbatim; setup_test_dir separates the assignment from the export (ShellCheck SC2155) and carries a comment restricting both directory helpers to bats-core older than 1.4, because the package precedence prefers BATS_TEST_TMPDIR.
+- When to Use This Skill, differences kept on purpose: the upstream item "Setting up automated testing in CI/CD pipelines" is left out, because the gate is local and CI is an optional complement; "Creating fixtures for complex test scenarios" was merged into "Building maintainable test suites and fixtures for scripts" and "Testing multiple shell dialects (bash, sh, dash)" into "Validating behavior across different shell environments (sh, dash, bash)".
+- Test Helper Pattern, differences kept on purpose: the helper file is named test_helper.bash (the name `load test_helper` resolves) instead of test_helper.sh; the bash shebang and the `export SCRIPT_DIR` line of the upstream helper are left out, because the examples locate the script under test through BATS_TEST_DIRNAME; assert_file_equals is a shorter rewrite with the same behavior.

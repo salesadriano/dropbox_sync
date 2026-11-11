@@ -2,7 +2,8 @@
 # Resumo de estado do repositorio para o hook SessionStart do Claude Code (skill governanca-por-hooks).
 # Agnostico a projeto e a stack: imprime, uma fonte por linha, o que o protocolo manda conferir no
 # inicio de toda demanda (branch principal declarada, remoto, branch atual, reservas ativas, PRs abertas,
-# worktrees, alteracoes nao realizadas pelos agents) e, se pedido, um verificador do projeto em modo aviso.
+# worktrees, alteracoes nao realizadas pelos agents, caminhos confirmados como intervencao humana) e, se pedido,
+# um verificador do projeto em modo aviso.
 #
 # Uso: sh resumo-de-estado.sh [--raiz <dir>] [--entradas <dir>] [--verificador "<comando>"]
 #   --raiz         raiz do repositorio (padrao: topo do repositorio git que contem este script, ou o pai
@@ -98,6 +99,12 @@ if [ -f "$raiz/scripts/alteracoes-externas.sh" ]; then
   esac
 else
   echo "alteracoes nao realizadas pelos agents: indisponivel (scripts/alteracoes-externas.sh nao encontrado)"
+fi
+
+# Caminhos que o solicitante ja confirmou como intervencao humana sua (regra 12): nenhum agent os acusa ou toca.
+if [ -f "$raiz/scripts/caminhos-confirmados.txt" ]; then
+  confirmados=$(grep -v '^[[:space:]]*#' "$raiz/scripts/caminhos-confirmados.txt" | grep -v '^[[:space:]]*$' | cut -f1 | tr '\n' ' ' | sed 's/ $//')
+  echo "caminhos confirmados como intervencao humana: ${confirmados:-nenhum}"
 fi
 
 if [ -n "$verificador" ]; then

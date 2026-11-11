@@ -53,7 +53,7 @@ Parecer combinado dos dois gates locais, executados pelo agent que produziu a al
 
 | Gate | Skills aplicadas | Achados (severidade, arquivo:linha, regra, correcao) | Veredito |
 |---|---|---|---|
-| `protocolo-tdd` | Regras 1 a 9; `Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados` | <nenhum \| lista> | Aprovado \| Aprovado com ressalvas \| Reprovado |
+| `protocolo-tdd` | Regras 1 a 9 e 11; `Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados` | <nenhum \| lista> | Aprovado \| Aprovado com ressalvas \| Reprovado |
 | `protocolo-conformidade` | `clean-architecture` + `<skill de stack>`; `Checklist aplicado integralmente; itens nao conformes ou nao aplicaveis listados em Achados` | <nenhum \| lista> | Aprovado \| Aprovado com ressalvas \| Reprovado |
 
 - Ciclo: <1 \| 2 \| 3; em ciclo 2 ou 3, o status de cada achado anterior: corrigido \| nao corrigido \| justificado>
@@ -63,6 +63,7 @@ Parecer combinado dos dois gates locais, executados pelo agent que produziu a al
 
 - Porte P: `QA: amostragem <n> de <N> - validada em <data> | nao validada` (`fluxo-p.md`, secao 3). Quando validada: o que o QA auditou, o que reexecutou e os cenarios de risco que acrescentou, sem mutantes nem arquivo `qa-*`.
 - Porte M: validacao independente sobre os itens afetados, aqui como secao: cenarios proprios (risco, borda, contrato, acesso indevido), arquivos `qa-*` criados com o sha256 de cada um para o aceite do solicitante, comando e contagem literais, achados com severidade, ciclo e veredito. Em reprovacao, a devolucao ao agent originador fica aqui e o ciclo seguinte acrescenta a linha nova abaixo desta.
+- Porte M, com arquivos `qa-*`: `Contencao: <casos do developer removidos por contencao> | <casos do QA removidos> | nenhum` (mapa de contencao, persona `ai-team:qa-expert`, *Entrega obrigatoria*); cada caso como `<arquivo>::<nome>` seguido de `contido por <arquivo>::<nome>`.
 - Inventario de testes (regra 51): <linhas acrescentadas, alteradas ou removidas em `docs/testes/inventario-de-testes.md` e a saida literal de `sh scripts/inventario-de-testes.sh --check`; ou `Nao aplicavel: a demanda nao toca teste`>
 - Veredito do QA: <Aprovado \| Aprovado com ressalvas \| Reprovado>, <data>.
 
