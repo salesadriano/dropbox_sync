@@ -1203,7 +1203,7 @@ dbx_cmd_sync_executar() {
   # plano de pastas do ciclo (`chave<TAB>valor`), as exclusoes de pasta
   # anunciadas e as pastas do destino remoto observadas nesta execucao.
   local pastas_criadas=0 pastas_falhou=0
-  local -a plano_pastas=() pastas_apagaria=()
+  local -a plano_pastas=() pastas_apagaria=() orfaos_apagaria=()
   local -A pastas_destino_vistas=()
   # RF-217(c)(d), so em simulacao: o que esta execucao planejou apagar (arquivos),
   # o que ela observou no destino remoto (`tipo<TAB>relativo`), as pastas ja
@@ -1682,6 +1682,11 @@ dbx_cmd_sync_executar() {
   omitidos_total=$((omitidos_total + ${#DBX_SYNC_IDENTICOS[@]}))
   # Em simulacao o ciclo termina aqui, sem escrita; o `simulado` sai ao fim.
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
+    # Orfaos: so acumulados; o anuncio (`apagaria`) sai depois do ultimo ciclo.
+    # QA-ORF-02: a mesma trava da execucao real, para nao anunciar o que ela nao apagaria.
+    [[ $espelhar == 'sim' && $exclusao_desabilitada == 'nao' && $recusa_origem_vazia == 'nao' &&
+      $parcial != 'sim' ]] || pastas_bloqueio='sim'
+    _dbx_cmd_sync_orfaos_acumular
     continue
   fi
 
@@ -1728,6 +1733,9 @@ dbx_cmd_sync_executar() {
     }
     _dbx_cmd_sync_pastas_falhas_aplicar
   fi
+  # Orfaos: so acumulados, DEPOIS da exclusao antecipada de pasta (que tira do plano
+  # o arquivo no lugar da pasta, sem dupla exclusao); a exclusao sai no fim.
+  _dbx_cmd_sync_orfaos_acumular
   local total_ops=0
   [[ ${#DBX_SYNC_TRANSFERIR[@]} -gt 0 ]] && total_ops=$((total_ops + ${#DBX_SYNC_TRANSFERIR[@]}))
   if [[ $espelhar == 'sim' && ${#DBX_SYNC_APAGAR[@]} -gt 0 ]]; then
@@ -1805,28 +1813,9 @@ dbx_cmd_sync_executar() {
     dbx_cmd_avisar "$retidos_total caminho(s) fora do ASCII mantido(s) sem apagar: $DBX_SYNC_LOCALIDADE ausente, a comparacao sem caixa so vale no ASCII e o par poderia ser o mesmo arquivo na Dropbox; nada foi apagado por isso"
   fi
 
-  if [[ $ciclo_falho -gt 0 ]]; then
-    : # RF-193: falha sistemica nesta execucao em ciclos: nenhuma exclusao
-  elif [[ $espelhar == 'sim' && $sentido == 'enviar' ]]; then
-    # RF-136: exclusao remota em lote (delete_batch + check), nunca delete_v2 em
-    # laco. As guardas ja agiram; a lista abaixo so perde, outra vez, o que o
-    # escopo dos filtros protege (RF-80(d), sem estado).
-    _dbx_cmd_sync_apagar_remoto_em_lote "$remoto"
-  elif [[ $espelhar == 'sim' ]]; then
-    for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
-      # RF-80(d), no ponto da escrita: a mesma conta sem estado, de novo.
-      _dbx_cmd_sync_protegido "$caminho" && continue
-      op_atual=$((op_atual + 1))
-      dbx_progress_etapa "$op_atual" "$total_ops" 'apagando' "$caminho"
-      antes=${DBX_HTTP_REQUISICOES:-0}
-      if _dbx_cmd_sync_apagar_local "$raiz_local" "$caminho"; then
-        apagados=$((apagados + 1))
-      else
-        falhas=$((falhas + 1))
-        _dbx_cmd_sync_falhou "$caminho" "$antes"
-      fi
-    done
-  fi
+  # Nenhuma exclusao de orfao dentro do ciclo (arquivo ou pasta): as candidatas
+  # ficam em `$area` e saem em `_dbx_cmd_sync_orfaos_apagar`, depois do ultimo
+  # ciclo concluido (RF-193 e RF-41(a) valem la).
     # RF-216(g): ciclo sem exclusao liberada, falho ou parcial bloqueia as pastas.
     [[ $espelhar == 'sim' && $exclusao_desabilitada == 'nao' && $recusa_origem_vazia == 'nao' &&
       $ciclo_falho -eq 0 && $parcial != 'sim' ]] || pastas_bloqueio='sim'
@@ -1845,6 +1834,8 @@ dbx_cmd_sync_executar() {
       fi
     fi
     done
+  # Arquivos orfaos de TODOS os ciclos, so depois do ultimo e com todos concluidos.
+  _dbx_cmd_sync_orfaos_apagar
   # RF-215(c), RF-216: pastas orfas so depois das exclusoes de arquivo de TODOS os ciclos.
   _dbx_cmd_sync_pastas_orfas_apagar
 
@@ -1854,6 +1845,10 @@ dbx_cmd_sync_executar() {
   fi
   if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' && $ciclo_falho -eq 0 ]]; then
     dbx_cmd_iniciar_saida
+    # Orfaos reconferidos no fim, na ordem dos ciclos, antes das pastas (RF-217(a)).
+    for caminho in ${orfaos_apagaria[@]+"${orfaos_apagaria[@]}"}; do
+      dbx_output_campo apagaria "$caminho"
+    done
     # RF-217(a): exclusoes de pasta depois das de arquivo de todos os ciclos.
     for caminho in ${pastas_apagaria[@]+"${pastas_apagaria[@]}"}; do
       dbx_output_campo apagaria "$caminho"
@@ -2100,6 +2095,105 @@ _dbx_cmd_sync_receber() {
 # `sync` com exclusao em lote em curso.
 _dbx_cmd_sync_aviso_exclusao_em_curso() {
   printf '%s\n' 'sync interrompido durante a exclusao em lote: a exclusao em curso pode ter sido concluida no servidor (os itens vao para a lixeira); a proxima execucao os ve como ausentes' >&2
+}
+
+# _dbx_cmd_sync_k <texto> — chave de comparacao de caminho ou diretorio em
+# `_DBX_K` (`k:<chave>`). A dobra de caixa e a de `dbx_filtro_chave` (lib/filtro,
+# localidade UTF-8 fixada), a MESMA do plano de arquivos: `${x,,}` solto usaria a
+# localidade do processo e, sob `LC_ALL=C`, `HIDRAULICO` com acento nao casaria com
+# a grafia da outra ponta (RNF-36: uma dobra so).
+_DBX_K='' _DBX_K2=''
+_dbx_cmd_sync_k() {
+  dbx_filtro_chave "$1"
+  _DBX_K="k:$DBX_FILTRO_CHAVE"
+}
+
+# _dbx_cmd_sync_orfaos_acumular — so com --espelhar: guarda, em `$area` (nunca na
+# memoria do sync, no retrato nem no cursor), as candidatas a exclusao do ciclo
+# (`rev<TAB>caminho\0`, ja sem protegidos nem nao ASCII retidos) e a chave sem
+# caixa de TODO item da origem do ciclo (`chave\0`). Executor: area, espelhar,
+# sentido, ordem_local, ordem_remota, mapa_revs, DBX_SYNC_APAGAR.
+_dbx_cmd_sync_orfaos_acumular() {
+  [[ $espelhar == 'sim' ]] || return 0
+  local caminho
+  local -a origem_ciclo=(${ordem_remota[@]+"${ordem_remota[@]}"})
+  [[ $sentido == 'enviar' ]] && origem_ciclo=(${ordem_local[@]+"${ordem_local[@]}"})
+  {
+    for caminho in ${origem_ciclo[@]+"${origem_ciclo[@]}"}; do
+      _dbx_sync_chave "$caminho"
+      printf '%s\0' "$DBX_SYNC_CHAVE"
+    done
+  } >>"$area/orfaos_origem"
+  {
+    for caminho in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
+      printf '%s\t%s\0' "${mapa_revs[$caminho]:-}" "$caminho"
+    done
+  } >>"$area/orfaos_candidatos"
+  return 0
+}
+
+# _dbx_cmd_sync_orfaos_apagar — depois do ULTIMO ciclo, e so com todos concluidos
+# (sem ciclo falho nem travessia parcial), reconfere cada candidata acumulada
+# contra o conjunto COMPLETO da origem desta execucao, sem estado: chave presente
+# em qualquer ciclo = nao apaga (`decisao=pular motivo=presente-na-origem`).
+# O resto passa de novo pela guarda de filtros (RF-80(d)) e sai pela exclusao de
+# sempre (lote no --enviar, `rm` no --receber). Em simulacao so anuncia
+# (`apagaria`, em `orfaos_apagaria`). Executor: area, espelhar, sentido,
+# ciclo_falho, parcial, pastas_bloqueio, raiz_local, remoto, mapa_revs, op_atual, total_ops,
+# apagados, falhas, apagar_planejado, orfaos_apagaria.
+_dbx_cmd_sync_orfaos_apagar() {
+  local arq="$area/orfaos_candidatos"
+  # RF-216(g), a mesma trava das pastas: um ciclo com exclusao desabilitada ou
+  # origem vazia recusada bloqueia tambem as candidatas dos ciclos anteriores.
+  [[ $espelhar == 'sim' && $pastas_bloqueio == 'nao' && $ciclo_falho -eq 0 && $parcial != 'sim' && -s $arq ]] || return 0
+  local -A presentes=() vistos=()
+  local reg chave rev caminho antes
+  while IFS= read -r -d '' chave; do
+    presentes[$chave]=1
+  done <"$area/orfaos_origem"
+  DBX_SYNC_APAGAR=()
+  mapa_revs=()
+  while IFS= read -r -d '' reg; do
+    rev=${reg%%$'\t'*}
+    caminho=${reg#*$'\t'}
+    [[ -z ${vistos[$caminho]+definido} ]] || continue
+    vistos[$caminho]=1
+    _dbx_sync_chave "$caminho"
+    if [[ -n ${presentes[$DBX_SYNC_CHAVE]+definido} ]]; then
+      dbx_debug_linha sync decisao=pular motivo=presente-na-origem item="$caminho"
+      # QA-ORF-01: aspas simples, a chave e expandida uma vez so (nome vindo do
+      # destino nunca chega a substituicao de comando no subscrito).
+      _DBX_K2="k:$DBX_SYNC_CHAVE"
+      unset 'apagar_planejado[$_DBX_K2]'
+      continue
+    fi
+    _dbx_cmd_sync_protegido "$caminho" && continue
+    DBX_SYNC_APAGAR+=("$caminho")
+    mapa_revs[$caminho]=$rev
+  done <"$arq"
+  [[ ${#DBX_SYNC_APAGAR[@]} -gt 0 ]] || return 0
+  if [[ ${DBX_CLI_SIMULACAO:-nao} == 'sim' ]]; then
+    orfaos_apagaria=("${DBX_SYNC_APAGAR[@]}")
+    return 0
+  fi
+  total_ops=$((op_atual + ${#DBX_SYNC_APAGAR[@]}))
+  if [[ $sentido == 'enviar' ]]; then
+    # RF-136: exclusao remota em lote (delete_batch + check), nunca delete_v2 em laco.
+    _dbx_cmd_sync_apagar_remoto_em_lote "$remoto"
+    return 0
+  fi
+  for caminho in "${DBX_SYNC_APAGAR[@]}"; do
+    op_atual=$((op_atual + 1))
+    dbx_progress_etapa "$op_atual" "$total_ops" 'apagando' "$caminho"
+    antes=${DBX_HTTP_REQUISICOES:-0}
+    if _dbx_cmd_sync_apagar_local "$raiz_local" "$caminho"; then
+      apagados=$((apagados + 1))
+    else
+      falhas=$((falhas + 1))
+      _dbx_cmd_sync_falhou "$caminho" "$antes"
+    fi
+  done
+  return 0
 }
 
 # _dbx_cmd_sync_apagar_remoto_em_lote <remoto> — RF-136: exclui no destino
@@ -2494,8 +2588,10 @@ _dbx_cmd_sync_exclusao_antecipada_permitida() {
 # pasta, sem rev) e status 1.
 _DBX_SYNC_OCUPANTE_REV=''
 _dbx_cmd_sync_ocupante_remoto_ler() {
-  local pai=$1 alvo=${2,,} corpo url estado quantidade i cam tag rev pagina=1 anterior='' achou='nao' tag_achada='' rev_achado=''
+  local pai=$1 alvo corpo url estado quantidade i cam tag rev pagina=1 anterior='' achou='nao' tag_achada='' rev_achado=''
   _DBX_SYNC_OCUPANTE_REV=''
+  _dbx_cmd_sync_k "$2"
+  alvo=${_DBX_K#k:}
   dbx_json_escapar_cadeia "$pai"
   corpo="{\"path\":\"$DBX_JSON_ESCAPADO\",\"recursive\":false}"
   # shellcheck disable=SC2034  # canal publico de lib/json, limpo aqui
@@ -2515,7 +2611,8 @@ _dbx_cmd_sync_ocupante_remoto_ler() {
     for ((i = 0; i < quantidade; i++)); do
       cam='' tag='' rev=''
       _dbx_cmd_campo entries "$i" path_lower && cam=$DBX_CMD_LIDO
-      [[ ${cam,,} == "$alvo" ]] || continue
+      _dbx_cmd_sync_k "$cam"
+      [[ ${_DBX_K#k:} == "$alvo" ]] || continue
       _dbx_cmd_campo entries "$i" '.tag' && tag=$DBX_CMD_LIDO
       _dbx_cmd_campo entries "$i" rev && rev=$DBX_CMD_LIDO
       achou='sim' tag_achada=$tag rev_achado=$rev
@@ -2832,7 +2929,8 @@ _dbx_cmd_sync_pastas_plano_simular() {
   local k j pl registro exibido rel ocupada existe
   # RF-217(c): o que esta execucao planeja apagar, acumulado dos ciclos.
   for j in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
-    apagar_planejado["k:${j,,}"]=1
+    _dbx_cmd_sync_k "${j}"
+    apagar_planejado["$_DBX_K"]=1
   done
   # RF-217(d): recusa (origem vazia ou espaco) nao anuncia plano de pastas.
   [[ -z $recusaria && $pastas_recusa == 'nao' ]] || return 0
@@ -2843,19 +2941,24 @@ _dbx_cmd_sync_pastas_plano_simular() {
       exibido=$registro
       for j in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
       dbx_sync_relativo "$remoto" "$exibido" || continue
-      pastas_destino_vistas["k:${DBX_SYNC_LIDO,,}"]=1
+      _dbx_cmd_sync_k "${DBX_SYNC_LIDO}"
+      pastas_destino_vistas["$_DBX_K"]=1
     done
   fi
   for ((k = ci_ini; k < ci_fim; k++)); do
     rel=${dirs_v[k]}
     [[ -n $rel ]] || continue
     ocupada='nao'
+    _dbx_cmd_sync_k "$rel"
+    _DBX_K2=$_DBX_K
     for j in ${DBX_SYNC_APAGAR[@]+"${DBX_SYNC_APAGAR[@]}"}; do
-      [[ ${j,,} == "${rel,,}" ]] && ocupada='sim'
+      _dbx_cmd_sync_k "$j"
+      [[ $_DBX_K == "$_DBX_K2" ]] && ocupada='sim'
     done
     if [[ $sentido == 'enviar' ]]; then
       existe='nao'
-      [[ -n ${pastas_destino_vistas["k:${rel,,}"]+definido} ]] && existe='sim'
+      _dbx_cmd_sync_k "${rel}"
+      [[ -n ${pastas_destino_vistas["$_DBX_K"]+definido} ]] && existe='sim'
     else
       existe='nao'
       [[ -d $raiz_local/$rel && ! -L $raiz_local/$rel ]] && existe='sim'
@@ -2926,7 +3029,8 @@ _dbx_cmd_sync_diretorios_enumerar() {
       dirs_v+=("${brutos[k]}")
       cont_v+=("${cbrutos[k]}")
       printf '%s\t%s\0' "${cbrutos[k]}" "${brutos[k]}"
-      chaves_dirs["k:${brutos[k],,}"]=1
+      _dbx_cmd_sync_k "${brutos[k]}"
+      chaves_dirs["$_DBX_K"]=1
       total_origem=$((total_origem + cbrutos[k]))
     done
   } >"$dirs_arq"
@@ -2998,11 +3102,16 @@ _dbx_cmd_sync_ciclo_remoto_formar() {
       rel=$DBX_SYNC_LIDO
       pai=''
       [[ $rel == */* ]] && pai=${rel%/*}
-      [[ ${pai,,} == "${dir,,}" ]] || continue
+      _dbx_cmd_sync_k "$pai"
+      _DBX_K2=$_DBX_K
+      _dbx_cmd_sync_k "$dir"
+      [[ $_DBX_K2 == "$_DBX_K" ]] || continue
       if [[ $tag == 'd' ]]; then
         dbx_filtro_ativo && dbx_filtro_pasta_excluida "$rel" && continue
-        [[ -n ${chaves_dirs["k:${rel,,}"]+definido} ]] && continue
-        chaves_dirs["k:${rel,,}"]=1
+        _dbx_cmd_sync_k "${rel}"
+        [[ -n ${chaves_dirs["$_DBX_K"]+definido} ]] && continue
+        _dbx_cmd_sync_k "${rel}"
+        chaves_dirs["$_DBX_K"]=1
         filhos+=("$rel")
       else
         dbx_filtro_ativo && ! dbx_filtro_classificar "$rel" nao && continue
@@ -3022,12 +3131,13 @@ _dbx_cmd_sync_ciclo_remoto_formar() {
         pl=${DBX_SYNC_TAB_ORDEM[i]}
         pend_chaves+=("$pl")
         pend_regs+=("${DBX_SYNC_TAB[$pl]-}")
-        unset "DBX_SYNC_TAB[$pl]" "DBX_SYNC_TAB_NA_ORDEM[$pl]"
+        unset 'DBX_SYNC_TAB[$pl]' 'DBX_SYNC_TAB_NA_ORDEM[$pl]'
       done
       DBX_SYNC_TAB_ORDEM=("${DBX_SYNC_TAB_ORDEM[@]:0:desde}")
       break
     fi
-    chaves_dirs["k:${dir,,}"]=1
+    _dbx_cmd_sync_k "${dir}"
+    chaves_dirs["$_DBX_K"]=1
     dirs_v+=("$dir")
     cont_v+=("$arquivos")
     printf '%s\t%s\0' "$arquivos" "$dir" >>"$dirs_arq"
@@ -3099,9 +3209,11 @@ _dbx_cmd_sync_ciclo_proximo() {
 _dbx_cmd_sync_pastas_orfas_registrar() {
   local rel=$1
   [[ -n $rel && $rel != *$'\n'* ]] || return 0
-  [[ -n ${pastas_vistas["k:${rel,,}"]+definido} ]] && return 0
+  _dbx_cmd_sync_k "${rel}"
+  [[ -n ${pastas_vistas["$_DBX_K"]+definido} ]] && return 0
   dbx_filtro_ativo && dbx_filtro_pasta_excluida "$rel" && return 0
-  pastas_vistas["k:${rel,,}"]=1
+  _dbx_cmd_sync_k "${rel}"
+  pastas_vistas["$_DBX_K"]=1
   pastas_orfas+=("$rel")
 }
 
@@ -3117,7 +3229,8 @@ _dbx_cmd_sync_pastas_orfas_remotas() {
     for k in 1 2 3 4 5 6; do exibido=${exibido#*$'\t'}; done
     dbx_sync_relativo "$remoto" "$exibido" || continue
     rel=$DBX_SYNC_LIDO
-    [[ -n ${chaves_dirs["k:${rel,,}"]+definido} ]] && continue
+    _dbx_cmd_sync_k "${rel}"
+    [[ -n ${chaves_dirs["$_DBX_K"]+definido} ]] && continue
     _dbx_cmd_sync_pastas_orfas_registrar "$rel"
   done
   _dbx_cmd_sync_observados_acumular
@@ -3151,17 +3264,22 @@ _dbx_cmd_sync_observados_acumular() {
 # antes do pai). Item filtrado nunca entra no plano e, portanto, bloqueia.
 # Executor: observados_destino, apagar_planejado, pastas_apagaria_set.
 _dbx_cmd_sync_pasta_orfa_ficara_vazia() {
-  local prefixo=${1,,}/ item tipo rel
+  local prefixo item tipo rel
+  _dbx_cmd_sync_k "$1"
+  prefixo=${_DBX_K#k:}/
   if [[ $sentido == 'enviar' ]]; then
     [[ ${#observados_destino[@]} -gt 0 ]] || return 0
     for item in ${observados_destino[@]+"${observados_destino[@]}"}; do
       tipo=${item%%$'\t'*}
       rel=${item#*$'\t'}
-      [[ ${rel,,} == "$prefixo"* ]] || continue
+      _dbx_cmd_sync_k "$rel"
+      [[ ${_DBX_K#k:} == "$prefixo"* ]] || continue
       if [[ $tipo == 'd' ]]; then
-        [[ -n ${pastas_apagaria_set["k:${rel,,}"]+definido} ]] || return 1
+        _dbx_cmd_sync_k "${rel}"
+        [[ -n ${pastas_apagaria_set["$_DBX_K"]+definido} ]] || return 1
       else
-        [[ -n ${apagar_planejado["k:${rel,,}"]+definido} ]] || return 1
+        _dbx_cmd_sync_k "${rel}"
+        [[ -n ${apagar_planejado["$_DBX_K"]+definido} ]] || return 1
       fi
     done
     return 0
@@ -3169,9 +3287,11 @@ _dbx_cmd_sync_pasta_orfa_ficara_vazia() {
   while IFS= read -r -d '' item; do
     rel=${item#"$raiz_local"/}
     if [[ -d $item && ! -L $item ]]; then
-      [[ -n ${pastas_apagaria_set["k:${rel,,}"]+definido} ]] || return 1
+      _dbx_cmd_sync_k "${rel}"
+      [[ -n ${pastas_apagaria_set["$_DBX_K"]+definido} ]] || return 1
     else
-      [[ -n ${apagar_planejado["k:${rel,,}"]+definido} ]] || return 1
+      _dbx_cmd_sync_k "${rel}"
+      [[ -n ${apagar_planejado["$_DBX_K"]+definido} ]] || return 1
     fi
   done < <(find -P "$raiz_local/$1" -mindepth 1 -print0 2>/dev/null)
   return 0
@@ -3192,8 +3312,9 @@ _dbx_cmd_sync_pastas_cobertas_pela_origem() {
     rel=$DBX_SYNC_LIDO
     while [[ $rel == */* ]]; do
       rel=${rel%/*}
-      [[ -n ${cobertas["k:${rel,,}"]+definido} ]] && break
-      cobertas["k:${rel,,}"]=1
+      _dbx_cmd_sync_k "${rel}"
+      [[ -n ${cobertas["$_DBX_K"]+definido} ]] && break
+      cobertas["$_DBX_K"]=1
     done
   done
   return 0
@@ -3208,9 +3329,11 @@ _dbx_cmd_sync_pastas_orfas_locais() {
   [[ -r $arq ]] || return 0
   _dbx_cmd_sync_pastas_cobertas_pela_origem
   while IFS= read -r -d '' reg; do
-    [[ -n ${chaves_dirs["k:${reg,,}"]+definido} ]] && continue
+    _dbx_cmd_sync_k "${reg}"
+    [[ -n ${chaves_dirs["$_DBX_K"]+definido} ]] && continue
     # A origem lista algum item sob a pasta: ela existe la (sem caixa).
-    [[ -n ${cobertas["k:${reg,,}"]+definido} ]] && continue
+    _dbx_cmd_sync_k "${reg}"
+    [[ -n ${cobertas["$_DBX_K"]+definido} ]] && continue
     [[ -d $raiz_local/$reg && ! -L $raiz_local/$reg ]] || continue
     while IFS= read -r -d '' sub; do
       _dbx_cmd_sync_pastas_orfas_registrar "${sub#"$raiz_local"/}"
@@ -3329,7 +3452,8 @@ _dbx_cmd_sync_pastas_orfas_apagar() {
           _dbx_cmd_sync_pasta_orfa_ficara_vazia "$rel"; then
           pastas_apagadas=$((pastas_apagadas + 1))
           pastas_apagaria+=("pasta $rel")
-          pastas_apagaria_set["k:${rel,,}"]=1
+          _dbx_cmd_sync_k "${rel}"
+          pastas_apagaria_set["$_DBX_K"]=1
         fi
         continue
       fi
@@ -3363,7 +3487,8 @@ _dbx_cmd_sync_ramos_destino_remotos() {
   local -a fila=()
   local k pl registro exibido rel pai dir total desde=0
   for ((k = ci_ini; k < ci_fim; k++)); do
-    pais["k:${dirs_v[k],,}"]=1
+    _dbx_cmd_sync_k "${dirs_v[k]}"
+    pais["$_DBX_K"]=1
   done
   while :; do
     total=${#DBX_SYNC_TAB_ORDEM[@]}
@@ -3377,12 +3502,17 @@ _dbx_cmd_sync_ramos_destino_remotos() {
       rel=$DBX_SYNC_LIDO
       pai=''
       [[ $rel == */* ]] && pai=${rel%/*}
-      [[ -n ${pais["k:${pai,,}"]+definido} ]] || continue
-      [[ -n ${visitados["k:${rel,,}"]+definido} ]] && continue
-      [[ -n ${chaves_dirs["k:${rel,,}"]+definido} ]] && continue
+      _dbx_cmd_sync_k "${pai}"
+      [[ -n ${pais["$_DBX_K"]+definido} ]] || continue
+      _dbx_cmd_sync_k "${rel}"
+      [[ -n ${visitados["$_DBX_K"]+definido} ]] && continue
+      _dbx_cmd_sync_k "${rel}"
+      [[ -n ${chaves_dirs["$_DBX_K"]+definido} ]] && continue
       dbx_filtro_ativo && dbx_filtro_pasta_excluida "$rel" && continue
-      visitados["k:${rel,,}"]=1
-      pais["k:${rel,,}"]=1
+      _dbx_cmd_sync_k "${rel}"
+      visitados["$_DBX_K"]=1
+      _dbx_cmd_sync_k "${rel}"
+      pais["$_DBX_K"]=1
       fila+=("$rel")
     done
     [[ ${#fila[@]} -gt 0 ]] || break

@@ -88,6 +88,8 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/retomada_download_test.sh` | `bin/dbx download` retomado entre execucoes (`Range`), `--no-resume`, `diagnostico` e `unlink`; `commands/download.sh`, `lib/cmd.sh`, `li... | retomada_download | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 32 | F-03; RF-102, RF-104 a RF-108; TC-RMD-01..15, TC-RMO-01, 02, 04, 05, TC-RMC-01, 06, TC-RML-05..07, TC-RMS-06, TC-DBG-13..15; DIV-176 a DI... |
 | `tests/integracao/retomada_upload_test.sh` | `bin/dbx upload` retomado entre execucoes (`commands/upload.sh`, `lib/transfer.sh`, `lib/state.sh`, registro `retomada-*`) | retomada_upload | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 43 | F-03; RF-101..RF-109; DIV-171..DIV-190; TC-RMU-01..16; TC-RME-02, 12, 14; TC-RMO-01..03, 05..11; TC-RMC-01, 04, 05; TC-RMS-01..06; TC-DBG... |
 | `tests/integracao/sync_blocos_test.sh` | `bin/dbx sync` e `download` de pasta em ciclos por diretorio | `sync_blocos_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 23 | F-101; RF-187..RF-197; TC-BLC-nn |
+| `tests/integracao/sync_orfaos_no_fim_test.sh` | `bin/dbx sync --espelhar` em ciclos (`--bloco 2`) nos dois sentidos: exclusao de orfaos so depois do ultimo ciclo, reconferencia contra a origem completa, ciclo falho, `--dry-run`, chave de pasta com a mesma dobra da de arquivo | `sync_orfaos_no_fim` | integracao | Senior Developer (TDD da demanda `sync-orfaos-no-fim`) | 10 | F-101; RF-190(h); RF-216; RF-217(e); log `docs/prompts/2026-11-11_2210_sync-orfaos-no-fim.md` |
+| `tests/integracao/qa_sync_orfaos_no_fim_test.sh` | `bin/dbx sync --espelhar` em ciclos (`--bloco 2`): pasta movida na origem (envio do novo antes da exclusao do antigo), ciclo falho, morte por sinal, travessia parcial, origem vazia recusada ou permitida, filtro, caixa, `--receber`, `--dry-run`, nome-isca com substituicao de comando | `sync_orfaos_no_fim` | integracao | QA Expert (suite independente da demanda `sync-orfaos-no-fim`) | 12 | F-101; RF-190(h); RF-216; RF-217(e); RF-41; log `docs/prompts/2026-11-11_2210_sync-orfaos-no-fim.md` |
 | `tests/integracao/sync_ciclos_memoria_test.sh` | `bin/dbx sync --enviar --espelhar` em ciclos (`--bloco 2`): memoria do par gravada ao fim de cada ciclo, linha de progresso do ciclo | `sync_ciclos_memoria` | integracao | Senior Developer (TDD da demanda `sync-ciclos-exclusao-indevida`) | 6 | F-101; RF-38(b) emendado; RF-41(f); log `docs/prompts/2026-11-11_1827_sync-ciclos-exclusao-indevida.md` |
 | `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 97 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
 | `tests/integracao/testar_test.sh` | `bin/dbx testar` (alias `check`) e a sonda de disponibilidade (`commands/testar.sh`, `lib/disponibilidade.sh`) | `commands/testar.sh` | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 29 | RF-148; RF-149; RF-150; RF-154; TC-DSP-01..25; TC-DSP-55; TC-DSP-57; TC-DSP-58; DIV-326; log `docs/prompts/2026-10-23_0900_teste-de-dispo... |
@@ -5145,6 +5147,58 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_qa_ocupada_raiz_do_destino_que_e_arquivo_continua_falha_nomeando_o_caminho | Raiz do destino que e arquivo sai 2 com `recusada em /r:` e sem escrita | DIV-394 |
 | teste_qa_ocupada_dry_run_nao_escreve_nada | `--dry-run` mostra `apagar=sub` e nao envia nem apaga | DIV-394 |
 | teste_qa_ocupada_em_ciclo_posterior_o_orfao_sai_no_ciclo_do_pai_e_o_conteudo_e_enviado | Com `--bloco 1`, orfao apagado no ciclo do pai, conteudo da pasta enviado e ciclo seguinte segue | DIV-394 |
+
+## `tests/integracao/sync_orfaos_no_fim_test.sh`
+
+- **Alvo:** `bin/dbx sync --espelhar` com `--bloco 2` nos dois sentidos (`commands/sync.sh`): acumulo das candidatas a exclusao por ciclo, reconferencia final contra a origem completa e execucao depois do ultimo ciclo
+- **Modulo:** `sync_orfaos_no_fim` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `sync-orfaos-no-fim`)
+- **Regras de origem:** F-101; RF-190(h); RF-216; RF-217(e); log `docs/prompts/2026-11-11_2210_sync-orfaos-no-fim.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer, sem aceite proprio
+- **Dados e precondicoes:** duplo de `curl` com remoto em disco por roteiro; arvore sintetica A, B, C, D com dois arquivos e um orfao em A; um caso com a listagem do ciclo 1 devolvendo `/r/B/x.txt`, que a origem so tem no ciclo 2; um caso com `HIDRÁULICO` local e `Hidráulico` remoto sob `LC_ALL=C` (o duplo resolve a caixa por arquivo `alias`); sem rede
+- **Comando:** `bash tests/run.sh tests/integracao/sync_orfaos_no_fim_test.sh`
+- **Observacoes:** O caso 1 prova a reconferencia final (candidata do ciclo 1 cuja chave esta num ciclo posterior). O caso da caixa fora do ASCII prova a dobra unica (`dbx_filtro_chave`) na chave de diretorio, antes `${x,,}` na localidade do processo; e robustez, nao a causa do relato do solicitante (roda em `C.UTF-8`).
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_candidato_de_ciclo_anterior_presente_em_ciclo_posterior_nao_e_apagado | Candidata lida num ciclo anterior cuja chave esta na origem de um ciclo posterior nao e apagada; o debug registra `decisao=apagar` do ciclo e `pular motivo=presente-na-origem` do fim. | RF-190(h) |
+| teste_pasta_com_caixa_diferente_fora_do_ascii_nao_vira_ramo_so_do_destino | Sob `LC_ALL=C`, pasta local `HIDRÁULICO` e remota `Hidráulico` (par em outro ciclo): nada apagado, a pasta remota nao e lida como ramo so do destino nem reenviada com a grafia local. | RF-190(b)(h); RNF-36 |
+| teste_orfao_real_so_e_apagado_depois_do_ultimo_ciclo | O orfao do ciclo 1 sai por `delete_batch` depois da ultima listagem e da ultima transferencia. | RF-190(h) |
+| teste_ciclo_falho_nao_apaga_orfao | Com o ciclo 3 falho (403) nenhuma exclusao e feita e o orfao permanece. | RF-190(h); RF-193 |
+| teste_execucao_interrompida_nao_apaga_orfao | Execucao morta no ciclo 3 nao deixou nenhuma exclusao. | RF-190(h) |
+| teste_simulacao_lista_apagaria_no_fim_sem_escrever | `--dry-run` anuncia o orfao como `apagaria=` uma vez e nao exclui. | RF-217(e) |
+| teste_recebimento_apaga_orfao_local_so_depois_do_ultimo_ciclo | No `--receber` o orfao local existe durante o ultimo ciclo e e apagado depois. | RF-190(h) |
+| teste_recebimento_ciclo_falho_nao_apaga_orfao_local | No `--receber` com ciclo falho o orfao local permanece. | RF-190(h) |
+| teste_recebimento_simulacao_lista_apagaria_no_fim | `--receber --dry-run` anuncia o orfao local como `apagaria=` e nao o apaga. | RF-217(e) |
+| teste_pasta_orfa_continua_sendo_apagada_no_fim | A pasta orfa continua saindo depois da ultima transferencia e depois do lote de arquivos. | RF-216(c) |
+
+## `tests/integracao/qa_sync_orfaos_no_fim_test.sh`
+
+- **Alvo:** `bin/dbx sync --espelhar` com `--bloco 2` nos dois sentidos (`commands/sync.sh`): nenhum orfao sai antes do fim do ultimo ciclo; so sai com todos os ciclos concluidos; cada candidata e reconferida contra a origem completa
+- **Modulo:** `sync_orfaos_no_fim` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `sync-orfaos-no-fim`)
+- **Regras de origem:** F-101; RF-190(h); RF-216; RF-217(e); RF-41(a)(d); RF-80(d); Prompt 5 do log `docs/prompts/2026-11-11_2210_sync-orfaos-no-fim.md` (pasta movida na origem)
+- **Aceite do solicitante:** aceito em 2026-11-11 (AskUserQuestion, "Aceito a suite"), sha256 `d4a02858cc1663350b976b187ed35c01bac098cf5a1d2d70c6ad2f843c1c61eb`; entrada `2026-11-11-2210-aceite-testes-qa-sync-orfaos-no-fim`
+- **Dados e precondicoes:** duplo de `curl` proprio com remoto em disco por roteiro; arvores sinteticas A..D (dois arquivos cada), pasta antiga `A/2ANA` so no destino e nova `B/X/2ANA` so na origem; diretorio local em modo 000 (nao roda como root); sem rede
+- **Comando:** `bash tests/run.sh qa_sync_orfaos_no_fim_test.sh`
+- **Observacoes:** Escrita como adversario. O caso `zz_nome_com_substituicao_de_comando...` reproduz o achado QA-ORF-01 (execucao de comando pelo nome do arquivo no `unset` da reconferencia), corrigido pelo Tech Lead; o prefixo `zz` o deixa por ultimo na ordem do runner. Mapa de contencao: nenhum caso contido por caso do Senior Developer nem o inverso (cenarios e dados distintos).
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_pasta_movida_envia_o_caminho_novo_antes_de_excluir_o_antigo | Pasta movida de `A/2ANA` para `B/X/2ANA`: o envio do caminho novo precede a exclusao em lote do antigo no log do duplo. | RF-190(h); Prompt 5 |
+| teste_pasta_movida_com_falha_no_ciclo_do_caminho_novo_deixa_as_duas_copias | Ciclo do caminho novo falho (403): nenhuma exclusao e a copia antiga permanece. | RF-190(h); RF-193 |
+| teste_pasta_movida_com_morte_por_sinal_entre_ciclos_nao_exclui_nada | Processo morto por SIGKILL entre os ciclos: nenhuma chamada de exclusao. | RF-190(h) |
+| teste_travessia_parcial_bloqueia_as_candidatas_de_todos_os_ciclos | Diretorio ilegivel torna a travessia parcial: nenhuma exclusao, orfao do ciclo 1 permanece. | RF-41(a); RF-190(h) |
+| teste_origem_vazia_recusada_nao_apaga_candidatas_de_nenhum_ciclo | Origem vazia com destino populado: recusa, sem exclusao em nenhum ciclo. | RF-41(d) |
+| teste_origem_vazia_permitida_exclui_em_lote_so_depois_de_ler_o_destino_inteiro | Com `--permitir-origem-vazia` a exclusao sai uma vez, depois da leitura do destino. | RF-41(d); RF-190(h) |
+| teste_filtro_protege_candidata_no_fim_e_o_resto_sai | `--excluir '*.bak'`: o orfao protegido nunca e excluido; o outro sai. | RF-80(d) |
+| teste_candidata_presente_na_origem_em_ciclo_posterior_so_difere_na_caixa | Candidata `/r/C/doc.txt` com origem `Doc.TXT` em ciclo posterior: nao apaga e registra `presente-na-origem`. | RF-190(h); RNF-36 |
+| teste_recebimento_com_pasta_movida_so_apaga_a_copia_antiga_no_fim | `--receber` com pasta movida no remoto: a nova e recebida e a copia local antiga e apagada. | RF-190(h) |
+| teste_recebimento_interrompido_entre_ciclos_mantem_as_duas_copias | `--receber` com ciclo do caminho novo falho: a copia local antiga permanece. | RF-190(h) |
+| teste_simulacao_com_pasta_movida_anuncia_no_fim_e_nao_chama_exclusao | `--dry-run` anuncia `apagaria=` do antigo e nao faz nenhuma chamada de exclusao nem envio. | RF-217(e) |
+| teste_zz_nome_com_substituicao_de_comando_nao_executa_na_reconferencia | Nome de arquivo com `$(>pwn)` reconferido na origem nao pode executar comando (QA-ORF-01). | RF-190(h); Regra 6 de `protocolo-tdd` |
 
 ## `tests/integracao/sync_ciclos_memoria_test.sh`
 

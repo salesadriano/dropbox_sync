@@ -79,7 +79,11 @@ dbx_sync_relativo() {
     DBX_SYNC_LIDO=${caminho#/}
     return 0
   fi
-  local raiz_baixa=${raiz,,} caminho_baixo=${caminho,,}
+  local raiz_baixa caminho_baixo
+  dbx_filtro_chave "$raiz"
+  raiz_baixa=$DBX_FILTRO_CHAVE
+  dbx_filtro_chave "$caminho"
+  caminho_baixo=$DBX_FILTRO_CHAVE
   [[ $caminho_baixo == "$raiz_baixa/"* ]] || return 1
   DBX_SYNC_LIDO=${caminho:$((${#raiz} + 1))}
   [[ -n $DBX_SYNC_LIDO ]]
@@ -468,7 +472,14 @@ _dbx_sync_entrada() {
   # estrutura — `path_lower` igual a raiz pedida, sem caixa —, ela nao e conteudo:
   # a pasta e ignorada, e a raiz apagada (ou virando arquivo) no delta e
   # incoerente. Qualquer outra entrada fora da raiz segue o confinamento abaixo.
-  if [[ -n $raiz && -n $baixo && ${baixo,,} == "${raiz,,}" ]]; then
+  local chave_baixo='' chave_raiz=''
+  if [[ -n $raiz && -n $baixo ]]; then
+    dbx_filtro_chave "$baixo"
+    chave_baixo=$DBX_FILTRO_CHAVE
+    dbx_filtro_chave "$raiz"
+    chave_raiz=$DBX_FILTRO_CHAVE
+  fi
+  if [[ -n $chave_raiz && $chave_baixo == "$chave_raiz" ]]; then
     [[ $tag == 'folder' ]] && return 0
     [[ $modo == 'delta' ]] && return 1
     DBX_SYNC_TAB_PERSISTIVEL='nao'
