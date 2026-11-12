@@ -41,7 +41,7 @@ case $url in
         [[ -e $e ]] || continue
         n=${e##*/}
         if [[ -d $e ]]; then it="{\".tag\":\"folder\",\"id\":\"id:D$n\",\"path_display\":\"$p/$n\",\"path_lower\":\"${p,,}/${n,,}\"}"
-        else it="{\".tag\":\"file\",\"id\":\"id:F$n\",\"path_display\":\"$p/$n\",\"path_lower\":\"${p,,}/${n,,}\",\"content_hash\":\"$(printf %064d 0)\",\"size\":3,\"rev\":\"015f00000000a1b2\"}"; fi
+        else it="{\".tag\":\"file\",\"id\":\"id:F$n\",\"path_display\":\"$p/$n\",\"path_lower\":\"${p,,}/${n,,}\",\"content_hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"size\":3,\"rev\":\"015f00000000a1b2\"}"; fi
         itens+=${itens:+,}$it
       done
     fi
