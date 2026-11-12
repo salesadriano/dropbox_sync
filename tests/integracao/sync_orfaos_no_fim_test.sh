@@ -8,6 +8,8 @@
 # shellcheck disable=SC2016
 # shellcheck source=tests/support/harness.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/../support/harness.sh"
+# shellcheck source=tests/support/localidade.sh
+. "$DBX_HARNESS_RAIZ/tests/support/localidade.sh"
 readonly DBX_EXEC="$DBX_HARNESS_RAIZ/bin/dbx"
 
 _cen() {
@@ -237,6 +239,9 @@ teste_pasta_orfa_continua_sendo_apagada_no_fim() {
 # em OUTRO ciclo: a chave de diretorio tem a mesma dobra da de arquivo, a pasta
 # remota nao vira ramo so do destino e nada e apagado nem reenviado em duplicata.
 teste_pasta_com_caixa_diferente_fora_do_ascii_nao_vira_ramo_so_do_destino() {
+  # Linha legada: a imagem do bash 4.2 (CentOS 7) nao tem C.UTF-8; sem ela a
+  # dobra fora do ASCII nao existe e o produto retem (QA-B42-01).
+  _localidade_disponivel || pular 'localidade C.UTF-8 ausente nesta maquina'
   local base
   base=$(_cen)
   mkdir -p "$base/local/HIDRÁULICO" "$base/local/ZZ" "$base/remote/r/Hidráulico"

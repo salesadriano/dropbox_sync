@@ -1,7 +1,7 @@
 # Inventario de testes - dropbox_sync
 
 Atualizado em: 2026-11-08, demanda `estrutura-de-pastas-antes-da-transferencia` (F-103, `docs/prompts/2026-11-07_0702_estrutura-de-pastas-antes-da-transferencia.md`), pelo QA Expert: 6 arquivos `estrutura_pastas_*` (99 casos) e ajustes em 6 arquivos existentes.
-Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 130 arquivos, 3080 casos, 0 divergencias (linha support/bash-4.2).
+Conferencia: `sh scripts/inventario-de-testes.sh --check` -> 132 arquivos, 3102 casos, 0 divergencias (linha support/bash-4.2).
 Comando da suite completa: `sh scripts/suite-completa.sh -- bash tests/run.sh` (Regra 8 de `protocolo-tdd`). Mapa de modulos: [`docs/testes/mapa-modulos.md`](mapa-modulos.md).
 
 ## Como ler
