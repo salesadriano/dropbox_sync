@@ -293,7 +293,9 @@ teste_matriz_hostil_e_ilegivel_nunca_apagada_nem_retomada_nem_ecoada() {
   done
   # Validas de 2 e de 7 digitos sao legiveis (orfas: retomadas).
   for morto in 12 9999999; do
-    kill -0 "$morto" 2>/dev/null && continue
+    # Vivo para o produto (lib/state.sh): kill -0 ou /proc/<pid>, que pega
+    # o processo de outro usuario (EPERM), como a thread Interop do WSL.
+    { kill -0 "$morto" 2>/dev/null || [[ -e /proc/$morto ]]; } && continue
     _plantar "$trava" "$(_linha "$morto" "$host" 1700000000 sync)"
     _filho "$ADQUIRIR"
     assert_contem 'estado=0' "$FILHO_SAIDA" "pid $morto valido e morto: retomada"
