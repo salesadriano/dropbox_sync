@@ -79,6 +79,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/qa_retomada_b7a_test.sh` | `bin/dbx` (upload e download retomados) com `commands/upload.sh`, `commands/download.sh`, `commands/unlink.sh`, `commands/diagnostico.sh`... | `bin/dbx` | integracao | QA Expert (suite independente da demanda `backlog-fase-7a-retomada`) | 41 | log `docs/prompts/2026-10-20_2315_backlog-fase-7a-retomada.md`; grupos de cenario D (download), L (nao pendurar em entradas nao regulares... |
 | `tests/integracao/qa_robustez_rede_p2_test.sh` | `bin/dbx` download, upload, sync e diagnostico sob falhas de rede, consumidor que fecha cedo, sinais e segredos (`commands/download.sh`, ... | `qa_robustez` | integracao | QA Expert (suite independente da demanda `robustez-de-rede-p2`) | 21 | RNF-30(c); RNF-07(e); RF-32(b); RF-59; RNF-31; log `docs/prompts/2026-10-18_2045_robustez-de-rede-p2.md` |
 | `tests/integracao/qa_sync_blocos_b21_test.sh` | `bin/dbx` sync, upload e download de pasta em blocos cortados por diretorio | `qa_sync_blocos_b21` | integracao | QA Expert (suite independente da demanda `sync-em-blocos`) | 25 | F-101; RF-186..RF-197; DIV-377..DIV-384; F-103 (RF-136(f), `create_folder_batch` no duble) |
+| `tests/integracao/qa_sync_ciclos_memoria_f101_test.sh` | `bin/dbx sync` nos dois sentidos em ciclos: falha de ciclo, interrupcao, recebimento, estado sem permissao, remoto mutavel | `qa_sync_ciclos_memoria` | integracao | QA Expert (suite independente da demanda `sync-ciclos-exclusao-indevida`) | 6 | F-101; RF-38(b) emendado; RF-41(f); RF-193; log `docs/prompts/2026-11-11_1827_sync-ciclos-exclusao-indevida.md` |
 | `tests/integracao/qa_trava_tmp_b2_test.sh` | `bin/dbx` (sync, `--dry-run`, verificar, download de pasta, unlink, diagnostico, upload), `lib/state.sh` (trava de concorrencia por par),... | qa_trava_tmp | integracao | QA Expert (suite independente da demanda `backlog-fase-2-trava-e-tmp`) | 23 | F-12, F-31; RF-69, RF-70, RF-71; DIV-38..49; DIV-51; RNF-35, RNF-36; protocolo-tdd Regra 6; log `docs/prompts/2026-10-19_1419_backlog-fas... |
 | `tests/integracao/qa_upload_para_pasta_b15_test.sh` | `bin/dbx upload` de arquivo para pasta remota existente (`commands/upload.sh`, `lib/cmd.sh`), com e sem raiz remota e barra final | `qa_upload_para_pasta` | integracao | QA Expert (suite independente da demanda `upload-arquivo-para-pasta`) | 26 | RF-174; emenda de RF-60(g)(h); log `docs/prompts/2026-10-26_1300_upload-arquivo-para-pasta.md` |
 | `tests/integracao/recuperacao_test.sh` | `bin/dbx` (`revisoes`, `restaurar`, `lixeira` e aliases, incluindo expurgo permanente), `commands/revisoes.sh`, `commands/restaurar.sh`, ... | recuperacao | integracao | Senior Developer (TDD da demanda `backlog-fase-3-recuperacao`) | 61 | F-07, F-20; RF-72 a RF-78; TC-RVS, TC-RST, TC-RPA, TC-LIX, TC-EXP, TC-DOC-02; log `docs/prompts/2026-10-19_1828_backlog-fase-3-recuperaca... |
@@ -86,6 +87,7 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | `tests/integracao/retomada_download_test.sh` | `bin/dbx download` retomado entre execucoes (`Range`), `--no-resume`, `diagnostico` e `unlink`; `commands/download.sh`, `lib/cmd.sh`, `li... | retomada_download | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 32 | F-03; RF-102, RF-104 a RF-108; TC-RMD-01..15, TC-RMO-01, 02, 04, 05, TC-RMC-01, 06, TC-RML-05..07, TC-RMS-06, TC-DBG-13..15; DIV-176 a DI... |
 | `tests/integracao/retomada_upload_test.sh` | `bin/dbx upload` retomado entre execucoes (`commands/upload.sh`, `lib/transfer.sh`, `lib/state.sh`, registro `retomada-*`) | retomada_upload | integracao | Senior Developer (TDD da demanda `backlog-fase-7a-retomada`) | 43 | F-03; RF-101..RF-109; DIV-171..DIV-190; TC-RMU-01..16; TC-RME-02, 12, 14; TC-RMO-01..03, 05..11; TC-RMC-01, 04, 05; TC-RMS-01..06; TC-DBG... |
 | `tests/integracao/sync_blocos_test.sh` | `bin/dbx sync` e `download` de pasta em ciclos por diretorio | `sync_blocos_test` | integracao | Senior Developer (TDD da demanda `sync-em-blocos`) | 23 | F-101; RF-187..RF-197; TC-BLC-nn |
+| `tests/integracao/sync_ciclos_memoria_test.sh` | `bin/dbx sync --enviar --espelhar` em ciclos (`--bloco 2`): memoria do par gravada ao fim de cada ciclo, linha de progresso do ciclo | `sync_ciclos_memoria` | integracao | Senior Developer (TDD da demanda `sync-ciclos-exclusao-indevida`) | 6 | F-101; RF-38(b) emendado; RF-41(f); log `docs/prompts/2026-11-11_1827_sync-ciclos-exclusao-indevida.md` |
 | `tests/integracao/sync_test.sh` | `bin/dbx sync` direcional (`commands/sync.sh`, `lib/sync.sh`, `lib/walk.sh`, `lib/transfer.sh`, `lib/state.sh`) | `commands/sync.sh` | integracao | Senior Developer (TDD; sem log de prompt, commit de criacao `f8b9ed0` `feat(sync): sincronizacao direcional com a origem como autoridade`) | 96 | DP-27; DP-28; RF-37..RF-53; RF-54; RF-55(e); RF-57; RF-59; RF-64; RF-137; RNF-29; RNF-31; RSK-35; TC-FLH-01..04; TC-SIG-01..03; DIV-28 (v... |
 | `tests/integracao/testar_test.sh` | `bin/dbx testar` (alias `check`) e a sonda de disponibilidade (`commands/testar.sh`, `lib/disponibilidade.sh`) | `commands/testar.sh` | integracao | Senior Developer (TDD da demanda `teste-de-disponibilidade`) | 29 | RF-148; RF-149; RF-150; RF-154; TC-DSP-01..25; TC-DSP-55; TC-DSP-57; TC-DSP-58; DIV-326; log `docs/prompts/2026-10-23_0900_teste-de-dispo... |
 | `tests/integracao/trava_test.sh` | `bin/dbx` (sync, verificar, unlink, diagnostico, upload, download, list, info, space, delete, help) com `lib/state.sh` e `lib/tmp.sh`: tr... | `lib/state.sh` | integracao | Senior Developer (TDD da demanda `backlog-fase-2-trava-e-tmp`) | 31 | RF-69, RF-70, RF-71, RNF-35; TC-TRV, TC-ESR, TC-DIA-11..14, TC-TMP-02, 05, 06; DIV-50, DIV-51; F-12, F-31; log `docs/prompts/2026-10-19_1... |
@@ -5100,3 +5102,45 @@ Os testes rodam pelo harness proprio `tests/run.sh` (TAP 13, parada no primeiro 
 | teste_qa_ocupada_raiz_do_destino_que_e_arquivo_continua_falha_nomeando_o_caminho | Raiz do destino que e arquivo sai 2 com `recusada em /r:` e sem escrita | DIV-394 |
 | teste_qa_ocupada_dry_run_nao_escreve_nada | `--dry-run` mostra `apagar=sub` e nao envia nem apaga | DIV-394 |
 | teste_qa_ocupada_em_ciclo_posterior_o_orfao_sai_no_ciclo_do_pai_e_o_conteudo_e_enviado | Com `--bloco 1`, orfao apagado no ciclo do pai, conteudo da pasta enviado e ciclo seguinte segue | DIV-394 |
+
+## `tests/integracao/sync_ciclos_memoria_test.sh`
+
+- **Alvo:** `bin/dbx sync --enviar --espelhar` com `--bloco 2` (`commands/sync.sh`, `lib/state.sh`): gravacao da memoria ao fim de cada ciclo
+- **Modulo:** `sync_ciclos_memoria` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** Senior Developer (TDD da demanda `sync-ciclos-exclusao-indevida`)
+- **Regras de origem:** F-101; RF-38(b) emendado; RF-41(f); log `docs/prompts/2026-11-11_1827_sync-ciclos-exclusao-indevida.md`; registro `docs/reviews/2026-11-11-1827-registro-sync-ciclos-exclusao-indevida.md`
+- **Aceite do solicitante:** Nao aplicavel: teste do Senior Developer, sem aceite proprio
+- **Dados e precondicoes:** duplo de `curl` com remoto em disco por roteiro; arvore sintetica A, B, C, D com dois arquivos; sem rede
+- **Comando:** `bash tests/run.sh tests/integracao/sync_ciclos_memoria_test.sh`
+- **Observacoes:** Cenario base do ciclo; a suite do QA nao repete estes seis.
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_memoria_por_ciclo_sobrevive_a_interrupcao_com_carregadas | Execucao interrompida no ciclo 3 deixa na memoria a entrada nova do ciclo 1 e as carregadas dos diretorios nao processados (C e D), inclusive a de arquivo ja apagado na origem. | RF-38(b) emendado |
+| teste_execucao_completa_grava_so_as_visitadas | Execucao completa grava so as visitadas: o arquivo apagado na origem sai da memoria e os demais permanecem. | RF-38(b) emendado |
+| teste_travessia_parcial_nao_grava_nem_por_ciclo | Com diretorio local ilegivel (travessia parcial) nenhum arquivo de memoria e gravado, nem por ciclo nem no fim. | RF-38(b) emendado |
+| teste_simulacao_nao_grava_memoria | Com `--dry-run` nenhuma memoria e gravada por ciclo. | RF-38(b) emendado |
+| teste_linha_de_progresso_do_ciclo_sem_sufixo_nao | A linha de progresso do ciclo sai sem o sufixo `nao` (variavel morta removida). | RF-38(b) emendado |
+| teste_espelhar_em_varios_ciclos_com_remoto_mutavel_nao_apaga_nada | Com remoto que muda durante a execucao, `--espelhar` em ciclos nao apaga nada no remoto nem marca itens a apagar. | RF-38(b) emendado |
+
+## `tests/integracao/qa_sync_ciclos_memoria_f101_test.sh`
+
+- **Alvo:** `bin/dbx sync` nos dois sentidos em ciclos: memoria por ciclo diante de falha, interrupcao, recebimento, estado sem permissao e remoto mutavel
+- **Modulo:** `qa_sync_ciclos_memoria` (filtro do mapa de modulos)
+- **Camada:** integracao
+- **Autoria:** QA Expert (suite independente da demanda `sync-ciclos-exclusao-indevida`)
+- **Regras de origem:** F-101; RF-38(b) emendado; RF-41(f); RF-193; log `docs/prompts/2026-11-11_1827_sync-ciclos-exclusao-indevida.md`; registro `docs/reviews/2026-11-11-1827-registro-sync-ciclos-exclusao-indevida.md`
+- **Aceite do solicitante:** Pendente: sha256 no registro de entrega, aguardando o aceite do solicitante (regra 12)
+- **Dados e precondicoes:** duplo de `curl` proprio (remoto em disco, `falhar_em` devolve 403 na listagem, `matar_em` mata o processo, `mutar_em` cria arquivo remoto); arvore sintetica; caso de estado sem permissao nao roda como root
+- **Comando:** `bash tests/run.sh tests/integracao/qa_sync_ciclos_memoria_f101_test.sh`
+- **Observacoes:** Escrita sobre os riscos que o Senior Developer nao cobriu. O duplo nao reproduz o retrato recursivo, por isso o cursor integral nao e gravado nele: a assercao do cursor prova so que a interrupcao nao o cria. O caso 1 estava vermelho por defeito real (QA-F101-01, corrigido no ciclo 2).
+
+| Caso | O que verifica | Regra especifica |
+|---|---|---|
+| teste_qa_ciclo_falho_preserva_o_ciclo_1_e_nao_grava_o_ciclo_falho | Falha sistemica (403) na listagem do ciclo 2 sai diferente de zero e a memoria mantem o ciclo 1 e as carregadas dos ciclos seguintes, sem gravar o que o ciclo falho viu e sem exclusao remota. | RF-38(b) emendado; RF-193 |
+| teste_qa_memoria_interrompida_e_inteira_sem_temporario_e_a_execucao_seguinte_a_aproveita | Execucao morta no ciclo 3 deixa um unico arquivo de memoria sem temporario de escrita, e a execucao seguinte, completa, apaga no remoto o arquivo removido da origem que a memoria por ciclo preservou. | RF-38(b) emendado; RNF-25(a) |
+| teste_qa_receber_em_ciclos_grava_a_memoria_por_ciclo_e_a_interrupcao_nao_grava_cursor | `--receber --espelhar` interrompido no ciclo 3 deixa na memoria o ciclo 1 e as carregadas de C e D, e nao cria nem altera `cursor-*` (limite: o duplo nao reproduz o cursor integral, ver observacoes). | RF-38(b) emendado; RF-111(g) |
+| teste_qa_estado_sem_permissao_avisa_uma_vez_em_varios_ciclos_e_nao_falha | Diretorio de estado de outro dono em quatro ciclos: sai 0, o aviso de memoria nao gravada aparece uma unica vez e o diretorio alheio nao e tocado. | RNF-25(b1) |
+| teste_qa_espelhar_receber_com_remoto_mutavel_nao_apaga_arquivo_de_ciclo_anterior | `--receber --espelhar` com arquivo novo surgindo no remoto durante a listagem de C: os oito arquivos locais permanecem e nada e marcado a apagar. | RF-190; RF-193 |
+| teste_qa_ciclos_sem_falha_mantem_a_gravacao_final_mesmo_apos_uma_execucao_falha | Apos uma execucao com ciclo falho (memoria ainda com o arquivo removido da origem), a execucao seguinte sem falha apaga o arquivo no remoto e a gravacao final remove-o da memoria, mantendo os demais. | RF-38(b) emendado; RF-193 |
