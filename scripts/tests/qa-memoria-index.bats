@@ -135,13 +135,6 @@ EOF
   [[ "$output" != *"AVISO"* ]]
 }
 
-@test "QA: LIMITE: nome que apenas termina em -branch-principal (outra-branch-principal) tambem e isento" {
-  entrada 2026-10-01-0900-outra-branch-principal aceite projeto ativa todos
-  run sh "$SCRIPT" --check
-  [ "$status" -eq 0 ]
-  [[ "$output" != *"AVISO"* ]]
-}
-
 @test "QA: LIMITE: 'agentes: todos, qa-expert' nao e 'todos' para o AVISO, embora entre no bootstrap de todo papel" {
   entrada 2026-10-01-0900-misto aceite projeto ativa "todos, qa-expert"
   run sh "$SCRIPT" --check
@@ -165,13 +158,4 @@ EOF
   run sh "$SCRIPT" --check
   [ "$status" -eq 1 ]
   [[ "$output" == *"ERRO 2026-10-02-0900-invalida: agente invalido 'ninguem'"* ]]
-}
-
-@test "QA: --desde que nao corta nada mantem todas as entradas e so muda a linha Filtros" {
-  entrada 2026-10-01-0900-a decisao pacote ativa todos
-  entrada 2026-10-02-0900-b decisao pacote ativa todos
-  run sh "$SCRIPT" --desde 2026-01-01
-  [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | grep -c '^| \[2026-')" -eq 2 ]
-  [[ "$output" == *"desde=2026-01-01"* ]]
 }

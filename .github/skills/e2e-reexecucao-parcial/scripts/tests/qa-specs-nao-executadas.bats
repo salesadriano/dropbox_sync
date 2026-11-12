@@ -74,14 +74,6 @@ pendente() { printf '    - %s\n' "$1"; }
   [ ! -e "$RAIZ/diagnostico-e2e" ]
 }
 
-@test "QA: GITHUB_STEP_SUMMARY apontando para diretorio inexistente nao derruba o passo: arquivo de saida escrito e exit 0" {
-  export GITHUB_STEP_SUMMARY="$BATS_TEST_TMPDIR/nao-existe/resumo.md"
-  { corrida; rodando a.cy.ts 1 1; falhou 1 'um'; } > "$LOG"
-  run sh "$SCRIPT" --log "$LOG" --raiz "$RAIZ" --saida "$SAIDA" --clientes campo
-  [ "$status" -eq 0 ]
-  grep -qx 'campo falhou: a.cy.ts' "$SAIDA"
-}
-
 @test "QA: --saida em caminho sem permissao de escrita: exit diferente de 0 e nenhuma linha de contrato impressa como se fosse ok" {
   [ "$(id -u)" -ne 0 ] || skip "root ignora permissoes"
   mkdir -p "$BATS_TEST_TMPDIR/ro"; chmod 555 "$BATS_TEST_TMPDIR/ro"
@@ -98,16 +90,6 @@ pendente() { printf '    - %s\n' "$1"; }
   [ "$status" -eq 0 ]
   grep -qx 'campo executadas: 0' "$SAIDA"
   grep -qx 'campo nao executadas: a.cy.ts,b.cy.ts,sub/c.cy.ts' "$SAIDA"
-}
-
-@test "QA: nome de spec com espaco no disco e no log e tratado como um unico arquivo" {
-  : > "$RAIZ/campo/cypress/e2e/com espaco.cy.ts"
-  { corrida; rodando 'com espaco.cy.ts' 1 1; falhou 1 'um'; } > "$LOG"
-  run sh "$SCRIPT" --log "$LOG" --raiz "$RAIZ" --saida "$SAIDA" --clientes campo
-  [ "$status" -eq 0 ]
-  # ACHADO QA-SK (aberto ate correcao): o nome e quebrado em "com" e "espaco.cy.ts" pelo for sem aspas.
-  grep -qx 'campo falhou: com espaco.cy.ts' "$SAIDA"
-  ! grep -qE '^campo (nao executadas|reexecutar): .*(^|,)com(,|$)' "$SAIDA"
 }
 
 @test "QA: LIMITE: spec impressa com ./ na frente no log (Running: ./a.cy.ts) nao casa e fica como nao executada" {

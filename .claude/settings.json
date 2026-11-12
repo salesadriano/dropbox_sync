@@ -2,5 +2,55 @@
   "enabledPlugins": {
     "autoresearch@autoresearch": true,
     "ai-team@ai-team": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git worktree *)",
+      "Bash(git fetch *)",
+      "Bash(git fetch)",
+      "Bash(git merge *)",
+      "Bash(git merge-base *)",
+      "Bash(git rebase *)",
+      "Bash(git pull *)",
+      "Bash(git pull)",
+      "Bash(git branch *)",
+      "Bash(git branch)",
+      "Bash(git switch *)",
+      "Bash(git push *)",
+      "Bash(git log *)",
+      "Bash(git status *)",
+      "Bash(git status)",
+      "Bash(git rev-parse *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git rev-list *)",
+      "Bash(git ls-files *)",
+      "Bash(git ls-files)",
+      "Bash(git ls-remote *)",
+      "Bash(git ls-tree *)",
+      "Bash(git show-ref *)",
+      "Bash(git show-ref)",
+      "Bash(git symbolic-ref *)",
+      "Bash(git for-each-ref *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh run rerun *)"
+    ],
+    "deny": [
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push --force-with-lease *)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(git push * +*)"
+    ]
   }
 }

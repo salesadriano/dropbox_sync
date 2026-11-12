@@ -1,0 +1,7 @@
+# Padroes de descoberta de casos para scripts/auditar-casos.sh (auditoria de casos inertes).
+# Formato: <glob><TAB><adaptador>, adaptador em {bats, shell, jest}. `!<glob>` exclui caminhos; `#` comenta.
+# O glob casa o caminho versionado inteiro (o `*` cobre `/`); vale o primeiro padrao que casa.
+# Bats dos scripts do protocolo (scripts/tests e skills do projeto):
+*.bats	bats
+# Harness proprio do projeto (tests/run.sh, TAP 13): caso declarado como funcao teste_<nome>.
+tests/*_test.sh	shell

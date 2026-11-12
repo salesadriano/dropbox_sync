@@ -1,0 +1,19 @@
+shellcheck-configuration
+
+Source: wshobson/agents (metadata.source), plugins/shell-scripting/skills/shellcheck-configuration/, commit be57c0b2e3c05c528ca6132b87410b385718775f.
+License: MIT, copyright (c) 2024 Seth Hobson. See LICENSE.txt (inherited content, unchanged).
+
+Reingestion of 2026-11-10: the original version of the first ingest was unknown, so the upstream was compared with the local catalog. The upstream technical content carried nothing newer than what the catalog already holds; only the commit of origin was fixed and LICENSE.txt and NOTICE.txt were added.
+
+Modifications made by this package:
+- Normalization per .github/skills/SKILLS_SYNC.md: frontmatter (name, scope-bounded description, license, metadata.tags, metadata.source).
+- Added the Security Handoff section.
+- Added the Scope Boundary section, with the precedence of protocolo-conformidade.
+- Added the Package precedence section (dialect follows the shebang, POSIX checklist, local gate, suppression with a reason, missing ShellCheck is a limitation).
+- Added Local Commands and Project Configuration sections for POSIX sh; Best Practices adapted to the local gate.
+- references/details.md: package notes added at the top; shell=sh in the configuration example; SHELLCHECK_OPTS and --rcfile replace environment variables ShellCheck does not read; corrected examples for SC2086, SC2088, SC2206, SC3010, SC3043 and the quoting section; code descriptions point to the ShellCheck wiki as the authoritative text.
+
+Upstream review: no instruction to read secrets, disable verification, send data out or execute content on load was found in what was compared.
+- Restored on 2026-11-11 from the upstream at the commit above: the items "Migrating scripts to meet quality gates" (When to Use This Skill) and "Use pre-commit hooks" (Best Practices) of SKILL.md, which the first local version lacked (origin unknown; found by the QA comparison of 2026-11-10). The first is verbatim; the second adds that the hook complements the local gate and never replaces it.
+- Restored on 2026-11-11, verbatim, after the QA comparison of the same day: the When to Use items "Integrating ShellCheck into development workflows" and "Enforcing consistent code quality standards".
+- When to Use This Skill, differences kept on purpose: the upstream item "Setting up linting for shell scripts in CI/CD pipelines" is left out, because the gate is local and CI is an optional complement (package precedence 3); "Analyzing existing shell scripts for issues" reads "Analyzing new or changed shell scripts for issues"; "Suppressing false positives and configuring rule sets" reads "Suppressing false positives with documented justification"; "Checking script portability across sh, dash and bash" was added.

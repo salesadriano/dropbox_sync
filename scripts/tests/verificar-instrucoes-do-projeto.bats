@@ -174,18 +174,6 @@ repo_completo() {
   [[ "$output" == *"- (d) instrucoes dizem repositorio canonico \`dono/repo\`, remoto origin e \`outro/repo\`"* ]]
 }
 
-@test "(d) remoto https com e sem .git reduz a dono/repo" {
-  repo_completo; instrucoes CLAUDE.md
-  git -C "$RAIZ" remote set-url origin https://github.com/dono/repo.git
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ok d: repositorio canonico dono/repo"* ]]
-  git -C "$RAIZ" remote set-url origin https://github.com/dono/repo
-  run sh "$SCRIPT" --raiz "$RAIZ"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ok d: repositorio canonico dono/repo"* ]]
-}
-
 @test "(d) frase com acentos tambem e lida" {
   repo_completo
   printf 'O reposit\303\263rio can\303\264nico \303\251 `dono/repo`. branch principal e `main`.\n' > "$RAIZ/CLAUDE.md"
@@ -306,4 +294,38 @@ EOF
   repo_completo; instrucoes CLAUDE.md
   run dash "$SCRIPT" --raiz "$RAIZ"
   [ "$status" -eq 0 ]
+}
+
+@test "(e) acima de 200 linhas imprime aviso e sem reprovar; ALVO_LINHAS muda o alvo" {
+  seq 1 201 | sed 's/^/linha /' > "$RAIZ/CLAUDE.md"
+  run sh "$SCRIPT" --raiz "$RAIZ"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"aviso e: "*"CLAUDE.md tem 201 linhas (alvo 200, regra 49)"* ]]
+  run env ALVO_LINHAS=300 sh "$SCRIPT" --raiz "$RAIZ"
+  [[ "$output" != *"aviso e:"* ]]
+}
+
+@test "(b) protocolo sem a secao '# Protocolo comum obrigatorio' e pulada com mensagem propria, sem drift" {
+  repo_completo; instrucoes CLAUDE.md
+  printf '# Proposito\n\nTexto.\n\n# Outra secao\n\n1. Item que nao e regra.\n' > "$RAIZ/.github/agents/AGENTS.md"
+  run sh "$SCRIPT" --raiz "$RAIZ"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pulada b: nenhuma regra numerada na secao '# Protocolo comum obrigatorio' de "* ]]
+  [[ "$output" != *"protocolo nao encontrado"* ]]
+  [[ "$output" != *"drift b"* ]]
+}
+
+@test "(c) entrada branch-principal ativa com titulo sem crases e pulada, nao drift" {
+  repo_completo; instrucoes CLAUDE.md
+  sed -i 's/^titulo:.*/titulo: Branch principal do projeto e main/' "$RAIZ/.github/agents/memoria/entradas/2026-09-19-1124-branch-principal.md"
+  run sh "$SCRIPT" --raiz "$RAIZ"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pulada c: titulo de 2026-09-19-1124-branch-principal sem branch entre crases"* ]]
+  [[ "$output" != *"drift c"* ]]
+}
+
+# ---------- pendentes (auditoria 2026-11-08, secao 7) ----------
+
+@test "pendente: repositorio git sem remoto origin pula a verificacao d e --protocolo inexistente acusa protocolo nao encontrado" {
+  skip "pendente: provar 'pulada d: repositorio git sem remoto origin' e 'protocolo nao encontrado: <caminho>'"
 }

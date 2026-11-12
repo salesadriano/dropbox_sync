@@ -1,6 +1,7 @@
 ---
 name: shellcheck-configuration
 description: "ShellCheck static analysis for shell scripts: choosing the dialect (sh vs bash), .shellcheckrc, inline directives, reading SC codes, POSIX portability checks, and running it locally on the diff. Use when writing, reviewing or linting shell scripts (`*.sh` or files with a sh/bash shebang). Prefer bats-testing-patterns to prove behavior with tests, protocolo-conformidade for the gate procedure and verdict, and security-best-practices for the security posture. Trigger terms: shellcheck, SC2086, SC3xxx, .shellcheckrc, lint shell, POSIX sh, bashism, dash."
+license: Complete terms in LICENSE.txt
 metadata:
   tags: shell, sh, posix, bash, shellcheck, lint, static-analysis
   source: wshobson/agents
@@ -38,8 +39,11 @@ These package rules override the upstream content where they conflict:
 - Analyzing new or changed shell scripts for issues
 - Understanding ShellCheck error codes and warnings
 - Configuring ShellCheck for specific project requirements
+- Integrating ShellCheck into development workflows
 - Suppressing false positives with documented justification
 - Checking script portability across sh, dash and bash
+- Enforcing consistent code quality standards
+- Migrating scripts to meet quality gates
 
 ## Local Commands
 
@@ -75,4 +79,5 @@ Detailed pattern documentation lives in `references/details.md`. Read only the s
 4. **Fix violations** instead of disabling warnings.
 5. **Consider optional checks** (`--enable=all`) with careful, justified exclusions.
 6. **Keep ShellCheck current** for new checks.
-7. **Integrate with editors** for real-time feedback during development.
+7. **Use pre-commit hooks** to catch issues locally before pushing; they complement the local gate run and never replace it.
+8. **Integrate with editors** for real-time feedback during development.

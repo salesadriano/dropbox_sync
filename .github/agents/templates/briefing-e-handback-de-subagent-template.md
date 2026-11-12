@@ -30,6 +30,7 @@ Limites:
 - Nao delegar a outro subagent (salvo documentation-writer e commit-writer, quando o porte exigir).
 - Nao falar com o solicitante: pergunta vai no hand-back.
 - Nao rodar memoria-index.sh, nao ler AGENTS.md inteiro nem persona de outro papel.
+- Encerrar o que iniciar em segundo plano antes do hand-back, ou declara-lo no campo `Processos em segundo plano` (regra 49).
 - Registrar o que alterar: `sh scripts/alteracoes-externas.sh --registrar <arquivos>` a cada passo.
 - <limite proprio da tarefa: ex.: sem commit; sem push; sem alterar o arquivo X>
 
@@ -49,6 +50,7 @@ Evidencia (uma linha por comando, contagem literal): <comando> -> <total/aprovad
 Decisoes que tomei (uma linha cada, com o porque): <...>
 Divergencia do briefing (o que medi diferente do que recebi): <... | nenhuma>
 Pendencias e perguntas ao Tech Lead: <... | nenhuma>
+Processos em segundo plano: <nenhum | o que ficou e por que>
 Registrado no detector: <sim, arquivos | nao, motivo>
 ```
 

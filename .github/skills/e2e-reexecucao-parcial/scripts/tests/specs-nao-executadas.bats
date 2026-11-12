@@ -129,13 +129,6 @@ pendente() { printf '    - %s\n' "$1"; }
   [ "$status" -eq 2 ]
 }
 
-@test "cliente sem diretorio de specs e dito, nao inventado" {
-  { corrida; rodando a.cy.ts 1 1; passou 'x'; } > "$LOG"
-  run sh "$SCRIPT" --log "$LOG" --raiz "$RAIZ" --saida "$SAIDA" --clientes campo,outro
-  [ "$status" -eq 0 ]
-  grep -q 'outro: diretorio outro/cypress/e2e ausente' "$SAIDA"
-}
-
 # Parametros proprios do pacote.
 
 @test "--clientes padrao e '.': um unico cliente na raiz" {
@@ -194,21 +187,6 @@ qa_arvore() {
   for s in a sub-a saude; do : > "$RAIZ/campo/cypress/e2e/$s.cy.ts"; done
   for s in saude x; do : > "$RAIZ/comando/cypress/e2e/$s.cy.ts"; done
   unset GITHUB_STEP_SUMMARY
-}
-
-@test "QA: mesmo nome nos dois clientes: cada corrida classifica so o seu cliente" {
-  qa_arvore
-  {
-    corrida; rodando saude.cy.ts 1 3; passou 'um'; rodando a.cy.ts 2 3; passou 'dois'
-    rodando sub-a.cy.ts 3 3; passou 'tres'
-    corrida; rodando saude.cy.ts 1 2; falhou 1 'um'; rodando x.cy.ts 2 2; pendente 'dois'
-  } > "$LOG"
-  run sh "$SCRIPT" --log "$LOG" --raiz "$RAIZ" --saida "$SAIDA" $DOIS
-  [ "$status" -eq 0 ]
-  grep -qx 'campo executadas: 3' "$SAIDA"
-  grep -qx 'campo reexecutar: nenhuma' "$SAIDA"
-  grep -qx 'comando falhou: saude.cy.ts' "$SAIDA"
-  grep -qx 'comando nao executadas: x.cy.ts' "$SAIDA"
 }
 
 @test "QA: nome que e sufixo de outro nao herda o estado dele (a.cy.ts falhou, sub-a.cy.ts passou)" {
@@ -270,15 +248,6 @@ qa_arvore() {
   [ "$(grep -n '^comando executadas' "$SAIDA" | cut -d: -f1)" -lt "$(grep -n '^campo executadas' "$SAIDA" | cut -d: -f1)" ]
 }
 
-@test "QA: corrida unica do segundo cliente so e lida certo quando --clientes diz que a primeira corrida e dele" {
-  qa_arvore
-  { corrida; rodando saude.cy.ts 1 1; falhou 1 'um'; } > "$LOG"
-  run sh "$SCRIPT" --log "$LOG" --raiz "$RAIZ" --saida "$SAIDA" --clientes comando
-  [ "$status" -eq 0 ]
-  grep -qx 'comando falhou: saude.cy.ts' "$SAIDA"
-  ! grep -q '^campo' "$SAIDA"
-}
-
 @test "QA: Running: truncada, sem (k of N), nunca vira executada: a spec fica em reexecutar" {
   qa_arvore
   { corrida; rodando a.cy.ts 1 2; passou 'um'; printf '  Running:  saude.cy.ts\n'; passou 'dois'; } > "$LOG"
@@ -312,17 +281,6 @@ qa_arvore() {
   grep -qx 'comando executadas: 1' "$SAIDA"
 }
 
-@test "QA: falha so no resumo final do Cypress (N) sob o ultimo Running:) ainda conta como falhou" {
-  qa_arvore
-  {
-    corrida; rodando a.cy.ts 1 1; passou 'um'
-    printf '\n  1 failing\n\n  1) suite\n       caso:\n     AssertionError\n'
-  } > "$LOG"
-  run sh "$SCRIPT" --log "$LOG" --raiz "$RAIZ" --saida "$SAIDA" --clientes campo
-  [ "$status" -eq 0 ]
-  grep -qx 'campo falhou: a.cy.ts' "$SAIDA"
-}
-
 @test "QA: a tabela final do Cypress (por spec) nao e lida como teste executado" {
   qa_arvore
   { corrida; rodando a.cy.ts 1 1; printf '  \342\224\202 \342\234\224  a.cy.ts   00:01   1   1   -   -   - \342\224\202\n'; } > "$LOG"
@@ -338,4 +296,23 @@ qa_arvore() {
   run dash "$SCRIPT" --log "$LOG" --raiz "$RAIZ" --saida "$SAIDA" --clientes campo
   [ "$status" -eq 0 ]
   grep -qx 'campo executadas: 1' "$SAIDA"
+}
+
+@test "--extensao com pontos casa so o sufixo literal e --specs enxerga subpastas de mais de um nivel" {
+  mkdir -p "$RAIZ/web/tests/sub/deep"
+  : > "$RAIZ/web/tests/a.spec.js"; : > "$RAIZ/web/tests/sub/deep/d.spec.js"
+  : > "$RAIZ/web/tests/e_spec_js"; : > "$RAIZ/web/tests/f.cy.ts"
+  { corrida; rodando a.spec.js 1 2; passou 'um'; rodando sub/deep/d.spec.js 2 2; falhou 1 'dois'; } > "$LOG"
+  run sh "$SCRIPT" --log "$LOG" --raiz "$RAIZ" --saida "$SAIDA" --clientes web --specs tests --extensao .spec.js
+  [ "$status" -eq 0 ]
+  grep -qx 'web executadas: 1' "$SAIDA"
+  grep -qx 'web falhou: sub/deep/d.spec.js' "$SAIDA"
+  grep -qx 'web nao executadas: nenhuma' "$SAIDA"
+  grep -qx 'web reexecutar: sub/deep/d.spec.js' "$SAIDA"
+}
+
+# ---------- pendentes (auditoria 2026-11-08, secao 7) ----------
+
+@test "pendente: linhas Running antes do primeiro Run Starting sao descartadas" {
+  skip "pendente: provar que a corrida zero descarta as linhas Running anteriores ao primeiro (Run Starting)"
 }

@@ -1,6 +1,7 @@
 ---
 name: bats-testing-patterns
 description: "Bats (Bash Automated Testing System) mechanics for testing shell scripts: test structure, run/status/output assertions, setup/teardown, fixtures, PATH stubs at system boundaries, and running the same script under sh, dash and bash. Use when writing or reviewing tests for shell scripts (`*.sh`, `*.bats`). Prefer shellcheck-configuration for static analysis and linting, protocolo-tdd for the mandatory delivery protocol, and tdd-test-design for deciding what each test asserts. Trigger terms: bats, .bats, @test, run, BATS_TEST_DIRNAME, BATS_TEST_TMPDIR, setup_file, shell script test."
+license: Complete terms in LICENSE.txt
 metadata:
   tags: shell, sh, posix, bash, bats, testing, tdd
   source: wshobson/agents
@@ -152,6 +153,13 @@ setup() {
 
 ```bash
 # tests/test_helper.bash
+assert_file_exists() {
+    if [ ! -f "$1" ]; then
+        echo "Expected file to exist: $1"
+        return 1
+    fi
+}
+
 assert_file_equals() {
     local file="$1" expected="$2" actual
     [ -f "$file" ] || { echo "File does not exist: $file"; return 1; }
@@ -160,6 +168,17 @@ assert_file_equals() {
         printf 'Expected: %s\nActual:   %s\n' "$expected" "$actual"
         return 1
     fi
+}
+
+# Temporary test directory, for bats-core older than 1.4 only:
+# from 1.4 on use $BATS_TEST_TMPDIR, which Bats creates and removes per test.
+setup_test_dir() {
+    TEST_DIR=$(mktemp -d)
+    export TEST_DIR
+}
+
+cleanup_test_dir() {
+    rm -rf "$TEST_DIR"
 }
 ```
 

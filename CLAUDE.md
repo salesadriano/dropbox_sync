@@ -11,7 +11,7 @@ Toda solicitacao que nao comeca por `/` e lida como `/ai-team <solicitacao>`: an
 <!-- ai-team:roteamento fim -->
 
 > Este arquivo orienta o Claude Code (e qualquer agent) ao operar neste repositorio.
-> A fonte autoritativa do protocolo e o pacote de agents em [.github/agents/AGENTS.md](.github/agents/AGENTS.md), composto por **51 regras**.
+> A fonte autoritativa do protocolo e o pacote de agents em [.github/agents/AGENTS.md](.github/agents/AGENTS.md), composto por **53 regras**.
 > O repositorio canonico e `salesadriano/dropbox_sync` e a branch principal declarada e `develop`.
 > Em caso de conflito, `AGENTS.md` prevalece; este arquivo e o ponto de entrada e o resumo operacional.
 
@@ -25,7 +25,9 @@ Toda solicitacao que nao comeca por `/` e lida como `/ai-team <solicitacao>`: an
 | Persistencia | Cache unico de `content_hash` em `lib/state.sh` (memoria do sync e do upload, sem dependencia alem de cURL); credencial em `~/.config/dropbox_sync/` |
 | Testes | Harness proprio com saida TAP 13 em `tests/run.sh` |
 | Linter | `shellcheck` (0.10.0+), verificado nos modos posix e bash |
-| Hooks | Ativos em `.claude/settings.json`: resumo de estado em `SessionStart` e guarda de comandos em `PreToolUse` |
+| Hooks | Do plugin `ai-team` (habilitado em `.claude/settings.json`), que roda `scripts/<nome>.sh` do projeto quando existe: resumo de estado, jornal de prompts, contexto de subagent, guarda de comandos e detector antes do commit, autorizacao de sessao do git flow e conferencia da trilha no encerramento |
+| Ambiente de validacao humana (regra 52) | Nao aplicavel: CLI sem servico, interface ou API exposta; a validacao humana e rodar `bin/dbx` instalado |
+| Release Note (regra 53) | `docs/releases/<versao>.md` em toda release para `master` (tag `vX.Y.Z`), pelo `release-note-template.md` |
 
 ## Antes de atuar (obrigatorio)
 
@@ -61,6 +63,7 @@ Toda solicitacao entra pelo **Tech Lead** (regra 44): a sessao principal assume 
 | Teste de integracao isolado | `bash tests/run.sh tests/integracao/<arquivo>_test.sh` |
 | Linter estatico | `sh scripts/lint.sh` (um `shellcheck` por arquivo, teto de 14 GB; nunca `shellcheck` sobre todos os arquivos num processo so) |
 | Guarda de remocao de testes | `bash scripts/verificar-remocao-de-casos.sh` |
+| Auditoria de casos inertes | `sh scripts/auditar-casos.sh` (somente leitura; `--so <arquivo>` para um arquivo) |
 | Validacao de memoria | `sh scripts/memoria-index.sh --check` |
 | Medicao de porte da demanda | `sh scripts/porte.sh` |
 | Inventario de testes (regra 51) | `sh scripts/inventario-de-testes.sh --check` (conferencia), `--faltantes` (esqueleto do que falta), `--listar` (testes descobertos) |

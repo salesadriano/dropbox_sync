@@ -11,7 +11,8 @@
 #   (c) a frase "branch principal declarada e `x`" (ou "branch principal e `x`") bate com o titulo
 #       entre crases da entrada `????-??-??-????-branch-principal.md` ativa mais recente;
 #   (d) a frase "repositorio canonico e `dono/repo`" bate com `git remote get-url origin`, ou com
-#       GITHUB_REPOSITORY quando nao ha .git.
+#       GITHUB_REPOSITORY quando nao ha .git;
+#   (e) tamanho: acima de ALVO_LINHAS linhas (padrao 200, regra 49) imprime `aviso e: ...` sem reprovar.
 # Padroes: raiz = topo do git do diretorio corrente ou `.`; instrucoes = o primeiro existente entre
 # CLAUDE.md, .github/copilot-instructions.md e AGENTS.md na raiz; protocolo = .github/agents/AGENTS.md
 # ou .claude/ai_team/AGENTS.md; entradas = .github/agents/memoria/entradas ou .claude/ai_team/memoria/entradas.
@@ -172,6 +173,11 @@ else
     fi
   fi
 fi
+
+n_linhas=$(grep -c '' "$instrucoes" 2>/dev/null || echo 0)
+alvo="${ALVO_LINHAS:-200}"
+case "$alvo" in ''|*[!0-9]*) alvo=200 ;; esac
+[ "$n_linhas" -le "$alvo" ] || printf 'aviso e: %s tem %s linhas (alvo %s, regra 49): mova erratas e estado passado para docs/historico/ ou para .claude/rules/ com paths\n' "$instrucoes" "$n_linhas" "$alvo"
 
 if [ -z "$drifts" ]; then
   printf '\342\234\224 sem drift: %s\n' "$instrucoes"

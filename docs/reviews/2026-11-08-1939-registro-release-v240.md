@@ -48,4 +48,14 @@ Nao se aplica validacao nova. A F-103 ja foi validada pelo QA no registro da dem
 
 ## 8. Links e aceites
 
-- PRs, tags e releases: preenchidos no fechamento.
+| Item | Valor |
+|---|---|
+| PR #105 `chore/release-v240` -> `develop` | mesclada em `684045b` |
+| PR #106 `chore/release-v240-bash42` -> `support/bash-4.2` | mesclada em `88883bd` |
+| PR #107 `develop` -> `master` | mesclada em `d99463b` |
+| Release `v2.4.0` (Latest) | tag em `d99463b`; `dropbox_sync-2.4.0-linux.tar.gz` e `.sha256`; `dbx --version` do pacote: `2.4.0` |
+| Release `v2.4.0-bash42` (sem Latest) | tag em `88883bd`; `dropbox_sync-2.4.0-bash42-linux.tar.gz` e `.sha256`; `dbx --version` do pacote: `2.4.0-bash42` |
+| Suite completa, principal | verde para `386e1d1` e para `684045b`: 3040 aprovados, 0 reprovados, 4 pulados |
+| Suite completa, legada (bash 4.2.46) | verde para `e585e4b`: 2969 aprovados, 0 reprovados, 87 pulados por ambiente |
+| Aceite | merges das PRs #105, #106 e #107 pelo solicitante |
+| Limpeza | worktrees e branches `chore/release-v240*` removidos com `limpar-worktrees.sh` |

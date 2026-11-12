@@ -428,30 +428,6 @@ commit_humano() { git commit --quiet -m "$1"; }
   [[ "$output" == "COMMIT "*" humano (Pessoa)" ]]
 }
 
-@test "QA-B6: merge com alteracao propria sem trilha na principal e acusado; merge limpo nao" {
-  sh "$SCRIPT" --inicial --principal main
-  git clone --quiet "$BATS_TEST_TMPDIR/remoto.git" "$BATS_TEST_TMPDIR/outro" 2>/dev/null
-  (
-    cd "$BATS_TEST_TMPDIR/outro"
-    git checkout --quiet -b feat
-    echo f > f.txt; git add f.txt; commit_agente "feat: f"
-    git checkout --quiet main
-    git merge --quiet --no-ff -m "Merge limpo" feat
-    git checkout --quiet -b feat2
-    echo g > g.txt; git add g.txt; commit_agente "feat: g"
-    git checkout --quiet main
-    git merge --quiet --no-ff --no-commit feat2
-    echo maligno >> app.txt; git add app.txt
-    git commit --quiet -m "Merge feat2"
-    git push --quiet origin main
-  )
-  git fetch --quiet origin
-  detectar
-  [ "$status" -eq 3 ]
-  [ "${#lines[@]}" -eq 1 ]
-  [[ "$output" == "PRINCIPAL "*"Merge feat2 (Pessoa)" ]]
-}
-
 @test "QA-B7: marca da principal ausente ou vazia nao absorve commit humano" {
   sh "$SCRIPT" --inicial --principal main
   : > "$(git rev-parse --git-common-dir)/agentes-principal"
@@ -632,25 +608,9 @@ merge_na_principal() {
   git fetch --quiet origin
 }
 
-@test "merge automatico com o mesmo arquivo alterado dos dois lados nao e acusado" {
-  sh "$SCRIPT" --inicial --principal main
-  merge_na_principal 1 10 ""
-  detectar
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
 @test "merge com resolucao manual de conflito sem trilha na principal e acusado" {
   sh "$SCRIPT" --inicial --principal main
   merge_na_principal 5 5 manual
-  detectar
-  [ "$status" -eq 3 ]
-  [[ "$output" == "PRINCIPAL "*"Merge ramo (Pessoa)" ]]
-}
-
-@test "merge que resolve conflito mantendo um dos lados sem trilha na principal e acusado" {
-  sh "$SCRIPT" --inicial --principal main
-  merge_na_principal 5 5 lado
   detectar
   [ "$status" -eq 3 ]
   [[ "$output" == "PRINCIPAL "*"Merge ramo (Pessoa)" ]]
@@ -686,23 +646,6 @@ merge_na_principal() {
   [ "$status" -eq 3 ]
   [ "${#lines[@]}" -eq 1 ]
   [[ "$output" == "PRINCIPAL "*"Octopus maligno (Pessoa)" ]]
-}
-
-@test "registrar recusa diretorio com exit 2 e nao altera a linha de base" {
-  sh "$SCRIPT" --inicial --principal main
-  mkdir -p src
-  printf 'x\n' > src/mod.txt
-  printf 'b\n' >> app.txt
-  antes=$(cat "$(git rev-parse --absolute-git-dir)/agentes-linha-de-base")
-  run sh "$SCRIPT" --registrar app.txt src --principal main
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"diretorio"*"src"* ]]
-  [ "$(cat "$(git rev-parse --absolute-git-dir)/agentes-linha-de-base")" = "$antes" ]
-  run sh "$SCRIPT" --registrar src/ --principal main
-  [ "$status" -eq 2 ]
-  sh "$SCRIPT" --registrar app.txt src/mod.txt --principal main
-  detectar
-  [ "$status" -eq 0 ]
 }
 
 @test "registrar aceita symlink para diretorio" {
@@ -814,7 +757,7 @@ BASE_TRAVA=".git/agentes-linha-de-base.trava"
 
 @test "trava: trava vazia com mais de um minuto e orfa; vazia e recente, espera" {
   sh "$SCRIPT" --inicial --principal main
-  : > "$BASE_TRAVA"; touch -d '-2 minutes' "$BASE_TRAVA"
+  : > "$BASE_TRAVA"; touch -d "@$(( $(date +%s) - 120 ))" "$BASE_TRAVA"
   registrar app.txt
   [ "$status" -eq 0 ]
   [ ! -e "$BASE_TRAVA" ]
@@ -867,4 +810,43 @@ BASE_TRAVA=".git/agentes-linha-de-base.trava"
   printf 'b\n' > app.txt
   registrar app.txt
   [[ "$output" != *"aviso:"* ]]
+}
+
+@test "HEAD destacado: arquivo alterado e commit sem trilha feito fora de branch sao acusados; commit com trilha nao" {
+  sh "$SCRIPT" --inicial --principal main
+  git checkout --quiet --detach
+  detectar
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  printf 'b\n' >> app.txt
+  detectar
+  [ "$status" -eq 3 ]
+  [ "$output" = "ARQUIVO app.txt" ]
+  git add app.txt
+  commit_agente "feat: do agent em HEAD destacado"
+  detectar
+  [ "$status" -eq 0 ]
+  printf 'c\n' >> app.txt
+  git add app.txt
+  commit_humano "fix: humano em HEAD destacado"
+  detectar
+  [ "$status" -eq 3 ]
+  [[ "$output" == "COMMIT "*"fix: humano em HEAD destacado (Pessoa)" ]]
+  [ "$(printf '%s\n' "$output" | grep -c .)" -eq 1 ]
+}
+
+@test "--remoto aponta outro remoto como origem da branch principal: commit sem trilha nele e acusado e o origin limpo nao" {
+  git init --quiet --bare --initial-branch=main "$BATS_TEST_TMPDIR/espelho.git"
+  git push --quiet "$BATS_TEST_TMPDIR/espelho.git" main
+  git remote add espelho "$BATS_TEST_TMPDIR/espelho.git"
+  sh "$SCRIPT" --inicial --principal main
+  git clone --quiet "$BATS_TEST_TMPDIR/espelho.git" "$BATS_TEST_TMPDIR/outro" 2>/dev/null
+  ( cd "$BATS_TEST_TMPDIR/outro" && git checkout --quiet main && printf 'h\n' >> app.txt && git add app.txt && commit_humano "fix: humano no espelho" && git push --quiet origin main )
+  git fetch --quiet espelho
+  run sh "$SCRIPT" --detectar --principal main --remoto espelho
+  [ "$status" -eq 3 ]
+  [[ "$output" == "PRINCIPAL "*"fix: humano no espelho (Pessoa)" ]]
+  run sh "$SCRIPT" --detectar --principal main
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }

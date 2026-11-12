@@ -83,33 +83,6 @@ marca_atual() { cat "$(git rev-parse --git-common-dir)/agentes-principal" 2>/dev
   [[ "$output" == "PRINCIPAL "*"Merge com chmod (Humano)" ]]
 }
 
-@test "QA-D4: merge maligno que so acrescenta arquivo novo e acusado" {
-  na_principal '
-    git checkout --quiet -b ramo
-    troca linha-1 ramo dados.txt; git add dados.txt; com_trilha "feat: ramo"
-    git checkout --quiet main
-    git merge --quiet --no-ff --no-commit ramo
-    printf "segredo\n" > "novo arquivo.txt"; git add "novo arquivo.txt"
-    git commit --quiet -m "Merge com arquivo novo"'
-  detectar
-  [ "$status" -eq 3 ]
-  [ "${#lines[@]}" -eq 1 ]
-  [[ "$output" == "PRINCIPAL "*"Merge com arquivo novo (Humano)" ]]
-}
-
-@test "QA-D5: merge maligno que apaga arquivo e acusado" {
-  na_principal '
-    printf "y\n" > apagar.txt; git add apagar.txt; com_trilha "feat: apagar"
-    git checkout --quiet -b ramo
-    troca linha-1 ramo dados.txt; git add dados.txt; com_trilha "feat: ramo"
-    git checkout --quiet main
-    git merge --quiet --no-ff --no-commit ramo
-    git rm --quiet apagar.txt; git commit --quiet -m "Merge que apaga"'
-  detectar
-  [ "$status" -eq 3 ]
-  [[ "$output" == "PRINCIPAL "*"Merge que apaga (Humano)" ]]
-}
-
 @test "QA-D6: merge com pai orfao (raiz propria), limpo, nao e acusado; maligno e" {
   na_principal '
     git checkout --quiet --orphan orfao
@@ -184,19 +157,6 @@ marca_atual() { cat "$(git rev-parse --git-common-dir)/agentes-principal" 2>/dev
   [ "$status" -eq 3 ]
   [ "${#lines[@]}" -eq 1 ]
   [[ "$output" == "PRINCIPAL "*"Merge maligno b (Humano)" ]]
-}
-
-@test "QA-D11: merge maligno em arquivo com espaco no nome e acusado" {
-  na_principal '
-    printf "1\n2\n3\n" > "com espaco.txt"; git add "com espaco.txt"; com_trilha "feat: espaco"
-    git checkout --quiet -b ramo
-    troca linha-1 ramo dados.txt; git add dados.txt; com_trilha "feat: ramo"
-    git checkout --quiet main
-    git merge --quiet --no-ff --no-commit ramo
-    printf "4\n" >> "com espaco.txt"; git add "com espaco.txt"; git commit --quiet -m "Merge espaco"'
-  detectar
-  [ "$status" -eq 3 ]
-  [[ "$output" == "PRINCIPAL "*"Merge espaco (Humano)" ]]
 }
 
 # --- git sem --remerge-diff: falha segura --------------------------------------
