@@ -61,7 +61,7 @@ Projetada com arquitetura modular e aderência estrita a contratos de rede e int
 ### Plataformas e linhas do produto
 
 - **Linha principal** (canal `master`, bash 4.4+): a versão completa, em Linux e FreeBSD.
-- **Linha legada** (canal `support/bash-4.2`, bash 4.2 e 4.3, versão `2.4.0-bash42`): mesmos comandos, para hosts com bash antigo (por exemplo CentOS 7).
+- **Linha legada** (canal `support/bash-4.2`, bash 4.2 e 4.3, versão `2.4.1-bash42`): mesmos comandos, para hosts com bash antigo (por exemplo CentOS 7).
 
 O `install.sh` escolhe a linha pelo bash do host, sem opção a informar; bash abaixo de 4.2 é recusado. **Atualizar é rodar o `install.sh` de novo** (credencial, configuração e estado são preservados); se o bash do host mudou, a linha muda junto, com aviso.
 
@@ -83,9 +83,9 @@ sudo ./install.sh --system   # Instalação global (/usr/local/bin)
 ```
 
 #### Opção C: Instalação a partir do Tarball de Release
-Baixe o arquivo `dropbox_sync-2.4.0-bash42-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
+Baixe o arquivo `dropbox_sync-2.4.1-bash42-linux.tar.gz` da aba de [Releases](https://github.com/salesadriano/dropbox_sync/releases):
 ```bash
-tar -xzf dropbox_sync-2.4.0-bash42-linux.tar.gz
+tar -xzf dropbox_sync-2.4.1-bash42-linux.tar.gz
 ./install.sh
 ```
 
