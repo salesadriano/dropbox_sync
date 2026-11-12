@@ -49,7 +49,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **~203**.
 - Barreiras estaticas: `sh scripts/lint.sh lib/state.sh commands/sync.sh tests/integracao/sync_ciclos_memoria_test.sh`: saida 0, sem achados.
 - Testes de seguranca e acesso (Regra 6): Nao aplicavel: sem rota, auth, tenant ou entrada nova; a memoria continua chaveada pela conta (RF-52).
 - Validacao de formularios (Regra 7): Nao aplicavel: CLI sem interface.
-- Suite completa local no push para a PR: Ainda nao houve push para a PR.
+- Suite completa local no push para a PR: `sh scripts/suite-completa.sh -- bash tests/run.sh < /dev/null` sobre `268878e`, APROVADA: 128 arquivos, 3052 aprovados, 0 reprovados, 3 pulados, 3540s; `--conferir` verde (2026-11-12T02:38:08Z).
 
 ## 5. Gates
 
@@ -85,8 +85,9 @@ Limites: o duble nao reproduz o retrato recursivo, entao o cursor integral nao e
 
 - Entradas de memoria: `2026-11-11-1827-memoria-por-ciclo`, `2026-11-11-1827-aceite-testes-qa-sync-ciclos-memoria` (substituida), `2026-11-12-0140-reaceite-testes-qa-sync-ciclos-memoria`.
 - Documentacao sincronizada: `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (RF-38(b)); `docs/testes/inventario-de-testes.md` e `docs/testes/mapa-modulos.md`.
-- Commit(s) / PR: na branch `feature/sync-ciclos-exclusao-indevida`, PR para `develop`.
+- Commit(s) / PR: `4a0fd1e` e `268878e` na branch `feature/sync-ciclos-exclusao-indevida`; PR #111 mesclada em `develop` (`03b225f`) em 2026-11-12. Fechamento do registro na branch `chore/registro-sync-ciclos-exclusao-indevida`.
 - DBA (persistencia): Nao aplicavel como gate proprio: sem schema nem formato novo; o arquivo `memoria-*` mantem versao, cabecalho e escrita atomica, e muda so a frequencia de gravacao. Avaliado pelo Tech Lead.
 - Tech Lead: Aprovado em 2026-11-11, com ressalva: a causa do relato de origem (arquivos de ciclo anterior marcados `a apagar`) nao foi reproduzida; fica aberta ate o solicitante trazer a saida do ciclo 2 (owner: Tech Lead; prazo: proxima demanda que o solicitante abrir com a evidencia). Analise de abordagens dispensada: regra de persistencia decidida pelo solicitante e correcao QA-F101-01 de caminho unico.
 - Solicitante: aceite da suite do QA (sha256 `cea807f4...86c1`, entrada `2026-11-11-1827-aceite-testes-qa-sync-ciclos-memoria`) e reaceite apos a correcao RSK-28 abaixo (sha256 `cb8665e0...a624`, entrada `2026-11-12-0140-reaceite-testes-qa-sync-ciclos-memoria`).
 - Suite completa, 1a execucao (`sh scripts/suite-completa.sh -- bash tests/run.sh` sobre `4a0fd1e`): REPROVADA em `json_test.sh` (`massa_adversarial_nao_e_construida_por_substituicao_de_comando`, RSK-28: `$(printf %064d 0)` no duble dos dois testes novos); 22 arquivos, 539 aprovados, 1 reprovado, 2 pulados. Corrigido pelo Tech Lead (literal de 64 zeros); json 66/0, harness 23/0, composicao 28/0, os dois arquivos 6/0.
+- Suite completa, 2a execucao (sobre `268878e`, apos o reaceite): APROVADA, 128 arquivos, 3052 aprovados, 0 reprovados, 3 pulados, 3540s.
