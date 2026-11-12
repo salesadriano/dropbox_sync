@@ -65,7 +65,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **~203**.
 
 Veredito final do QA (porte M, ciclo 2 de 2): **APROVADO**. QA-F101-01 **corrigido** (ciclo 1: REPROVADO; ciclo 2: reexecucao verde).
 
-Arquivo criado: `tests/integracao/qa_sync_ciclos_memoria_f101_test.sh`, 6 casos, sha256 final `cea807f4a2d606cc654a168bca2d9a252af192c725f56ef73808694a14a186c1` (supera o do ciclo 1, `fa4c0361...`; aceite do solicitante pendente, regra 12). Mapa de contencao: nenhum.
+Arquivo criado: `tests/integracao/qa_sync_ciclos_memoria_f101_test.sh`, 6 casos, sha256 final `cea807f4a2d606cc654a168bca2d9a252af192c725f56ef73808694a14a186c1` (supera o do ciclo 1, `fa4c0361...`; aceite do solicitante pendente, regra 12). Mapa de contencao: nenhum. Depois da suite completa (RSK-28), o Tech Lead trocou `$(printf %064d 0)` por literal: sha256 vigente `cb8665e0e98b858a60cc108517d0462936eab5bb7d3e9cce36ec29a8c2eaa624`, reaceito.
 
 Ciclo 2: correcao do SD em `commands/sync.sh` (gravacao final nao roda em ciclos com `ciclo_falho > 0`) conferida contra o caso 1, que passou a verde (a memoria mantem o ciclo 1, as carregadas de B e D e nao grava o que o ciclo falho viu; sem exclusao remota). Risco vizinho: acrescentado o caso 6 (`qa_ciclos_sem_falha_mantem_a_gravacao_final_mesmo_apos_uma_execucao_falha`): apos execucao falha, a seguinte sem falha apaga no remoto o arquivo removido da origem e a gravacao final remove-o da memoria (ciclos sem falha continuam com a gravacao final). O caso 2 ja cobre a execucao em ciclos sem falha. Execucao SEM ciclos (delta com cursor valido): nao alcancavel pelo duble (nao reproduz o retrato recursivo do cursor); protegida pelo conjunto `modo_ciclos == sim` da condicao, que o diff nao altera para esse ramo, e pelas suites `cursor_test.sh` 55/0 e `comandos_test.sh` 119/0, ambas verdes. Limite aceito.
 
@@ -83,9 +83,10 @@ Limites: o duble nao reproduz o retrato recursivo, entao o cursor integral nao e
 
 ## 8. Links e aceites
 
-- Entradas de memoria: `2026-11-11-1827-memoria-por-ciclo`, `2026-11-11-1827-aceite-testes-qa-sync-ciclos-memoria`.
+- Entradas de memoria: `2026-11-11-1827-memoria-por-ciclo`, `2026-11-11-1827-aceite-testes-qa-sync-ciclos-memoria` (substituida), `2026-11-12-0140-reaceite-testes-qa-sync-ciclos-memoria`.
 - Documentacao sincronizada: `docs/requisitos/escopo-requisitos-e-criterios-de-aceite.md` (RF-38(b)); `docs/testes/inventario-de-testes.md` e `docs/testes/mapa-modulos.md`.
 - Commit(s) / PR: na branch `feature/sync-ciclos-exclusao-indevida`, PR para `develop`.
 - DBA (persistencia): Nao aplicavel como gate proprio: sem schema nem formato novo; o arquivo `memoria-*` mantem versao, cabecalho e escrita atomica, e muda so a frequencia de gravacao. Avaliado pelo Tech Lead.
 - Tech Lead: Aprovado em 2026-11-11, com ressalva: a causa do relato de origem (arquivos de ciclo anterior marcados `a apagar`) nao foi reproduzida; fica aberta ate o solicitante trazer a saida do ciclo 2 (owner: Tech Lead; prazo: proxima demanda que o solicitante abrir com a evidencia). Analise de abordagens dispensada: regra de persistencia decidida pelo solicitante e correcao QA-F101-01 de caminho unico.
-- Solicitante: aceite da suite do QA (sha256 `cea807f4...86c1`), entrada `2026-11-11-1827-aceite-testes-qa-sync-ciclos-memoria`.
+- Solicitante: aceite da suite do QA (sha256 `cea807f4...86c1`, entrada `2026-11-11-1827-aceite-testes-qa-sync-ciclos-memoria`) e reaceite apos a correcao RSK-28 abaixo (sha256 `cb8665e0...a624`, entrada `2026-11-12-0140-reaceite-testes-qa-sync-ciclos-memoria`).
+- Suite completa, 1a execucao (`sh scripts/suite-completa.sh -- bash tests/run.sh` sobre `4a0fd1e`): REPROVADA em `json_test.sh` (`massa_adversarial_nao_e_construida_por_substituicao_de_comando`, RSK-28: `$(printf %064d 0)` no duble dos dois testes novos); 22 arquivos, 539 aprovados, 1 reprovado, 2 pulados. Corrigido pelo Tech Lead (literal de 64 zeros); json 66/0, harness 23/0, composicao 28/0, os dois arquivos 6/0.

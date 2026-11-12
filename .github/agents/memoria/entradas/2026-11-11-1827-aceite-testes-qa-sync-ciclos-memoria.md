@@ -7,7 +7,7 @@ data: 2026-11-11
 dono: Tech Lead
 instancia: myPCWin/Adriano Sales Santos
 agentes: tech-lead, qa-expert
-status: ativa
+status: substituida
 regra: AGENTS.md 12
 ref: docs/reviews/2026-11-11-1827-registro-sync-ciclos-exclusao-indevida.md
 ---

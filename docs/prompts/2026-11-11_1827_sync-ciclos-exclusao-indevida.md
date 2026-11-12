@@ -23,3 +23,11 @@
 - Persistencia: "Sim, assim (Recomendado)" — a cada fim de ciclo grava o que foi visto ate ali e mantem as entradas dos diretorios ainda nao processados; so a gravacao final remove o que sumiu da origem; com travessia parcial nada e gravado; o cursor do `--receber` continua gravado so no fim.
 
 **Aceite dos testes do QA (AskUserQuestion, 2026-11-11):** "Aceito a suite" — `tests/integracao/qa_sync_ciclos_memoria_f101_test.sh`, sha256 `cea807f4a2d606cc654a168bca2d9a252af192c725f56ef73808694a14a186c1`; entrada `2026-11-11-1827-aceite-testes-qa-sync-ciclos-memoria`.
+
+## Prompt 2 — 2026-11-11 (pergunta na mesma demanda)
+
+> como defino o número de arquivos em cada ciclo ?
+
+**Resposta:** `--bloco N` (alias `--batch`) ou `DBX_BLOCO=N`, de 1 a 1000000, padrao 50000, a opcao vence a variavel; corte por diretorio.
+
+**Reaceite dos testes do QA (AskUserQuestion, 2026-11-12):** "Reaceito" — sha256 `cb8665e0e98b858a60cc108517d0462936eab5bb7d3e9cce36ec29a8c2eaa624` apos a troca de `$(printf` por literal (suite completa reprovada em `json_test.sh`, RSK-28); entrada `2026-11-12-0140-reaceite-testes-qa-sync-ciclos-memoria`.
