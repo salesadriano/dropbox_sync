@@ -35,7 +35,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **4**.
 - Barreiras estaticas: `sh scripts/lint.sh tests/unit/state_trava_test.sh` saida 0; `bash scripts/verificar-remocao-de-casos.sh`: `nenhuma reducao nao declarada.`
 - Testes de seguranca e acesso (Regra 6): Nao aplicavel: so teste, sem rota, sessao, dado sensivel ou entrada de usuario.
 - Validacao de formularios em E2E (Regra 7): Nao aplicavel: CLI sem formulario.
-- Suite completa local no push para a PR de `master` (Regra 8): Ainda nao houve push para a PR.
+- Suite completa local no push para a PR (Regra 8): `sh scripts/suite-completa.sh -- bash tests/run.sh`, verde para `11b27f3`: 130 arquivos, 3074 aprovados, 0 reprovados, 3 pulados (2798s); apos o merge, verde para `ebdfee2` (3001s).
 
 ## 5. Gates
 
@@ -63,7 +63,7 @@ Total de linhas de codigo (producao e teste, sem documentacao): **4**.
 
 - Entradas de memoria: Nenhuma: sem decisao duravel.
 - Documentacao sincronizada: Nenhuma.
-- Commit(s): ver `git log -- tests/unit/state_trava_test.sh`.
-- PR: a abrir para `develop`.
+- Commit(s): `11b27f3` - test(state): pid de outro usuario conta como vivo no teste da trava
+- PR: #114, mesclada em `ebdfee2`.
 - Tech Lead: **Aprovado**, 2026-11-12.
 - Solicitante: Nao aplicavel: sem arquivo do QA.
