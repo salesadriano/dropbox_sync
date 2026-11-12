@@ -1,4 +1,4 @@
-# Releases 2.4.1 e 2.4.1-bash42: memoria do sync gravada por ciclo
+# Releases 2.4.1 e 2.4.1-bash42: memoria do sync por ciclo e orfaos apagados no fim
 
 ## 1. Pedido e porte
 
@@ -14,10 +14,11 @@
 
 ## 2. Causa ou decisao
 
-- O conteudo da versao e as evidencias nao se repetem aqui. Estao no registro `docs/reviews/2026-11-11-1827-registro-sync-ciclos-exclusao-indevida.md` e na PR #111.
+- O conteudo da versao e as evidencias nao se repetem aqui. Estao nos registros `docs/reviews/2026-11-11-1827-registro-sync-ciclos-exclusao-indevida.md` (PR #111) e `docs/reviews/2026-11-11-2210-registro-sync-orfaos-no-fim.md` (commit `9549710`).
+- A release foi suspensa e retomada com a correcao `sync-orfaos-no-fim`, por decisao do solicitante ("Segurar e incluir"). Na principal, a correcao entra por merge na branch da release (regra 47) e vai na mesma PR para `develop`, para que a suite completa rode uma vez.
 - O numero `2.4.1` / `2.4.1-bash42` foi escolhido pelo solicitante. E patch: correcao, sem funcionalidade nem contrato novos.
 - No instalador, so `VERSAO_INSTALADOR` muda, por decisao do solicitante.
-- Porte legado: cherry-pick de `4a0fd1e` e `268878e` sem ajuste de codigo. A mudanca nao usa construcao 4.3+, e `bash42_auditoria_test.sh` passou 7/0. O unico conflito foi no inventario de testes: manteve-se a linha do `sync_test.sh` da linha legada (97 casos), e a conferencia passa a 130 arquivos e 3080 casos.
+- Porte legado: cherry-pick de `4a0fd1e` e `268878e` sem ajuste de codigo, e de `9549710` com dois conflitos resolvidos sem nameref (RF-200): o mapa `cobertas` por escopo dinamico em `commands/sync.sh` e `dbx_ref_existe` em `lib/walk.sh`, ambos com a chave de `dbx_filtro_chave`. A mudanca nao usa construcao 4.3+, e `bash42_auditoria_test.sh` passou 7/0. O unico conflito foi no inventario de testes: manteve-se a linha do `sync_test.sh` da linha legada (97 casos), e a conferencia passa a 130 arquivos e 3080 casos.
 - O sha256 da suite do QA na linha legada e o mesmo aceito (`cb8665e0...a624`).
 
 ## 3. Arquivos
@@ -26,7 +27,8 @@
 |---|---|---|
 | `lib/cli.sh`, `install.sh`, `README.md` | versao 2.4.1 / 2.4.1-bash42 | +/-1, +/-1, +/-3 |
 | `docs/releases/v2.4.1.md` (principal), `docs/releases/v2.4.1-bash42.md` (legada) | Novos: notas | doc |
-| Linha legada: `commands/sync.sh`, `lib/state.sh`, os 2 testes novos e a documentacao da demanda | porte da PR #111 | conforme `4a0fd1e` e `268878e` |
+| Linha legada: `commands/sync.sh`, `lib/state.sh`, `lib/sync.sh`, `lib/walk.sh`, os 4 testes novos e a documentacao das demandas | porte da PR #111 e de `9549710` | conforme `4a0fd1e`, `268878e` e `9549710` |
+| Principal: correcao `9549710` | na mesma PR da release | conforme o registro da demanda |
 
 ## 4. Testes rodados
 
