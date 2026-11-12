@@ -70,10 +70,13 @@ Nao se aplica validacao nova. A mudanca ja foi validada pelo QA na demanda `sync
 
 | Item | Valor |
 |---|---|
-| PR `chore/release-v241` -> `develop` | pendente |
-| PR `feature/sync-ciclos-exclusao-indevida-bash42` -> `support/bash-4.2` | pendente |
-| PR `develop` -> `master` | pendente |
-| Release `v2.4.1` (Latest) | pendente |
-| Release `v2.4.1-bash42` (sem Latest) | pendente |
-| Suite completa, principal | pendente |
-| Suite completa, legada (bash 4.2.46) | pendente |
+| PR #112 `chore/release-v241` -> `develop` | mesclada em `8988ddc` |
+| PR #113 `feature/sync-ciclos-exclusao-indevida-bash42` -> `support/bash-4.2` | mesclada em `66d7c6d` |
+| PR #114 `chore/teste-trava-pid-alheio` -> `develop` | mesclada em `ebdfee2`; corrige o teste que reprovava a suite de `8988ddc` (registro `docs/reviews/2026-11-12-1046-registro-teste-trava-pid-alheio.md`) |
+| PR #115 `develop` -> `master` | mesclada em `b83791c` |
+| Release `v2.4.1` (Latest) | tag em `b83791c`; `dropbox_sync-2.4.1-linux.tar.gz` (sha256 `e2ac9cd6c555519bc709f78841396e0627b6f385ea675d97b1ec961635e1381d`) e `.sha256`; `dbx --version` do pacote: `2.4.1` |
+| Release `v2.4.1-bash42` (sem Latest) | tag em `66d7c6d`; `dropbox_sync-2.4.1-bash42-linux.tar.gz` (sha256 `66ee74264145fe1c59de3fa10833e0f46e203f3fccca8c9d80c39607b2ac4a49`) e `.sha256`; `dbx --version` do pacote: `2.4.1-bash42` |
+| Suite completa, principal | verde para `72469e9` (3740s); vermelha duas vezes para `8988ddc` (mesma arvore) em `state_trava_test.sh`, pid 12 de outro usuario tomado por morto; verde para `11b27f3` e para `ebdfee2`: 130 arquivos, 3074 aprovados, 0 reprovados, 3 pulados (3001s) |
+| Suite completa, legada (bash 4.2.46) | verde para `c5e8137` (2994s) |
+| Aceite | merges das PRs #112 a #115 pelo solicitante ("merge as PRs", "merge a PR") |
+| Limpeza | worktrees mesclados removidos com `limpar-worktrees.sh` |
