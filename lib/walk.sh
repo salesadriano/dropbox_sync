@@ -472,7 +472,8 @@ _dbx_walk_ciclo_dir() {
       printf '%s\0' "$relativo" >&5
       # Ramo SO DO DESTINO (fora do conjunto de diretorios da origem): lido inteiro
       # aqui, pela descida de sempre, para o ciclo planejar a exclusao dele (RF-190(b)).
-      if [[ -n $_dbx_walk_conjunto && -z ${_conj["k:${relativo,,}"]+definido} ]]; then
+      [[ -n $_dbx_walk_conjunto ]] && dbx_filtro_chave "$relativo"
+      if [[ -n $_dbx_walk_conjunto && -z ${_conj["k:$DBX_FILTRO_CHAVE"]+definido} ]]; then
         if [[ ! -r $nome || ! -x $nome ]]; then
           printf 'diretorio ilegivel: %s\n' "$relativo" >&3
         elif ! (cd -- "./$nome" 2>/dev/null && _dbx_walk_descer 2 "$relativo/"); then
