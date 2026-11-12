@@ -1186,7 +1186,7 @@ dbx_cmd_sync_executar() {
     modo_ciclos='sim'
   fi
   local dirs_arq="$area/dirs" vazia_global='nao' podadas_dirs=0 total_origem=0 extras_arquivos=0 retidos_total=0
-  local so_destino='nao' ciclo ci_ini ci_fim ciclo_i=0 ciclo_falho=0 codigo_parada=0
+  local aviso_permissao='nao' ciclo ci_ini ci_fim ciclo_i=0 ciclo_falho=0 codigo_parada=0
   local enviados=0 recebidos=0 apagados=0 falhas=0 alvo rev antes
   local omitidos_total=0 fo_total=0 fd_total=0 antes_total=0 depois_total=0 kk
   local -a dirs_v=() cont_v=() ciclos=('0-0') fila_remota=()
@@ -1233,12 +1233,12 @@ dbx_cmd_sync_executar() {
     while _dbx_cmd_sync_ciclo_proximo; do
       ciclo_i=$((ciclo_i + 1))
       [[ $modo_ciclos == 'sim' ]] &&
-        dbx_progress_mensagem "[sync] ciclo $ciclo_i: diretorios $((ci_ini + 1)) a $ci_fim${so_destino/sim/ (ramo so do destino)}"
+        dbx_progress_mensagem "[sync] ciclo $ciclo_i: diretorios $((ci_ini + 1)) a $ci_fim"
       caminhos_locais=() tamanhos=() identidades=() ordem_local=() ordem_remota=()
       mapa_local=() mapa_remoto=() mapa_revs=() mapa_tam_remoto=()
       locais_antes=0 filtrados_local=0 filtrados_remoto=0
 
-  if [[ $sentido == 'receber' && ! -d $raiz_local ]] || [[ $so_destino == 'sim' && $sentido == 'enviar' ]]; then
+  if [[ $sentido == 'receber' && ! -d $raiz_local ]]; then
     # Em simulacao com destino local inexistente, nao ha itens locais
     : >"$registros_locais"
   else
@@ -1831,6 +1831,19 @@ dbx_cmd_sync_executar() {
     [[ $espelhar == 'sim' && $exclusao_desabilitada == 'nao' && $recusa_origem_vazia == 'nao' &&
       $ciclo_falho -eq 0 && $parcial != 'sim' ]] || pastas_bloqueio='sim'
     [[ $ciclo_falho -gt 0 ]] && break
+    # Memoria por ciclo (RF-38(b) emendado): o que foi visto ate aqui, mantidas
+    # as entradas carregadas dos diretorios ainda nao processados. So a
+    # gravacao final (so visitadas) remove o que sumiu da origem.
+    if [[ $modo_ciclos == 'sim' && -n $conta && $parcial != 'sim' && $memoria_descartada != 'sim' &&
+      ${DBX_CLI_SIMULACAO:-nao} != 'sim' ]]; then
+      dbx_state_gravar "$conta" "$chave_origem" "$chave_destino"
+      if [[ $? -eq $DBX_STATE_ERRO_PERMISSAO && $aviso_permissao == 'nao' ]]; then
+        aviso_permissao='sim'
+        dbx_cmd_iniciar_saida
+        dbx_output_diagnostico aviso "$DBX_STATE_MOTIVO"
+        dbx_output_render_diagnostico >&2
+      fi
+    fi
     done
   # RF-215(c), RF-216: pastas orfas so depois das exclusoes de arquivo de TODOS os ciclos.
   _dbx_cmd_sync_pastas_orfas_apagar
@@ -1869,9 +1882,14 @@ dbx_cmd_sync_executar() {
   # COMPLETA. Com travessia parcial nada e gravado: regravar uma memoria
   # descartada so com o que se viu deixaria uma base sem os ramos invisiveis, e
   # a execucao seguinte a leria como valida.
-  if [[ -n $conta && $parcial != 'sim' ]]; then
+  #
+  # QA-F101-01: em modo de ciclos com ciclo falho NAO ha gravacao final. Os
+  # ciclos concluidos ja gravaram por ciclo; a final (so visitadas) depois de um
+  # ciclo falho deixaria a memoria sem as entradas dos diretorios nao
+  # processados e com o que se viu no ciclo falho. So execucao CONCLUIDA remove.
+  if [[ -n $conta && $parcial != 'sim' && ! ($modo_ciclos == 'sim' && $ciclo_falho -gt 0) ]]; then
     dbx_state_gravar "$conta" "$chave_origem" "$chave_destino" sim
-    if [[ $? -eq $DBX_STATE_ERRO_PERMISSAO ]]; then
+    if [[ $? -eq $DBX_STATE_ERRO_PERMISSAO && $aviso_permissao == 'nao' ]]; then
       dbx_cmd_iniciar_saida
       dbx_output_diagnostico aviso "$DBX_STATE_MOTIVO"
       dbx_output_render_diagnostico >&2
